@@ -1,0 +1,18 @@
+# Runtime / local state
+SmartPowerPlan.log
+SmartPowerPlan.log.old
+SmartPowerPlan.startup.log
+SmartPowerPlan.status.json
+SmartPowerPlan.config.json
+.SmartPowerPlan.initialized
+test-result.txt
+
+# Generated assets (Create-TrayIcon.ps1)
+lib/SmartPowerPlan.ico
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.vs/
+*.user
+*~
