@@ -1,4 +1,4 @@
-# Infrastructure: status.json 原子写入
+﻿# Infrastructure: status.json 原子写入
 
 function Write-SmartPowerPlanStatusAtomic {
     param(

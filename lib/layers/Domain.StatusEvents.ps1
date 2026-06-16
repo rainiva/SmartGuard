@@ -1,4 +1,4 @@
-# Domain: status notification events (Core publish -> Tray consume)
+﻿# Domain: status notification events (Core publish -> Tray consume)
 
 function New-StatusNotificationEvent {
     param(

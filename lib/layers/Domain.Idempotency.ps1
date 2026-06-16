@@ -1,4 +1,4 @@
-# Domain: 幂等决策（计划切换 / 亮度 / 通知 / 日志指纹）
+﻿# Domain: 幂等决策（计划切换 / 亮度 / 通知 / 日志指纹）
 
 function New-GuardIdempotencyState {
     return @{

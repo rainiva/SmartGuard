@@ -1,4 +1,4 @@
-# Infrastructure: 开机自启动（计划任务启停）
+﻿# Infrastructure: 开机自启动（计划任务启停）
 
 function Get-SmartPowerPlanScheduledTaskNames {
     return @('SmartPowerPlan Guardian', 'SmartPowerPlan Tray')

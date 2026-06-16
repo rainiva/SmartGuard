@@ -1,4 +1,4 @@
-# Presentation: 实时刷新日志查看器
+﻿# Presentation: 实时刷新日志查看器
 
 function Show-SmartPowerPlanLogViewer {
     param(
