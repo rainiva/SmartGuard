@@ -39,8 +39,12 @@ if (-not (Enter-SingleInstanceMutex -Name 'Core')) {
     exit 0
 }
 
+$script:Idempotency = New-GuardIdempotencyState
+
 function Write-Log([string]$Message, [hashtable]$Config) {
+    if (-not (Test-ShouldWriteLogMessage -State $script:Idempotency -Message $Message)) { return }
     Write-SmartPowerPlanLog -Message $Message -Config $Config -FallbackLogPath (Join-Path $scriptRoot 'SmartPowerPlan.startup.log')
+    Register-WrittenLogFingerprint -State $script:Idempotency -Message $Message | Out-Null
 }
 
 function Get-CurrentPlanGuid { Get-CurrentPlanGuidFromOutput -PowerCfgListOutput (powercfg /getactivescheme 2>&1 | Out-String) }
@@ -51,10 +55,12 @@ function Get-CurrentBrightness {
 }
 
 function Set-Brightness([int]$Level, [hashtable]$Config) {
+    if (-not (Test-ShouldApplyBrightnessLevel -TargetLevel $Level -CurrentLevel (Get-CurrentBrightness))) { return }
     if ($Level -lt 0 -or $Level -gt 100) { return }
     try {
         $m = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -EA Stop | Select-Object -First 1
         if ($m) { Invoke-CimMethod -InputObject $m -MethodName WmiSetBrightness -Arguments @{ Timeout = 1; Brightness = $Level } -EA Stop | Out-Null }
+        Register-AppliedBrightnessLevel -State $script:Idempotency -Level $Level | Out-Null
     } catch { Write-Log "亮度设置失败: $($_.Exception.Message)" $Config }
 }
 
@@ -88,6 +94,17 @@ function Initialize-SmartPowerPlan([hashtable]$Config) {
     Write-Log 'INIT: 首次初始化完成' $Config
 }
 
+function Publish-SmartPowerPlanStatus {
+    param(
+        [hashtable]$Payload,
+        [hashtable]$NotificationEvent = $null
+    )
+    if ($NotificationEvent) {
+        $Payload.notificationEvent = $NotificationEvent
+    }
+    Write-SmartPowerPlanStatusAtomic -Status $Payload -StatusPath $statusPath
+}
+
 if (-not (Test-Path $scriptRoot)) { New-Item -ItemType Directory -Path $scriptRoot -Force | Out-Null }
 if (-not (Test-Path $configPath)) {
     Save-SmartPowerPlanConfig -Config (Get-DefaultSmartPowerPlanConfig) -ConfigPath $configPath
@@ -115,8 +132,10 @@ catch {
 }
 
 $lastKnownGuid = $null; $lastStatusLabel = ''; $lastHeartbeat = (Get-Date); $scriptJustSwitched = $false
+$pendingNotification = $null
 while ($true) {
     $cur = $null
+    Reset-IdempotencyTickLogs -State $script:Idempotency | Out-Null
     try {
         $config = Read-SmartPowerPlanConfig -ConfigPath $configPath
         if (-not $config) { $config = Get-DefaultSmartPowerPlanConfig }
@@ -124,15 +143,21 @@ while ($true) {
         $bat = Get-BatteryInfo
         $cur = Get-CurrentPlanGuid
         $exp = Get-ExpectedPlanGuid -IdleSeconds $idle -IsOnAC $bat.IsOnAC -BatteryPercent $bat.Percent -Config $config
+        $notifyEvent = $null
+
         if (Test-ExternalPlanChange -PreviousGuid $lastKnownGuid -CurrentGuid $cur -ScriptJustSwitched:$scriptJustSwitched) {
             Write-Log "EXTERNAL: 计划被外部改为 $(Get-PlanDisplayName $cur $config) ($cur) | 下轮纠偏" $config
+            $notifyEvent = Format-ExternalPlanNotification -PlanName (Get-PlanDisplayName $cur $config) -PlanGuid $cur
         }
         $scriptJustSwitched = $false
         $label = if ($idle -ge $config.PowerSaverThresholdSec) { '深度空闲' } elseif ($idle -ge $config.BalancedThresholdSec) { '空闲' } else { '活跃' }
         $bright = Get-CurrentBrightness
-        if ($exp -and $cur -and ($cur -ne $exp)) {
+
+        if ($exp -and (Test-ShouldApplyPowerPlanSwitch -CurrentGuid $cur -TargetGuid $exp)) {
             $res = Switch-PowerPlanWithBrightnessLock -TargetGuid $exp -BrightnessBefore $bright -Config $config -SetBrightnessInvoker { param([int]$L) Set-Brightness $L $config } -GetBrightnessInvoker { Get-CurrentBrightness }
-            $scriptJustSwitched = $true; $cur = Get-CurrentPlanGuid
+            $scriptJustSwitched = $true
+            $cur = Get-CurrentPlanGuid
+            Register-AppliedPowerPlanSwitch -State $script:Idempotency -PlanGuid $cur | Out-Null
             $pwr = if ($bat.IsOnAC) { '插电' } else { '电池' }
             if ($bright -ge 0) {
                 Write-Log "状态: $label | 计划切换(切前同步) + 亮度锁定: $($res.Before)% -> $($res.After)% | $(Get-PlanDisplayName $exp $config) | 电量$($bat.Percent)% $pwr" $config
@@ -142,19 +167,34 @@ while ($true) {
             }
             else { Write-Log "状态: $label | 计划切换(切前同步) | $(Get-PlanDisplayName $exp $config) | 亮度WMI不支持" $config }
             $lastStatusLabel = $label
+            $notifyEvent = Format-PlanSwitchNotification -PlanName (Get-PlanDisplayName $exp $config) -Brightness $res.After -BrightnessBefore $res.Before
         } elseif ($lastStatusLabel -ne $label) {
             $pwr = if ($bat.IsOnAC) { '插电' } else { '电池' }
             Write-Log "状态: $label (空闲${idle}秒) | 计划正常 | $(Get-PlanDisplayName $cur $config) | 电量$($bat.Percent)% $pwr" $config
             $lastStatusLabel = $label
         }
-        $heartbeatMin = if ($null -ne $config.HeartbeatIntervalMin) { [int]$config.HeartbeatIntervalMin } else { 30 }
+
+        $heartbeatMin = if ($null -ne $config.HeartbeatIntervalMin) { [int]$config.HeartbeatIntervalMin } else { 10 }
         $now = Get-Date
         if (Test-HeartbeatDue -LastHeartbeat $lastHeartbeat -IntervalMinutes $heartbeatMin -Now $now) {
             $planName = if ($cur) { Get-PlanDisplayName $cur $config } else { '未知' }
             Write-Log (Format-HeartbeatLogMessage -Label $label -CurrentPlanName $planName -BatteryPercent $bat.Percent -IsOnAC $bat.IsOnAC -Paused ([bool]$config.Paused)) $config
             $lastHeartbeat = $now
         }
-        @{ timestamp=(Get-Date).ToString('s'); currentPlan=(Get-PlanDisplayName $cur $config); currentPlanGUID=$cur; expectedPlan=$(if($exp){Get-PlanDisplayName $exp $config}); idleSeconds=$idle; isOnAC=$bat.IsOnAC; batteryPercent=$bat.Percent; brightness=$bright; paused=$config.Paused; lastExternalChange=$null } | ConvertTo-Json | Out-File $statusPath -Encoding UTF8 -Force
+
+        $statusPayload = @{
+            timestamp = (Get-Date).ToString('s')
+            currentPlan = (Get-PlanDisplayName $cur $config)
+            currentPlanGUID = $cur
+            expectedPlan = $(if ($exp) { Get-PlanDisplayName $exp $config })
+            idleSeconds = $idle
+            isOnAC = $bat.IsOnAC
+            batteryPercent = $bat.Percent
+            brightness = $bright
+            paused = [bool]$config.Paused
+            lastExternalChange = $null
+        }
+        Publish-SmartPowerPlanStatus -Payload $statusPayload -NotificationEvent $notifyEvent
     } catch { Write-Log "ERROR: $($_.Exception.Message)" $config }
     $lastKnownGuid = $cur
     Start-Sleep -Seconds $config.CheckIntervalSec
