@@ -1,23 +1,23 @@
 ﻿# Infrastructure: Windows 通知中心 Toast
 
-function Get-SmartPowerPlanToastAppId {
-    return 'Tools.SmartPowerPlan.Guardian'
+function Get-SmartGuardToastAppId {
+    return 'Tools.SmartGuard.Guardian'
 }
 
-function Get-SmartPowerPlanToastDisplayName {
-    return -join ([char]0x667A, [char]0x80FD, [char]0x7535, [char]0x6E90, [char]0x8BA1, [char]0x5212)
+function Get-SmartGuardToastDisplayName {
+    return -join ([char]0x667A, [char]0x80FD, [char]0x7535, [char]0x6E90, [char]0x5B88, [char]0x62A4)
 }
 
-function Register-SmartPowerPlanAppUserModelId {
+function Register-SmartGuardAppUserModelId {
     param([string]$ScriptRoot = $null)
     try {
-        $root = Get-SmartPowerPlanRoot -ScriptRoot $ScriptRoot
-        $appId = Get-SmartPowerPlanToastAppId
+        $root = Get-SmartGuardRoot -ScriptRoot $ScriptRoot
+        $appId = Get-SmartGuardToastAppId
         $regPath = "HKCU:\Software\Classes\AppUserModelId\$appId"
         if (-not (Test-Path -LiteralPath $regPath)) {
             New-Item -Path $regPath -Force | Out-Null
         }
-        New-ItemProperty -LiteralPath $regPath -Name DisplayName -Value (Get-SmartPowerPlanToastDisplayName) -PropertyType String -Force | Out-Null
+        New-ItemProperty -LiteralPath $regPath -Name DisplayName -Value (Get-SmartGuardToastDisplayName) -PropertyType String -Force | Out-Null
         $iconPath = Get-TrayIconPath -ScriptRoot $root
         if (Test-Path -LiteralPath $iconPath) {
             $iconUri = (New-Object Uri ((Resolve-Path -LiteralPath $iconPath).ProviderPath)).AbsoluteUri
@@ -142,16 +142,16 @@ public static class ShellLinkHelper
     }
 }
 
-function Initialize-SmartPowerPlanToastRegistration {
+function Initialize-SmartGuardToastRegistration {
     param([string]$ScriptRoot = $null)
     try {
-        $root = Get-SmartPowerPlanRoot -ScriptRoot $ScriptRoot
-        $appId = Get-SmartPowerPlanToastAppId
-        Register-SmartPowerPlanAppUserModelId -ScriptRoot $root | Out-Null
+        $root = Get-SmartGuardRoot -ScriptRoot $ScriptRoot
+        $appId = Get-SmartGuardToastAppId
+        Register-SmartGuardAppUserModelId -ScriptRoot $root | Out-Null
 
         $programs = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
         if (-not (Test-Path $programs)) { return $false }
-        $lnk = Join-Path $programs 'SmartPowerPlan.lnk'
+        $lnk = Join-Path $programs 'SmartGuard.lnk'
         $target = Join-Path $root 'Start-Tray.cmd'
         if (-not (Test-Path -LiteralPath $target)) { $target = Join-Path $root 'Restart-Tray.cmd' }
         if (-not (Test-Path -LiteralPath $target)) { $target = 'powershell.exe' }
@@ -160,7 +160,7 @@ function Initialize-SmartPowerPlanToastRegistration {
         $sc = $wsh.CreateShortcut($lnk)
         $sc.TargetPath = $target
         $sc.WorkingDirectory = $root
-        $sc.Description = (Get-SmartPowerPlanToastDisplayName)
+        $sc.Description = (Get-SmartGuardToastDisplayName)
         $iconPath = Get-TrayIconPath -ScriptRoot $root
         if (Test-Path -LiteralPath $iconPath) {
             $sc.IconLocation = "$iconPath,0"
@@ -175,7 +175,7 @@ function Initialize-SmartPowerPlanToastRegistration {
     }
 }
 
-function Show-SmartPowerPlanToast {
+function Show-SmartGuardToast {
     param(
         [string]$Title,
         [string]$Body,
@@ -186,8 +186,8 @@ function Show-SmartPowerPlanToast {
     try {
         [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
         [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-        Initialize-SmartPowerPlanToastRegistration -ScriptRoot $ScriptRoot | Out-Null
-        $appId = Get-SmartPowerPlanToastAppId
+        Initialize-SmartGuardToastRegistration -ScriptRoot $ScriptRoot | Out-Null
+        $appId = Get-SmartGuardToastAppId
         $safeTitle = [System.Security.SecurityElement]::Escape($Title)
         $safeBody = [System.Security.SecurityElement]::Escape($Body)
         $xmlText = @"

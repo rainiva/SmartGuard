@@ -1,6 +1,6 @@
 ﻿# Infrastructure: status.json 原子写入
 
-function Write-SmartPowerPlanStatusAtomic {
+function Write-SmartGuardStatusAtomic {
     param(
         [hashtable]$Status,
         [string]$StatusPath

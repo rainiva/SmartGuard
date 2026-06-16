@@ -1,6 +1,6 @@
 ﻿# Infrastructure: 配置与状态持久化
 
-function Read-SmartPowerPlanConfig {
+function Read-SmartGuardConfig {
     param([string]$ConfigPath)
     if (-not (Test-Path $ConfigPath)) { return $null }
     try {
@@ -30,7 +30,7 @@ function Read-SmartPowerPlanConfig {
     }
 }
 
-function Save-SmartPowerPlanConfig {
+function Save-SmartGuardConfig {
     param([hashtable]$Config, [string]$ConfigPath)
     $obj = [ordered]@{
         ActivePlanGUID = $Config.ActivePlanGUID
@@ -53,9 +53,9 @@ function Save-SmartPowerPlanConfig {
     Write-TextFileUtf8Bom -Path $ConfigPath -Content ($obj | ConvertTo-Json -Depth 3)
 }
 
-function Get-DefaultSmartPowerPlanConfig {
+function Get-DefaultSmartGuardConfig {
     param([string]$ScriptRoot = $null)
-    $root = Get-SmartPowerPlanRoot -ScriptRoot $ScriptRoot
+    $root = Get-SmartGuardRoot -ScriptRoot $ScriptRoot
     return @{
         ActivePlanGUID = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
         BalancedPlanGUID = '381b4222-f694-41f0-9685-ff5bb260df2e'
@@ -65,7 +65,7 @@ function Get-DefaultSmartPowerPlanConfig {
         LowBatteryPercent = 30
         CheckIntervalSec = 15
         BrightnessRestoreMs = 300
-        LogFile = Join-Path $root 'SmartPowerPlan.log'
+        LogFile = Join-Path $root 'SmartGuard.log'
         Paused = $false
         LogMaxBytes = 1048576
         BrightnessRetryCount = 3
@@ -76,7 +76,7 @@ function Get-DefaultSmartPowerPlanConfig {
     }
 }
 
-function Read-SmartPowerPlanStatus {
+function Read-SmartGuardStatus {
     param([string]$StatusPath)
     if (-not (Test-Path $StatusPath)) { return $null }
     try {
@@ -101,7 +101,7 @@ function Read-SmartPowerPlanStatus {
 
 function Format-TrayTooltip {
     param([hashtable]$Status)
-    if (-not $Status) { return '智能电源计划（等待核心服务）' }
+    if (-not $Status) { return '智能电源守护（等待核心服务）' }
     $power = if ($Status.isOnAC) { '插电' } else { '电池' }
     $pause = if ($Status.paused) { ' [已暂停]' } else { '' }
     return "计划: $($Status.currentPlan) | $($Status.batteryPercent)% $power | 亮度$($Status.brightness)%$pause"
@@ -115,7 +115,7 @@ function Format-TrayStatusLine {
     return "计划：$($Status.currentPlan) | $($Status.batteryPercent)% $power$pause"
 }
 
-function Test-SmartPowerPlanConfigValues {
+function Test-SmartGuardConfigValues {
     param([hashtable]$Config)
     $errors = @()
     if ($Config.BalancedThresholdSec -lt 60) { $errors += '平衡阈值至少 60 秒' }

@@ -1,4 +1,4 @@
-﻿# SmartPowerPlan.Functions.ps1 — 分层模块加载入口
+﻿# SmartGuard.Functions.ps1 — 分层模块加载入口
 
 $_layersRoot = Join-Path $PSScriptRoot 'layers'
 if (Test-Path $_layersRoot) {

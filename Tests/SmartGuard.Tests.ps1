@@ -1,8 +1,8 @@
-﻿Describe 'SmartPowerPlan' {
+﻿Describe 'SmartGuard' {
     BeforeAll {
         $root = Split-Path -Parent $PSScriptRoot
-        $functionsPath = Join-Path $root 'lib\SmartPowerPlan.Functions.ps1'
-        $settingsPath = Join-Path $root 'lib\SmartPowerPlan.Settings.ps1'
+        $functionsPath = Join-Path $root 'lib\SmartGuard.Functions.ps1'
+        $settingsPath = Join-Path $root 'lib\SmartGuard.Settings.ps1'
         . $functionsPath
         . $settingsPath
         $script:PowerCfgBrightnessSupported = $true
@@ -161,7 +161,7 @@
         }
 
         It 'validates config thresholds' {
-            $bad = Test-SmartPowerPlanConfigValues -Config @{
+            $bad = Test-SmartGuardConfigValues -Config @{
                 BalancedThresholdSec = 300
                 PowerSaverThresholdSec = 200
                 LowBatteryPercent = 30
@@ -211,8 +211,8 @@
         It 'appends log lines to file' {
             $tmp = Join-Path $TestDrive 'append.log'
             $cfg = @{ LogFile = $tmp; LogMaxBytes = 1048576 }
-            Write-SmartPowerPlanLog -Message 'line one' -Config $cfg
-            Write-SmartPowerPlanLog -Message 'line two' -Config $cfg
+            Write-SmartGuardLog -Message 'line one' -Config $cfg
+            Write-SmartGuardLog -Message 'line two' -Config $cfg
             $text = Get-Content -LiteralPath $tmp -Raw
             $text | Should -Match 'line one'
             $text | Should -Match 'line two'
@@ -221,7 +221,7 @@
         It 'returns true when primary log write succeeds' {
             $tmp = Join-Path $TestDrive 'ok.log'
             $cfg = @{ LogFile = $tmp; LogMaxBytes = 1048576 }
-            Write-SmartPowerPlanLog -Message 'ok' -Config $cfg | Should -Be $true
+            Write-SmartGuardLog -Message 'ok' -Config $cfg | Should -Be $true
         }
 
         It 'falls back to startup log when primary path is not writable' {
@@ -229,7 +229,7 @@
             New-Item -ItemType Directory -Path $blocked -Force | Out-Null
             $fallback = Join-Path $TestDrive 'fallback.log'
             $cfg = @{ LogFile = $blocked; LogMaxBytes = 1048576 }
-            Write-SmartPowerPlanLog -Message 'hello' -Config $cfg -FallbackLogPath $fallback | Should -Be $false
+            Write-SmartGuardLog -Message 'hello' -Config $cfg -FallbackLogPath $fallback | Should -Be $false
             $text = Get-Content -LiteralPath $fallback -Raw
             $text | Should -Match 'LOG-FALLBACK'
             $text | Should -Match 'hello'
@@ -263,21 +263,21 @@
         }
 
         It 'returns stable single-instance mutex name' {
-            Get-SingleInstanceMutexName -Component 'Core' | Should -Be 'Global\SmartPowerPlan.Core'
-            Get-SingleInstanceMutexName -Component 'Tray' | Should -Be 'Global\SmartPowerPlan.Tray'
+            Get-SingleInstanceMutexName -Component 'Core' | Should -Be 'Global\SmartGuard.Core'
+            Get-SingleInstanceMutexName -Component 'Tray' | Should -Be 'Global\SmartGuard.Tray'
         }
     }
 
     Describe 'Tray assets' {
         It 'resolves tray icon path' {
             $root = Split-Path -Parent $PSScriptRoot
-            Get-TrayIconPath -ScriptRoot $root | Should -Match 'SmartPowerPlan\.ico$'
+            Get-TrayIconPath -ScriptRoot $root | Should -Match 'SmartGuard\.ico$'
         }
 
         It 'Create-TrayIcon.ps1 generates icon file in clean process' {
             $root = Split-Path -Parent $PSScriptRoot
             $script = Join-Path $root 'lib\Create-TrayIcon.ps1'
-            $icon = Join-Path $root 'lib\SmartPowerPlan.ico'
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
             if (Test-Path $icon) { Remove-Item $icon -Force }
             $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script 2>&1 | Out-String
             $output | Should -Not -Match 'Get-TrayIconPath'
@@ -287,18 +287,18 @@
 
     Describe 'WPF Settings UI' {
         It 'resolves external xaml path' {
-            Get-SmartPowerPlanSettingsXamlPath | Should -Match 'SmartPowerPlan\.Settings\.xaml$'
+            Get-SmartGuardSettingsXamlPath | Should -Match 'SmartGuard\.Settings\.xaml$'
         }
 
         It 'writes and loads settings xaml' {
             $root = Split-Path -Parent $PSScriptRoot
-            $writer = Join-Path $root 'lib\Write-SmartPowerPlanSettingsXaml.ps1'
-            $xamlPath = Get-SmartPowerPlanSettingsXamlPath -ScriptRoot $root
+            $writer = Join-Path $root 'lib\Write-SmartGuardSettingsXaml.ps1'
+            $xamlPath = Get-SmartGuardSettingsXamlPath -ScriptRoot $root
             if (Test-Path $writer) {
                 & $writer -ScriptRoot $root | Out-Null
             }
             Test-Path $xamlPath | Should -Be $true
-            $text = Resolve-SmartPowerPlanSettingsXaml -ScriptRoot $root
+            $text = Resolve-SmartGuardSettingsXaml -ScriptRoot $root
             $text | Should -Match '<Window'
             $text | Should -Match 'x:Name="sldBalanced"'
         }
@@ -320,18 +320,105 @@
 
         It 'includes toggle switches and autostart in generated xaml' {
             $root = Split-Path -Parent $PSScriptRoot
-            $writer = Join-Path $root 'lib\Write-SmartPowerPlanSettingsXaml.ps1'
+            $writer = Join-Path $root 'lib\Write-SmartGuardSettingsXaml.ps1'
             & $writer -ScriptRoot $root | Out-Null
-            $text = Resolve-SmartPowerPlanSettingsXaml -ScriptRoot $root
+            $text = Resolve-SmartGuardSettingsXaml -ScriptRoot $root
             $text | Should -Match 'x:Name="tglPaused"'
             $text | Should -Match 'x:Name="tglAutoStart"'
             $text | Should -Match 'ToggleSwitch'
+        }
+
+        It 'parses settings xaml without template setter errors' {
+            Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+            if (-not ([System.Windows.Application]::Current)) {
+                $null = New-Object System.Windows.Application
+            }
+            $root = Split-Path -Parent $PSScriptRoot
+            & (Join-Path $root 'lib\Write-SmartGuardSettingsXaml.ps1') -ScriptRoot $root | Out-Null
+            $xaml = Resolve-SmartGuardSettingsXaml -ScriptRoot $root
+            { [void][Windows.Markup.XamlReader]::Parse($xaml) } | Should -Not -Throw
+        }
+
+        It 'reads log file content for live viewer merge' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $logPath = Join-Path $root 'SmartGuard.log'
+            if (-not (Test-Path -LiteralPath $logPath)) {
+                Set-Content -LiteralPath $logPath -Value '2026-01-01 00:00:00 - test log line' -Encoding UTF8
+            }
+            $merged = Read-SmartGuardLogText -LogPath $logPath
+            $merged | Should -Not -BeNullOrEmpty
+            $merged | Should -Match '\d{4}-\d{2}-\d{2}'
+        }
+
+        It 'reads appended log bytes without reloading entire file' {
+            $temp = Join-Path $env:TEMP ("spp-log-{0}.txt" -f [guid]::NewGuid().ToString('N'))
+            try {
+                [System.IO.File]::WriteAllText($temp, "line-1$([Environment]::NewLine)", [System.Text.UTF8Encoding]::new($false))
+                $first = Read-LogFileTextFromOffset -Path $temp -StartOffset 0
+                [System.IO.File]::AppendAllText($temp, "line-2$([Environment]::NewLine)", [System.Text.UTF8Encoding]::new($false))
+                $delta = Read-LogFileTextFromOffset -Path $temp -StartOffset $first.Length
+                $delta.Text | Should -Match 'line-2'
+                $delta.Text | Should -Not -Match 'line-1'
+            }
+            finally {
+                Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'reuses a single WPF Application when opening settings repeatedly' {
+            Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+            Initialize-SmartGuardWpfApplication | Out-Null
+            { Initialize-SmartGuardWpfApplication | Out-Null } | Should -Not -Throw
+            $app = if ($script:SmartGuardWpfApplication) {
+                $script:SmartGuardWpfApplication
+            }
+            else {
+                [System.Windows.Application]::Current
+            }
+            $app | Should -Not -BeNullOrEmpty
+            $app.ShutdownMode | Should -Be ([System.Windows.ShutdownMode]::OnExplicitShutdown)
+        }
+
+        It 'loads log text into viewer form before show' {
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $root = Split-Path -Parent $PSScriptRoot
+            $logPath = Join-Path $root 'SmartGuard.log'
+            if (-not (Test-Path -LiteralPath $logPath)) {
+                Set-Content -LiteralPath $logPath -Value '2026-01-01 00:00:00 - test log line' -Encoding UTF8
+            }
+            $form = New-SmartGuardLogViewerForm -LogPath $logPath
+            Initialize-SmartGuardLogViewerSession -Form $form
+            $form.Tag.RichTextBox.Text | Should -Not -BeNullOrEmpty
+            $form.Tag.StatusLabel.Text | Should -Match '行'
+            $form.Tag.RefreshTimer.Stop()
+            $form.Dispose()
+        }
+
+        It 'starts log viewer without visible console window' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'lib\layers\Presentation.LogViewer.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'Start-Process.*WindowStyle Hidden'
+            $content | Should -Match '-WindowStyle.*Hidden'
+        }
+
+        It 'exposes log viewer launcher and standalone script' {
+            Get-Command Start-SmartGuardLogViewerProcess -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+            $root = Split-Path -Parent $PSScriptRoot
+            Get-SmartGuardLogViewerScriptPath -ScriptRoot $root | Should -Be (Join-Path $root 'lib\Show-LogViewer.ps1')
+            Test-Path (Get-SmartGuardLogViewerScriptPath -ScriptRoot $root) | Should -Be $true
+        }
+
+        It 'skips autostart task update when toggle unchanged' {
+            Test-SmartGuardAutoStartNeedsUpdate -Enabled $true -PreviousEnabled $true | Should -Be $false
+            Test-SmartGuardAutoStartNeedsUpdate -Enabled $false -PreviousEnabled $false | Should -Be $false
+            Test-SmartGuardAutoStartNeedsUpdate -Enabled $true -PreviousEnabled $false | Should -Be $true
+            Test-SmartGuardAutoStartNeedsUpdate -Enabled $true -PreviousEnabled $null | Should -Be $true
         }
     }
 
     Describe 'Layer modules' {
         It 'defaults heartbeat interval to 10 minutes' {
-            $cfg = Get-DefaultSmartPowerPlanConfig
+            $cfg = Get-DefaultSmartGuardConfig
             $cfg.HeartbeatIntervalMin | Should -Be 10
         }
 
@@ -370,7 +457,7 @@
 
         It 'keeps settings source aligned with toggle controls' {
             $root = Split-Path -Parent $PSScriptRoot
-            $source = Join-Path $root 'lib\SmartPowerPlan.Settings.ps1.source'
+            $source = Join-Path $root 'lib\SmartGuard.Settings.ps1.source'
             Test-Path $source | Should -Be $true
             $content = Get-Content -LiteralPath $source -Raw -Encoding UTF8
             $content | Should -Match 'tglPaused'
@@ -382,25 +469,25 @@
     Describe 'Project root resolution' {
         It 'resolves install root from explicit script root' {
             $root = Split-Path -Parent $PSScriptRoot
-            Get-SmartPowerPlanRoot -ScriptRoot $root | Should -Be $root
+            Get-SmartGuardRoot -ScriptRoot $root | Should -Be $root
         }
 
         It 'defaults log path relative to install root' {
             $root = Split-Path -Parent $PSScriptRoot
-            $cfg = Get-DefaultSmartPowerPlanConfig -ScriptRoot $root
-            $cfg.LogFile | Should -Be (Join-Path $root 'SmartPowerPlan.log')
+            $cfg = Get-DefaultSmartGuardConfig -ScriptRoot $root
+            $cfg.LogFile | Should -Be (Join-Path $root 'SmartGuard.log')
         }
     }
 
     Describe 'Toast AppUserModelId' {
         It 'returns stable app id' {
-            Get-SmartPowerPlanToastAppId | Should -Be 'Tools.SmartPowerPlan.Guardian'
+            Get-SmartGuardToastAppId | Should -Be 'Tools.SmartGuard.Guardian'
         }
 
         It 'registers display metadata in registry' {
             $root = Split-Path -Parent $PSScriptRoot
-            Register-SmartPowerPlanAppUserModelId -ScriptRoot $root | Should -Be $true
-            $appId = Get-SmartPowerPlanToastAppId
+            Register-SmartGuardAppUserModelId -ScriptRoot $root | Should -Be $true
+            $appId = Get-SmartGuardToastAppId
             $regPath = "HKCU:\Software\Classes\AppUserModelId\$appId"
             Test-Path $regPath | Should -Be $true
             (Get-ItemProperty -LiteralPath $regPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName | Should -Not -BeNullOrEmpty
@@ -410,13 +497,13 @@
     Describe 'Functions loader' {
         It 'loads domain and infrastructure modules from layers' {
             Get-Command Get-ExpectedPlanGuid -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
-            Get-Command Read-SmartPowerPlanConfig -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+            Get-Command Read-SmartGuardConfig -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
             Get-Command Invoke-PowerCfgCommand -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
         }
 
         It 'keeps Functions.ps1 as thin entry point' {
             $root = Split-Path -Parent $PSScriptRoot
-            $lines = (Get-Content -LiteralPath (Join-Path $root 'lib\SmartPowerPlan.Functions.ps1')).Count
+            $lines = (Get-Content -LiteralPath (Join-Path $root 'lib\SmartGuard.Functions.ps1')).Count
             $lines | Should -BeLessThan 40
         }
     }

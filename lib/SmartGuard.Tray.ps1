@@ -1,4 +1,4 @@
-﻿# SmartPowerPlan.Tray.ps1 - 表现层：托盘 UI（设置/日志见 Settings.ps1 与 layers）
+﻿# SmartGuard.Tray.ps1 - 表现层：托盘 UI（设置/日志见 Settings.ps1 与 layers）
 #Requires -Version 5.1
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -31,24 +31,24 @@ public static class TrayDpiLegacy { [DllImport("user32.dll")] public static exte
 
 Enable-TrayProcessDpiAwareness
 
-$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'C:\Tools' }
-. (Join-Path $scriptRoot 'lib\SmartPowerPlan.Functions.ps1')
-. (Join-Path $scriptRoot 'lib\SmartPowerPlan.Settings.ps1')
-$configPath = Join-Path $scriptRoot 'SmartPowerPlan.config.json'
-$statusPath = Join-Path $scriptRoot 'SmartPowerPlan.status.json'
+$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+. (Join-Path $scriptRoot 'lib\SmartGuard.Functions.ps1')
+. (Join-Path $scriptRoot 'lib\SmartGuard.Settings.ps1')
+$configPath = Join-Path $scriptRoot 'SmartGuard.config.json'
+$statusPath = Join-Path $scriptRoot 'SmartGuard.status.json'
 $script:lastNotifiedEventId = $null
 
 if (-not (Enter-SingleInstanceMutex -Name 'Tray')) {
     [System.Windows.Forms.MessageBox]::Show(
-        '智能电源计划托盘已在运行。',
-        '智能电源计划',
+        '智能电源守护托盘已在运行。',
+        '智能电源守护',
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
     ) | Out-Null
     exit 0
 }
 
-Initialize-SmartPowerPlanToastRegistration -ScriptRoot $scriptRoot | Out-Null
+Initialize-SmartGuardToastRegistration -ScriptRoot $scriptRoot | Out-Null
 
 function Get-TrayMenuFont {
     return [System.Windows.Forms.SystemInformation]::MenuFont
@@ -83,16 +83,16 @@ function Invoke-TrayStatusNotification {
         if ($Status.currentPlan -and (Test-PlanChangedForNotification -PreviousPlan $script:lastLegacyPlan -CurrentPlan $Status.currentPlan)) {
             $balloon = Format-PlanChangeBalloon -PlanName $Status.currentPlan -Brightness $Status.brightness
             if ($NotifyIcon) {
-                $NotifyIcon.ShowBalloonTip(5000, '智能电源计划', $balloon, [System.Windows.Forms.ToolTipIcon]::Warning)
+                $NotifyIcon.ShowBalloonTip(5000, '智能电源守护', $balloon, [System.Windows.Forms.ToolTipIcon]::Warning)
             }
             $script:lastLegacyPlan = $Status.currentPlan
         }
         return
     }
     if (-not (Test-ShouldShowStatusNotification -LastEventId $script:lastNotifiedEventId -Event $event)) { return }
-    $title = if ($event.title) { $event.title } else { '智能电源计划' }
+    $title = if ($event.title) { $event.title } else { '智能电源守护' }
     $body = if ($event.body) { $event.body } else { $Status.currentPlan }
-    $shown = Show-SmartPowerPlanToast -Title $title -Body $body -Tag $event.id -ScriptRoot $scriptRoot
+    $shown = Show-SmartGuardToast -Title $title -Body $body -Tag $event.id -ScriptRoot $scriptRoot
     if (-not $shown -and $NotifyIcon) {
         $NotifyIcon.ShowBalloonTip(5000, $title, $body, [System.Windows.Forms.ToolTipIcon]::Warning)
     }
@@ -101,7 +101,7 @@ function Invoke-TrayStatusNotification {
 
 function Update-TrayDisplay {
     param($NotifyIcon, $StatusItem, [bool]$NotifyOnPlanChange = $true)
-    $status = Read-SmartPowerPlanStatus -StatusPath $statusPath
+    $status = Read-SmartGuardStatus -StatusPath $statusPath
     $NotifyIcon.Text = Format-TrayTooltip -Status $status
     if ($StatusItem) {
         if ($status) {
@@ -112,28 +112,46 @@ function Update-TrayDisplay {
 }
 
 function Open-TraySettingsDeferred {
-    if ($script:SettingsOpenTimer) { return }
+    if ($script:SettingsOpenTimer) {
+        try { $script:SettingsOpenTimer.Stop(); $script:SettingsOpenTimer.Dispose() } catch {}
+        $script:SettingsOpenTimer = $null
+    }
     $script:SettingsOpenTimer = New-Object System.Windows.Forms.Timer
     $script:SettingsOpenTimer.Interval = 120
     $script:SettingsOpenTimer.Add_Tick({
-        $script:SettingsOpenTimer.Stop()
-        $script:SettingsOpenTimer.Dispose()
+        param($sender, $e)
+        $sender.Stop()
+        $sender.Dispose()
         $script:SettingsOpenTimer = $null
         try {
-            $cfg = Read-SmartPowerPlanConfig -ConfigPath $script:TrayConfigPath
-            if (-not $cfg) { $cfg = Get-DefaultSmartPowerPlanConfig }
-            Show-SmartPowerPlanSettings -Config $cfg -ConfigPath $script:TrayConfigPath -ScriptRoot $scriptRoot -OnSaved $script:TrayOnSettingsSaved
+            $cfg = Read-SmartGuardConfig -ConfigPath $script:TrayConfigPath
+            if (-not $cfg) { $cfg = Get-DefaultSmartGuardConfig }
+            Show-SmartGuardSettings -Config $cfg -ConfigPath $script:TrayConfigPath -ScriptRoot $scriptRoot -OnSaved $script:TrayOnSettingsSaved
         }
         catch {
             [System.Windows.Forms.MessageBox]::Show(
                 "打开设置失败：`n$($_.Exception.Message)",
-                '智能电源计划',
+                '智能电源守护',
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Error
             ) | Out-Null
         }
     })
     $script:SettingsOpenTimer.Start()
+}
+
+function Open-TrayLogViewer {
+    try {
+        Start-SmartGuardLogViewerProcess -ScriptRoot $scriptRoot
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "打开日志失败：`n$($_.Exception.Message)",
+            '智能电源守护',
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    }
 }
 
 function Get-TrayNotifyIcon {
@@ -151,13 +169,13 @@ function Get-TrayNotifyIcon {
     return [System.Drawing.SystemIcons]::Shield
 }
 
-$config = Read-SmartPowerPlanConfig -ConfigPath $configPath
-if (-not $config) { $config = Get-DefaultSmartPowerPlanConfig }
+$config = Read-SmartGuardConfig -ConfigPath $configPath
+if (-not $config) { $config = Get-DefaultSmartGuardConfig }
 
 $trayIcon = New-Object System.Windows.Forms.NotifyIcon
 $trayIcon.Icon = Get-TrayNotifyIcon
 $trayIcon.Visible = $true
-$trayIcon.Text = '智能电源计划'
+$trayIcon.Text = '智能电源守护'
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $statusItem = $menu.Items.Add('加载中…')
@@ -181,12 +199,12 @@ $script:TrayOnSettingsSaved = {
 
 $pauseItem.Add_Click({
     try {
-        $cfg = Read-SmartPowerPlanConfig -ConfigPath $configPath
+        $cfg = Read-SmartGuardConfig -ConfigPath $configPath
         if (-not $cfg) { return }
         $cfg.Paused = -not $cfg.Paused
-        Save-SmartPowerPlanConfig -Config $cfg -ConfigPath $configPath
+        Save-SmartGuardConfig -Config $cfg -ConfigPath $configPath
         $pauseMsg = Get-PauseGuardLogMessage -PreviousPaused (-not $cfg.Paused) -CurrentPaused ([bool]$cfg.Paused)
-        if ($pauseMsg) { Write-SmartPowerPlanLog -Message $pauseMsg -Config $cfg -FallbackLogPath (Get-SmartPowerPlanFallbackLogPath -ScriptRoot $scriptRoot) }
+        if ($pauseMsg) { Write-SmartGuardLog -Message $pauseMsg -Config $cfg -FallbackLogPath (Get-SmartGuardFallbackLogPath -ScriptRoot $scriptRoot) }
         $pauseItem.Text = if ($cfg.Paused) { '恢复守护' } else { '暂停守护' }
         $notify = if ($null -ne $cfg.NotifyOnPlanChange) { $cfg.NotifyOnPlanChange } else { $true }
         Update-TrayDisplay -NotifyIcon $trayIcon -StatusItem $statusItem -NotifyOnPlanChange $notify
@@ -194,19 +212,14 @@ $pauseItem.Add_Click({
     catch {
         [System.Windows.Forms.MessageBox]::Show(
             "操作失败：`n$($_.Exception.Message)",
-            '智能电源计划',
+            '智能电源守护',
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
         ) | Out-Null
     }
 })
 
-$logItem.Add_Click({
-    $cfg = Read-SmartPowerPlanConfig -ConfigPath $configPath
-    $log = if ($cfg -and $cfg.LogFile) { $cfg.LogFile } else { Join-Path $scriptRoot 'SmartPowerPlan.log' }
-    $fallback = Get-SmartPowerPlanFallbackLogPath -ScriptRoot $scriptRoot
-    Show-SmartPowerPlanLogViewer -LogPath $log -FallbackLogPath $fallback
-})
+$logItem.Add_Click({ Open-TrayLogViewer })
 
 $openSettings = { Open-TraySettingsDeferred }
 $settingsItem.Add_Click($openSettings)
@@ -216,7 +229,7 @@ $exitItem.Add_Click({ $trayIcon.Visible = $false; $trayIcon.Dispose(); [System.W
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 5000
 $timer.Add_Tick({
-    $cfg = Read-SmartPowerPlanConfig -ConfigPath $configPath
+    $cfg = Read-SmartGuardConfig -ConfigPath $configPath
     $notify = if ($cfg -and $null -ne $cfg.NotifyOnPlanChange) { $cfg.NotifyOnPlanChange } else { $true }
     Update-TrayDisplay -NotifyIcon $trayIcon -StatusItem $statusItem -NotifyOnPlanChange $notify
 })

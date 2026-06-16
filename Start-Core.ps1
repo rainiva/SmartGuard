@@ -1,9 +1,9 @@
-﻿# Start-Core.ps1 - 智能电源计划核心服务启动器
+﻿# Start-Core.ps1
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
-$root = if ($PSScriptRoot) { $PSScriptRoot } else { 'C:\Tools' }
-$coreScript = Join-Path $root 'lib\SmartPowerPlan.Core.ps1'
-$logPath = Join-Path $root 'SmartPowerPlan.startup.log'
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+$coreScript = Join-Path $root 'lib\SmartGuard.Core.ps1'
+$logPath = Join-Path $root 'SmartGuard.startup.log'
 
 function Write-StartupLog {
     param([string]$Message)
@@ -22,45 +22,45 @@ function Wait-DismissConsole {
     Write-StartupLog $Message
     Write-Host ''
     Write-Host $Message -ForegroundColor Yellow
-    Read-Host '按 Enter 键关闭此窗口'
+    Read-Host 'Press Enter to close this window'
 }
 
-Write-StartupLog ("启动器开始，管理员={0}" -f (Test-IsAdministrator))
+Write-StartupLog ("Launcher started. Admin={0}" -f (Test-IsAdministrator))
 
 if (-not (Test-IsAdministrator)) {
-    Write-Host '需要管理员权限，请在 UAC 提示中点击「是」…' -ForegroundColor Cyan
-    Write-StartupLog '请求 UAC 提权'
+    Write-Host 'Need administrator rights. Please click Yes on the UAC prompt...' -ForegroundColor Cyan
+    Write-StartupLog 'Requesting UAC elevation'
     try {
         $argList = '-NoProfile -ExecutionPolicy Bypass -NoExit -File "{0}"' -f $MyInvocation.MyCommand.Path
         $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -PassThru -Wait -ArgumentList $argList
         if ($null -eq $proc) {
-            Wait-DismissConsole 'UAC 已取消或提权失败。'
+            Wait-DismissConsole 'UAC was cancelled or elevation failed.'
             exit 1
         }
-        Write-StartupLog ("提权进程退出码：{0}" -f $proc.ExitCode)
+        Write-StartupLog ("Elevated process exit code: {0}" -f $proc.ExitCode)
         if ($proc.ExitCode -ne 0) {
-            Wait-DismissConsole ("提权启动器退出，代码 {0}。详见 SmartPowerPlan.startup.log" -f $proc.ExitCode)
+            Wait-DismissConsole ("Elevated launcher exited with code {0}. See SmartGuard.startup.log" -f $proc.ExitCode)
         }
         exit $proc.ExitCode
     }
     catch {
-        Wait-DismissConsole ("提权失败：{0}" -f $_.Exception.Message)
+        Wait-DismissConsole ("Elevation error: {0}" -f $_.Exception.Message)
         exit 1
     }
 }
 
-Write-StartupLog '正在运行核心脚本'
-Write-Host '智能电源计划核心服务启动中（管理员）…' -ForegroundColor Green
-Write-Host '请保持此窗口打开；关闭窗口将停止服务。'
+Write-StartupLog 'Running Core script'
+Write-Host 'SmartGuard Core is starting (admin)...' -ForegroundColor Green
+Write-Host 'Keep this window open. Closing it stops the service.'
 Write-Host ''
 
 try {
     & $coreScript
-    Write-StartupLog '核心脚本正常返回'
-    Wait-DismissConsole '智能电源计划核心服务已停止。'
+    Write-StartupLog 'Core script returned normally'
+    Wait-DismissConsole 'SmartGuard Core stopped.'
 }
 catch {
-    Write-StartupLog ("核心服务失败：{0}" -f $_.Exception.Message)
-    Wait-DismissConsole ("智能电源计划核心服务失败：{0}" -f $_.Exception.Message)
+    Write-StartupLog ("Core failed: {0}" -f $_.Exception.Message)
+    Wait-DismissConsole ("SmartGuard Core failed: {0}" -f $_.Exception.Message)
     exit 1
 }

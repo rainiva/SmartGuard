@@ -1,13 +1,23 @@
 ﻿#Requires -Version 5.1
-function Get-SmartPowerPlanSettingsXamlPath {
-    param([string]$ScriptRoot = 'C:\Tools')
-    return Join-Path $ScriptRoot 'lib\SmartPowerPlan.Settings.xaml'
+function Get-SmartGuardSettingsXamlPath {
+    param([string]$ScriptRoot = 'D:\Project\SmartGuard')
+    return Join-Path $ScriptRoot 'lib\SmartGuard.Settings.xaml'
 }
 
-function Initialize-SmartPowerPlanWpfApplication {
-    if (-not ([System.Windows.Application]::Current)) {
-        $null = New-Object System.Windows.Application
+function Initialize-SmartGuardWpfApplication {
+    $existing = [System.Windows.Application]::Current
+    if ($existing) {
+        $existing.ShutdownMode = [System.Windows.ShutdownMode]::OnExplicitShutdown
+        $script:SmartGuardWpfApplication = $existing
+        return $existing
     }
+    if ($script:SmartGuardWpfApplication) {
+        return $script:SmartGuardWpfApplication
+    }
+    $app = New-Object System.Windows.Application
+    $app.ShutdownMode = [System.Windows.ShutdownMode]::OnExplicitShutdown
+    $script:SmartGuardWpfApplication = $app
+    return $app
 }
 
 function Register-SettingsSliderLabel {
@@ -25,11 +35,11 @@ function Register-SettingsSliderLabel {
     $labelRef.Text = $formatRef -f ([int]$sliderRef.Value)
 }
 
-function Resolve-SmartPowerPlanSettingsXaml {
-    param([string]$ScriptRoot = 'C:\Tools')
-    $xamlPath = Get-SmartPowerPlanSettingsXamlPath -ScriptRoot $ScriptRoot
+function Resolve-SmartGuardSettingsXaml {
+    param([string]$ScriptRoot = 'D:\Project\SmartGuard')
+    $xamlPath = Get-SmartGuardSettingsXamlPath -ScriptRoot $ScriptRoot
     if (-not (Test-Path $xamlPath)) {
-        $writer = Join-Path $ScriptRoot 'lib\Write-SmartPowerPlanSettingsXaml.ps1'
+        $writer = Join-Path $ScriptRoot 'lib\Write-SmartGuardSettingsXaml.ps1'
         if (Test-Path $writer) {
             & $writer -ScriptRoot $ScriptRoot
         }
@@ -44,28 +54,50 @@ function Resolve-SmartPowerPlanSettingsXaml {
     return $text
 }
 
-function Show-SmartPowerPlanSettings {
+function Invoke-SmartGuardSettingsSave {
+    param(
+        [hashtable]$NewConfig,
+        [hashtable]$PreviousConfig,
+        [string]$ConfigPath,
+        [string]$ScriptRoot,
+        [string]$PauseMsg = $null,
+        [scriptblock]$OnSaved = $null
+    )
+    if ($PauseMsg) {
+        Write-SmartGuardLog -Message $PauseMsg -Config $NewConfig -FallbackLogPath (Get-SmartGuardFallbackLogPath -ScriptRoot $ScriptRoot)
+    }
+    Save-SmartGuardConfig -Config $NewConfig -ConfigPath $ConfigPath
+    $prevAutoStart = if ($null -ne $PreviousConfig.AutoStartEnabled) { [bool]$PreviousConfig.AutoStartEnabled } else { $null }
+    if (Test-SmartGuardAutoStartNeedsUpdate -Enabled ([bool]$NewConfig.AutoStartEnabled) -PreviousEnabled $prevAutoStart) {
+        Set-SmartGuardAutoStart -Enabled ([bool]$NewConfig.AutoStartEnabled) -ScriptRoot $ScriptRoot
+    }
+    if ($null -ne $OnSaved) {
+        $OnSaved.Invoke($NewConfig)
+    }
+}
+
+function Show-SmartGuardSettings {
     param(
         [hashtable]$Config,
         [string]$ConfigPath,
-        [string]$ScriptRoot = 'C:\Tools',
+        [string]$ScriptRoot = 'D:\Project\SmartGuard',
         [scriptblock]$OnSaved
     )
 
-    if (-not (Get-Command Read-SmartPowerPlanConfig -ErrorAction SilentlyContinue)) {
-        . (Join-Path $ScriptRoot 'lib\SmartPowerPlan.Functions.ps1')
+    if (-not (Get-Command Read-SmartGuardConfig -ErrorAction SilentlyContinue)) {
+        . (Join-Path $ScriptRoot 'lib\SmartGuard.Functions.ps1')
     }
 
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-    Initialize-SmartPowerPlanWpfApplication
+    Initialize-SmartGuardWpfApplication
 
     try {
-        $xaml = Resolve-SmartPowerPlanSettingsXaml -ScriptRoot $ScriptRoot
+        $xaml = Resolve-SmartGuardSettingsXaml -ScriptRoot $ScriptRoot
         $window = [Windows.Markup.XamlReader]::Parse($xaml)
     }
     catch {
         $err = '设置界面加载失败：' + [Environment]::NewLine + $_.Exception.Message
-        [System.Windows.MessageBox]::Show($err, '智能电源计划', 'OK', 'Error') | Out-Null
+        [System.Windows.MessageBox]::Show($err, '智能电源守护', 'OK', 'Error') | Out-Null
         return
     }
 
@@ -101,7 +133,7 @@ function Show-SmartPowerPlanSettings {
         $tglAutoStart.IsChecked = [bool]$Config.AutoStartEnabled
     }
     else {
-        $tglAutoStart.IsChecked = (Get-SmartPowerPlanAutoStartEnabled)
+        $tglAutoStart.IsChecked = $true
     }
 
     Register-SettingsSliderLabel -Slider $sldBalanced -Label $lblBalanced -Format '{0} 分钟'
@@ -115,6 +147,7 @@ function Show-SmartPowerPlanSettings {
     $rootRef = $ScriptRoot
     $savedRef = $OnSaved
     $winRef = $window
+    $saveContext = @{ Pending = $null }
 
     $btnCancel.Add_Click({
         $winRef.DialogResult = $false
@@ -124,24 +157,19 @@ function Show-SmartPowerPlanSettings {
     $btnSave.Add_Click({
         $oldPaused = [bool]$cfgRef.Paused
         $newCfg = New-ConfigFromTraySettings -CurrentConfig $cfgRef -BalancedThresholdMin ([int]$sldBalanced.Value) -PowerSaverThresholdMin ([int]$sldSaver.Value) -LowBatteryPercent ([int]$sldBattery.Value) -CheckIntervalSec ([int]$sldPoll.Value) -BrightnessRestoreMs ([int]$sldBrightMs.Value) -Paused ([bool]$tglPaused.IsChecked) -NotifyOnPlanChange ([bool]$tglNotify.IsChecked) -AutoStartEnabled ([bool]$tglAutoStart.IsChecked)
-        $errs = Test-SmartPowerPlanConfigValues -Config $newCfg
+        $errs = Test-SmartGuardConfigValues -Config $newCfg
         if ($errs.Count -gt 0) {
             $msg = $errs -join [Environment]::NewLine
             [System.Windows.MessageBox]::Show($msg, '配置无效', 'OK', 'Warning') | Out-Null
             return
         }
-        $pauseMsg = Get-PauseGuardLogMessage -PreviousPaused $oldPaused -CurrentPaused ([bool]$newCfg.Paused)
-        if ($pauseMsg) {
-            Write-SmartPowerPlanLog -Message $pauseMsg -Config $newCfg -FallbackLogPath (Get-SmartPowerPlanFallbackLogPath -ScriptRoot $rootRef)
-        }
-        Save-SmartPowerPlanConfig -Config $newCfg -ConfigPath $pathRef
-        Set-SmartPowerPlanAutoStart -Enabled ([bool]$newCfg.AutoStartEnabled) -ScriptRoot $rootRef
-        if ($null -ne $savedRef) {
-            $savedRef.Invoke($newCfg)
+        $saveContext.Pending = @{
+            NewConfig = $newCfg
+            PauseMsg  = (Get-PauseGuardLogMessage -PreviousPaused $oldPaused -CurrentPaused ([bool]$newCfg.Paused))
         }
         $winRef.DialogResult = $true
         $winRef.Close()
-    })
+    }.GetNewClosure())
 
     $window.Topmost = $true
     try {
@@ -149,5 +177,9 @@ function Show-SmartPowerPlanSettings {
     }
     finally {
         $window.Topmost = $false
+    }
+
+    if ($saveContext.Pending) {
+        Invoke-SmartGuardSettingsSave -NewConfig $saveContext.Pending.NewConfig -PreviousConfig $cfgRef -ConfigPath $pathRef -ScriptRoot $rootRef -PauseMsg $saveContext.Pending.PauseMsg -OnSaved $savedRef
     }
 }

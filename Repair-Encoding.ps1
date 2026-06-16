@@ -48,18 +48,18 @@ function Write-Utf8BomFile {
 }
 
 # Root wrappers must delegate to lib (avoid stale duplicate logic)
-Write-Utf8BomFile -Path (Join-Path $root 'SmartPowerPlan.Core.ps1') -Content @'
+Write-Utf8BomFile -Path (Join-Path $root 'SmartGuard.Core.ps1') -Content @'
 # Forwarder: run lib implementation
 #Requires -RunAsAdministrator
-& (Join-Path $PSScriptRoot 'lib\SmartPowerPlan.Core.ps1')
+& (Join-Path $PSScriptRoot 'lib\SmartGuard.Core.ps1')
 '@
 
-Write-Utf8BomFile -Path (Join-Path $root 'SmartPowerPlan.Functions.ps1') -Content @'
+Write-Utf8BomFile -Path (Join-Path $root 'SmartGuard.Functions.ps1') -Content @'
 # Forwarder: dot-source lib implementation
-. (Join-Path $PSScriptRoot 'lib\SmartPowerPlan.Functions.ps1')
+. (Join-Path $PSScriptRoot 'lib\SmartGuard.Functions.ps1')
 '@
 
-Write-Utf8BomFile -Path (Join-Path $root 'Start-SmartPowerPlan.ps1') -Content @'
+Write-Utf8BomFile -Path (Join-Path $root 'Start-SmartGuard.ps1') -Content @'
 # Double-click entry -> elevated launcher
 $cmd = Join-Path $PSScriptRoot 'Start-Core.cmd'
 Start-Process -FilePath $cmd -WorkingDirectory $PSScriptRoot
@@ -69,9 +69,9 @@ Write-Utf8BomFile -Path (Join-Path $root 'Start-Core.ps1') -Content @'
 # Start-Core.ps1
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
-$root = if ($PSScriptRoot) { $PSScriptRoot } else { 'C:\Tools' }
-$coreScript = Join-Path $root 'lib\SmartPowerPlan.Core.ps1'
-$logPath = Join-Path $root 'SmartPowerPlan.startup.log'
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+$coreScript = Join-Path $root 'lib\SmartGuard.Core.ps1'
+$logPath = Join-Path $root 'SmartGuard.startup.log'
 
 function Write-StartupLog {
     param([string]$Message)
@@ -107,7 +107,7 @@ if (-not (Test-IsAdministrator)) {
         }
         Write-StartupLog ("Elevated process exit code: {0}" -f $proc.ExitCode)
         if ($proc.ExitCode -ne 0) {
-            Wait-DismissConsole ("Elevated launcher exited with code {0}. See SmartPowerPlan.startup.log" -f $proc.ExitCode)
+            Wait-DismissConsole ("Elevated launcher exited with code {0}. See SmartGuard.startup.log" -f $proc.ExitCode)
         }
         exit $proc.ExitCode
     }
@@ -118,18 +118,18 @@ if (-not (Test-IsAdministrator)) {
 }
 
 Write-StartupLog 'Running Core script'
-Write-Host 'SmartPowerPlan Core is starting (admin)...' -ForegroundColor Green
+Write-Host 'SmartGuard Core is starting (admin)...' -ForegroundColor Green
 Write-Host 'Keep this window open. Closing it stops the service.'
 Write-Host ''
 
 try {
     & $coreScript
     Write-StartupLog 'Core script returned normally'
-    Wait-DismissConsole 'SmartPowerPlan Core stopped.'
+    Wait-DismissConsole 'SmartGuard Core stopped.'
 }
 catch {
     Write-StartupLog ("Core failed: {0}" -f $_.Exception.Message)
-    Wait-DismissConsole ("SmartPowerPlan Core failed: {0}" -f $_.Exception.Message)
+    Wait-DismissConsole ("SmartGuard Core failed: {0}" -f $_.Exception.Message)
     exit 1
 }
 '@
@@ -137,18 +137,18 @@ catch {
 Write-Utf8BomFile -Path (Join-Path $root 'Register-AllTasks.ps1') -Content @'
 # Register Core + Tray scheduled tasks
 Write-Host 'Registering Core (admin required)...'
-& (Join-Path $PSScriptRoot 'Register-SmartPowerPlanTask.ps1')
+& (Join-Path $PSScriptRoot 'Register-SmartGuardTask.ps1')
 Write-Host 'Registering Tray...'
 & (Join-Path $PSScriptRoot 'Register-TrayTask.ps1')
 Write-Host 'Done. Log off and log on, or run Tray manually:'
-Write-Host '  powershell -Sta -File C:\Tools\lib\SmartPowerPlan.Tray.ps1'
+Write-Host '  powershell -Sta -File D:\Project\SmartGuard\lib\SmartGuard.Tray.ps1'
 '@
 
 Write-Utf8BomFile -Path (Join-Path $root 'Register-TrayTask.ps1') -Content @'
 # Register tray scheduled task (user context, no admin)
-$taskName = 'SmartPowerPlan Tray'
-$scriptPath = 'C:\Tools\lib\SmartPowerPlan.Tray.ps1'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -Sta -File `"$scriptPath`"" -WorkingDirectory 'C:\Tools'
+$taskName = 'SmartGuard Tray'
+$scriptPath = 'D:\Project\SmartGuard\lib\SmartGuard.Tray.ps1'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -Sta -File `"$scriptPath`"" -WorkingDirectory 'D:\Project\SmartGuard'
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 999
@@ -160,7 +160,7 @@ Write-Host "Registered: $taskName"
 $runTests = Join-Path $root 'Run-Tests.ps1'
 if (-not (Test-Path $runTests)) {
     $body = @'
-$testPath = Join-Path $PSScriptRoot 'Tests\SmartPowerPlan.Tests.ps1'
+$testPath = Join-Path $PSScriptRoot 'Tests\SmartGuard.Tests.ps1'
 $resultPath = Join-Path $PSScriptRoot 'test-result.txt'
 if (-not (Get-Module -ListAvailable -Name Pester)) {
     Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck
@@ -176,13 +176,13 @@ if ($r.FailedCount -gt 0) { exit 1 }
 }
 
 # Recreate Register if missing
-$register = Join-Path $root 'Register-SmartPowerPlanTask.ps1'
+$register = Join-Path $root 'Register-SmartGuardTask.ps1'
 if (-not (Test-Path $register)) {
     $body = @'
 #Requires -RunAsAdministrator
-$taskName = 'SmartPowerPlan Guardian'
-$scriptPath = 'C:\Tools\lib\SmartPowerPlan.Core.ps1'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`"" -WorkingDirectory 'C:\Tools'
+$taskName = 'SmartGuard Guardian'
+$scriptPath = 'D:\Project\SmartGuard\lib\SmartGuard.Core.ps1'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -File `"$scriptPath`"" -WorkingDirectory 'D:\Project\SmartGuard'
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 999

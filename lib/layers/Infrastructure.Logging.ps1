@@ -5,7 +5,7 @@ function Get-RotatedLogArchivePath {
     return "$LogPath.old"
 }
 
-function Add-SmartPowerPlanLogLine {
+function Add-SmartGuardLogLine {
     param([string]$LogPath, [string]$Line)
     if ([string]::IsNullOrWhiteSpace($LogPath)) { return $false }
     $dir = Split-Path -Parent $LogPath
@@ -35,7 +35,7 @@ function Invoke-LogRotationIfNeeded {
     Move-Item -LiteralPath $LogPath -Destination $archive -Force
 }
 
-function Write-SmartPowerPlanLog {
+function Write-SmartGuardLog {
     param(
         [string]$Message,
         [hashtable]$Config,
@@ -46,7 +46,7 @@ function Write-SmartPowerPlanLog {
     try {
         $maxBytes = if ($Config.LogMaxBytes) { [long]$Config.LogMaxBytes } else { 1048576 }
         Invoke-LogRotationIfNeeded -LogPath $Config.LogFile -MaxBytes $maxBytes
-        if (Add-SmartPowerPlanLogLine -LogPath $Config.LogFile -Line $line) {
+        if (Add-SmartGuardLogLine -LogPath $Config.LogFile -Line $line) {
             return $true
         }
     }
@@ -54,7 +54,7 @@ function Write-SmartPowerPlanLog {
     if (-not [string]::IsNullOrWhiteSpace($FallbackLogPath)) {
         try {
             $fallbackLine = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - [LOG-FALLBACK] $Message"
-            if (Add-SmartPowerPlanLogLine -LogPath $FallbackLogPath -Line $fallbackLine) {
+            if (Add-SmartGuardLogLine -LogPath $FallbackLogPath -Line $fallbackLine) {
                 return $false
             }
         }

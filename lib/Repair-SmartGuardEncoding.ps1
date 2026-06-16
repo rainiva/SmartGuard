@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-param([string]$ScriptRoot = 'C:\Tools')
+param([string]$ScriptRoot = 'D:\Project\SmartGuard')
 
 $lib = Join-Path $ScriptRoot 'lib'
 
@@ -29,7 +29,7 @@ foreach ($item in $items) {
     Fix-EncodingUtf8Bom -Path $item.FullName
 }
 
-$writer = Join-Path $lib 'Write-SmartPowerPlanSettingsXaml.ps1'
+$writer = Join-Path $lib 'Write-SmartGuardSettingsXaml.ps1'
 Fix-EncodingUtf8Bom -Path $writer
 . $writer -ScriptRoot $ScriptRoot
 Write-Host 'Repair complete.'

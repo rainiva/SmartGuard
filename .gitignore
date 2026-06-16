@@ -1,14 +1,19 @@
-# Runtime / local state
-SmartPowerPlan.log
-SmartPowerPlan.log.old
-SmartPowerPlan.startup.log
-SmartPowerPlan.status.json
-SmartPowerPlan.config.json
-.SmartPowerPlan.initialized
+﻿# Runtime / local state
+SmartGuard.log
+SmartGuard.log.old
+SmartGuard.startup.log
+SmartGuard.status.json
+SmartGuard.config.json
+.SmartGuard.initialized
 test-result.txt
 
+# .NET build output
+bin/
+**/bin/
+**/obj/
+
 # Generated assets (Create-TrayIcon.ps1)
-lib/SmartPowerPlan.ico
+lib/SmartGuard.ico
 
 # OS / editor
 Thumbs.db

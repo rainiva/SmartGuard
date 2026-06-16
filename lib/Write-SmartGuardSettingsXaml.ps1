@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
-param([string]$ScriptRoot = 'C:\Tools')
+param([string]$ScriptRoot = 'D:\Project\SmartGuard')
 
-$xamlPath = Join-Path $ScriptRoot 'lib\SmartPowerPlan.Settings.xaml'
+$xamlPath = Join-Path $ScriptRoot 'lib\SmartGuard.Settings.xaml'
 $dir = Split-Path -Parent $xamlPath
 if (-not (Test-Path $dir)) {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -11,7 +11,7 @@ if (-not (Test-Path $dir)) {
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="智能电源计划设置"
+        Title="智能电源守护设置"
         Height="600" Width="480"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -56,17 +56,13 @@ $xaml = @'
               <Grid Width="44" Height="22" Margin="0,0,0,0">
                 <Border x:Name="Track" CornerRadius="11" Background="#C4C4C4"/>
                 <Border x:Name="Thumb" Width="18" Height="18" CornerRadius="9" Background="White"
-                        HorizontalAlignment="Left" Margin="2,0,0,0" RenderTransformOrigin="0.5,0.5">
-                  <Border.RenderTransform>
-                    <TranslateTransform x:Name="ThumbTranslate" X="0"/>
-                  </Border.RenderTransform>
-                </Border>
+                        HorizontalAlignment="Left" Margin="2,0,0,0"/>
               </Grid>
             </StackPanel>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Track" Property="Background" Value="#005FB8"/>
-                <Setter TargetName="ThumbTranslate" Property="X" Value="22"/>
+                <Setter TargetName="Thumb" Property="Margin" Value="24,0,0,0"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Track" Property="Opacity" Value="0.5"/>
@@ -141,7 +137,7 @@ $xaml = @'
     </Grid.RowDefinitions>
     <Border Grid.Row="0" Background="#005FB8">
       <StackPanel Margin="20,16,20,0" VerticalAlignment="Center">
-        <TextBlock Text="智能电源计划" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+        <TextBlock Text="智能电源守护" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
         <TextBlock Text="Fluent 风格设置" FontSize="11" Foreground="#CCE4FF" Margin="0,3,0,0"/>
       </StackPanel>
     </Border>

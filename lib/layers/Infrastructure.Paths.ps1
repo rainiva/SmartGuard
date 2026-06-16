@@ -1,6 +1,6 @@
 ﻿# Infrastructure: 安装路径解析
 
-function Get-SmartPowerPlanRoot {
+function Get-SmartGuardRoot {
     param([string]$ScriptRoot = $null)
     if (-not [string]::IsNullOrWhiteSpace($ScriptRoot)) {
         $normalized = $ScriptRoot.TrimEnd('\', '/')
@@ -23,17 +23,17 @@ function Get-SmartPowerPlanRoot {
         }
         return $PSScriptRoot
     }
-    return 'C:\Tools'
+    return 'D:\Project\SmartGuard'
 }
 
 function Get-TrayIconPath {
     param([string]$ScriptRoot = $null)
-    $root = Get-SmartPowerPlanRoot -ScriptRoot $ScriptRoot
-    return Join-Path $root 'lib\SmartPowerPlan.ico'
+    $root = Get-SmartGuardRoot -ScriptRoot $ScriptRoot
+    return Join-Path $root 'lib\SmartGuard.ico'
 }
 
-function Get-SmartPowerPlanFallbackLogPath {
+function Get-SmartGuardFallbackLogPath {
     param([string]$ScriptRoot = $null)
-    $root = Get-SmartPowerPlanRoot -ScriptRoot $ScriptRoot
-    return Join-Path $root 'SmartPowerPlan.startup.log'
+    $root = Get-SmartGuardRoot -ScriptRoot $ScriptRoot
+    return Join-Path $root 'SmartGuard.startup.log'
 }

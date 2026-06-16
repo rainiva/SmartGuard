@@ -1,3 +1,3 @@
 ﻿# Forwarder: run lib implementation
 #Requires -RunAsAdministrator
-& (Join-Path $PSScriptRoot 'lib\SmartPowerPlan.Core.ps1')
+& (Join-Path $PSScriptRoot 'lib\SmartGuard.Core.ps1')

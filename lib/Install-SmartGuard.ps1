@@ -1,6 +1,6 @@
 ﻿#Requires -RunAsAdministrator
 #Requires -Version 5.1
-$toolsRoot = 'C:\Tools'
+$toolsRoot = 'D:\Project\SmartGuard'
 $lib = Join-Path $toolsRoot 'lib'
 
 function Repair-ScriptEncodingUtf8Bom {
@@ -19,7 +19,7 @@ function Repair-ScriptEncodingUtf8Bom {
 }
 
 $paths = @(
-    (Join-Path $toolsRoot 'Register-SmartPowerPlanTask.ps1'),
+    (Join-Path $toolsRoot 'Register-SmartGuardTask.ps1'),
     (Join-Path $toolsRoot 'Run-Tests.ps1')
 )
 Get-ChildItem -Path $lib -Filter '*.ps1' -File | ForEach-Object { $paths += $_.FullName }
@@ -30,12 +30,12 @@ if (Test-Path $testsDir) {
 $paths | Select-Object -Unique | ForEach-Object { Repair-ScriptEncodingUtf8Bom -Path $_ }
 
 & (Join-Path $lib 'Create-TrayIcon.ps1')
-& (Join-Path $lib 'Write-SmartPowerPlanSettingsXaml.ps1') -ScriptRoot $toolsRoot
-& (Join-Path $toolsRoot 'Register-SmartPowerPlanTask.ps1')
+& (Join-Path $lib 'Write-SmartGuardSettingsXaml.ps1') -ScriptRoot $toolsRoot
+& (Join-Path $toolsRoot 'Register-SmartGuardTask.ps1')
 & (Join-Path $lib 'Register-TrayTask.ps1')
 
 Write-Host ''
-Write-Host '智能电源计划 Phase 3 安装完成。'
-Write-Host '  核心任务：SmartPowerPlan Guardian'
-Write-Host '  托盘任务：SmartPowerPlan Tray'
-Write-Host '  测试：powershell -ExecutionPolicy Bypass -File C:\Tools\Run-Tests.ps1'
+Write-Host '智能电源守护安装完成。'
+Write-Host '  核心任务：SmartGuard Guardian'
+Write-Host '  托盘任务：SmartGuard Tray'
+Write-Host '  测试：powershell -ExecutionPolicy Bypass -File D:\Project\SmartGuard\Run-Tests.ps1'

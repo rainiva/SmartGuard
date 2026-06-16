@@ -1,5 +1,5 @@
 ﻿$ErrorActionPreference = 'Stop'
-$root = if ($PSScriptRoot) { $PSScriptRoot } else { 'C:\Tools' }
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { 'D:\Project\SmartGuard' }
 $lib = Join-Path $root 'lib'
 
 function Write-BomFile {
@@ -38,8 +38,8 @@ function Repair-FileEncoding {
     return $false
 }
 
-$settingsPath = Join-Path $lib 'SmartPowerPlan.Settings.ps1'
-$settingsSource = Join-Path $lib 'SmartPowerPlan.Settings.ps1.source'
+$settingsPath = Join-Path $lib 'SmartGuard.Settings.ps1'
+$settingsSource = Join-Path $lib 'SmartGuard.Settings.ps1.source'
 if (-not (Test-Path -LiteralPath $settingsPath)) {
     if (Test-Path -LiteralPath $settingsSource) {
         Copy-Item -LiteralPath $settingsSource -Destination $settingsPath -Force
@@ -60,7 +60,7 @@ foreach ($item in $layerItems) {
     Repair-FileEncoding -Path $item.FullName | Out-Null
 }
 
-$writer = Join-Path $lib 'Write-SmartPowerPlanSettingsXaml.ps1'
+$writer = Join-Path $lib 'Write-SmartGuardSettingsXaml.ps1'
 Repair-FileEncoding -Path $writer | Out-Null
 . $writer -ScriptRoot $root
 Write-Host 'Bootstrap complete.'

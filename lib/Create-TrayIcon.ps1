@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
-$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'C:\Tools' }
-. (Join-Path $scriptRoot 'lib\SmartPowerPlan.Functions.ps1')
+$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+. (Join-Path $scriptRoot 'lib\SmartGuard.Functions.ps1')
 Add-Type -AssemblyName System.Drawing
 $iconPath = Get-TrayIconPath -ScriptRoot $scriptRoot
 $dir = Split-Path -Parent $iconPath

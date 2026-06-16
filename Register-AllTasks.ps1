@@ -1,6 +1,7 @@
 ﻿# Register Core + Tray scheduled tasks
-Write-Host '正在注册核心任务（需管理员）…'
-& (Join-Path $PSScriptRoot 'Register-SmartPowerPlanTask.ps1')
-Write-Host '正在注册托盘任务…'
+Write-Host 'Registering Core (admin required)...'
+& (Join-Path $PSScriptRoot 'Register-SmartGuardTask.ps1')
+Write-Host 'Registering Tray...'
 & (Join-Path $PSScriptRoot 'Register-TrayTask.ps1')
-Write-Host '完成。请注销并重新登录，或手动运行：Start-Tray.cmd'
+Write-Host 'Done. Log off and log on, or run Tray manually:'
+Write-Host '  powershell -Sta -File D:\Project\SmartGuard\lib\SmartGuard.Tray.ps1'

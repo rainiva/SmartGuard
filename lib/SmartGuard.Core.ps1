@@ -1,9 +1,9 @@
 ﻿#Requires -RunAsAdministrator
-$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'C:\Tools' }
-. (Join-Path $scriptRoot 'lib\SmartPowerPlan.Functions.ps1')
-$configPath = Join-Path $scriptRoot 'SmartPowerPlan.config.json'
-$statusPath = Join-Path $scriptRoot 'SmartPowerPlan.status.json'
-$initMarkerPath = Join-Path $scriptRoot '.SmartPowerPlan.initialized'
+$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+. (Join-Path $scriptRoot 'lib\SmartGuard.Functions.ps1')
+$configPath = Join-Path $scriptRoot 'SmartGuard.config.json'
+$statusPath = Join-Path $scriptRoot 'SmartGuard.status.json'
+$initMarkerPath = Join-Path $scriptRoot '.SmartGuard.initialized'
 
 Add-Type -TypeDefinition @"
 using System;
@@ -24,17 +24,17 @@ public static class IdleTimeDetector {
 
 if (-not (Enter-SingleInstanceMutex -Name 'Core')) {
     $msg = @"
-智能电源计划核心服务已在后台运行。
+智能电源守护核心服务已在后台运行。
 
 无需再次启动。
-- 核心服务：计划任务「SmartPowerPlan Guardian」
+- 核心服务：计划任务「SmartGuard Guardian」
 - 托盘图标：请运行 Start-Tray.cmd
 "@
     Write-Host $msg -ForegroundColor Yellow
     try {
-        Add-Content -Path (Join-Path $scriptRoot 'SmartPowerPlan.startup.log') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' 核心服务已在运行') -Encoding UTF8
+        Add-Content -Path (Join-Path $scriptRoot 'SmartGuard.startup.log') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' 核心服务已在运行') -Encoding UTF8
         Add-Type -AssemblyName System.Windows.Forms
-        [void][System.Windows.Forms.MessageBox]::Show($msg, '智能电源计划', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        [void][System.Windows.Forms.MessageBox]::Show($msg, '智能电源守护', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     } catch {}
     exit 0
 }
@@ -43,7 +43,7 @@ $script:Idempotency = New-GuardIdempotencyState
 
 function Write-Log([string]$Message, [hashtable]$Config) {
     if (-not (Test-ShouldWriteLogMessage -State $script:Idempotency -Message $Message)) { return }
-    Write-SmartPowerPlanLog -Message $Message -Config $Config -FallbackLogPath (Join-Path $scriptRoot 'SmartPowerPlan.startup.log')
+    Write-SmartGuardLog -Message $Message -Config $Config -FallbackLogPath (Join-Path $scriptRoot 'SmartGuard.startup.log')
     Register-WrittenLogFingerprint -State $script:Idempotency -Message $Message | Out-Null
 }
 
@@ -72,7 +72,7 @@ function Get-BatteryInfo {
     } catch { return @{ Percent = 100; IsOnAC = $true } }
 }
 
-function Initialize-SmartPowerPlan([hashtable]$Config) {
+function Initialize-SmartGuard([hashtable]$Config) {
     if (Test-Path $initMarkerPath) { return }
     Write-Log 'INIT: 开始首次初始化...' $Config
 
@@ -94,7 +94,7 @@ function Initialize-SmartPowerPlan([hashtable]$Config) {
     Write-Log 'INIT: 首次初始化完成' $Config
 }
 
-function Publish-SmartPowerPlanStatus {
+function Publish-SmartGuardStatus {
     param(
         [hashtable]$Payload,
         [hashtable]$NotificationEvent = $null
@@ -102,30 +102,30 @@ function Publish-SmartPowerPlanStatus {
     if ($NotificationEvent) {
         $Payload.notificationEvent = $NotificationEvent
     }
-    Write-SmartPowerPlanStatusAtomic -Status $Payload -StatusPath $statusPath
+    Write-SmartGuardStatusAtomic -Status $Payload -StatusPath $statusPath
 }
 
 if (-not (Test-Path $scriptRoot)) { New-Item -ItemType Directory -Path $scriptRoot -Force | Out-Null }
 if (-not (Test-Path $configPath)) {
-    Save-SmartPowerPlanConfig -Config (Get-DefaultSmartPowerPlanConfig) -ConfigPath $configPath
+    Save-SmartGuardConfig -Config (Get-DefaultSmartGuardConfig) -ConfigPath $configPath
 }
-$config = Read-SmartPowerPlanConfig -ConfigPath $configPath
+$config = Read-SmartGuardConfig -ConfigPath $configPath
 if (-not $config) {
     Write-Host '警告：config.json 无效，正在重建默认配置…'
-    $config = Get-DefaultSmartPowerPlanConfig
-    Save-SmartPowerPlanConfig -Config $config -ConfigPath $configPath
+    $config = Get-DefaultSmartGuardConfig
+    Save-SmartGuardConfig -Config $config -ConfigPath $configPath
 }
 try {
     $config = Update-ConfigPlanGuidsFromSystem -Config $config
-    Save-SmartPowerPlanConfig -Config $config -ConfigPath $configPath
-    Initialize-SmartPowerPlan -Config $config
-    Write-Host "智能电源计划核心服务运行中。日志：$($config.LogFile)"
+    Save-SmartGuardConfig -Config $config -ConfigPath $configPath
+    Initialize-SmartGuard -Config $config
+    Write-Host "智能电源守护核心服务运行中。日志：$($config.LogFile)"
 }
 catch {
     $err = "启动失败：$($_.Exception.Message)"
     Write-Host $err -ForegroundColor Red
     try {
-        Add-Content -Path (Join-Path $scriptRoot 'SmartPowerPlan.startup.log') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' ' + $err) -Encoding UTF8
+        Add-Content -Path (Join-Path $scriptRoot 'SmartGuard.startup.log') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' ' + $err) -Encoding UTF8
     } catch {}
     Read-Host '按 Enter 键关闭此窗口'
     exit 1
@@ -137,8 +137,8 @@ while ($true) {
     $cur = $null
     Reset-IdempotencyTickLogs -State $script:Idempotency | Out-Null
     try {
-        $config = Read-SmartPowerPlanConfig -ConfigPath $configPath
-        if (-not $config) { $config = Get-DefaultSmartPowerPlanConfig }
+        $config = Read-SmartGuardConfig -ConfigPath $configPath
+        if (-not $config) { $config = Get-DefaultSmartGuardConfig }
         $idle = [IdleTimeDetector]::GetIdleSeconds()
         $bat = Get-BatteryInfo
         $cur = Get-CurrentPlanGuid
@@ -194,7 +194,7 @@ while ($true) {
             paused = [bool]$config.Paused
             lastExternalChange = $null
         }
-        Publish-SmartPowerPlanStatus -Payload $statusPayload -NotificationEvent $notifyEvent
+        Publish-SmartGuardStatus -Payload $statusPayload -NotificationEvent $notifyEvent
     } catch { Write-Log "ERROR: $($_.Exception.Message)" $config }
     $lastKnownGuid = $cur
     Start-Sleep -Seconds $config.CheckIntervalSec
