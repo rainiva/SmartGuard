@@ -31,7 +31,7 @@ function Resolve-SmartPowerPlanSettingsXaml {
     if (-not (Test-Path $xamlPath)) {
         $writer = Join-Path $ScriptRoot 'lib\Write-SmartPowerPlanSettingsXaml.ps1'
         if (Test-Path $writer) {
-            . $writer -ScriptRoot $ScriptRoot
+            & $writer -ScriptRoot $ScriptRoot
         }
     }
     if (-not (Test-Path $xamlPath)) {
@@ -79,8 +79,9 @@ function Show-SmartPowerPlanSettings {
     $lblBattery = $window.FindName('lblBattery')
     $lblPoll = $window.FindName('lblPoll')
     $lblBrightMs = $window.FindName('lblBrightMs')
-    $chkPaused = $window.FindName('chkPaused')
-    $chkNotify = $window.FindName('chkNotify')
+    $tglPaused = $window.FindName('tglPaused')
+    $tglNotify = $window.FindName('tglNotify')
+    $tglAutoStart = $window.FindName('tglAutoStart')
     $btnSave = $window.FindName('btnSave')
     $btnCancel = $window.FindName('btnCancel')
 
@@ -89,12 +90,18 @@ function Show-SmartPowerPlanSettings {
     $sldBattery.Value = [int]$Config.LowBatteryPercent
     $sldPoll.Value = [int]$Config.CheckIntervalSec
     $sldBrightMs.Value = [int]$Config.BrightnessRestoreMs
-    $chkPaused.IsChecked = [bool]$Config.Paused
+    $tglPaused.IsChecked = [bool]$Config.Paused
     if ($null -ne $Config.NotifyOnPlanChange) {
-        $chkNotify.IsChecked = [bool]$Config.NotifyOnPlanChange
+        $tglNotify.IsChecked = [bool]$Config.NotifyOnPlanChange
     }
     else {
-        $chkNotify.IsChecked = $true
+        $tglNotify.IsChecked = $true
+    }
+    if ($null -ne $Config.AutoStartEnabled) {
+        $tglAutoStart.IsChecked = [bool]$Config.AutoStartEnabled
+    }
+    else {
+        $tglAutoStart.IsChecked = (Get-SmartPowerPlanAutoStartEnabled)
     }
 
     Register-SettingsSliderLabel -Slider $sldBalanced -Label $lblBalanced -Format '{0} 分钟'
@@ -105,6 +112,7 @@ function Show-SmartPowerPlanSettings {
 
     $cfgRef = $Config
     $pathRef = $ConfigPath
+    $rootRef = $ScriptRoot
     $savedRef = $OnSaved
     $winRef = $window
 
@@ -114,14 +122,20 @@ function Show-SmartPowerPlanSettings {
     })
 
     $btnSave.Add_Click({
-        $newCfg = New-ConfigFromTraySettings -CurrentConfig $cfgRef -BalancedThresholdMin ([int]$sldBalanced.Value) -PowerSaverThresholdMin ([int]$sldSaver.Value) -LowBatteryPercent ([int]$sldBattery.Value) -CheckIntervalSec ([int]$sldPoll.Value) -BrightnessRestoreMs ([int]$sldBrightMs.Value) -Paused ([bool]$chkPaused.IsChecked) -NotifyOnPlanChange ([bool]$chkNotify.IsChecked)
+        $oldPaused = [bool]$cfgRef.Paused
+        $newCfg = New-ConfigFromTraySettings -CurrentConfig $cfgRef -BalancedThresholdMin ([int]$sldBalanced.Value) -PowerSaverThresholdMin ([int]$sldSaver.Value) -LowBatteryPercent ([int]$sldBattery.Value) -CheckIntervalSec ([int]$sldPoll.Value) -BrightnessRestoreMs ([int]$sldBrightMs.Value) -Paused ([bool]$tglPaused.IsChecked) -NotifyOnPlanChange ([bool]$tglNotify.IsChecked) -AutoStartEnabled ([bool]$tglAutoStart.IsChecked)
         $errs = Test-SmartPowerPlanConfigValues -Config $newCfg
         if ($errs.Count -gt 0) {
             $msg = $errs -join [Environment]::NewLine
             [System.Windows.MessageBox]::Show($msg, '配置无效', 'OK', 'Warning') | Out-Null
             return
         }
+        $pauseMsg = Get-PauseGuardLogMessage -PreviousPaused $oldPaused -CurrentPaused ([bool]$newCfg.Paused)
+        if ($pauseMsg) {
+            Write-SmartPowerPlanLog -Message $pauseMsg -Config $newCfg -FallbackLogPath (Get-SmartPowerPlanFallbackLogPath -ScriptRoot $rootRef)
+        }
         Save-SmartPowerPlanConfig -Config $newCfg -ConfigPath $pathRef
+        Set-SmartPowerPlanAutoStart -Enabled ([bool]$newCfg.AutoStartEnabled) -ScriptRoot $rootRef
         if ($null -ne $savedRef) {
             $savedRef.Invoke($newCfg)
         }
@@ -129,5 +143,11 @@ function Show-SmartPowerPlanSettings {
         $winRef.Close()
     })
 
-    $null = $window.ShowDialog()
+    $window.Topmost = $true
+    try {
+        $null = $window.ShowDialog()
+    }
+    finally {
+        $window.Topmost = $false
+    }
 }

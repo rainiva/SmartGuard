@@ -1,4 +1,4 @@
-﻿# SmartPowerPlan.Tray.ps1 - single file tray + WPF settings
+﻿# SmartPowerPlan.Tray.ps1 - 表现层：托盘 UI（设置/日志见 Settings.ps1 与 layers）
 #Requires -Version 5.1
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -33,9 +33,10 @@ Enable-TrayProcessDpiAwareness
 
 $scriptRoot = 'C:\Tools'
 . (Join-Path $scriptRoot 'lib\SmartPowerPlan.Functions.ps1')
+. (Join-Path $scriptRoot 'lib\SmartPowerPlan.Settings.ps1')
 $configPath = Join-Path $scriptRoot 'SmartPowerPlan.config.json'
 $statusPath = Join-Path $scriptRoot 'SmartPowerPlan.status.json'
-$script:lastNotifiedPlan = $null
+$script:lastNotifiedEventId = $null
 
 if (-not (Enter-SingleInstanceMutex -Name 'Tray')) {
     [System.Windows.Forms.MessageBox]::Show(
@@ -47,29 +48,9 @@ if (-not (Enter-SingleInstanceMutex -Name 'Tray')) {
     exit 0
 }
 
-function Get-SmartPowerPlanSettingsXamlText {
-    $xamlPath = Join-Path $scriptRoot 'lib\SmartPowerPlan.Settings.xaml'
-    if (-not (Test-Path $xamlPath)) {
-        $writer = Join-Path $scriptRoot 'lib\Write-SmartPowerPlanSettingsXaml.ps1'
-        if (Test-Path $writer) {
-            & $writer -ScriptRoot $scriptRoot | Out-Null
-        }
-    }
-    if (Test-Path $xamlPath) {
-        $text = Read-TextFileAutoEncoding -Path $xamlPath
-        if ($text -and $text.Trim().StartsWith('<')) { return $text }
-    }
-    throw '找不到设置界面文件 SmartPowerPlan.Settings.xaml'
-}
-
-function Initialize-SmartPowerPlanWpfApplication {
-    if (-not ([System.Windows.Application]::Current)) {
-        $null = New-Object System.Windows.Application
-    }
-}
+Initialize-SmartPowerPlanToastRegistration -ScriptRoot $scriptRoot | Out-Null
 
 function Get-TrayMenuFont {
-    # DPI 感知启用后，SystemInformation.MenuFont 已含正确缩放，勿再乘 dpi/96
     return [System.Windows.Forms.SystemInformation]::MenuFont
 }
 
@@ -90,111 +71,44 @@ function Apply-TrayMenuStyle {
     catch {}
 }
 
-function Register-SettingsSliderLabel {
-    param($Slider, $Label, [string]$Format)
-    if ($null -eq $Slider) { throw 'Register-SettingsSliderLabel: Slider 为空' }
-    if ($null -eq $Label) { throw 'Register-SettingsSliderLabel: Label 为空' }
-    $sliderRef = $Slider
-    $labelRef = $Label
-    $formatRef = $Format
-    $handler = {
-        param($sender, $e)
-        $labelRef.Text = $formatRef -f [int]$sender.Value
-    }.GetNewClosure()
-    $sliderRef.Add_ValueChanged($handler)
-    $labelRef.Text = $formatRef -f ([int]$sliderRef.Value)
-}
-
-function Show-SmartPowerPlanSettings {
+function Invoke-TrayStatusNotification {
     param(
-        [hashtable]$Config,
-        [string]$ConfigPath,
-        [scriptblock]$OnSaved
+        [hashtable]$Status,
+        [bool]$NotifyOnPlanChange = $true,
+        $NotifyIcon = $null
     )
-
-    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-    Initialize-SmartPowerPlanWpfApplication
-
-    try {
-        $xaml = Get-SmartPowerPlanSettingsXamlText
-        $window = [Windows.Markup.XamlReader]::Parse($xaml)
-    }
-    catch {
-        $err = '设置界面加载失败：' + [Environment]::NewLine + $_.Exception.Message
-        [System.Windows.MessageBox]::Show($err, '智能电源计划', 'OK', 'Error') | Out-Null
+    if (-not $NotifyOnPlanChange -or -not $Status) { return }
+    $event = $Status.notificationEvent
+    if (-not $event -or -not $event.id) {
+        if ($Status.currentPlan -and (Test-PlanChangedForNotification -PreviousPlan $script:lastLegacyPlan -CurrentPlan $Status.currentPlan)) {
+            $balloon = Format-PlanChangeBalloon -PlanName $Status.currentPlan -Brightness $Status.brightness
+            if ($NotifyIcon) {
+                $NotifyIcon.ShowBalloonTip(5000, '智能电源计划', $balloon, [System.Windows.Forms.ToolTipIcon]::Warning)
+            }
+            $script:lastLegacyPlan = $Status.currentPlan
+        }
         return
     }
-
-    $sldBalanced = $window.FindName('sldBalanced')
-    $sldSaver = $window.FindName('sldSaver')
-    $sldBattery = $window.FindName('sldBattery')
-    $sldPoll = $window.FindName('sldPoll')
-    $sldBrightMs = $window.FindName('sldBrightMs')
-    $lblBalanced = $window.FindName('lblBalanced')
-    $lblSaver = $window.FindName('lblSaver')
-    $lblBattery = $window.FindName('lblBattery')
-    $lblPoll = $window.FindName('lblPoll')
-    $lblBrightMs = $window.FindName('lblBrightMs')
-    $chkPaused = $window.FindName('chkPaused')
-    $chkNotify = $window.FindName('chkNotify')
-    $btnSave = $window.FindName('btnSave')
-    $btnCancel = $window.FindName('btnCancel')
-
-    $sldBalanced.Value = [math]::Max(1, [int]($Config.BalancedThresholdSec / 60))
-    $sldSaver.Value = [math]::Max(2, [int]($Config.PowerSaverThresholdSec / 60))
-    $sldBattery.Value = [int]$Config.LowBatteryPercent
-    $sldPoll.Value = [int]$Config.CheckIntervalSec
-    $sldBrightMs.Value = [int]$Config.BrightnessRestoreMs
-    $chkPaused.IsChecked = [bool]$Config.Paused
-    if ($null -ne $Config.NotifyOnPlanChange) {
-        $chkNotify.IsChecked = [bool]$Config.NotifyOnPlanChange
+    if (-not (Test-ShouldShowStatusNotification -LastEventId $script:lastNotifiedEventId -Event $event)) { return }
+    $title = if ($event.title) { $event.title } else { '智能电源计划' }
+    $body = if ($event.body) { $event.body } else { $Status.currentPlan }
+    $shown = Show-SmartPowerPlanToast -Title $title -Body $body -Tag $event.id -ScriptRoot $scriptRoot
+    if (-not $shown -and $NotifyIcon) {
+        $NotifyIcon.ShowBalloonTip(5000, $title, $body, [System.Windows.Forms.ToolTipIcon]::Warning)
     }
-    else {
-        $chkNotify.IsChecked = $true
+    $script:lastNotifiedEventId = $event.id
+}
+
+function Update-TrayDisplay {
+    param($NotifyIcon, $StatusItem, [bool]$NotifyOnPlanChange = $true)
+    $status = Read-SmartPowerPlanStatus -StatusPath $statusPath
+    $NotifyIcon.Text = Format-TrayTooltip -Status $status
+    if ($StatusItem) {
+        if ($status) {
+            $StatusItem.Text = Format-TrayStatusLine -Status $status
+        } else { $StatusItem.Text = '等待核心服务…' }
     }
-
-    Register-SettingsSliderLabel -Slider $sldBalanced -Label $lblBalanced -Format '{0} 分钟'
-    Register-SettingsSliderLabel -Slider $sldSaver -Label $lblSaver -Format '{0} 分钟'
-    Register-SettingsSliderLabel -Slider $sldBattery -Label $lblBattery -Format '{0}%'
-    Register-SettingsSliderLabel -Slider $sldPoll -Label $lblPoll -Format '{0} 秒'
-    Register-SettingsSliderLabel -Slider $sldBrightMs -Label $lblBrightMs -Format '{0} 毫秒'
-
-    $cfgRef = $Config
-    $pathRef = $ConfigPath
-    $savedRef = $OnSaved
-    $winRef = $window
-
-    $btnCancel.Add_Click({
-        $winRef.DialogResult = $false
-        $winRef.Close()
-    })
-
-    $btnSave.Add_Click({
-        $oldPaused = [bool]$cfgRef.Paused
-        $newCfg = New-ConfigFromTraySettings -CurrentConfig $cfgRef -BalancedThresholdMin ([int]$sldBalanced.Value) -PowerSaverThresholdMin ([int]$sldSaver.Value) -LowBatteryPercent ([int]$sldBattery.Value) -CheckIntervalSec ([int]$sldPoll.Value) -BrightnessRestoreMs ([int]$sldBrightMs.Value) -Paused ([bool]$chkPaused.IsChecked) -NotifyOnPlanChange ([bool]$chkNotify.IsChecked)
-        $errs = Test-SmartPowerPlanConfigValues -Config $newCfg
-        if ($errs.Count -gt 0) {
-            $msg = $errs -join [Environment]::NewLine
-            [System.Windows.MessageBox]::Show($msg, '配置无效', 'OK', 'Warning') | Out-Null
-            return
-        }
-        $pauseMsg = Get-PauseGuardLogMessage -PreviousPaused $oldPaused -CurrentPaused ([bool]$newCfg.Paused)
-        if ($pauseMsg) { Write-SmartPowerPlanLog -Message $pauseMsg -Config $newCfg -FallbackLogPath (Get-SmartPowerPlanFallbackLogPath -ScriptRoot $scriptRoot) }
-        Save-SmartPowerPlanConfig -Config $newCfg -ConfigPath $pathRef
-        if ($null -ne $savedRef) {
-            $savedRef.Invoke($newCfg)
-        }
-        $winRef.DialogResult = $true
-        $winRef.Close()
-    })
-
-    $window.Topmost = $true
-    try {
-        $null = $window.ShowDialog()
-    }
-    finally {
-        $window.Topmost = $false
-    }
+    Invoke-TrayStatusNotification -Status $status -NotifyOnPlanChange $NotifyOnPlanChange -NotifyIcon $NotifyIcon
 }
 
 function Open-TraySettingsDeferred {
@@ -208,7 +122,7 @@ function Open-TraySettingsDeferred {
         try {
             $cfg = Read-SmartPowerPlanConfig -ConfigPath $script:TrayConfigPath
             if (-not $cfg) { $cfg = Get-DefaultSmartPowerPlanConfig }
-            Show-SmartPowerPlanSettings -Config $cfg -ConfigPath $script:TrayConfigPath -OnSaved $script:TrayOnSettingsSaved
+            Show-SmartPowerPlanSettings -Config $cfg -ConfigPath $script:TrayConfigPath -ScriptRoot $scriptRoot -OnSaved $script:TrayOnSettingsSaved
         }
         catch {
             [System.Windows.Forms.MessageBox]::Show(
@@ -235,22 +149,6 @@ function Get-TrayNotifyIcon {
         catch {}
     }
     return [System.Drawing.SystemIcons]::Shield
-}
-
-function Update-TrayDisplay {
-    param($NotifyIcon, $StatusItem, [bool]$NotifyOnPlanChange = $true)
-    $status = Read-SmartPowerPlanStatus -StatusPath $statusPath
-    $NotifyIcon.Text = Format-TrayTooltip -Status $status
-    if ($StatusItem) {
-        if ($status) {
-            $StatusItem.Text = Format-TrayStatusLine -Status $status
-        } else { $StatusItem.Text = '等待核心服务…' }
-    }
-    if ($NotifyOnPlanChange -and $status -and (Test-PlanChangedForNotification -PreviousPlan $script:lastNotifiedPlan -CurrentPlan $status.currentPlan)) {
-        $balloon = Format-PlanChangeBalloon -PlanName $status.currentPlan -Brightness $status.brightness
-        $NotifyIcon.ShowBalloonTip(3000, '智能电源计划', $balloon, [System.Windows.Forms.ToolTipIcon]::Info)
-    }
-    if ($status -and $status.currentPlan) { $script:lastNotifiedPlan = $status.currentPlan }
 }
 
 $config = Read-SmartPowerPlanConfig -ConfigPath $configPath
@@ -302,11 +200,14 @@ $pauseItem.Add_Click({
         ) | Out-Null
     }
 })
+
 $logItem.Add_Click({
     $cfg = Read-SmartPowerPlanConfig -ConfigPath $configPath
     $log = if ($cfg -and $cfg.LogFile) { $cfg.LogFile } else { Join-Path $scriptRoot 'SmartPowerPlan.log' }
-    if (Test-Path $log) { Start-Process notepad.exe $log } else { [System.Windows.Forms.MessageBox]::Show('找不到日志文件', '智能电源计划') | Out-Null }
+    $fallback = Get-SmartPowerPlanFallbackLogPath -ScriptRoot $scriptRoot
+    Show-SmartPowerPlanLogViewer -LogPath $log -FallbackLogPath $fallback
 })
+
 $openSettings = { Open-TraySettingsDeferred }
 $settingsItem.Add_Click($openSettings)
 $trayIcon.Add_DoubleClick($openSettings)
@@ -321,6 +222,7 @@ $timer.Add_Tick({
 })
 $timer.Start()
 
+$script:lastLegacyPlan = $null
 $pauseItem.Text = if ($config.Paused) { '恢复守护' } else { '暂停守护' }
 $initNotify = if ($null -ne $config.NotifyOnPlanChange) { $config.NotifyOnPlanChange } else { $true }
 Update-TrayDisplay -NotifyIcon $trayIcon -StatusItem $statusItem -NotifyOnPlanChange $initNotify
