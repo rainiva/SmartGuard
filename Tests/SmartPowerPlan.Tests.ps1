@@ -359,4 +359,65 @@
             Test-ShouldShowStatusNotification -LastEventId 'abc' -Event @{ id = 'xyz' } | Should -Be $true
         }
     }
+
+    Describe 'Bootstrap and maintenance' {
+        It 'does not embed legacy chkPaused settings overwrite' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $bootstrap = Join-Path $root 'lib\Bootstrap-ForceRepair.ps1'
+            $content = Get-Content -LiteralPath $bootstrap -Raw -Encoding UTF8
+            $content | Should -Not -Match "FindName\('chkPaused'\)"
+        }
+
+        It 'keeps settings source aligned with toggle controls' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $source = Join-Path $root 'lib\SmartPowerPlan.Settings.ps1.source'
+            Test-Path $source | Should -Be $true
+            $content = Get-Content -LiteralPath $source -Raw -Encoding UTF8
+            $content | Should -Match 'tglPaused'
+            $content | Should -Match 'tglAutoStart'
+            $content | Should -Not -Match "FindName\('chkPaused'\)"
+        }
+    }
+
+    Describe 'Project root resolution' {
+        It 'resolves install root from explicit script root' {
+            $root = Split-Path -Parent $PSScriptRoot
+            Get-SmartPowerPlanRoot -ScriptRoot $root | Should -Be $root
+        }
+
+        It 'defaults log path relative to install root' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $cfg = Get-DefaultSmartPowerPlanConfig -ScriptRoot $root
+            $cfg.LogFile | Should -Be (Join-Path $root 'SmartPowerPlan.log')
+        }
+    }
+
+    Describe 'Toast AppUserModelId' {
+        It 'returns stable app id' {
+            Get-SmartPowerPlanToastAppId | Should -Be 'Tools.SmartPowerPlan.Guardian'
+        }
+
+        It 'registers display metadata in registry' {
+            $root = Split-Path -Parent $PSScriptRoot
+            Register-SmartPowerPlanAppUserModelId -ScriptRoot $root | Should -Be $true
+            $appId = Get-SmartPowerPlanToastAppId
+            $regPath = "HKCU:\Software\Classes\AppUserModelId\$appId"
+            Test-Path $regPath | Should -Be $true
+            (Get-ItemProperty -LiteralPath $regPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName | Should -Not -BeNullOrEmpty
+        }
+    }
+
+    Describe 'Functions loader' {
+        It 'loads domain and infrastructure modules from layers' {
+            Get-Command Get-ExpectedPlanGuid -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+            Get-Command Read-SmartPowerPlanConfig -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+            Get-Command Invoke-PowerCfgCommand -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+        }
+
+        It 'keeps Functions.ps1 as thin entry point' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $lines = (Get-Content -LiteralPath (Join-Path $root 'lib\SmartPowerPlan.Functions.ps1')).Count
+            $lines | Should -BeLessThan 40
+        }
+    }
 }
