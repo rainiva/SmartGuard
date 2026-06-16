@@ -1,5 +1,5 @@
 ﻿#Requires -RunAsAdministrator
-$scriptRoot = 'C:\Tools'
+$scriptRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'C:\Tools' }
 . (Join-Path $scriptRoot 'lib\SmartPowerPlan.Functions.ps1')
 $configPath = Join-Path $scriptRoot 'SmartPowerPlan.config.json'
 $statusPath = Join-Path $scriptRoot 'SmartPowerPlan.status.json'
