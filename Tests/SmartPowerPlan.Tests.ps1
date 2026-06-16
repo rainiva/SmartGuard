@@ -317,5 +317,46 @@
             $s.Value = 7
             $tb.Text | Should -Be '7 分钟'
         }
+
+        It 'includes toggle switches and autostart in generated xaml' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $writer = Join-Path $root 'lib\Write-SmartPowerPlanSettingsXaml.ps1'
+            & $writer -ScriptRoot $root | Out-Null
+            $text = Resolve-SmartPowerPlanSettingsXaml -ScriptRoot $root
+            $text | Should -Match 'x:Name="tglPaused"'
+            $text | Should -Match 'x:Name="tglAutoStart"'
+            $text | Should -Match 'ToggleSwitch'
+        }
+    }
+
+    Describe 'Layer modules' {
+        It 'defaults heartbeat interval to 10 minutes' {
+            $cfg = Get-DefaultSmartPowerPlanConfig
+            $cfg.HeartbeatIntervalMin | Should -Be 10
+        }
+
+        It 'skips duplicate power plan switch when already active' {
+            Test-ShouldApplyPowerPlanSwitch -CurrentGuid 'aaa' -TargetGuid 'aaa' | Should -Be $false
+            Test-ShouldApplyPowerPlanSwitch -CurrentGuid 'aaa' -TargetGuid 'bbb' | Should -Be $true
+        }
+
+        It 'dedupes log messages within same tick' {
+            $state = New-GuardIdempotencyState
+            Test-ShouldWriteLogMessage -State $state -Message 'same' | Should -Be $true
+            Register-WrittenLogFingerprint -State $state -Message 'same' | Out-Null
+            Test-ShouldWriteLogMessage -State $state -Message 'same' | Should -Be $false
+        }
+
+        It 'creates status notification events with unique ids' {
+            $a = Format-PlanSwitchNotification -PlanName '高性能' -Brightness 56
+            $b = Format-PlanSwitchNotification -PlanName '平衡' -Brightness 40
+            $a.id | Should -Not -Be $b.id
+            $a.title | Should -Match '切换'
+        }
+
+        It 'shows notification only once per event id' {
+            Test-ShouldShowStatusNotification -LastEventId 'abc' -Event @{ id = 'abc' } | Should -Be $false
+            Test-ShouldShowStatusNotification -LastEventId 'abc' -Event @{ id = 'xyz' } | Should -Be $true
+        }
     }
 }

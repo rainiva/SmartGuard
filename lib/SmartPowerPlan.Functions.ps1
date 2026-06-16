@@ -379,7 +379,8 @@ function Read-SmartPowerPlanConfig {
             BrightnessRetryCount = if ($null -ne $raw.BrightnessRetryCount) { [int]$raw.BrightnessRetryCount } else { 3 }
             BrightnessRetryDelayMs = if ($null -ne $raw.BrightnessRetryDelayMs) { [int]$raw.BrightnessRetryDelayMs } else { 100 }
             NotifyOnPlanChange = if ($null -ne $raw.NotifyOnPlanChange) { [bool]$raw.NotifyOnPlanChange } else { $true }
-            HeartbeatIntervalMin = if ($null -ne $raw.HeartbeatIntervalMin) { [int]$raw.HeartbeatIntervalMin } else { 30 }
+            HeartbeatIntervalMin = if ($null -ne $raw.HeartbeatIntervalMin) { [int]$raw.HeartbeatIntervalMin } else { 10 }
+            AutoStartEnabled = if ($null -ne $raw.AutoStartEnabled) { [bool]$raw.AutoStartEnabled } else { $true }
         }
     }
     catch {
@@ -404,7 +405,8 @@ function Save-SmartPowerPlanConfig {
         BrightnessRetryCount = if ($Config.BrightnessRetryCount) { [int]$Config.BrightnessRetryCount } else { 3 }
         BrightnessRetryDelayMs = if ($Config.BrightnessRetryDelayMs) { [int]$Config.BrightnessRetryDelayMs } else { 100 }
         NotifyOnPlanChange = if ($null -ne $Config.NotifyOnPlanChange) { [bool]$Config.NotifyOnPlanChange } else { $true }
-        HeartbeatIntervalMin = if ($null -ne $Config.HeartbeatIntervalMin) { [int]$Config.HeartbeatIntervalMin } else { 30 }
+        HeartbeatIntervalMin = if ($null -ne $Config.HeartbeatIntervalMin) { [int]$Config.HeartbeatIntervalMin } else { 10 }
+        AutoStartEnabled = if ($null -ne $Config.AutoStartEnabled) { [bool]$Config.AutoStartEnabled } else { $true }
     }
     Write-TextFileUtf8Bom -Path $ConfigPath -Content ($obj | ConvertTo-Json -Depth 3)
 }
@@ -425,7 +427,8 @@ function Get-DefaultSmartPowerPlanConfig {
         BrightnessRetryCount = 3
         BrightnessRetryDelayMs = 100
         NotifyOnPlanChange = $true
-        HeartbeatIntervalMin = 30
+        HeartbeatIntervalMin = 10
+        AutoStartEnabled = $true
     }
 }
 
@@ -446,6 +449,7 @@ function Read-SmartPowerPlanStatus {
             brightness = [int]$raw.brightness
             paused = [bool]$raw.paused
             lastExternalChange = $raw.lastExternalChange
+            notificationEvent = ConvertTo-StatusNotificationEvent -Raw $raw.notificationEvent
         }
     }
     catch { return $null }
@@ -498,7 +502,8 @@ function New-ConfigFromTraySettings {
         [int]$CheckIntervalSec,
         [int]$BrightnessRestoreMs,
         [bool]$Paused,
-        [bool]$NotifyOnPlanChange = $true
+        [bool]$NotifyOnPlanChange = $true,
+        [bool]$AutoStartEnabled = $true
     )
     $cfg = @{}
     foreach ($k in $CurrentConfig.Keys) { $cfg[$k] = $CurrentConfig[$k] }
@@ -509,5 +514,14 @@ function New-ConfigFromTraySettings {
     $cfg.BrightnessRestoreMs = $BrightnessRestoreMs
     $cfg.Paused = $Paused
     $cfg.NotifyOnPlanChange = $NotifyOnPlanChange
+    $cfg.AutoStartEnabled = $AutoStartEnabled
     return $cfg
+}
+
+$_layersRoot = Join-Path $PSScriptRoot 'layers'
+if (Test-Path $_layersRoot) {
+    Get-ChildItem -LiteralPath $_layersRoot -Filter '*.ps1' -File |
+        Where-Object { $_.Name -ne 'Import-Layers.ps1' } |
+        Sort-Object Name |
+        ForEach-Object { . $_.FullName }
 }
