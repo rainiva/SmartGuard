@@ -10,7 +10,7 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 | `src/SmartGuard.Tray/` | C# 托盘 |
 | `src/SmartGuard.LogViewer/` | C# 日志查看器 |
 | `src/SmartGuard.Settings/` | C# 设置窗体（WPF） |
-| `lib/` | PowerShell 回退与部署脚本 |
+| `lib/` | 图标、Settings XAML 与构建脚本 |
 | `bin/*.exe` | 发布后四件套：Engine / Tray / LogViewer / Settings |
 | `installer/` | Inno 安装包：staging 构建、`SmartGuard.iss` |
 | `dist/` | 安装包产出：`SmartGuard-Setup-{version}-x64.exe` |
@@ -44,7 +44,7 @@ powershell -File scripts\Publish-All.ps1
 .\bin\SmartGuard.Engine.exe --root D:\Project\SmartGuard --uninstall
 
 # 3. 启动托盘
-powershell -File Restart-Tray.ps1
+.\Start-Tray.cmd
 ```
 
 手动启动核心（调试）：
@@ -63,12 +63,11 @@ powershell -File Restart-Tray.ps1
 SmartGuard.Tray.exe      ←→   SmartGuard.Engine.exe
 SmartGuard.Settings.exe       status.json / config.json
 SmartGuard.LogViewer.exe
-Register-*.ps1（安装）
-lib/*.ps1（回退）
+Engine.exe --install（计划任务）
 ```
 
 - **引擎**：空闲检测、三档计划策略、powercfg、WMI 亮度、日志、心跳
-- **壳层**：托盘、WPF 设置、Toast、日志查看；`lib/` 保留 PS 回退
+- **壳层**：托盘、WPF 设置、Toast、日志查看器（均为 C# exe）
 
 ## 配置
 
@@ -106,7 +105,7 @@ powershell -File installer\Build-Installer.ps1 -SkipStaging
 .\Run-Tests.ps1
 ```
 
-包含 Pester（PowerShell 壳层，含 Phase 5 installer 布局测试）与 xUnit（C# 引擎）。
+包含 Pester（契约/安装包测试）与 xUnit（C# 组件）。
 
 日志行格式（C# 引擎）：`yyyy-MM-dd HH:mm:ss [LEVEL] message`（LEVEL 为 INFO / WARN / ERROR / HEART）。  
 归档文件：`SmartGuard.log.yyyyMMdd.bak`（保留 7 天）。插拔电源后引擎会立即重新评估策略（无需等轮询间隔）。
@@ -117,11 +116,11 @@ powershell -File installer\Build-Installer.ps1 -SkipStaging
 2. 配置/状态文件改为 `SmartGuard.config.json` / `SmartGuard.status.json`
 3. 日志文件保持 `SmartGuard.log`
 4. 计划任务名：`SmartGuard Guardian`、`SmartGuard Tray`
-5. 重新运行 `Register-SmartGuardTask.ps1` 与 `Register-TrayTask.ps1`
+5. 重新运行 `bin\SmartGuard.Engine.exe --root <安装目录> --install`
 
-## 回滚到 PowerShell 引擎
+## 故障恢复
 
-若 `bin\SmartGuard.Engine.exe` 不存在，计划任务与 `Start-Core.ps1` 会自动回退到 `lib\SmartGuard.Core.ps1`。
+若组件缺失，请重新运行安装包或 `scripts\Publish-All.ps1` 后执行 `--install` 注册计划任务。
 
 ## 许可证
 

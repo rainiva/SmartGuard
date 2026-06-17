@@ -5,17 +5,18 @@
 
 ## 首次部署
 
-1. 安装 .NET 8 运行时
+1. 安装 .NET 8 桌面运行时
 2. 以管理员运行 Setup-All.cmd，或分步执行：
-   - scripts\Publish-Engine.ps1     编译 C# 引擎到 bin\
-   - Register-SmartGuardTask.ps1    注册核心计划任务
-   - Register-TrayTask.ps1          注册托盘计划任务
-3. Restart-Tray.ps1 启动托盘
+   - scripts\Publish-All.ps1              编译四件套到 bin\
+   - bin\SmartGuard.Engine.exe --install  注册计划任务（需 --root）
+3. Start-Tray.cmd 或 Restart-Tray.cmd 启动托盘
 
-## 核心引擎
+## 桌面组件
 
-- 推荐: bin\SmartGuard.Engine.exe（C# / net8.0 框架依赖）
-- 回退: lib\SmartGuard.Core.ps1（PowerShell）
+- bin\SmartGuard.Engine.exe
+- bin\SmartGuard.Tray.exe
+- bin\SmartGuard.Settings.exe
+- bin\SmartGuard.LogViewer.exe
 
 ## 配置文件
 
@@ -26,8 +27,8 @@
 ## 计划任务名称
 
 - SmartGuard Guardian  — 核心守护
-- SmartGuard Tray      — 托盘（可选）
+- SmartGuard Tray      — 托盘
 
-## 编码修复
+## 安装包
 
-若 PowerShell 脚本中文乱码，运行 Repair-Encoding.ps1
+使用 installer\Build-Installer.ps1 生成 dist\SmartGuard-Setup-{version}-x64.exe

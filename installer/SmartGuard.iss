@@ -53,8 +53,6 @@ Name: "launchtray"; Description: "安装完成后启动托盘"; GroupDescription
 Source: "{#StagingDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
 Source: "{#StagingDir}\lib\SmartGuard.ico"; DestDir: "{app}\lib"; Flags: ignoreversion
 Source: "{#StagingDir}\lib\SmartGuard.Settings.xaml"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "{#StagingDir}\Register-SmartGuardTask.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#StagingDir}\Register-TrayTask.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StagingDir}\license_zh-CN.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestName: "{#RuntimeInstallerFile}"; Flags: deleteafterinstall; Check: ShouldInstallDotNet
 

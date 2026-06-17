@@ -37,20 +37,16 @@ public static class ExternalToolLauncher
       return;
 
     var exe = Path.Combine(root, "bin", "SmartGuard.Settings.exe");
-    if (File.Exists(exe))
-    {
-      Process.Start(new ProcessStartInfo
-      {
-        FileName = exe,
-        Arguments = $"--root \"{root}\"",
-        WorkingDirectory = root,
-        UseShellExecute = false,
-      });
-      return;
-    }
+    if (!File.Exists(exe))
+      throw new FileNotFoundException("SmartGuard.Settings.exe not found. Reinstall SmartGuard.", exe);
 
-    var script = Path.Combine(root, "lib", "SmartGuard.Settings.ps1");
-    StartPowerShell($"-NoProfile -ExecutionPolicy Bypass -Sta -File \"{script}\"", root);
+    Process.Start(new ProcessStartInfo
+    {
+      FileName = exe,
+      Arguments = $"--root \"{root}\"",
+      WorkingDirectory = root,
+      UseShellExecute = false,
+    });
   }
 
   public static void OpenLogViewer(string root)
@@ -59,29 +55,14 @@ public static class ExternalToolLauncher
       return;
 
     var exe = Path.Combine(root, "bin", "SmartGuard.LogViewer.exe");
-    if (File.Exists(exe))
-    {
-      Process.Start(new ProcessStartInfo
-      {
-        FileName = exe,
-        Arguments = $"--root \"{root}\"",
-        WorkingDirectory = root,
-        UseShellExecute = false,
-      });
-      return;
-    }
+    if (!File.Exists(exe))
+      throw new FileNotFoundException("SmartGuard.LogViewer.exe not found. Reinstall SmartGuard.", exe);
 
-    var script = Path.Combine(root, "lib", "Show-LogViewer.ps1");
-    StartPowerShell($"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\"", root);
-  }
-
-  private static void StartPowerShell(string arguments, string workingDirectory)
-  {
     Process.Start(new ProcessStartInfo
     {
-      FileName = "powershell.exe",
-      Arguments = arguments,
-      WorkingDirectory = workingDirectory,
+      FileName = exe,
+      Arguments = $"--root \"{root}\"",
+      WorkingDirectory = root,
       UseShellExecute = false,
     });
   }

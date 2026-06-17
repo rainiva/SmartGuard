@@ -85,14 +85,6 @@ function Copy-InstallerPayload {
         Copy-Item -LiteralPath $src -Destination (Join-Path $libDest $asset) -Force
     }
 
-    foreach ($script in @('Register-SmartGuardTask.ps1', 'Register-TrayTask.ps1')) {
-        $src = Join-Path $Root $script
-        if (-not (Test-Path -LiteralPath $src)) {
-            throw "Missing required script: $src"
-        }
-        Copy-Item -LiteralPath $src -Destination (Join-Path $StagingDir $script) -Force
-    }
-
     $license = Join-Path $PSScriptRoot 'license_zh-CN.txt'
     Copy-Item -LiteralPath $license -Destination (Join-Path $StagingDir 'license_zh-CN.txt') -Force
 }

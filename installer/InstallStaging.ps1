@@ -8,8 +8,6 @@ function Get-InstallerRequiredRelativePaths {
         'bin\SmartGuard.Settings.exe'
         'lib\SmartGuard.ico'
         'lib\SmartGuard.Settings.xaml'
-        'Register-SmartGuardTask.ps1'
-        'Register-TrayTask.ps1'
         'license_zh-CN.txt'
         'VERSION.txt'
     )
@@ -29,7 +27,7 @@ function New-InstallerFakeStaging {
         if ($parent -and -not (Test-Path -LiteralPath $parent)) {
             New-Item -ItemType Directory -Path $parent -Force | Out-Null
         }
-        if ($rel -match '\.(exe|ico|xaml|ps1|txt)$') {
+        if ($rel -match '\.(exe|ico|xaml|txt)$') {
             Set-Content -LiteralPath $full -Value 'placeholder' -Encoding UTF8
         }
     }

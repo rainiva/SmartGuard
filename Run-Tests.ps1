@@ -14,15 +14,8 @@ if (-not $pester -or $pester.Version -lt [version]'5.0.0') {
 
 Import-Module Pester -MinimumVersion 5.0 -Force
 
-# 预检：确保函数文件可加载
-$functionsPath = Join-Path $PSScriptRoot 'lib\SmartGuard.Functions.ps1'
-if (-not (Test-Path $functionsPath)) {
-    Write-Error "Missing: $functionsPath"
-    exit 1
-}
-. $functionsPath
-if (-not (Get-Command Get-ExpectedPlanGuid -ErrorAction SilentlyContinue)) {
-    Write-Error "Functions not loaded. Run encoding repair on lib\SmartGuard.Functions.ps1"
+if (-not (Test-Path -LiteralPath $testPath)) {
+    Write-Error "Missing: $testPath"
     exit 1
 }
 
@@ -62,6 +55,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host 'dotnet test (Settings) FAILED' -ForegroundColor Red
     exit 1
 }
+$integrationResult = [pscustomobject]@{ PassedCount = 0; FailedCount = 0 }
+$installerFlowResult = [pscustomobject]@{ PassedCount = 0; FailedCount = 0 }
 $integration = Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Tests.ps1'
 if (Test-Path -LiteralPath $integration) {
     Write-Host 'Running integration: Tray core user flow...'
@@ -80,6 +75,7 @@ if (Test-Path -LiteralPath $installerFlow) {
         exit 1
     }
 }
-"$(Get-Date -Format s) PASSED=$($r.PassedCount) FAILED=$($r.FailedCount) TOTAL=$($r.TotalCount)" | Out-File $resultPath -Encoding UTF8
-Write-Host "PASSED=$($r.PassedCount) FAILED=$($r.FailedCount) TOTAL=$($r.TotalCount)"
-if ($r.FailedCount -gt 0) { exit 1 }
+$total = $r.PassedCount + $integrationResult.PassedCount + $installerFlowResult.PassedCount
+$failed = $r.FailedCount + $integrationResult.FailedCount + $installerFlowResult.FailedCount
+Write-Host "PASSED=$total FAILED=$failed TOTAL=$($total + $failed)"
+if ($failed -gt 0) { exit 1 }

@@ -32,21 +32,16 @@ public class ScheduledTaskRegistrarTests
   }
 
   [Fact]
-  public void BuildGuardianLaunchSpec_falls_back_to_ps_core_when_engine_missing()
+  public void BuildGuardianLaunchSpec_throws_when_engine_missing()
   {
     var root = Path.Combine(Path.GetTempPath(), "sg-registrar-" + Guid.NewGuid().ToString("N"));
-    var lib = Path.Combine(root, "lib");
-    Directory.CreateDirectory(lib);
-    var core = Path.Combine(lib, "SmartGuard.Core.ps1");
-    File.WriteAllText(core, string.Empty);
+    Directory.CreateDirectory(root);
 
     try
     {
-      var spec = ScheduledTaskRegistrar.BuildGuardianLaunchSpec(root);
-      spec.ExecutePath.Should().Be("powershell.exe");
-      spec.Arguments.Should().Contain(core);
-      spec.Arguments.Should().Contain("-WindowStyle Hidden");
-      spec.WorkingDirectory.Should().Be(root);
+      var act = () => ScheduledTaskRegistrar.BuildGuardianLaunchSpec(root);
+      act.Should().Throw<FileNotFoundException>()
+        .Which.Message.Should().Contain("SmartGuard.Engine.exe");
     }
     finally
     {
@@ -77,21 +72,16 @@ public class ScheduledTaskRegistrarTests
   }
 
   [Fact]
-  public void BuildTrayLaunchSpec_falls_back_to_ps_tray_when_exe_missing()
+  public void BuildTrayLaunchSpec_throws_when_tray_missing()
   {
     var root = Path.Combine(Path.GetTempPath(), "sg-registrar-" + Guid.NewGuid().ToString("N"));
-    var lib = Path.Combine(root, "lib");
-    Directory.CreateDirectory(lib);
-    var tray = Path.Combine(lib, "SmartGuard.Tray.ps1");
-    File.WriteAllText(tray, string.Empty);
+    Directory.CreateDirectory(root);
 
     try
     {
-      var spec = ScheduledTaskRegistrar.BuildTrayLaunchSpec(root);
-      spec.ExecutePath.Should().Be("powershell.exe");
-      spec.Arguments.Should().Contain(tray);
-      spec.Arguments.Should().Contain("-Sta");
-      spec.WorkingDirectory.Should().Be(root);
+      var act = () => ScheduledTaskRegistrar.BuildTrayLaunchSpec(root);
+      act.Should().Throw<FileNotFoundException>()
+        .Which.Message.Should().Contain("SmartGuard.Tray.exe");
     }
     finally
     {

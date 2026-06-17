@@ -21,31 +21,27 @@ public static class ScheduledTaskRegistrar
   public static ScheduledTaskLaunchSpec BuildGuardianLaunchSpec(string root)
   {
     var engineExe = Path.Combine(root, "bin", "SmartGuard.Engine.exe");
-    if (File.Exists(engineExe))
+    if (!File.Exists(engineExe))
     {
-      return new ScheduledTaskLaunchSpec(engineExe, $"--root \"{root}\"", root);
+      throw new FileNotFoundException(
+        "SmartGuard.Engine.exe not found. Run scripts\\Publish-Engine.ps1 or reinstall SmartGuard.",
+        engineExe);
     }
 
-    var psFallback = Path.Combine(root, "lib", "SmartGuard.Core.ps1");
-    return new ScheduledTaskLaunchSpec(
-      "powershell.exe",
-      $"-WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -File \"{psFallback}\"",
-      root);
+    return new ScheduledTaskLaunchSpec(engineExe, $"--root \"{root}\"", root);
   }
 
   public static ScheduledTaskLaunchSpec BuildTrayLaunchSpec(string root)
   {
     var trayExe = Path.Combine(root, "bin", "SmartGuard.Tray.exe");
-    if (File.Exists(trayExe))
+    if (!File.Exists(trayExe))
     {
-      return new ScheduledTaskLaunchSpec(trayExe, $"--root \"{root}\"", root);
+      throw new FileNotFoundException(
+        "SmartGuard.Tray.exe not found. Run scripts\\Publish-Tray.ps1 or reinstall SmartGuard.",
+        trayExe);
     }
 
-    var scriptPath = Path.Combine(root, "lib", "SmartGuard.Tray.ps1");
-    return new ScheduledTaskLaunchSpec(
-      "powershell.exe",
-      $"-WindowStyle Hidden -ExecutionPolicy Bypass -NoProfile -Sta -File \"{scriptPath}\"",
-      root);
+    return new ScheduledTaskLaunchSpec(trayExe, $"--root \"{root}\"", root);
   }
 
   public static string BuildTaskXml(string taskName, ScheduledTaskLaunchSpec launch, ScheduledTaskRunLevel runLevel)

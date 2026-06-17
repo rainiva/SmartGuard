@@ -31,4 +31,30 @@ public class ExternalToolLauncherTests
       .Should()
       .BeLessThan(source.IndexOf("SmartGuard.LogViewer.exe", StringComparison.Ordinal));
   }
+
+  [Fact]
+  public void OpenSettings_does_not_fall_back_to_powershell_scripts()
+  {
+    var source = File.ReadAllText(
+      Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmartGuard.Tray", "Infrastructure.cs")));
+
+    source.Should().NotContain("SmartGuard.Settings.ps1");
+    source.Should().NotContain("powershell.exe");
+  }
+
+  [Fact]
+  public void OpenLogViewer_does_not_fall_back_to_powershell_scripts()
+  {
+    var source = File.ReadAllText(
+      Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmartGuard.Tray", "Infrastructure.cs")));
+
+    source.Should().NotContain("Show-LogViewer.ps1");
+    source.Should().NotContain("powershell.exe");
+  }
 }
