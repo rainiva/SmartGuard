@@ -144,6 +144,40 @@
         }
     }
 
+    Describe 'Phase 7.3 legacy dev scripts' {
+        It 'does not ship Repair-Encoding helpers that recreate PS stack' {
+            $root = Split-Path -Parent $PSScriptRoot
+            Test-Path -LiteralPath (Join-Path $root 'Repair-Encoding.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'Repair.cmd') | Should -Be $false
+        }
+
+        It 'Setup-All.cmd uses repo-relative paths and current registration flow' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Setup-All.cmd') -Raw -Encoding UTF8
+            $content | Should -Match '%~dp0'
+            $content | Should -Match 'Publish-All\.ps1'
+            $content | Should -Match 'Register-AllTasks\.cmd'
+            $content | Should -Match 'Run-Tests'
+            $content | Should -Not -Match 'D:\\Project\\SmartGuard'
+            $content | Should -Not -Match 'Repair-Encoding'
+            $content | Should -Not -Match 'Register-Task\.cmd'
+            $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
+        }
+
+        It 'archives one-shot Migrate-RenameToSmartGuard script' {
+            $root = Split-Path -Parent $PSScriptRoot
+            Test-Path -LiteralPath (Join-Path $root 'scripts\Migrate-RenameToSmartGuard.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'scripts\archive\Migrate-RenameToSmartGuard.ps1') | Should -Be $true
+        }
+
+        It 'Run-Tests.cmd uses repo-relative path' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.cmd') -Raw -Encoding UTF8
+            $content | Should -Match '%~dp0'
+            $content | Should -Not -Match 'D:\\Project\\SmartGuard'
+        }
+    }
+
     Describe 'Phase 6.3 remove PS application stack' {
         It 'does not ship legacy PS application entry scripts' {
             $root = Split-Path -Parent $PSScriptRoot

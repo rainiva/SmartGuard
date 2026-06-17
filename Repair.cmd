@@ -1,7 +1,0 @@
-﻿@echo off
-cd /d D:\Project\SmartGuard
-echo Fixing PS1 encoding to UTF-8 BOM...
-powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Project\SmartGuard\Repair-Encoding.ps1"
-echo.
-echo Repair complete. You can now use .ps1 files or Run-Tests.cmd
-pause

@@ -1,24 +1,21 @@
 ﻿@echo off
-cd /d D:\Project\SmartGuard
+setlocal EnableExtensions
+chcp 65001 >nul
+cd /d "%~dp0"
 
-echo === [1/4] Publishing C# engine ===
-powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Project\SmartGuard\scripts\Publish-Engine.ps1"
+echo === [1/3] Publishing SmartGuard desktop suite ===
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Publish-All.ps1"
 if errorlevel 1 goto fail
 
 echo.
-echo === [2/4] Fixing PS1 encoding ===
-powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Project\SmartGuard\Repair-Encoding.ps1"
+echo === [2/3] Running tests ===
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Run-Tests.ps1"
 if errorlevel 1 goto fail
 
 echo.
-echo === [3/4] Running tests ===
-powershell -NoProfile -ExecutionPolicy Bypass -Command "if (-not (Get-Module -ListAvailable -Name Pester)) { Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck }; Import-Module Pester -MinimumVersion 5.0 -Force; $r = Invoke-Pester -Path 'D:\Project\SmartGuard\Tests\SmartGuard.Tests.ps1' -PassThru; Write-Host ('PASSED={0} FAILED={1} TOTAL={2}' -f $r.PassedCount, $r.FailedCount, $r.TotalCount); if ($r.FailedCount -gt 0) { exit 1 }"
-if errorlevel 1 goto fail
-
-echo.
-echo === [4/4] Registering task (admin prompt) ===
-call "%~dp0Register-Task.cmd"
-exit /b 0
+echo === [3/3] Registering scheduled tasks ===
+call "%~dp0Register-AllTasks.cmd"
+exit /b %ERRORLEVEL%
 
 :fail
 echo Setup failed.

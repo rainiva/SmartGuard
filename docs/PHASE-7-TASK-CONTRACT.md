@@ -1,7 +1,7 @@
 # Phase 7：开发机去 PowerShell — Task Contract
 
 **制定日期：** 2026-06-17  
-**状态：** 7.1、7.2 **已完成**；7.3–7.6 未开始
+**状态：** 7.1–7.3 **已完成**；7.4–7.6 未开始
 
 ---
 
@@ -33,7 +33,7 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 |------|------|------|------|
 | **7.1** | 7P-launchers-dev | 根目录启动/注册脚本 cmd-only；删除等价 `.ps1` | **已完成** |
 | **7.2** | 7P-status | `Status.cmd` 纯 cmd 显示启动日志末 8 行 | **已完成** |
-| **7.3** | 7P-legacy | `Repair`/`Setup-All` 等遗留脚本清理 | 未开始 |
+| **7.3** | 7P-legacy | 删除 `Repair-*`；更新 `Setup-All`/`Run-Tests.cmd`；归档迁移脚本 | **已完成** |
 | **7.4** | 7P-xaml | XAML 源文件化，去掉 PS 生成（可选） | 未开始 |
 | **7.5** | 7P-publish | `dotnet publish` 替代 `Publish-*.ps1`（可选） | 未开始 |
 | **7.6** | 7P-docs | `MIGRATION.md`、README 与契约同步 | 未开始 |
@@ -82,9 +82,15 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 | 文件 | 动作 |
 |------|------|
-| `Repair-Encoding.ps1` / `Repair.cmd` | 无 UTF-16 残留则归档或删除 |
-| `Setup-All.cmd` | 去硬编码路径；不引用已删 PS 栈 |
-| `scripts/Migrate-RenameToSmartGuard.ps1` | 归档 |
+| `Repair-Encoding.ps1` / `Repair.cmd` | **已删除**（会重建已废止 PS 栈） |
+| `Setup-All.cmd` | `%~dp0` + `Publish-All` + `Run-Tests.ps1` + `Register-AllTasks.cmd` |
+| `Run-Tests.cmd` | `%~dp0` 相对路径 |
+| `scripts/Migrate-RenameToSmartGuard.ps1` | 移至 `scripts/archive/` |
+
+### 验收
+
+- [x] Pester `Phase 7.3` 全过
+- [x] `lib/README-DEPLOY.txt` 同步
 
 ---
 
@@ -123,4 +129,4 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 | 日期 | 变更 |
 |------|------|
-| 2026-06-17 | 7.2：`Status.cmd` 纯 cmd tail，去掉 `powershell -Command Get-Content` |
+| 2026-06-17 | 7.3：删除 `Repair-*`；现代化 `Setup-All.cmd`；归档迁移脚本 |

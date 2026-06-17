@@ -1,4 +1,6 @@
 ﻿@echo off
-cd /d D:\Project\SmartGuard
-powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Project\SmartGuard\Run-Tests.ps1"
+setlocal EnableExtensions
+chcp 65001 >nul
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Run-Tests.ps1"
 pause
