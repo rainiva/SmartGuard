@@ -103,12 +103,35 @@
             $content | Should -Not -Match 'powershell\.exe'
         }
 
-        It 'Register-AllTasks uses Engine install instead of Register ps1 scripts' {
+    }
+
+    Describe 'Phase 7.1 dev launchers cmd-only' {
+        It 'does not ship PS dev launcher scripts at repo root' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'Register-AllTasks.ps1') -Raw -Encoding UTF8
+            @(
+                'Start-Core.ps1'
+                'Register-AllTasks.ps1'
+                'Restart-Tray.ps1'
+                'Start-SmartGuard.ps1'
+            ) | ForEach-Object {
+                Test-Path -LiteralPath (Join-Path $root $_) | Should -Be $false -Because $_
+            }
+        }
+
+        It 'Register-AllTasks.cmd registers via Engine install' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Register-AllTasks.cmd') -Raw -Encoding UTF8
             $content | Should -Match 'SmartGuard\.Engine\.exe'
             $content | Should -Match '--install'
+            $content | Should -Not -Match 'powershell\.exe'
             $content | Should -Not -Match 'Register-SmartGuardTask\.ps1'
+        }
+
+        It 'Start-SmartGuard.cmd launches Start-Core.cmd without PowerShell' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Start-SmartGuard.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'Start-Core\.cmd'
+            $content | Should -Not -Match 'powershell\.exe'
         }
     }
 
@@ -145,15 +168,6 @@
             $content | Should -Not -Match 'SmartGuard\.Settings\.ps1'
             $content | Should -Not -Match 'Show-LogViewer\.ps1'
             $content | Should -Not -Match 'powershell\.exe'
-        }
-    }
-
-    Describe 'Phase 1 launcher and tasks' {
-        It 'Start-Core.ps1 runs engine exe only without PS core fallback' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'Start-Core.ps1') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Engine\.exe'
-            $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
         }
     }
 

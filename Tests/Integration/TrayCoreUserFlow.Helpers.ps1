@@ -1,3 +1,11 @@
+function Stop-SmartGuardForTrayCoreTest {
+    schtasks /End /TN 'SmartGuard Guardian' 2>$null | Out-Null
+    schtasks /End /TN 'SmartGuard Tray' 2>$null | Out-Null
+    Get-Process -Name 'SmartGuard.Tray', 'SmartGuard.Engine', 'SmartGuard.LogViewer', 'SmartGuard.Settings' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
 function Initialize-TrayCoreUserFlowContext {
     param([string]$RepoRoot)
     $global:SG_TestRepoRoot = $RepoRoot

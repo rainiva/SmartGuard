@@ -6,11 +6,13 @@
 Describe 'Tray core user flow (integration)' {
     BeforeAll {
         . (Join-Path $PSScriptRoot 'TrayCoreUserFlow.Helpers.ps1')
-        Get-Process -Name 'SmartGuard.Engine' -ErrorAction SilentlyContinue |
-            Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 500
+        Stop-SmartGuardForTrayCoreTest
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
         Initialize-TrayCoreUserFlowContext -RepoRoot $repoRoot
+    }
+
+    AfterAll {
+        Stop-SmartGuardForTrayCoreTest
     }
 
     It 'scheduled-task style start (cwd=install root, no --root) writes status.json beside tray' {
