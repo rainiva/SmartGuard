@@ -12,11 +12,11 @@
 
 | 项 | 内容 |
 |----|------|
-| **Task** | 将 SmartPowerPlan 核心守护引擎迁移到 C#；采用「C# 引擎 + PowerShell 壳层」混合架构 |
+| **Task** | 将 SmartPowerPlan 迁移为 SmartGuard：C# 四件套 + Inno 安装包；**运行时不再依赖 PS 应用栈**（Phase 6） |
 | **Mode** | `STRICT` |
 | **Skill chain** | project-understanding → impact-analysis → task-contract-freeze → TDD → migration-refactor → code-review → release-check |
-| **Status** | Phase 4 **已完成**（4.1–4.4）；Phase 5 **实施中**（5.1–5.2） |
-| **Next** | 干净 VM 验收 V1–V9；可选 Authenticode 签名 |
+| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**（去 PS 化） |
+| **Next** | Phase 5.3 干净 VM 验收 V1–V9；可选 Authenticode 签名 |
 
 ---
 
@@ -47,18 +47,18 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│  展示层（PowerShell，Phase 1 保留）      │
-│  Tray / Settings / LogViewer / 部署脚本   │
+│  展示层（C# exe，Phase 3–4）             │
+│  Tray / Settings / LogViewer            │
 └──────────────────┬──────────────────────┘
                    │ config.json + status.json
 ┌──────────────────▼──────────────────────┐
-│  引擎层（C#，Phase 1 已迁移）             │
+│  引擎层（C#）                            │
 │  SmartGuard.Engine.exe                  │
 │  空闲检测 / 策略 / powercfg / WMI / 日志  │
 └─────────────────────────────────────────┘
 ```
 
-**原则：** C# 只负责守护逻辑；安装与壳层继续由 PowerShell / 计划任务承担（Phase 1）。
+**原则（Phase 6 后）：** 用户面与计划任务注册均为 C#；PowerShell 仅用于**构建、测试与安装包制作**（`scripts/`、`installer/`、`Run-Tests.ps1`）。
 
 ---
 
@@ -84,7 +84,7 @@
 
 ### 3.1 目标（Goal）
 
-用 C# 重写**核心守护引擎**，保持用户可见行为；部署层继续用 PowerShell / 计划任务。
+用 C# 实现**引擎 + 桌面四件套**；计划任务由 `ScheduledTaskRegistrar`（C#）注册（Phase 6.1）。
 
 ### 3.2 已批准技术决策
 
@@ -281,7 +281,7 @@ powershell -File Restart-Tray.ps1
 
 ---
 
-### Phase 5：Inno Setup 安装包（实施中）
+### Phase 5：Inno Setup 安装包
 
 完整契约见 **[`docs/INNO-INSTALLER-TASK-CONTRACT.md`](INNO-INSTALLER-TASK-CONTRACT.md)**。
 
@@ -289,9 +289,25 @@ powershell -File Restart-Tray.ps1
 |--------|------|------|------|
 | **5.0** | 5I-decide | 运行时策略：**P5A**；H1–H6 已签署（2026-06-16） | **已签署** |
 | **5.1** | 5I-stage | `installer\Build-Staging.ps1` + staging 布局 | **已完成** |
-| **5.2** | 5I-inno | `installer\SmartGuard.iss` + `dist\` 产出 | **已完成**（脚本与 `.iss`；需本机 ISCC） |
+| **5.2** | 5I-inno | `installer\SmartGuard.iss` + `dist\` 产出 | **已完成** |
 | **5.3** | 5I-verify | 干净 VM 验收 V1–V9 | 未开始 |
 | **5.4** | 5I-sign | （可选）Authenticode | 未开始 |
+
+本机冒烟与集成测试见 [`docs/evidence/installer/`](evidence/installer/)。
+
+---
+
+### Phase 6：去 PowerShell 化
+
+完整切片见 **[`docs/PHASE-6-TASK-CONTRACT.md`](PHASE-6-TASK-CONTRACT.md)**。
+
+| 子阶段 | 代号 | 方案 | 状态 |
+|--------|------|------|------|
+| **6.1** | 6P-schtasks | `ScheduledTaskRegistrar`；`--install` 不再调 PS | **已完成** |
+| **6.2** | 6P-launchers | cmd 启动链只走 exe | **已完成** |
+| **6.3** | 6P-fallback | 删除 `lib/layers` 与 PS 应用回退 | **已完成** |
+| **6.4** | 6P-packaging | 安装包去掉 `Register-*.ps1` | **已完成** |
+| **6.5** | 6P-docs | 文档与证据同步 | **已完成** |
 
 ---
 
@@ -303,11 +319,9 @@ powershell -File Restart-Tray.ps1
 | `SmartPowerPlan.status.json` | `SmartGuard.status.json` |
 | `SmartPowerPlan.log` | `SmartGuard.log` |
 | `SmartPowerPlan.startup.log` | `SmartGuard.startup.log` |
-| `lib/SmartPowerPlan.Core.ps1` | `bin/SmartGuard.Engine.exe`（主） |
-| `lib/SmartPowerPlan.Core.ps1` | `lib/SmartGuard.Core.ps1`（回退） |
-| `lib/SmartPowerPlan.Tray.ps1` | `lib/SmartGuard.Tray.ps1` |
-| `lib/SmartPowerPlan.Functions.ps1` | `lib/SmartGuard.Functions.ps1` |
-| `Register-SmartPowerPlanTask.ps1` | `Register-SmartGuardTask.ps1` |
+| `lib/SmartPowerPlan.Core.ps1` | `bin/SmartGuard.Engine.exe` |
+| `lib/SmartPowerPlan.Tray.ps1` | `bin/SmartGuard.Tray.exe` |
+| `Register-SmartPowerPlanTask.ps1` | `Engine.exe --install`（C# `ScheduledTaskRegistrar`） |
 | 计划任务 `SmartPowerPlan Guardian` | `SmartGuard Guardian` |
 | 计划任务 `SmartPowerPlan Tray` | `SmartGuard Tray` |
 | Mutex `Global\SmartPowerPlan.Core` | `Global\SmartGuard.Core` |
@@ -318,21 +332,22 @@ powershell -File Restart-Tray.ps1
 
 | 类型 | 位置 | 数量 |
 |------|------|------|
-| Pester | `Tests/SmartGuard.Tests.ps1` | 64 |
-| xUnit | `tests/SmartGuard.Engine.Tests/` | 64 |
-| 运行 | `Run-Tests.ps1` | 二者串联 |
+| Pester 契约 / 安装包 | `Tests/SmartGuard.Tests.ps1` | 26 |
+| Pester 集成 | `Tests/Integration/*.ps1` | 4 |
+| xUnit | `Tests/SmartGuard.*.Tests/` | 157 |
+| 运行 | `Run-Tests.ps1` | 串联上述全部 |
 
 **TDD 纪律（后续 Phase 仍适用）：** Red → Green → Refactor；声称完成前 `Run-Tests.ps1` 全绿。
 
 ---
 
-## 八、回滚方案
+## 八、回滚方案（Phase 6 后）
 
-1. 删除或重命名 `bin\SmartGuard.Engine.exe`
-2. 以管理员运行 `Register-SmartGuardTask.ps1`（自动回退到 `lib\SmartGuard.Core.ps1`）
-3. 或手动将计划任务改回：  
-   `powershell.exe -File D:\Project\SmartGuard\lib\SmartGuard.Core.ps1`
-4. 配置 / 状态 / 日志文件**无需格式迁移**
+1. 重新运行 `dist\SmartGuard-Setup-*-x64.exe` 覆盖安装，或  
+2. `scripts\Publish-All.ps1` 后执行 `bin\SmartGuard.Engine.exe --root <安装目录> --install`  
+3. 配置 / 状态 / 日志文件**无需格式迁移**
+
+> Phase 1 **A10**（回滚至 `lib\SmartGuard.Core.ps1`）已于 Phase 6.3 **废止**。
 
 ---
 
@@ -342,7 +357,8 @@ powershell -File Restart-Tray.ps1
 |------|------|
 | [`README.md`](../README.md) | 项目概览与快速开始 |
 | [`docs/PHASE-3-TASK-CONTRACT.md`](PHASE-3-TASK-CONTRACT.md) | Phase 3 安装器 + 托盘 C# 化（3.1–3.3） |
-| [`docs/PHASE-4-TASK-CONTRACT.md`](PHASE-4-TASK-CONTRACT.md) | Phase 4 设置 + 日志查看器 C# 化（待批准） |
+| [`docs/PHASE-6-TASK-CONTRACT.md`](PHASE-6-TASK-CONTRACT.md) | Phase 6 去 PS 化（6.1–6.5） |
+| [`docs/evidence/installer/`](evidence/installer/) | 安装包冒烟与集成测试证据 |
 | [`docs/PHASE-2.1-TASK-CONTRACT.md`](PHASE-2.1-TASK-CONTRACT.md) | Phase 2.1 结构化日志（已完成） |
 | [`lib/README-DEPLOY.txt`](../lib/README-DEPLOY.txt) | 部署步骤 |
 | [`scripts/Publish-Engine.ps1`](../scripts/Publish-Engine.ps1) | 编译发布引擎 |
@@ -370,6 +386,7 @@ powershell -File Restart-Tray.ps1
 | 2026-06-16 | Phase 4.3–4.4：Settings C# 化 + `Publish-All` 四 exe |
 | 2026-06-16 | Phase 2.1：结构化日志 INFO/WARN/ERROR/HEART |
 | 2026-06-16 | Phase 5.1–5.2：`installer\` staging + `SmartGuard.iss`；产出 `dist\SmartGuard-Setup-1.0.0-x64.exe` |
+| 2026-06-17 | Phase 6.1–6.5：C# 计划任务注册、exe 启动链、删除 PS 应用栈、安装包瘦身、文档同步 |
 
 ---
 

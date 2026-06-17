@@ -26,7 +26,7 @@
 |----|------|
 | **Goal** | 终端用户通过安装向导完成部署：释放文件 → 注册计划任务 → 可选启动托盘；卸载时移除任务并保留或可选删除用户数据 |
 | **In scope** | `installer/` 目录（`.iss`、构建脚本、暂存布局）；Release 构建产物打包；`--install` / `--uninstall` 集成；`.NET 8` 运行时策略二选一；安装版文件清单与验收表 |
-| **Out of scope** | 将 `schtasks` 注册迁出 PowerShell（列为 P5+ 优化）；MSI/WiX；Windows Store；自动更新通道；多语言安装向导（首版仅 zh-CN 文案即可） |
+| **Out of scope** | ~~将 `schtasks` 注册迁出 PowerShell~~（**Phase 6.1 已完成**）；MSI/WiX；Windows Store；自动更新通道；多语言安装向导（首版仅 zh-CN 文案即可） |
 | **Acceptance** | §八验收表 V1–V8 全过；干净 VM 上安装成功；升级不覆盖用户 `config`/`log`；卸载后计划任务消失 |
 | **Rollback** | 卸载向导执行 `--uninstall`；用户数据默认保留；回退到「zip + 手动 Publish + `--install`」流程不变 |
 
@@ -59,7 +59,7 @@
 
 | 项 | 说明 |
 |----|------|
-| 重写 `InstallCommands` 为纯 C# schtasks | 列为 **Phase 5+ / P6**；本阶段继续调用现有 PS |
+| 重写 `InstallCommands` 为纯 C# schtasks | **Phase 6.1 已完成**；安装包已去掉 `Register-*.ps1`（Phase 6.4） |
 | 打包全套 `lib\layers\` PS 回退 | 安装版默认 **仅 C# 路径**；回退脚本不作为默认组件 |
 | 将配置迁到 `%AppData%` | 保持安装目录内 `SmartGuard.config.json` |
 | Linux / macOS 安装器 | 仅 Windows 10/11 x64 |
@@ -142,8 +142,6 @@ dotnet publish $project -c Release -r win-x64 --self-contained true -o $staging\
 ├── lib\
 │   ├── SmartGuard.ico
 │   └── SmartGuard.Settings.xaml
-├── Register-SmartGuardTask.ps1
-├── Register-TrayTask.ps1
 ├── SmartGuard.config.json          ← 首次 onlyifdoesntexist
 ├── SmartGuard.status.json          ← 可选：不打包，运行时生成
 ├── SmartGuard.log                  ← 不打包
@@ -241,9 +239,7 @@ Source: "{#StagingDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recurs
 ; 资源
 Source: "{#StagingDir}\lib\SmartGuard.ico"; DestDir: "{app}\lib"; Flags: ignoreversion
 Source: "{#StagingDir}\lib\SmartGuard.Settings.xaml"; DestDir: "{app}\lib"; Flags: ignoreversion
-; 安装胶水（--install 依赖）
-Source: "{#StagingDir}\Register-SmartGuardTask.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#StagingDir}\Register-TrayTask.ps1"; DestDir: "{app}"; Flags: ignoreversion
+; 计划任务：Setup [Run] 调用 Engine.exe --install（C# ScheduledTaskRegistrar）
 ; 默认配置 — 升级不覆盖；卸载删除由 H3 勾选项控制（见 [UninstallDelete]）
 Source: "{#StagingDir}\SmartGuard.config.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
 ; 许可协议占位
@@ -392,7 +388,7 @@ end;
 | 层级 | 要求 |
 |------|------|
 | **构建脚本** | `Build-Staging.ps1` 缺文件时非零退出；清单与 §四 一致 |
-| **Pester** | 新增 Describe `Inno installer packaging`：断言 `.iss` 含 `--skip-publish`、`Register-SmartGuardTask.ps1`、`bin\SmartGuard.Engine.exe` |
+| **Pester** | Describe `Phase 5 Inno installer`：断言 `.iss` 含 `--skip-publish`、`bin\SmartGuard.Engine.exe`；**不含** `Register-SmartGuardTask.ps1` |
 | **回归** | 每次改 `.iss` 后 `Run-Tests.ps1` 全绿 |
 | **VM 验收** | V1–V8 截图或日志归档 `docs\evidence\installer\` |
 
@@ -491,12 +487,13 @@ end;
 
 ## 十五、后续优化（非 Phase 5）
 
-| 项 | 收益 |
+| 项 | 状态 |
 |----|------|
-| `InstallCommands` 纯 C# 注册 schtasks | 安装包可去掉 `Register-*.ps1` |
-| 单 self-contained host + 工具 exe | 缩小 P5B 体积 |
-| 配置迁 `%LocalAppData%\SmartGuard` | 避免 `Program Files` 写权限问题 |
-| WiX MSIX | 企业分发 |
+| ~~`InstallCommands` 纯 C# 注册 schtasks~~ | ✅ Phase 6.1 |
+| ~~安装包去掉 `Register-*.ps1`~~ | ✅ Phase 6.4 |
+| 单 self-contained host + 工具 exe | 待定（P5B 变体） |
+| 配置迁 `%LocalAppData%\SmartGuard` | 待定 |
+| WiX MSIX | 待定 |
 
 ---
 
@@ -506,3 +503,4 @@ end;
 |------|------|
 | 2026-06-16 | 初版冻结：决策树、staging 布局、`.iss` 骨架、验收表 |
 | 2026-06-16 | H1–H6 签署：P5A、可自定义路径、卸载可选删数据、许可占位、rainiva 发布者 |
+| 2026-06-17 | Phase 6：staging/`.iss` 移除 `Register-*.ps1`；`--install` 使用 C# `ScheduledTaskRegistrar` |

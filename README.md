@@ -21,7 +21,8 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 ## 文档
 
 - [迁移规划（完整）](docs/MIGRATION.md) — DevGuard Task Contract、分期方案与实施状态
-- [Inno 安装包契约](docs/INNO-INSTALLER-TASK-CONTRACT.md) — Phase 5：P5A 运行时、H1–H6 已签署、验收表
+- [Phase 6 去 PS 化](docs/PHASE-6-TASK-CONTRACT.md) — 计划任务 C# 化、删除 PS 应用栈
+- [Inno 安装包契约](docs/INNO-INSTALLER-TASK-CONTRACT.md) — Phase 5：P5A 运行时、H1–H6 已签署
 
 ## 环境要求
 
