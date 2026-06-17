@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Principal;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Cli;
 
@@ -20,22 +21,15 @@ public static class InstallCommands
           $"WARN: Engine exe not found at {engineExe}. Run scripts\\Publish-Engine.ps1 or pass --skip-publish.");
       }
 
-      var guardianScript = InstallPaths.GetGuardianRegisterScript(root);
-      var trayScript = InstallPaths.GetTrayRegisterScript(root);
-      if (!File.Exists(guardianScript))
-        return Fail(startupLog, $"Missing script: {guardianScript}");
-      if (!File.Exists(trayScript))
-        return Fail(startupLog, $"Missing script: {trayScript}");
-
       WriteStartupLog(startupLog, "Install: registering SmartGuard Guardian...");
-      var guardianCode = RunPowerShellScript(guardianScript);
+      var guardianCode = ScheduledTaskRegistrar.RegisterGuardian(root);
       if (guardianCode != 0)
-        return Fail(startupLog, $"Register-SmartGuardTask.ps1 failed with exit code {guardianCode}");
+        return Fail(startupLog, $"SmartGuard Guardian task registration failed with exit code {guardianCode}");
 
       WriteStartupLog(startupLog, "Install: registering SmartGuard Tray...");
-      var trayCode = RunPowerShellScript(trayScript);
+      var trayCode = ScheduledTaskRegistrar.RegisterTray(root);
       if (trayCode != 0)
-        return Fail(startupLog, $"Register-TrayTask.ps1 failed with exit code {trayCode}");
+        return Fail(startupLog, $"SmartGuard Tray task registration failed with exit code {trayCode}");
 
       WriteStartupLog(startupLog, "Install: completed successfully.");
       Console.WriteLine("SmartGuard scheduled tasks installed.");
@@ -107,11 +101,6 @@ public static class InstallCommands
     {
       // task may already be absent
     }
-  }
-
-  private static int RunPowerShellScript(string scriptPath)
-  {
-    return RunProcess("powershell.exe", PowerShellInvocation.BuildArguments(scriptPath));
   }
 
   private static int RunProcess(string fileName, string arguments)

@@ -4,11 +4,7 @@ namespace SmartGuard.Configuration;
 
 public static class AutoStartService
 {
-  public static readonly string[] ScheduledTaskNames =
-  [
-    "SmartGuard Guardian",
-    "SmartGuard Tray",
-  ];
+  public static IReadOnlyList<string> ScheduledTaskNames => ScheduledTaskRegistrar.TaskNames;
 
   public static bool NeedsUpdate(bool enabled, bool? previousEnabled)
   {
@@ -36,11 +32,7 @@ public static class AutoStartService
       }
 
       if (!enabled) continue;
-      var script = name.Contains("Guardian", StringComparison.OrdinalIgnoreCase)
-        ? Path.Combine(root, "Register-SmartGuardTask.ps1")
-        : Path.Combine(root, "Register-TrayTask.ps1");
-      if (File.Exists(script))
-        RunPowerShellScript(script, root);
+      ScheduledTaskRegistrar.RegisterIfMissing(name, root);
     }
   }
 
@@ -84,18 +76,6 @@ public static class AutoStartService
     {
       FileName = "schtasks.exe",
       Arguments = arguments,
-      UseShellExecute = false,
-      CreateNoWindow = true,
-    })?.WaitForExit();
-  }
-
-  private static void RunPowerShellScript(string scriptPath, string root)
-  {
-    Process.Start(new ProcessStartInfo
-    {
-      FileName = "powershell.exe",
-      Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-      WorkingDirectory = root,
       UseShellExecute = false,
       CreateNoWindow = true,
     })?.WaitForExit();

@@ -11,4 +11,10 @@ public class AutoStartServiceTests
   {
     AutoStartService.NeedsUpdate(enabled, previous).Should().Be(expected);
   }
+
+  [Fact]
+  public void ScheduledTaskNames_delegate_to_registrar()
+  {
+    AutoStartService.ScheduledTaskNames.Should().BeEquivalentTo(ScheduledTaskRegistrar.TaskNames);
+  }
 }

@@ -543,6 +543,25 @@
         }
     }
 
+    Describe 'Phase 6.1 scheduled task registrar' {
+        It 'InstallCommands registers tasks via ScheduledTaskRegistrar not PowerShell scripts' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $install = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Engine\Cli\InstallCommands.cs') -Raw -Encoding UTF8
+            $install | Should -Match 'ScheduledTaskRegistrar\.RegisterGuardian'
+            $install | Should -Match 'ScheduledTaskRegistrar\.RegisterTray'
+            $install | Should -Not -Match 'RunPowerShellScript'
+            $install | Should -Not -Match 'Register-SmartGuardTask\.ps1'
+        }
+
+        It 'AutoStartService registers missing tasks via ScheduledTaskRegistrar' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $autoStart = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\AutoStartService.cs') -Raw -Encoding UTF8
+            $autoStart | Should -Match 'ScheduledTaskRegistrar\.RegisterIfMissing'
+            $autoStart | Should -Not -Match 'Register-SmartGuardTask\.ps1'
+            $autoStart | Should -Not -Match 'Register-TrayTask\.ps1'
+        }
+    }
+
     Describe 'Phase 1 launcher and tasks' {
         It 'Start-Core prefers C# engine with PS fallback' {
             $root = Split-Path -Parent $PSScriptRoot
