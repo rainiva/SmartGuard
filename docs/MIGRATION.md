@@ -16,7 +16,7 @@
 | **Mode** | `STRICT` |
 | **Skill chain** | project-understanding → impact-analysis → task-contract-freeze → TDD → migration-refactor → code-review → release-check |
 | **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**（去 PS 化） |
-| **Next** | Phase 5.3 干净 VM 验收 V1–V9；可选 Authenticode 签名 |
+| **Next** | Phase 5.3 **VM/人工**验收 V1、V4/V5、V7b、V8、V9；可选 Authenticode 签名 |
 
 ---
 
@@ -290,7 +290,7 @@ powershell -File Restart-Tray.ps1
 | **5.0** | 5I-decide | 运行时策略：**P5A**；H1–H6 已签署（2026-06-16） | **已签署** |
 | **5.1** | 5I-stage | `installer\Build-Staging.ps1` + staging 布局 | **已完成** |
 | **5.2** | 5I-inno | `installer\SmartGuard.iss` + `dist\` 产出 | **已完成** |
-| **5.3** | 5I-verify | 干净 VM 验收 V1–V9 | 未开始 |
+| **5.3** | 5I-verify | 干净 VM 验收 V1–V9 | **部分完成**（1.0.6 自动化 V2/V3/V6 + 载荷；VM/人工 V1/V4/V5/V7b/V8/V9 待办） |
 | **5.4** | 5I-sign | （可选）Authenticode | 未开始 |
 
 本机冒烟与集成测试见 [`docs/evidence/installer/`](evidence/installer/)。

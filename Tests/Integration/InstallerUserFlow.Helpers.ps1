@@ -30,7 +30,10 @@ function Ensure-InstallerBuilt {
         Select-Object -First 1
 
     $iss = Join-Path $global:SG_UI_RepoRoot 'installer\SmartGuard.iss'
-    $needsBuild = (-not $setup) -or ((Get-Item -LiteralPath $iss).LastWriteTime -gt $setup.LastWriteTime)
+    $engineExe = $global:SG_UI_EngineExe
+    $needsBuild = (-not $setup) `
+        -or ((Get-Item -LiteralPath $iss).LastWriteTime -gt $setup.LastWriteTime) `
+        -or ((Test-Path -LiteralPath $engineExe) -and (Get-Item -LiteralPath $engineExe).LastWriteTime -gt $setup.LastWriteTime)
 
     if ($needsBuild) {
         if (-not (Test-Path -LiteralPath $global:SG_UI_IsccPath)) {
@@ -59,13 +62,19 @@ function Stop-SmartGuardForInstallerTest {
 function Invoke-SmartGuardSilentInstall {
     param(
         [string]$SetupExe,
-        [string]$InstallRoot
+        [string]$InstallRoot,
+        [switch]$PreserveExisting
     )
 
-    if (Test-Path -LiteralPath $InstallRoot) {
-        Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not $PreserveExisting.IsPresent) {
+        if (Test-Path -LiteralPath $InstallRoot) {
+            Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
     }
-    New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+    elseif (-not (Test-Path -LiteralPath $InstallRoot)) {
+        New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+    }
 
     $log = Join-Path $InstallRoot 'install-ui-test.log'
     $args = @(
