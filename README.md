@@ -10,7 +10,7 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 | `src/SmartGuard.Tray/` | C# 托盘 |
 | `src/SmartGuard.LogViewer/` | C# 日志查看器 |
 | `src/SmartGuard.Settings/` | C# 设置窗体（WPF） |
-| `lib/` | 图标、Settings XAML 与构建脚本 |
+| `lib/` | 图标、Settings XAML |
 | `bin/*.exe` | 发布后四件套：Engine / Tray / LogViewer / Settings |
 | `installer/` | Inno 安装包：staging 构建、`SmartGuard.iss` |
 | `dist/` | 安装包产出：`SmartGuard-Setup-{version}-x64.exe` |
@@ -36,7 +36,8 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 cd D:\Project\SmartGuard
 
 # 1. 编译全部 C# 组件
-powershell -File scripts\Publish-All.ps1
+build.cmd
+# 或: powershell -File scripts\Publish-All.ps1
 
 # 2. 注册计划任务（管理员，会弹出 UAC）
 .\bin\SmartGuard.Engine.exe --root D:\Project\SmartGuard --install

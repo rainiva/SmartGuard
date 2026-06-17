@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   1. Publish Release binaries to repo bin\
-  2. Generate lib assets (xaml, ico)
+  2. Copy lib assets (ico) if missing
   3. Copy install payload to installer\staging\
   4. Download .NET Desktop Runtime redist if missing
   5. Validate layout via Test-InstallerStagingLayout
@@ -141,14 +141,10 @@ $runtimeVersion = Get-InstallerRuntimeVersion -InstallerDir $PSScriptRoot
 Write-Host "SmartGuard installer staging (app $appVersion, runtime $runtimeVersion, P5A)"
 
 if (-not $SkipPublish) {
-    $publish = Join-Path $Root 'scripts\Publish-All.ps1'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $publish -Configuration $Configuration -Root $Root
+    $build = Join-Path $Root 'build.cmd'
+    & cmd /c "`"$build`" $Configuration"
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
-
-$xamlScript = Join-Path $Root 'lib\Write-SmartGuardSettingsXaml.ps1'
-& powershell -NoProfile -ExecutionPolicy Bypass -File $xamlScript
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $iconScript = Join-Path $Root 'lib\Create-TrayIcon.ps1'
 $iconPath = Join-Path $Root 'lib\SmartGuard.ico'

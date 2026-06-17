@@ -5,7 +5,7 @@
 
 1. 安装 .NET 8 桌面运行时
 2. 以管理员运行 Setup-All.cmd，或分步执行：
-   - scripts\Publish-All.ps1              编译四件套到 bin\
+   - build.cmd（或 scripts\Publish-All.ps1）  编译四件套到 bin\
    - Register-AllTasks.cmd                注册计划任务（Engine --install）
 3. Start-Tray.cmd 或 Restart-Tray.cmd 启动托盘
 

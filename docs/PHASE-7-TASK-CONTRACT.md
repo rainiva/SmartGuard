@@ -1,7 +1,7 @@
 # Phase 7：开发机去 PowerShell — Task Contract
 
 **制定日期：** 2026-06-17  
-**状态：** 7.1–7.3 **已完成**；7.4–7.6 未开始
+**状态：** 7.1–7.5 **已完成**；7.6 部分完成
 
 ---
 
@@ -16,8 +16,8 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 **保留 PowerShell 的范围（Phase 7 结束后仍允许）：**
 
 - `Run-Tests.ps1`、`Tests/*.ps1`（Pester 与安装器集成）
-- `scripts/Publish-*.ps1`、`installer/*.ps1`（除非完成 7.5）
-- `lib/Write-SmartGuardSettingsXaml.ps1`、`lib/Create-TrayIcon.ps1`（除非完成 7.4）
+- `scripts/Publish-All.ps1`、`installer/*.ps1`（`Publish-All` 委托 `build.cmd`）
+- `lib/Create-TrayIcon.ps1`（仅校验 ico）
 
 **非目标：**
 
@@ -34,9 +34,9 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 | **7.1** | 7P-launchers-dev | 根目录启动/注册脚本 cmd-only；删除等价 `.ps1` | **已完成** |
 | **7.2** | 7P-status | `Status.cmd` 纯 cmd 显示启动日志末 8 行 | **已完成** |
 | **7.3** | 7P-legacy | 删除 `Repair-*`；更新 `Setup-All`/`Run-Tests.cmd`；归档迁移脚本 | **已完成** |
-| **7.4** | 7P-xaml | XAML 源文件化，去掉 PS 生成（可选） | 未开始 |
-| **7.5** | 7P-publish | `dotnet publish` 替代 `Publish-*.ps1`（可选） | 未开始 |
-| **7.6** | 7P-docs | `MIGRATION.md`、README 与契约同步 | 未开始 |
+| **7.4** | 7P-xaml | `lib/SmartGuard.Settings.xaml` 为源；删除生成脚本 | **已完成** |
+| **7.5** | 7P-publish | `build.cmd` + `Directory.Build.props`；`Publish-All` 委托 | **已完成** |
+| **7.6** | 7P-docs | `MIGRATION.md`、README 与契约同步 | **部分完成** |
 
 **并行轨道：** Phase **5.3** 干净 VM / 人工验收（不阻塞 Phase 7）。
 
@@ -94,20 +94,49 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ---
 
-## 六、7.4 / 7.5 — 可选
+---
 
-见 Phase 7 规划讨论稿；实施前须单独立项更新本文档。
+## 六、7.4 — XAML 源文件化 `7P-xaml`
+
+| 动作 | 说明 |
+|------|------|
+| **保留** | `lib/SmartGuard.Settings.xaml` 为唯一源（Settings csproj `Page` 链接） |
+| **删除** | `lib/Write-SmartGuardSettingsXaml.ps1` |
+| **Build-Staging** | 不再调用 XAML 生成；仅复制已有 `lib\SmartGuard.Settings.xaml` |
+
+### 验收
+
+- [x] Pester `Phase 7.4` 全过
+- [x] 安装包仍含 `lib\SmartGuard.Settings.xaml`
 
 ---
 
-## 七、7.6 — 文档
+## 七、7.5 — dotnet 发布链 `7P-publish`
+
+| 交付 | 说明 |
+|------|------|
+| `build.cmd` | 顺序 `dotnet publish` 四项目到 `bin\` |
+| `Directory.Build.props` | `<SelfContained>false</SelfContained>` |
+| `scripts/Publish-All.ps1` | 薄包装，调用 `build.cmd` |
+| **删除** | `scripts/Publish-{Engine,Tray,LogViewer,Settings}.ps1` |
+| `installer/Build-Staging.ps1` | 发布步骤改调 `build.cmd` |
+
+### 验收
+
+- [x] Pester `Phase 7.5` 全过
+- [x] `build.cmd` 产出四 exe
+
+---
+
+## 八、7.6 — 文档
+
 
 - `docs/MIGRATION.md` Phase 7 表
 - `README.md` / `lib/README-DEPLOY.txt` 开发流程仅写 cmd + `Publish-All`
 
 ---
 
-## 八、测试策略
+## 九、测试策略
 
 | 层级 | 要求 |
 |------|------|
@@ -117,7 +146,7 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ---
 
-## 九、完成标准（Phase 7 Done）
+## 十、完成标准（Phase 7 Done）
 
 - [ ] 7.1–7.3 + 7.6 完成（或明确跳过 7.4/7.5）
 - [ ] 用户安装包仍与 Phase 6 一致
@@ -125,8 +154,8 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ---
 
-## 十、变更记录
+## 十一、变更记录
 
 | 日期 | 变更 |
 |------|------|
-| 2026-06-17 | 7.3：删除 `Repair-*`；现代化 `Setup-All.cmd`；归档迁移脚本 |
+| 2026-06-17 | 7.4–7.5：`build.cmd` 发布链；XAML 源文件化 |

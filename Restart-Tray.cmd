@@ -10,7 +10,7 @@ timeout /t 1 /nobreak >nul
 if not exist "%~dp0bin\SmartGuard.Tray.exe" (
     echo.
     echo ERROR: SmartGuard.Tray.exe not found.
-    echo Run scripts\Publish-Tray.ps1 or reinstall SmartGuard.
+    echo Run build.cmd or reinstall SmartGuard.
     echo.
     pause
     exit /b 1

@@ -17,21 +17,72 @@
         }
     }
 
-    Describe 'Settings xaml asset' {
-        It 'writes and parses settings xaml from build script' {
+    Describe 'Phase 7.4 settings xaml source of truth' {
+        It 'ships committed SmartGuard.Settings.xaml without generation script' {
             Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
             if (-not ([System.Windows.Application]::Current)) {
                 $null = New-Object System.Windows.Application
             }
             $root = Split-Path -Parent $PSScriptRoot
-            $writer = Join-Path $root 'lib\Write-SmartGuardSettingsXaml.ps1'
             $xamlPath = Join-Path $root 'lib\SmartGuard.Settings.xaml'
-            & $writer -ScriptRoot $root | Out-Null
+            $writer = Join-Path $root 'lib\Write-SmartGuardSettingsXaml.ps1'
             Test-Path -LiteralPath $xamlPath | Should -Be $true
+            Test-Path -LiteralPath $writer | Should -Be $false
             $xaml = Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8
             $xaml | Should -Match 'x:Name="tglPaused"'
             $xaml | Should -Match 'x:Name="tglAutoStart"'
             { [void][Windows.Markup.XamlReader]::Parse($xaml) } | Should -Not -Throw
+        }
+
+        It 'Settings project links lib xaml as WPF Page' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $csproj = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Settings\SmartGuard.Settings.csproj') -Raw -Encoding UTF8
+            $csproj | Should -Match 'lib\\SmartGuard\.Settings\.xaml'
+            $csproj | Should -Match '<Page Include'
+        }
+
+        It 'Build-Staging does not regenerate settings xaml' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') -Raw -Encoding UTF8
+            $content | Should -Not -Match 'Write-SmartGuardSettingsXaml'
+        }
+    }
+
+    Describe 'Phase 7.5 dotnet publish chain' {
+        It 'build.cmd publishes all four desktop executables' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'build.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Engine\.csproj'
+            $content | Should -Match 'SmartGuard\.Tray\.csproj'
+            $content | Should -Match 'SmartGuard\.LogViewer\.csproj'
+            $content | Should -Match 'SmartGuard\.Settings\.csproj'
+            $content | Should -Match '--self-contained false'
+            $content | Should -Match 'win-x64'
+        }
+
+        It 'Directory.Build.props pins framework-dependent publish defaults' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props') -Raw -Encoding UTF8
+            $content | Should -Match '<SelfContained>false</SelfContained>'
+        }
+
+        It 'Publish-All.ps1 delegates to build.cmd' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-All.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'build\.cmd'
+            $content | Should -Not -Match 'Publish-Engine\.ps1'
+        }
+
+        It 'legacy per-project Publish scripts are removed' {
+            $root = Split-Path -Parent $PSScriptRoot
+            @(
+                'scripts\Publish-Engine.ps1'
+                'scripts\Publish-Tray.ps1'
+                'scripts\Publish-LogViewer.ps1'
+                'scripts\Publish-Settings.ps1'
+            ) | ForEach-Object {
+                Test-Path -LiteralPath (Join-Path $root $_) | Should -Be $false -Because $_
+            }
         }
     }
 
@@ -305,10 +356,11 @@
         It 'Build-Staging.ps1 publishes and validates staging layout' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') -Raw -Encoding UTF8
-            $content | Should -Match 'Publish-All\.ps1'
+            $content | Should -Match 'build\.cmd'
             $content | Should -Match 'Test-InstallerStagingLayout'
             $content | Should -Match 'license_zh-CN\.txt'
             $content | Should -Not -Match 'Register-SmartGuardTask\.ps1'
+            $content | Should -Not -Match 'Write-SmartGuardSettingsXaml'
         }
 
         It 'Test-InstallerStagingLayout fails when staging is incomplete' {

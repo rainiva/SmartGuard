@@ -19,7 +19,7 @@ set "ENGINE=%~dp0bin\SmartGuard.Engine.exe"
 if not exist "%ENGINE%" (
     echo.
     echo ERROR: SmartGuard.Engine.exe not found.
-    echo Run scripts\Publish-Engine.ps1 or reinstall SmartGuard.
+    echo Run build.cmd or scripts\Publish-All.ps1, or reinstall SmartGuard.
     echo.
     pause
     exit /b 1
