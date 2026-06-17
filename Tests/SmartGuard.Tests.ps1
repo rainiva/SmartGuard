@@ -135,6 +135,15 @@
         }
     }
 
+    Describe 'Phase 7.2 status cmd without PowerShell' {
+        It 'Status.cmd shows startup log tail without powershell.exe' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.startup\.log'
+            $content | Should -Not -Match 'powershell'
+        }
+    }
+
     Describe 'Phase 6.3 remove PS application stack' {
         It 'does not ship legacy PS application entry scripts' {
             $root = Split-Path -Parent $PSScriptRoot

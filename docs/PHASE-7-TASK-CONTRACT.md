@@ -1,7 +1,7 @@
 # Phase 7：开发机去 PowerShell — Task Contract
 
 **制定日期：** 2026-06-17  
-**状态：** 7.1 **已完成**；7.2–7.6 未开始
+**状态：** 7.1、7.2 **已完成**；7.3–7.6 未开始
 
 ---
 
@@ -32,7 +32,7 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 | 切片 | 代号 | 交付 | 状态 |
 |------|------|------|------|
 | **7.1** | 7P-launchers-dev | 根目录启动/注册脚本 cmd-only；删除等价 `.ps1` | **已完成** |
-| **7.2** | 7P-status | `Status.cmd` 不调用 `powershell.exe` | 未开始 |
+| **7.2** | 7P-status | `Status.cmd` 纯 cmd 显示启动日志末 8 行 | **已完成** |
 | **7.3** | 7P-legacy | `Repair`/`Setup-All` 等遗留脚本清理 | 未开始 |
 | **7.4** | 7P-xaml | XAML 源文件化，去掉 PS 生成（可选） | 未开始 |
 | **7.5** | 7P-publish | `dotnet publish` 替代 `Publish-*.ps1`（可选） | 未开始 |
@@ -69,13 +69,12 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ### 交付
 
-- `Status.cmd` 显示 `SmartGuard.startup.log` 末 8 行，**不**调用 `powershell.exe`
-- 可选：`Engine.exe status --tail 8` 子命令 + xUnit
+- `Status.cmd` 用 `more +SKIP` 显示 `SmartGuard.startup.log` 末 8 行，**不**调用 PowerShell
 
 ### 验收
 
-- [ ] Pester 断言 `Status.cmd` 无 `powershell`
-- [ ] 手工：有日志时输出正确
+- [x] Pester 断言 `Status.cmd` 无 `powershell`
+- [x] 手工：12 行日志时输出末 8 行（`line 5`–`line 12`）
 
 ---
 
@@ -124,4 +123,4 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 | 日期 | 变更 |
 |------|------|
-| 2026-06-17 | 初版契约；7.1 完成（cmd 启动器替代根目录 PS） |
+| 2026-06-17 | 7.2：`Status.cmd` 纯 cmd tail，去掉 `powershell -Command Get-Content` |

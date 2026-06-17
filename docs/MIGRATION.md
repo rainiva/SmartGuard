@@ -15,8 +15,8 @@
 | **Task** | 将 SmartPowerPlan 迁移为 SmartGuard：C# 四件套 + Inno 安装包；**运行时不再依赖 PS 应用栈**（Phase 6） |
 | **Mode** | `STRICT` |
 | **Skill chain** | project-understanding → impact-analysis → task-contract-freeze → TDD → migration-refactor → code-review → release-check |
-| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1 已完成** |
-| **Next** | Phase 7.2 诊断 cmd；Phase 5.3 **VM/人工**验收 V1、V4/V5、V7b、V8、V9 |
+| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.2 已完成** |
+| **Next** | Phase 7.3 遗留脚本；Phase 5.3 **VM/人工**验收 V1、V4/V5、V7b、V8、V9 |
 
 ---
 
@@ -318,7 +318,7 @@ powershell -File Restart-Tray.ps1
 | 子阶段 | 代号 | 方案 | 状态 |
 |--------|------|------|------|
 | **7.1** | 7P-launchers-dev | 根目录 `Register-AllTasks.cmd` 等；删除等价 `.ps1` | **已完成** |
-| **7.2** | 7P-status | `Status.cmd` 不调用 PowerShell | 未开始 |
+| **7.2** | 7P-status | `Status.cmd` 不调用 PowerShell | **已完成** |
 | **7.3** | 7P-legacy | `Repair`/`Setup-All` 遗留脚本 | 未开始 |
 | **7.4** | 7P-xaml | XAML 源文件化（可选） | 未开始 |
 | **7.5** | 7P-publish | `dotnet publish` 链（可选） | 未开始 |
