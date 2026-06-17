@@ -562,13 +562,51 @@
         }
     }
 
+    Describe 'Phase 6.2 exe-only launchers' {
+        It 'Start-Core.cmd launches engine exe without PowerShell' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Start-Core.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Engine\.exe'
+            $content | Should -Not -Match 'powershell\.exe'
+            $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
+        }
+
+        It 'Start-Tray.cmd launches tray exe without PowerShell fallback' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Start-Tray.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Tray\.exe'
+            $content | Should -Not -Match 'powershell\.exe'
+            $content | Should -Not -Match 'SmartGuard\.Tray\.ps1'
+        }
+
+        It 'Restart-Tray.cmd launches tray exe without PowerShell' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Restart-Tray.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Tray\.exe'
+            $content | Should -Not -Match 'powershell\.exe'
+        }
+
+        It 'ToastShortcutResolver does not fall back to powershell.exe' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Toast\ToastShortcutResolver.cs') -Raw -Encoding UTF8
+            $content | Should -Not -Match 'powershell\.exe'
+        }
+
+        It 'Register-AllTasks uses Engine install instead of Register ps1 scripts' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Register-AllTasks.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Engine\.exe'
+            $content | Should -Match '--install'
+            $content | Should -Not -Match 'Register-SmartGuardTask\.ps1'
+        }
+    }
+
     Describe 'Phase 1 launcher and tasks' {
-        It 'Start-Core prefers C# engine with PS fallback' {
+        It 'Start-Core.ps1 runs engine exe only without PS core fallback' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Start-Core.ps1') -Raw -Encoding UTF8
             $content | Should -Match 'SmartGuard\.Engine\.exe'
-            $content | Should -Match 'SmartGuard\.Core\.ps1'
-            $content.IndexOf('SmartGuard.Engine.exe') | Should -BeLessThan $content.IndexOf('SmartGuard.Core.ps1')
+            $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
         }
 
         It 'Register-TrayTask resolves paths from script root' {

@@ -3,8 +3,14 @@ chcp 65001 >nul
 setlocal EnableExtensions
 cd /d "%~dp0"
 title SmartGuard Tray
-if exist "%~dp0bin\SmartGuard.Tray.exe" (
-  start "" "%~dp0bin\SmartGuard.Tray.exe" --root "%~dp0"
-) else (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Sta -File "%~dp0lib\SmartGuard.Tray.ps1"
+
+if not exist "%~dp0bin\SmartGuard.Tray.exe" (
+    echo.
+    echo ERROR: SmartGuard.Tray.exe not found.
+    echo Run scripts\Publish-Tray.ps1 or reinstall SmartGuard.
+    echo.
+    pause
+    exit /b 1
 )
+
+start "" "%~dp0bin\SmartGuard.Tray.exe" --root "%~dp0"

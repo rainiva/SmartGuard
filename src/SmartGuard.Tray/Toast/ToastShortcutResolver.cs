@@ -25,6 +25,8 @@ public static class ToastShortcutResolver
       return new ToastShortcutTarget(restartTray, string.Empty, workingDirectory);
     }
 
-    return new ToastShortcutTarget("powershell.exe", string.Empty, workingDirectory);
+    throw new FileNotFoundException(
+      "SmartGuard tray launcher not found. Expected bin\\SmartGuard.Tray.exe or Start-Tray.cmd.",
+      trayExe);
   }
 }

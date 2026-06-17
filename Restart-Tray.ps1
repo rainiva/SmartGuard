@@ -1,31 +1,20 @@
-﻿# Restart-Tray.ps1 - 结束旧托盘并启动新版
+﻿# Restart-Tray.ps1 - stop old tray and start SmartGuard.Tray.exe
 #Requires -Version 5.1
 $root = if ($PSScriptRoot) { $PSScriptRoot } else { 'D:\Project\SmartGuard' }
 $trayExe = Join-Path $root 'bin\SmartGuard.Tray.exe'
-$trayScript = Join-Path $root 'lib\SmartGuard.Tray.ps1'
-
-Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like '*SmartGuard.Tray.ps1*' } |
-    ForEach-Object {
-        Write-Host "结束旧托盘进程 PID=$($_.ProcessId)"
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-    }
 
 Get-Process -Name 'SmartGuard.Tray' -ErrorAction SilentlyContinue |
     ForEach-Object {
-        Write-Host "结束旧 C# 托盘 PID=$($_.Id)"
+        Write-Host "Stopping tray PID=$($_.Id)"
         Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
     }
 
 Start-Sleep -Milliseconds 600
 
-if (Test-Path -LiteralPath $trayExe) {
-    Start-Process -FilePath $trayExe -ArgumentList "--root `"$root`"" -WorkingDirectory $root
-    Write-Host '托盘已重启（C# SmartGuard.Tray.exe）。请在任务栏右下角查看。'
+if (-not (Test-Path -LiteralPath $trayExe)) {
+    Write-Error "SmartGuard.Tray.exe not found at $trayExe"
+    exit 1
 }
-else {
-    Start-Process -FilePath 'powershell.exe' -WorkingDirectory $root -WindowStyle Hidden -ArgumentList @(
-        '-NoProfile', '-ExecutionPolicy Bypass', '-Sta', '-File', $trayScript
-    )
-    Write-Host '托盘已重启（PowerShell 回退）。请在任务栏右下角查看。'
-}
+
+Start-Process -FilePath $trayExe -ArgumentList "--root `"$root`"" -WorkingDirectory $root
+Write-Host 'Tray restarted (SmartGuard.Tray.exe). Check the notification area.'
