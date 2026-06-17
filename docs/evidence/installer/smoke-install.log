@@ -1,0 +1,254 @@
+﻿2026-06-16 20:10:55.647   Log opened. (Time zone: UTC+08:00)
+2026-06-16 20:10:55.647   Setup version: Inno Setup version 6.7.3
+2026-06-16 20:10:55.647   Original Setup EXE: D:\Project\SmartGuard\dist\SmartGuard-Setup-1.0.0-x64.exe
+2026-06-16 20:10:55.647   Setup command line: /SL5="$50BE0,63048964,893952,D:\Project\SmartGuard\dist\SmartGuard-Setup-1.0.0-x64.exe" /SILENT /SUPPRESSMSGBOXES /DIR=D:\SmartGuard-Smoke /LOG=D:\Project\SmartGuard\docs\evidence\installer\smoke-install.log /TASKS="" 
+2026-06-16 20:10:55.647   Compatibility mode: Yes (Installer)
+2026-06-16 20:10:55.647   Windows version: 10.0.26200
+2026-06-16 20:10:55.647   Windows architecture: x64 (64-bit)
+2026-06-16 20:10:55.648   Machine types supported by system: x86 x64
+2026-06-16 20:10:55.648   User privileges: Administrative
+2026-06-16 20:10:55.652   Administrative install mode: No
+2026-06-16 20:10:55.652   Install mode root key: HKEY_CURRENT_USER
+2026-06-16 20:10:55.652   64-bit install mode: Yes
+2026-06-16 20:10:55.652   RedirectionGuard status for current process: Enabled in enforcing mode
+2026-06-16 20:10:55.654   Created protected temporary directory: C:\Users\coxte\AppData\Local\Temp\is-VAO0O07BH7.tmp
+2026-06-16 20:10:55.944   Found 18 files to register with RestartManager.
+2026-06-16 20:10:55.944   Calling RestartManager's RmGetList.
+2026-06-16 20:10:55.952   RmGetList finished successfully.
+2026-06-16 20:10:55.952   RestartManager found no applications using one of our files.
+2026-06-16 20:10:55.967   Starting the installation process.
+2026-06-16 20:10:55.974   Creating directory: D:\SmartGuard-Smoke
+2026-06-16 20:10:55.977   Directory for uninstall files: D:\SmartGuard-Smoke
+2026-06-16 20:10:55.977   Creating new uninstall log: D:\SmartGuard-Smoke\unins000.dat
+2026-06-16 20:10:55.982   -- File entry --
+2026-06-16 20:10:55.983   Dest filename: D:\SmartGuard-Smoke\unins000.exe
+2026-06-16 20:10:55.983   Non-default bitness: 32-bit
+2026-06-16 20:10:55.985   Time stamp of our file: 2026-06-16 20:10:55.044
+2026-06-16 20:10:55.985   Installing the file.
+2026-06-16 20:10:57.211   Successfully installed the file.
+2026-06-16 20:10:57.215   -- File entry --
+2026-06-16 20:10:57.215   Dest filename: D:\SmartGuard-Smoke\bin\Microsoft.Toolkit.Uwp.Notifications.dll
+2026-06-16 20:10:57.216   Time stamp of our file: 2022-11-02 01:32:52.000
+2026-06-16 20:10:57.216   Installing the file.
+2026-06-16 20:10:57.216   Creating directory: D:\SmartGuard-Smoke\bin
+2026-06-16 20:10:57.230   Successfully installed the file.
+2026-06-16 20:10:57.230   -- File entry --
+2026-06-16 20:10:57.231   Dest filename: D:\SmartGuard-Smoke\bin\Microsoft.Win32.SystemEvents.dll
+2026-06-16 20:10:57.231   Time stamp of our file: 2024-10-29 10:43:48.000
+2026-06-16 20:10:57.231   Installing the file.
+2026-06-16 20:10:57.237   Successfully installed the file.
+2026-06-16 20:10:57.237   -- File entry --
+2026-06-16 20:10:57.238   Dest filename: D:\SmartGuard-Smoke\bin\Microsoft.Windows.SDK.NET.dll
+2026-06-16 20:10:57.239   Time stamp of our file: 2024-11-12 01:26:40.000
+2026-06-16 20:10:57.239   Installing the file.
+2026-06-16 20:10:57.596   Successfully installed the file.
+2026-06-16 20:10:57.596   -- File entry --
+2026-06-16 20:10:57.596   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Configuration.dll
+2026-06-16 20:10:57.597   Time stamp of our file: 2026-06-16 19:17:48.000
+2026-06-16 20:10:57.597   Installing the file.
+2026-06-16 20:10:57.599   Successfully installed the file.
+2026-06-16 20:10:57.599   -- File entry --
+2026-06-16 20:10:57.600   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Configuration.pdb
+2026-06-16 20:10:57.600   Time stamp of our file: 2026-06-16 19:17:48.000
+2026-06-16 20:10:57.600   Installing the file.
+2026-06-16 20:10:57.602   Successfully installed the file.
+2026-06-16 20:10:57.602   -- File entry --
+2026-06-16 20:10:57.603   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Contracts.dll
+2026-06-16 20:10:57.603   Time stamp of our file: 2026-06-16 19:17:48.000
+2026-06-16 20:10:57.604   Installing the file.
+2026-06-16 20:10:57.607   Successfully installed the file.
+2026-06-16 20:10:57.607   -- File entry --
+2026-06-16 20:10:57.608   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Contracts.pdb
+2026-06-16 20:10:57.608   Time stamp of our file: 2026-06-16 19:17:48.000
+2026-06-16 20:10:57.608   Installing the file.
+2026-06-16 20:10:57.609   Successfully installed the file.
+2026-06-16 20:10:57.609   -- File entry --
+2026-06-16 20:10:57.609   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Engine.deps.json
+2026-06-16 20:10:57.609   Time stamp of our file: 2026-06-16 19:52:44.000
+2026-06-16 20:10:57.609   Installing the file.
+2026-06-16 20:10:57.611   Successfully installed the file.
+2026-06-16 20:10:57.611   -- File entry --
+2026-06-16 20:10:57.612   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Engine.dll
+2026-06-16 20:10:57.612   Time stamp of our file: 2026-06-16 19:24:00.000
+2026-06-16 20:10:57.612   Installing the file.
+2026-06-16 20:10:57.616   Successfully installed the file.
+2026-06-16 20:10:57.616   -- File entry --
+2026-06-16 20:10:57.616   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Engine.exe
+2026-06-16 20:10:57.617   Time stamp of our file: 2026-06-16 19:24:00.000
+2026-06-16 20:10:57.617   Installing the file.
+2026-06-16 20:10:57.623   Successfully installed the file.
+2026-06-16 20:10:57.624   -- File entry --
+2026-06-16 20:10:57.624   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Engine.pdb
+2026-06-16 20:10:57.624   Time stamp of our file: 2026-06-16 19:24:00.000
+2026-06-16 20:10:57.624   Installing the file.
+2026-06-16 20:10:57.626   Successfully installed the file.
+2026-06-16 20:10:57.626   -- File entry --
+2026-06-16 20:10:57.627   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Engine.runtimeconfig.json
+2026-06-16 20:10:57.627   Time stamp of our file: 2026-06-16 19:52:44.000
+2026-06-16 20:10:57.627   Installing the file.
+2026-06-16 20:10:57.629   Successfully installed the file.
+2026-06-16 20:10:57.629   -- File entry --
+2026-06-16 20:10:57.629   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.LogViewer.deps.json
+2026-06-16 20:10:57.629   Time stamp of our file: 2026-06-16 19:53:20.000
+2026-06-16 20:10:57.629   Installing the file.
+2026-06-16 20:10:57.631   Successfully installed the file.
+2026-06-16 20:10:57.631   -- File entry --
+2026-06-16 20:10:57.632   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.LogViewer.dll
+2026-06-16 20:10:57.632   Time stamp of our file: 2026-06-16 19:34:24.000
+2026-06-16 20:10:57.632   Installing the file.
+2026-06-16 20:10:57.635   Successfully installed the file.
+2026-06-16 20:10:57.635   -- File entry --
+2026-06-16 20:10:57.635   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.LogViewer.exe
+2026-06-16 20:10:57.636   Time stamp of our file: 2026-06-16 19:34:24.000
+2026-06-16 20:10:57.636   Installing the file.
+2026-06-16 20:10:57.639   Successfully installed the file.
+2026-06-16 20:10:57.640   -- File entry --
+2026-06-16 20:10:57.640   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.LogViewer.pdb
+2026-06-16 20:10:57.640   Time stamp of our file: 2026-06-16 19:34:24.000
+2026-06-16 20:10:57.640   Installing the file.
+2026-06-16 20:10:57.642   Successfully installed the file.
+2026-06-16 20:10:57.642   -- File entry --
+2026-06-16 20:10:57.642   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.LogViewer.runtimeconfig.json
+2026-06-16 20:10:57.642   Time stamp of our file: 2026-06-16 19:53:20.000
+2026-06-16 20:10:57.642   Installing the file.
+2026-06-16 20:10:57.643   Successfully installed the file.
+2026-06-16 20:10:57.643   -- File entry --
+2026-06-16 20:10:57.644   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Settings.deps.json
+2026-06-16 20:10:57.644   Time stamp of our file: 2026-06-16 19:53:20.000
+2026-06-16 20:10:57.644   Installing the file.
+2026-06-16 20:10:57.645   Successfully installed the file.
+2026-06-16 20:10:57.646   -- File entry --
+2026-06-16 20:10:57.646   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Settings.dll
+2026-06-16 20:10:57.646   Time stamp of our file: 2026-06-16 19:24:44.000
+2026-06-16 20:10:57.646   Installing the file.
+2026-06-16 20:10:57.649   Successfully installed the file.
+2026-06-16 20:10:57.649   -- File entry --
+2026-06-16 20:10:57.650   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Settings.exe
+2026-06-16 20:10:57.650   Time stamp of our file: 2026-06-16 19:24:44.000
+2026-06-16 20:10:57.650   Installing the file.
+2026-06-16 20:10:57.656   Successfully installed the file.
+2026-06-16 20:10:57.656   -- File entry --
+2026-06-16 20:10:57.656   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Settings.pdb
+2026-06-16 20:10:57.657   Time stamp of our file: 2026-06-16 19:24:44.000
+2026-06-16 20:10:57.657   Installing the file.
+2026-06-16 20:10:57.658   Successfully installed the file.
+2026-06-16 20:10:57.658   -- File entry --
+2026-06-16 20:10:57.659   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Settings.runtimeconfig.json
+2026-06-16 20:10:57.659   Time stamp of our file: 2026-06-16 19:53:20.000
+2026-06-16 20:10:57.659   Installing the file.
+2026-06-16 20:10:57.660   Successfully installed the file.
+2026-06-16 20:10:57.661   -- File entry --
+2026-06-16 20:10:57.661   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Tray.deps.json
+2026-06-16 20:10:57.662   Time stamp of our file: 2026-06-16 19:52:50.000
+2026-06-16 20:10:57.662   Installing the file.
+2026-06-16 20:10:57.663   Successfully installed the file.
+2026-06-16 20:10:57.663   -- File entry --
+2026-06-16 20:10:57.663   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Tray.dll
+2026-06-16 20:10:57.664   Time stamp of our file: 2026-06-16 19:54:26.000
+2026-06-16 20:10:57.664   Installing the file.
+2026-06-16 20:10:57.667   Successfully installed the file.
+2026-06-16 20:10:57.667   -- File entry --
+2026-06-16 20:10:57.668   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Tray.exe
+2026-06-16 20:10:57.668   Time stamp of our file: 2026-06-16 19:54:26.000
+2026-06-16 20:10:57.668   Installing the file.
+2026-06-16 20:10:57.672   Successfully installed the file.
+2026-06-16 20:10:57.672   -- File entry --
+2026-06-16 20:10:57.672   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Tray.pdb
+2026-06-16 20:10:57.673   Time stamp of our file: 2026-06-16 19:54:26.000
+2026-06-16 20:10:57.673   Installing the file.
+2026-06-16 20:10:57.674   Successfully installed the file.
+2026-06-16 20:10:57.674   -- File entry --
+2026-06-16 20:10:57.674   Dest filename: D:\SmartGuard-Smoke\bin\SmartGuard.Tray.runtimeconfig.json
+2026-06-16 20:10:57.674   Time stamp of our file: 2026-06-16 19:52:50.000
+2026-06-16 20:10:57.675   Installing the file.
+2026-06-16 20:10:57.676   Successfully installed the file.
+2026-06-16 20:10:57.676   -- File entry --
+2026-06-16 20:10:57.677   Dest filename: D:\SmartGuard-Smoke\bin\System.CodeDom.dll
+2026-06-16 20:10:57.677   Time stamp of our file: 2026-05-21 03:31:48.000
+2026-06-16 20:10:57.677   Installing the file.
+2026-06-16 20:10:57.685   Successfully installed the file.
+2026-06-16 20:10:57.685   -- File entry --
+2026-06-16 20:10:57.686   Dest filename: D:\SmartGuard-Smoke\bin\System.Management.dll
+2026-06-16 20:10:57.686   Time stamp of our file: 2026-05-21 03:33:18.000
+2026-06-16 20:10:57.686   Installing the file.
+2026-06-16 20:10:57.696   Successfully installed the file.
+2026-06-16 20:10:57.696   -- File entry --
+2026-06-16 20:10:57.697   Dest filename: D:\SmartGuard-Smoke\bin\System.Text.Encoding.CodePages.dll
+2026-06-16 20:10:57.697   Time stamp of our file: 2024-10-29 10:40:32.000
+2026-06-16 20:10:57.697   Installing the file.
+2026-06-16 20:10:57.717   Successfully installed the file.
+2026-06-16 20:10:57.718   -- File entry --
+2026-06-16 20:10:57.718   Dest filename: D:\SmartGuard-Smoke\bin\WinRT.Runtime.dll
+2026-06-16 20:10:57.718   Time stamp of our file: 2024-11-12 01:26:40.000
+2026-06-16 20:10:57.718   Installing the file.
+2026-06-16 20:10:57.734   Successfully installed the file.
+2026-06-16 20:10:57.734   -- File entry --
+2026-06-16 20:10:57.735   Dest filename: D:\SmartGuard-Smoke\lib\SmartGuard.ico
+2026-06-16 20:10:57.735   Time stamp of our file: 2026-06-16 19:54:26.000
+2026-06-16 20:10:57.735   Installing the file.
+2026-06-16 20:10:57.735   Creating directory: D:\SmartGuard-Smoke\lib
+2026-06-16 20:10:57.737   Successfully installed the file.
+2026-06-16 20:10:57.737   -- File entry --
+2026-06-16 20:10:57.738   Dest filename: D:\SmartGuard-Smoke\lib\SmartGuard.Settings.xaml
+2026-06-16 20:10:57.738   Time stamp of our file: 2026-06-16 19:54:30.000
+2026-06-16 20:10:57.738   Installing the file.
+2026-06-16 20:10:57.739   Successfully installed the file.
+2026-06-16 20:10:57.739   -- File entry --
+2026-06-16 20:10:57.740   Dest filename: D:\SmartGuard-Smoke\Register-SmartGuardTask.ps1
+2026-06-16 20:10:57.740   Time stamp of our file: 2026-06-16 19:14:18.000
+2026-06-16 20:10:57.740   Installing the file.
+2026-06-16 20:10:57.741   Successfully installed the file.
+2026-06-16 20:10:57.741   -- File entry --
+2026-06-16 20:10:57.741   Dest filename: D:\SmartGuard-Smoke\Register-TrayTask.ps1
+2026-06-16 20:10:57.741   Time stamp of our file: 2026-06-16 19:14:18.000
+2026-06-16 20:10:57.741   Installing the file.
+2026-06-16 20:10:57.742   Successfully installed the file.
+2026-06-16 20:10:57.742   -- File entry --
+2026-06-16 20:10:57.743   Dest filename: D:\SmartGuard-Smoke\license_zh-CN.txt
+2026-06-16 20:10:57.743   Time stamp of our file: 2026-06-16 19:48:16.000
+2026-06-16 20:10:57.743   Installing the file.
+2026-06-16 20:10:57.745   Successfully installed the file.
+2026-06-16 20:10:57.745   -- File entry --
+2026-06-16 20:10:57.746   Dest filename: C:\Users\coxte\AppData\Local\Temp\is-VAO0O07BH7.tmp\windowsdesktop-runtime-8.0.18-win-x64.exe
+2026-06-16 20:10:57.747   Time stamp of our file: 2026-06-16 19:55:20.000
+2026-06-16 20:10:57.747   Installing the file.
+2026-06-16 20:10:58.202   Successfully installed the file.
+2026-06-16 20:10:58.204   -- Icon entry --
+2026-06-16 20:10:58.204   Dest filename: C:\Users\coxte\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\SmartGuard\SmartGuard 托盘.lnk
+2026-06-16 20:10:58.206   Creating directory: C:\Users\coxte\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\SmartGuard
+2026-06-16 20:10:58.227   Creating the icon.
+2026-06-16 20:10:58.255   Successfully created the icon.
+2026-06-16 20:10:58.271   -- Icon entry --
+2026-06-16 20:10:58.271   Dest filename: C:\Users\coxte\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\SmartGuard\SmartGuard 设置.lnk
+2026-06-16 20:10:58.273   Creating the icon.
+2026-06-16 20:10:58.277   Successfully created the icon.
+2026-06-16 20:10:58.290   -- Icon entry --
+2026-06-16 20:10:58.290   Dest filename: C:\Users\coxte\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\SmartGuard\SmartGuard 日志.lnk
+2026-06-16 20:10:58.292   Creating the icon.
+2026-06-16 20:10:58.297   Successfully created the icon.
+2026-06-16 20:10:58.313   -- Icon entry --
+2026-06-16 20:10:58.313   Dest filename: C:\Users\coxte\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\SmartGuard\卸载 SmartGuard.lnk
+2026-06-16 20:10:58.314   Creating the icon.
+2026-06-16 20:10:58.322   Successfully created the icon.
+2026-06-16 20:10:58.333   Saving uninstall information.
+2026-06-16 20:10:58.333   Creating new uninstall key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}_is1
+2026-06-16 20:10:58.333   Writing uninstall key values.
+2026-06-16 20:10:58.334   Detected previous administrative 64-bit install? No
+2026-06-16 20:10:58.334   Detected previous administrative 32-bit install? No
+2026-06-16 20:10:58.337   Installation process succeeded.
+2026-06-16 20:10:58.347   -- Run entry --
+2026-06-16 20:10:58.347   Run as: Current user
+2026-06-16 20:10:58.347   Type: Exec
+2026-06-16 20:10:58.347   Filename: C:\Users\coxte\AppData\Local\Temp\is-VAO0O07BH7.tmp\windowsdesktop-runtime-8.0.18-win-x64.exe
+2026-06-16 20:10:58.347   Parameters: /install /quiet /norestart
+2026-06-16 20:11:10.731   Process exit code: 0
+2026-06-16 20:11:10.734   -- Run entry --
+2026-06-16 20:11:10.734   Run as: Current user
+2026-06-16 20:11:10.734   Type: Exec
+2026-06-16 20:11:10.734   Filename: D:\SmartGuard-Smoke\bin\SmartGuard.Engine.exe
+2026-06-16 20:11:10.734   Parameters: --root "D:\SmartGuard-Smoke" --install --skip-publish
+2026-06-16 20:11:15.842   Process exit code: 0
+2026-06-16 20:11:15.863   Need to restart Windows? No
+2026-06-16 20:11:15.891   Deinitializing Setup.
+2026-06-16 20:11:15.907   Log closed.
+ExitCode: 0

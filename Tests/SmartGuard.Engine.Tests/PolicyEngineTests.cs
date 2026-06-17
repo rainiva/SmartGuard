@@ -1,4 +1,4 @@
-using SmartGuard.Engine.Config;
+using SmartGuard.Configuration;
 using SmartGuard.Engine.Domain;
 
 namespace SmartGuard.Engine.Tests;
@@ -77,5 +77,49 @@ public class PolicyEngineTests
     {
         var g = Guid.Parse("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
         PolicyEngine.ShouldApplyPowerPlanSwitch(g, g).Should().BeFalse();
+    }
+
+    [Fact]
+    public void GetPlanDisplayName_uses_config_alias_before_system_catalog()
+    {
+        var cfg = TestConfig();
+        var catalog = new Dictionary<Guid, string>
+        {
+            [cfg.BalancedPlanGuid] = "平衡(系统名)",
+        };
+
+        PolicyEngine.GetPlanDisplayName(cfg.BalancedPlanGuid, cfg, catalog)
+            .Should().Be("平衡");
+    }
+
+    [Fact]
+    public void GetPlanDisplayName_uses_system_catalog_for_unknown_oem_plan()
+    {
+        var cfg = TestConfig();
+        var oem = Guid.Parse("b8a2c9f4-7d3e-4a1b-9c2f-5e8d6a3b1c4f");
+        var catalog = new Dictionary<Guid, string> { [oem] = "Honor Performance" };
+
+        PolicyEngine.GetPlanDisplayName(oem, cfg, catalog)
+            .Should().Be("Honor Performance");
+    }
+
+    [Fact]
+    public void GetPlanDisplayName_falls_back_to_guid_when_not_in_catalog()
+    {
+        var cfg = TestConfig();
+        var unknown = Guid.Parse("b8a2c9f4-7d3e-441b-9c2f-5e8d6a3b1c4f");
+
+        PolicyEngine.GetPlanDisplayName(unknown, cfg, new Dictionary<Guid, string>())
+            .Should().Be(unknown.ToString());
+    }
+
+    [Fact]
+    public void GetPlanDisplayName_uses_preferred_name_when_catalog_misses()
+    {
+        var cfg = TestConfig();
+        var oem = Guid.Parse("b8a2c9f4-7d3e-4a1b-9c2f-5e8d6a3b1c4f");
+
+        PolicyEngine.GetPlanDisplayName(oem, cfg, new Dictionary<Guid, string>(), "Honor Performance")
+            .Should().Be("Honor Performance");
     }
 }

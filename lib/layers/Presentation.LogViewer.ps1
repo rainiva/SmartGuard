@@ -26,23 +26,51 @@ function Read-LogFileTextFromOffset {
     }
 }
 
+function Merge-SmartGuardLogLinesChronologically {
+    param(
+        [string]$Primary,
+        [string]$Fallback = $null
+    )
+    $entries = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($source in @(
+            @{ Order = 0; Text = $Primary }
+            @{ Order = 1; Text = $Fallback }
+        )) {
+        if ([string]::IsNullOrEmpty($source.Text)) { continue }
+        $newline = if ($source.Text.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $lines = $source.Text -split $newline, 0, 'SimpleMatch'
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line.Length -eq 0 -and $i -eq ($lines.Count - 1)) { continue }
+            $timestamp = $null
+            if ($line -match '(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})') {
+                $timestamp = [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            $entries.Add([pscustomobject]@{
+                Timestamp   = $timestamp
+                SourceOrder = $source.Order
+                LineOrder   = $i
+                Text        = $line
+            }) | Out-Null
+        }
+    }
+    if ($entries.Count -eq 0) { return $null }
+    $sorted = $entries | Sort-Object @{ Expression = { if ($_.Timestamp) { $_.Timestamp } else { [datetime]::MaxValue } } }, SourceOrder, LineOrder
+    return (($sorted | ForEach-Object { $_.Text }) -join [Environment]::NewLine)
+}
+
 function Read-SmartGuardLogText {
     param(
         [string]$LogPath,
         [string]$FallbackLogPath = $null
     )
     $snapshot = Read-LogFileTextFromOffset -Path $LogPath -StartOffset 0
-    $textParts = [System.Collections.Generic.List[string]]::new()
-    if ($snapshot.Text) { $textParts.Add($snapshot.Text.TrimEnd()) | Out-Null }
-
+    $fallbackText = $null
     if ($FallbackLogPath -and (Test-Path -LiteralPath $FallbackLogPath)) {
-        $fallback = Read-LogFileTextFromOffset -Path $FallbackLogPath -StartOffset 0
-        if ($fallback.Text) { $textParts.Add($fallback.Text.TrimEnd()) | Out-Null }
+        $fallbackText = (Read-LogFileTextFromOffset -Path $FallbackLogPath -StartOffset 0).Text
     }
 
-    if ($textParts.Count -eq 0) { return $null }
-    if ($textParts.Count -eq 1) { return $textParts[0] }
-    return ($textParts -join ([Environment]::NewLine + '--- fallback ---' + [Environment]::NewLine))
+    return Merge-SmartGuardLogLinesChronologically -Primary $snapshot.Text -Fallback $fallbackText
 }
 
 function Initialize-LogViewerRedrawHelper {
@@ -204,14 +232,21 @@ function New-SmartGuardLogViewerForm {
     [void]$status.Items.Add($statusLabel)
     $form.Controls.Add($status)
 
+    $contentPanel = New-Object System.Windows.Forms.Panel
+    $contentPanel.Dock = 'Fill'
+    $contentPanel.Padding = New-Object System.Windows.Forms.Padding(12, 10, 12, 10)
+    $contentPanel.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 252)
+    $form.Controls.Add($contentPanel)
+
     $rtb = New-Object System.Windows.Forms.RichTextBox
     $rtb.Dock = 'Fill'
     $rtb.ReadOnly = $true
+    $rtb.BorderStyle = 'None'
     $rtb.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 252)
-    $rtb.Font = New-Object System.Drawing.Font('Consolas', 10)
+    $rtb.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9.75)
     $rtb.WordWrap = $false
     $rtb.HideSelection = $false
-    $form.Controls.Add($rtb)
+    $contentPanel.Controls.Add($rtb)
 
     $viewerState = @{
         LogPath            = $LogPath
@@ -288,6 +323,12 @@ function Get-SmartGuardLogViewerScriptPath {
 function Start-SmartGuardLogViewerProcess {
     param([string]$ScriptRoot = $null)
     $root = Get-SmartGuardRoot -ScriptRoot $ScriptRoot
+    $viewerExe = Join-Path $root 'bin\SmartGuard.LogViewer.exe'
+    if (Test-Path -LiteralPath $viewerExe) {
+        Start-Process -FilePath $viewerExe -ArgumentList @('--root', $root) -WorkingDirectory $root | Out-Null
+        return
+    }
+
     $viewerScript = Get-SmartGuardLogViewerScriptPath -ScriptRoot $root
     if (-not (Test-Path -LiteralPath $viewerScript)) {
         throw ('Missing log viewer script: ' + $viewerScript)

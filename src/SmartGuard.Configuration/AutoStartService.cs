@@ -1,0 +1,103 @@
+using System.Diagnostics;
+
+namespace SmartGuard.Configuration;
+
+public static class AutoStartService
+{
+  public static readonly string[] ScheduledTaskNames =
+  [
+    "SmartGuard Guardian",
+    "SmartGuard Tray",
+  ];
+
+  public static bool NeedsUpdate(bool enabled, bool? previousEnabled)
+  {
+    if (previousEnabled is null) return true;
+    return enabled != previousEnabled.Value;
+  }
+
+  public static void SetEnabled(bool enabled, string root)
+  {
+    foreach (var name in ScheduledTaskNames)
+    {
+      if (TryGetTaskState(name, out var state))
+      {
+        if (enabled)
+        {
+          if (string.Equals(state, "Disabled", StringComparison.OrdinalIgnoreCase))
+            RunSchTasks($"/Change /TN \"{name}\" /ENABLE");
+        }
+        else if (!string.Equals(state, "Disabled", StringComparison.OrdinalIgnoreCase))
+        {
+          RunSchTasks($"/Change /TN \"{name}\" /DISABLE");
+        }
+
+        continue;
+      }
+
+      if (!enabled) continue;
+      var script = name.Contains("Guardian", StringComparison.OrdinalIgnoreCase)
+        ? Path.Combine(root, "Register-SmartGuardTask.ps1")
+        : Path.Combine(root, "Register-TrayTask.ps1");
+      if (File.Exists(script))
+        RunPowerShellScript(script, root);
+    }
+  }
+
+  private static bool TryGetTaskState(string taskName, out string? state)
+  {
+    state = null;
+    try
+    {
+      using var process = Process.Start(new ProcessStartInfo
+      {
+        FileName = "schtasks.exe",
+        Arguments = $"/Query /TN \"{taskName}\" /FO LIST",
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        CreateNoWindow = true,
+      });
+      if (process is null) return false;
+      var output = process.StandardOutput.ReadToEnd();
+      process.WaitForExit();
+      if (process.ExitCode != 0) return false;
+      foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+      {
+        if (line.StartsWith("Status:", StringComparison.OrdinalIgnoreCase))
+        {
+          state = line["Status:".Length..].Trim();
+          return true;
+        }
+      }
+
+      return false;
+    }
+    catch
+    {
+      return false;
+    }
+  }
+
+  private static void RunSchTasks(string arguments)
+  {
+    Process.Start(new ProcessStartInfo
+    {
+      FileName = "schtasks.exe",
+      Arguments = arguments,
+      UseShellExecute = false,
+      CreateNoWindow = true,
+    })?.WaitForExit();
+  }
+
+  private static void RunPowerShellScript(string scriptPath, string root)
+  {
+    Process.Start(new ProcessStartInfo
+    {
+      FileName = "powershell.exe",
+      Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+      WorkingDirectory = root,
+      UseShellExecute = false,
+      CreateNoWindow = true,
+    })?.WaitForExit();
+  }
+}

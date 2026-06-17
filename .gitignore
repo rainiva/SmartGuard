@@ -1,6 +1,7 @@
 ﻿# Runtime / local state
 SmartGuard.log
 SmartGuard.log.old
+SmartGuard.log.*.bak
 SmartGuard.startup.log
 SmartGuard.status.json
 SmartGuard.config.json
@@ -12,8 +13,12 @@ bin/
 **/bin/
 **/obj/
 
+# Installer build artifacts
+installer/staging/
+installer/redist/*.exe
+dist/
+
 # Generated assets (Create-TrayIcon.ps1)
-lib/SmartGuard.ico
 
 # OS / editor
 Thumbs.db

@@ -1,4 +1,5 @@
-using SmartGuard.Engine.Config;
+using SmartGuard.Configuration;
+using SmartGuard.Contracts;
 using SmartGuard.Engine.Domain;
 using SmartGuard.Engine.Infrastructure;
 
@@ -13,112 +14,173 @@ public sealed class GuardianLoop(
 {
   private readonly BrightnessService _brightness = new();
   private readonly HashSet<string> _tickLogFingerprints = new(StringComparer.OrdinalIgnoreCase);
+  private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
   private Guid? _lastKnownGuid;
   private string _lastStatusLabel = string.Empty;
   private DateTime _lastHeartbeat = DateTime.MinValue;
   private bool _scriptJustSwitched;
   private bool _powerCfgBrightnessSupported = true;
+  private int? _lastBrightness;
+  private NotificationEventRetentionState _notificationRetention;
 
   public void Run(CancellationToken cancellationToken = default)
   {
     EnsureConfigExists();
     var config = GuardConfig.LoadFromFile(configPath);
     InitializeIfNeeded(config);
-    WriteLog(config, $"SmartGuard Engine 启动。日志：{config.LogFile}");
+    WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{config.LogFile}");
+
+    using var powerListener = new PowerEventWakeListener(HandlePowerEvent);
 
     while (!cancellationToken.IsCancellationRequested)
     {
       _tickLogFingerprints.Clear();
       try
       {
-        config = GuardConfig.LoadFromFile(configPath);
-        var idle = (int)IdleDetector.GetIdleSeconds();
-        var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
-        var current = PowerCfgExecutor.GetCurrentPlanGuid();
-        var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);
-        NotificationEvent? notifyEvent = null;
-
-        if (PolicyEngine.IsExternalPlanChange(_lastKnownGuid, current, _scriptJustSwitched))
-        {
-          var name = PolicyEngine.GetPlanDisplayName(current, config);
-          WriteLog(config, $"EXTERNAL: 计划被外部改为 {name} ({current}) | 下轮纠偏");
-          notifyEvent = CreateExternalNotification(name);
-        }
-        _scriptJustSwitched = false;
-
-        var label = PolicyEngine.GetStatusLabel(idle, config);
-        var bright = _brightness.GetBrightness();
-
-        if (expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
-        {
-          var result = SwitchWithBrightnessLock(expected.Value, bright, config);
-          _scriptJustSwitched = true;
-          current = PowerCfgExecutor.GetCurrentPlanGuid();
-          var pwr = isOnAc ? "插电" : "电池";
-          var planName = PolicyEngine.GetPlanDisplayName(expected, config);
-          if (bright >= 0)
-          {
-            WriteLog(config, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {planName} | 电量{batteryPercent}% {pwr}");
-            if (result.After != result.Before)
-              WriteLog(config, $"WARN: 亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次");
-          }
-          else
-          {
-            WriteLog(config, $"状态: {label} | 计划切换(切前同步) | {planName} | 亮度WMI不支持");
-          }
-          _lastStatusLabel = label;
-          notifyEvent = CreatePlanSwitchNotification(planName, result.After, result.Before);
-        }
-        else if (_lastStatusLabel != label)
-        {
-          var pwr = isOnAc ? "插电" : "电池";
-          var planName = PolicyEngine.GetPlanDisplayName(current, config);
-          WriteLog(config, $"状态: {label} (空闲{idle}秒) | 计划正常 | {planName} | 电量{batteryPercent}% {pwr}");
-          _lastStatusLabel = label;
-        }
-
-        if (config.HeartbeatIntervalMin > 0 &&
-            (DateTime.Now - _lastHeartbeat).TotalMinutes >= config.HeartbeatIntervalMin)
-        {
-          var planName = PolicyEngine.GetPlanDisplayName(current, config);
-          var pwr = isOnAc ? "插电" : "电池";
-          var pause = config.Paused ? " | 已暂停" : string.Empty;
-          WriteLog(config, $"[监控中] {label} | 计划正常 | {planName} | 电量{batteryPercent}% {pwr}{pause}");
-          _lastHeartbeat = DateTime.Now;
-        }
-
-        new StatusPublisher(statusPath).Publish(new StatusPayload
-        {
-          timestamp = DateTime.Now.ToString("s"),
-          currentPlan = PolicyEngine.GetPlanDisplayName(current, config),
-          currentPlanGUID = current?.ToString(),
-          expectedPlan = expected is null ? null : PolicyEngine.GetPlanDisplayName(expected, config),
-          idleSeconds = idle,
-          isOnAC = isOnAc,
-          batteryPercent = batteryPercent,
-          brightness = bright,
-          paused = config.Paused,
-          lastExternalChange = null,
-          notificationEvent = notifyEvent
-        });
+        ProcessIteration();
       }
       catch (Exception ex)
       {
         try
         {
           var cfg = GuardConfig.LoadFromFile(configPath);
-          WriteLog(cfg, $"ERROR: {ex.Message}");
+          WriteLog(cfg, LogLevel.Error, ex.Message);
         }
         catch
         {
-          FileLogger.WriteLine(fallbackLogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - ERROR: {ex.Message}");
+          FileLogger.Write(LogLevel.Error, fallbackLogPath, ex.Message, long.MaxValue);
         }
       }
 
       _lastKnownGuid = PowerCfgExecutor.GetCurrentPlanGuid();
       var interval = GuardConfig.LoadFromFile(configPath).CheckIntervalSec;
-      Thread.Sleep(TimeSpan.FromSeconds(Math.Max(5, interval)));
+      WaitForNextIteration(Math.Max(5, interval), cancellationToken);
     }
+  }
+
+  private void HandlePowerEvent(bool isOnAc)
+  {
+    try
+    {
+      var cfg = GuardConfig.LoadFromFile(configPath);
+      WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc));
+    }
+    catch
+    {
+      // ignore logging failures on system event thread
+    }
+
+    _wakeSignal.Release();
+  }
+
+  private void WaitForNextIteration(int intervalSeconds, CancellationToken cancellationToken)
+  {
+    if (_wakeSignal.Wait(0, cancellationToken)) return;
+    _wakeSignal.Wait(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
+    while (_wakeSignal.Wait(0, cancellationToken)) { }
+  }
+
+  private void ProcessIteration()
+  {
+    var config = GuardConfig.LoadFromFile(configPath);
+    var planCatalog = PowerCfgExecutor.LoadPowerPlanCatalog();
+    var idle = (int)IdleDetector.GetIdleSeconds();
+    var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
+    var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
+    var current = activePlanInfo?.Guid;
+    var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);
+    NotificationEvent? notifyEvent = null;
+
+    if (PolicyEngine.IsExternalPlanChange(_lastKnownGuid, current, _scriptJustSwitched))
+    {
+      var name = ResolvePlanName(current, config, planCatalog, activePlanInfo);
+      WriteLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {name} ({current}) | 下轮纠偏");
+      notifyEvent = CreateExternalNotification(name);
+    }
+    _scriptJustSwitched = false;
+
+    var label = PolicyEngine.GetStatusLabel(idle, config);
+    var bright = _brightness.GetBrightness();
+    LogBrightnessChangeIfNeeded(config, bright);
+
+    if (expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
+    {
+      var result = SwitchWithBrightnessLock(expected.Value, bright, config);
+      _scriptJustSwitched = true;
+      activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
+      current = activePlanInfo?.Guid;
+      var pwr = isOnAc ? "插电" : "电池";
+      var planName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
+      if (bright >= 0)
+      {
+        WriteLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {planName} | 电量{batteryPercent}% {pwr}");
+        if (result.After != result.Before)
+          WriteLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次");
+      }
+      else
+      {
+        WriteLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {planName} | 亮度WMI不支持");
+      }
+      _lastStatusLabel = label;
+      notifyEvent = CreatePlanSwitchNotification(planName, result.After, result.Before);
+    }
+    else if (_lastStatusLabel != label)
+    {
+      var pwr = isOnAc ? "插电" : "电池";
+      var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
+      WriteLog(config, LogLevel.Info,
+        GuardianLogMessages.FormatStatusLabelChange(label, idle, planName, batteryPercent, isOnAc, bright));
+      _lastStatusLabel = label;
+    }
+
+    if (config.HeartbeatIntervalMin > 0 &&
+        (DateTime.Now - _lastHeartbeat).TotalMinutes >= config.HeartbeatIntervalMin)
+    {
+      var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
+      WriteLog(config, LogLevel.Heart,
+        GuardianLogMessages.FormatHeartbeat(label, planName, batteryPercent, isOnAc, config.Paused, bright));
+      _lastHeartbeat = DateTime.Now;
+    }
+
+    _notificationRetention = NotificationEventRetention.Advance(
+      notifyEvent,
+      _notificationRetention,
+      DateTime.Now);
+
+    new StatusPublisher(statusPath).Publish(new StatusPayload
+    {
+      timestamp = DateTime.Now.ToString("s"),
+      currentPlan = ResolvePlanName(current, config, planCatalog, activePlanInfo),
+      currentPlanGUID = current?.ToString(),
+      expectedPlan = expected is null ? null : ResolvePlanName(expected, config, planCatalog, activePlanInfo),
+      idleSeconds = idle,
+      isOnAC = isOnAc,
+      batteryPercent = batteryPercent,
+      brightness = bright,
+      paused = config.Paused,
+      lastExternalChange = null,
+      notificationEvent = _notificationRetention.Event
+    });
+  }
+
+  private void LogBrightnessChangeIfNeeded(GuardConfig config, int brightness)
+  {
+    if (brightness < 0) return;
+
+    if (_lastBrightness is int previous && previous != brightness)
+      WriteLog(config, LogLevel.Info, GuardianLogMessages.FormatBrightnessChange(previous, brightness));
+
+    _lastBrightness = brightness;
+  }
+
+  private static string ResolvePlanName(
+    Guid? planGuid,
+    GuardConfig config,
+    IReadOnlyDictionary<Guid, string> planCatalog,
+    PowerSchemeInfo? activePlanInfo)
+  {
+    var preferredName = planGuid == activePlanInfo?.Guid ? activePlanInfo?.Name : null;
+    return PolicyEngine.GetPlanDisplayName(planGuid, config, planCatalog, preferredName);
   }
 
   private (int Before, int After) SwitchWithBrightnessLock(Guid target, int brightnessBefore, GuardConfig config)
@@ -141,7 +203,7 @@ public sealed class GuardianLoop(
   private void InitializeIfNeeded(GuardConfig config)
   {
     if (File.Exists(initMarkerPath)) return;
-    WriteLog(config, "INIT: 开始首次初始化...");
+    WriteLog(config, LogLevel.Info, "INIT: 开始首次初始化...");
     _powerCfgBrightnessSupported = PowerCfgExecutor.IsBrightnessSupported(config.BalancedPlanGuid);
     if (_powerCfgBrightnessSupported)
     {
@@ -154,16 +216,16 @@ public sealed class GuardianLoop(
       {
         foreach (var g in new[] { config.ActivePlanGuid, config.BalancedPlanGuid, config.PowerSaverPlanGuid })
           PowerCfgExecutor.SyncPlanBrightness(g, b);
-        WriteLog(config, $"INIT: powercfg 三计划亮度对齐为 {b}%");
+        WriteLog(config, LogLevel.Info, $"INIT: powercfg 三计划亮度对齐为 {b}%");
       }
     }
     else
     {
-      WriteLog(config, "INIT: 本机不支持 powercfg 亮度项，已切换为 WMI-only 模式（切计划后写回亮度）");
+      WriteLog(config, LogLevel.Info, "INIT: 本机不支持 powercfg 亮度项，已切换为 WMI-only 模式（切计划后写回亮度）");
     }
-    WriteLog(config, "INIT: 请手动关闭 CABC 与节电模式降亮度");
+    WriteLog(config, LogLevel.Info, "INIT: 请手动关闭 CABC 与节电模式降亮度");
     File.WriteAllText(initMarkerPath, DateTime.Now.ToString("s"));
-    WriteLog(config, "INIT: 首次初始化完成");
+    WriteLog(config, LogLevel.Info, "INIT: 首次初始化完成");
   }
 
   private void EnsureConfigExists()
@@ -174,19 +236,17 @@ public sealed class GuardianLoop(
     File.WriteAllText(configPath, System.Text.Json.JsonSerializer.Serialize(cfg, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
   }
 
-  private void WriteLog(GuardConfig config, string message)
+  private void WriteLog(GuardConfig config, LogLevel level, string message)
   {
     var fp = message.Trim().ToLowerInvariant();
     if (!_tickLogFingerprints.Add(fp)) return;
-    var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {message}";
     try
     {
-      FileLogger.RotateIfNeeded(config.LogFile, config.LogMaxBytes);
-      FileLogger.WriteLine(config.LogFile, line);
+      FileLogger.Write(level, config.LogFile, message, config.LogMaxBytes);
     }
     catch
     {
-      FileLogger.WriteLine(fallbackLogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - [LOG-FALLBACK] {message}");
+      FileLogger.Write(LogLevel.Warn, fallbackLogPath, $"[LOG-FALLBACK] {message}", long.MaxValue);
     }
   }
 

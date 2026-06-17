@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SmartGuard.LogViewer</RootNamespace>
+    <AssemblyName>SmartGuard.LogViewer</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>..\..\lib\SmartGuard.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmartGuard.Configuration\SmartGuard.Configuration.csproj" />
+    <ProjectReference Include="..\SmartGuard.Contracts\SmartGuard.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

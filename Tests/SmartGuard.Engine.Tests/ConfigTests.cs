@@ -1,5 +1,5 @@
 using System.Text.Json;
-using SmartGuard.Engine.Config;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Tests;
 

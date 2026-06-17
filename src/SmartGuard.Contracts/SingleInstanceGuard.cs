@@ -1,8 +1,9 @@
-namespace SmartGuard.Engine.Infrastructure;
+namespace SmartGuard.Contracts;
 
 public sealed class SingleInstanceGuard : IDisposable
 {
   private readonly Mutex _mutex;
+
   public bool IsOwner { get; }
 
   private SingleInstanceGuard(Mutex mutex, bool isOwner)
@@ -11,7 +12,7 @@ public sealed class SingleInstanceGuard : IDisposable
     IsOwner = isOwner;
   }
 
-  public static SingleInstanceGuard TryAcquire(string component = "Core")
+  public static SingleInstanceGuard TryAcquire(string component)
   {
     var name = $"Global\\SmartGuard.{component}";
     var mutex = new Mutex(false, name);

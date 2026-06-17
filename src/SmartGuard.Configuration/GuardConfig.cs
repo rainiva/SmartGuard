@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace SmartGuard.Engine.Config;
+namespace SmartGuard.Configuration;
 
 public sealed class GuardConfig
 {
@@ -36,9 +36,7 @@ public sealed class GuardConfig
   }
 
   public static GuardConfig LoadFromFile(string path)
-  {
-    return LoadFromJson(File.ReadAllText(path));
-  }
+    => LoadFromJson(File.ReadAllText(path));
 
   public static GuardConfig CreateDefault(string root)
   {
@@ -59,14 +57,14 @@ public sealed class GuardConfig
       BrightnessRetryDelayMs = 100,
       NotifyOnPlanChange = true,
       HeartbeatIntervalMin = 10,
-      AutoStartEnabled = true
+      AutoStartEnabled = true,
     };
   }
 
-  private static readonly JsonSerializerOptions JsonOptions = new()
+  internal static JsonSerializerOptions JsonOptions { get; } = new()
   {
     PropertyNameCaseInsensitive = true,
     ReadCommentHandling = JsonCommentHandling.Skip,
-    AllowTrailingCommas = true
+    AllowTrailingCommas = true,
   };
 }

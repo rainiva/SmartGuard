@@ -61,3 +61,22 @@ function ConvertTo-StatusNotificationEvent {
         at    = [string]$Raw.at
     }
 }
+
+function Update-StatusNotificationRetention {
+    param(
+        $NewEvent,
+        [datetime]$Now,
+        [int]$RetainSeconds = 60
+    )
+    if ($NewEvent) {
+        $script:RetainedNotification = $NewEvent
+        $script:RetainedNotificationUntil = $Now.AddSeconds($RetainSeconds)
+        return $NewEvent
+    }
+    if ($script:RetainedNotification -and $Now -le $script:RetainedNotificationUntil) {
+        return $script:RetainedNotification
+    }
+    $script:RetainedNotification = $null
+    $script:RetainedNotificationUntil = $null
+    return $null
+}

@@ -2,6 +2,7 @@
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $root = if ($PSScriptRoot) { $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+$engineExe = Join-Path $root 'bin\SmartGuard.Engine.exe'
 $coreScript = Join-Path $root 'lib\SmartGuard.Core.ps1'
 $logPath = Join-Path $root 'SmartGuard.startup.log'
 
@@ -49,18 +50,36 @@ if (-not (Test-IsAdministrator)) {
     }
 }
 
-Write-StartupLog 'Running Core script'
-Write-Host 'SmartGuard Core is starting (admin)...' -ForegroundColor Green
-Write-Host 'Keep this window open. Closing it stops the service.'
-Write-Host ''
-
-try {
-    & $coreScript
-    Write-StartupLog 'Core script returned normally'
-    Wait-DismissConsole 'SmartGuard Core stopped.'
+if (Test-Path -LiteralPath $engineExe) {
+    Write-StartupLog "Running C# engine: $engineExe"
+    Write-Host 'SmartGuard Engine is starting (admin)...' -ForegroundColor Green
+    Write-Host 'Engine runs in background. Check SmartGuard.log for activity.'
+    Write-Host 'To stop: Stop-Process -Name SmartGuard.Engine'
+    Write-Host ''
+    try {
+        & $engineExe --root $root
+        Write-StartupLog 'Engine exited normally'
+        Wait-DismissConsole 'SmartGuard Engine stopped.'
+    }
+    catch {
+        Write-StartupLog ("Engine failed: {0}" -f $_.Exception.Message)
+        Wait-DismissConsole ("SmartGuard Engine failed: {0}" -f $_.Exception.Message)
+        exit 1
+    }
 }
-catch {
-    Write-StartupLog ("Core failed: {0}" -f $_.Exception.Message)
-    Wait-DismissConsole ("SmartGuard Core failed: {0}" -f $_.Exception.Message)
-    exit 1
+else {
+    Write-StartupLog "Engine exe not found; running PS fallback: $coreScript"
+    Write-Host 'SmartGuard Core is starting (admin, PowerShell fallback)...' -ForegroundColor Green
+    Write-Host 'Keep this window open. Closing it stops the service.'
+    Write-Host ''
+    try {
+        & $coreScript
+        Write-StartupLog 'Core script returned normally'
+        Wait-DismissConsole 'SmartGuard Core stopped.'
+    }
+    catch {
+        Write-StartupLog ("Core failed: {0}" -f $_.Exception.Message)
+        Wait-DismissConsole ("SmartGuard Core failed: {0}" -f $_.Exception.Message)
+        exit 1
+    }
 }

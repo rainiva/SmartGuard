@@ -9,6 +9,7 @@ if (Test-Path $_layersRoot) {
         'Domain.Idempotency.ps1',
         'Domain.StatusEvents.ps1',
         'Infrastructure.PowerCfg.ps1',
+        'Infrastructure.Battery.ps1',
         'Infrastructure.Logging.ps1',
         'Infrastructure.Config.ps1',
         'Infrastructure.Process.ps1',

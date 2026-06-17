@@ -1,4 +1,4 @@
-using SmartGuard.Engine.Config;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Domain;
 
@@ -34,12 +34,22 @@ public static class PolicyEngine
     return previous.Value != current.Value;
   }
 
-  public static string GetPlanDisplayName(Guid? planGuid, GuardConfig config)
+  public static string GetPlanDisplayName(
+    Guid? planGuid,
+    GuardConfig config,
+    IReadOnlyDictionary<Guid, string>? systemPlans = null,
+    string? preferredName = null)
   {
     if (planGuid is null) return string.Empty;
     if (planGuid == config.ActivePlanGuid) return "高性能";
     if (planGuid == config.BalancedPlanGuid) return "平衡";
     if (planGuid == config.PowerSaverPlanGuid) return "节能";
+    if (systemPlans is not null
+        && systemPlans.TryGetValue(planGuid.Value, out var name)
+        && !string.IsNullOrWhiteSpace(name))
+      return name;
+    if (!string.IsNullOrWhiteSpace(preferredName))
+      return preferredName;
     return planGuid.Value.ToString();
   }
 

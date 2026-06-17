@@ -47,8 +47,6 @@ function Write-Log([string]$Message, [hashtable]$Config) {
     Register-WrittenLogFingerprint -State $script:Idempotency -Message $Message | Out-Null
 }
 
-function Get-CurrentPlanGuid { Get-CurrentPlanGuidFromOutput -PowerCfgListOutput (powercfg /getactivescheme 2>&1 | Out-String) }
-
 function Get-CurrentBrightness {
     try { return [int](Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -EA Stop | Select-Object -First 1 -ExpandProperty CurrentBrightness) }
     catch { return -1 }
@@ -62,14 +60,6 @@ function Set-Brightness([int]$Level, [hashtable]$Config) {
         if ($m) { Invoke-CimMethod -InputObject $m -MethodName WmiSetBrightness -Arguments @{ Timeout = 1; Brightness = $Level } -EA Stop | Out-Null }
         Register-AppliedBrightnessLevel -State $script:Idempotency -Level $Level | Out-Null
     } catch { Write-Log "亮度设置失败: $($_.Exception.Message)" $Config }
-}
-
-function Get-BatteryInfo {
-    try {
-        $bat = Get-CimInstance Win32_Battery -EA Stop | Select-Object -First 1
-        if (-not $bat) { return @{ Percent = 100; IsOnAC = $true } }
-        return @{ Percent = [int]$bat.EstimatedChargeRemaining; IsOnAC = (@('2','3','6','7','8','9') -contains "$($bat.BatteryStatus)") }
-    } catch { return @{ Percent = 100; IsOnAC = $true } }
 }
 
 function Initialize-SmartGuard([hashtable]$Config) {
@@ -99,8 +89,12 @@ function Publish-SmartGuardStatus {
         [hashtable]$Payload,
         [hashtable]$NotificationEvent = $null
     )
-    if ($NotificationEvent) {
-        $Payload.notificationEvent = $NotificationEvent
+    $activeNotification = Update-StatusNotificationRetention -NewEvent $NotificationEvent -Now (Get-Date)
+    if ($activeNotification) {
+        $Payload.notificationEvent = $activeNotification
+    }
+    else {
+        $Payload.Remove('notificationEvent') | Out-Null
     }
     Write-SmartGuardStatusAtomic -Status $Payload -StatusPath $statusPath
 }
@@ -131,7 +125,7 @@ catch {
     exit 1
 }
 
-$lastKnownGuid = $null; $lastStatusLabel = ''; $lastHeartbeat = (Get-Date); $scriptJustSwitched = $false
+$lastKnownGuid = $null; $lastStatusLabel = ''; $lastHeartbeat = (Get-Date); $scriptJustSwitched = $false; $lastBrightness = $null
 $pendingNotification = $null
 while ($true) {
     $cur = $null
@@ -139,54 +133,66 @@ while ($true) {
     try {
         $config = Read-SmartGuardConfig -ConfigPath $configPath
         if (-not $config) { $config = Get-DefaultSmartGuardConfig }
+        $planCatalog = Get-PowerPlanCatalog
         $idle = [IdleTimeDetector]::GetIdleSeconds()
         $bat = Get-BatteryInfo
-        $cur = Get-CurrentPlanGuid
+        $activePlanInfo = Get-CurrentPlanInfo
+        $cur = $activePlanInfo.Guid
         $exp = Get-ExpectedPlanGuid -IdleSeconds $idle -IsOnAC $bat.IsOnAC -BatteryPercent $bat.Percent -Config $config
         $notifyEvent = $null
 
         if (Test-ExternalPlanChange -PreviousGuid $lastKnownGuid -CurrentGuid $cur -ScriptJustSwitched:$scriptJustSwitched) {
-            Write-Log "EXTERNAL: 计划被外部改为 $(Get-PlanDisplayName $cur $config) ($cur) | 下轮纠偏" $config
-            $notifyEvent = Format-ExternalPlanNotification -PlanName (Get-PlanDisplayName $cur $config) -PlanGuid $cur
+            $displayName = Resolve-PlanDisplayName -PlanGuid $cur -Config $config -Catalog $planCatalog -ActivePlanInfo $activePlanInfo
+            Write-Log "EXTERNAL: 计划被外部改为 $displayName ($cur) | 下轮纠偏" $config
+            $notifyEvent = Format-ExternalPlanNotification -PlanName $displayName -PlanGuid $cur
         }
         $scriptJustSwitched = $false
         $label = if ($idle -ge $config.PowerSaverThresholdSec) { '深度空闲' } elseif ($idle -ge $config.BalancedThresholdSec) { '空闲' } else { '活跃' }
         $bright = Get-CurrentBrightness
+        if ($bright -ge 0) {
+            if ($null -ne $lastBrightness -and $lastBrightness -ne $bright) {
+                Write-Log "亮度变化: ${lastBrightness}% -> ${bright}%" $config
+            }
+            $lastBrightness = $bright
+        }
 
         if ($exp -and (Test-ShouldApplyPowerPlanSwitch -CurrentGuid $cur -TargetGuid $exp)) {
             $res = Switch-PowerPlanWithBrightnessLock -TargetGuid $exp -BrightnessBefore $bright -Config $config -SetBrightnessInvoker { param([int]$L) Set-Brightness $L $config } -GetBrightnessInvoker { Get-CurrentBrightness }
             $scriptJustSwitched = $true
-            $cur = Get-CurrentPlanGuid
+            $activePlanInfo = Get-CurrentPlanInfo
+            $cur = $activePlanInfo.Guid
             Register-AppliedPowerPlanSwitch -State $script:Idempotency -PlanGuid $cur | Out-Null
             $pwr = if ($bat.IsOnAC) { '插电' } else { '电池' }
             if ($bright -ge 0) {
-                Write-Log "状态: $label | 计划切换(切前同步) + 亮度锁定: $($res.Before)% -> $($res.After)% | $(Get-PlanDisplayName $exp $config) | 电量$($bat.Percent)% $pwr" $config
+                Write-Log "状态: $label | 计划切换(切前同步) + 亮度锁定: $($res.Before)% -> $($res.After)% | $(Get-PlanDisplayName $exp $config $planCatalog) | 电量$($bat.Percent)% $pwr" $config
                 if ($res.After -ne $res.Before) {
                     Write-Log "WARN: 亮度写回未完全匹配，已重试 $($config.BrightnessRetryCount) 次" $config
                 }
             }
-            else { Write-Log "状态: $label | 计划切换(切前同步) | $(Get-PlanDisplayName $exp $config) | 亮度WMI不支持" $config }
+            else { Write-Log "状态: $label | 计划切换(切前同步) | $(Get-PlanDisplayName $exp $config $planCatalog) | 亮度WMI不支持" $config }
             $lastStatusLabel = $label
-            $notifyEvent = Format-PlanSwitchNotification -PlanName (Get-PlanDisplayName $exp $config) -Brightness $res.After -BrightnessBefore $res.Before
+            $notifyEvent = Format-PlanSwitchNotification -PlanName (Get-PlanDisplayName $exp $config $planCatalog) -Brightness $res.After -BrightnessBefore $res.Before
         } elseif ($lastStatusLabel -ne $label) {
             $pwr = if ($bat.IsOnAC) { '插电' } else { '电池' }
-            Write-Log "状态: $label (空闲${idle}秒) | 计划正常 | $(Get-PlanDisplayName $cur $config) | 电量$($bat.Percent)% $pwr" $config
+            $planName = Resolve-PlanDisplayName -PlanGuid $cur -Config $config -Catalog $planCatalog -ActivePlanInfo $activePlanInfo
+            $brightPart = if ($bright -ge 0) { "亮度${bright}%" } else { '亮度WMI不支持' }
+            Write-Log "状态: $label (空闲${idle}秒) | 计划正常 | $planName | 电量$($bat.Percent)% $pwr | $brightPart" $config
             $lastStatusLabel = $label
         }
 
         $heartbeatMin = if ($null -ne $config.HeartbeatIntervalMin) { [int]$config.HeartbeatIntervalMin } else { 10 }
         $now = Get-Date
         if (Test-HeartbeatDue -LastHeartbeat $lastHeartbeat -IntervalMinutes $heartbeatMin -Now $now) {
-            $planName = if ($cur) { Get-PlanDisplayName $cur $config } else { '未知' }
-            Write-Log (Format-HeartbeatLogMessage -Label $label -CurrentPlanName $planName -BatteryPercent $bat.Percent -IsOnAC $bat.IsOnAC -Paused ([bool]$config.Paused)) $config
+            $planName = if ($cur) { Resolve-PlanDisplayName -PlanGuid $cur -Config $config -Catalog $planCatalog -ActivePlanInfo $activePlanInfo } else { '未知' }
+            Write-Log (Format-HeartbeatLogMessage -Label $label -CurrentPlanName $planName -BatteryPercent $bat.Percent -IsOnAC $bat.IsOnAC -Paused ([bool]$config.Paused) -Brightness $bright) $config
             $lastHeartbeat = $now
         }
 
         $statusPayload = @{
             timestamp = (Get-Date).ToString('s')
-            currentPlan = (Get-PlanDisplayName $cur $config)
+            currentPlan = (Resolve-PlanDisplayName -PlanGuid $cur -Config $config -Catalog $planCatalog -ActivePlanInfo $activePlanInfo)
             currentPlanGUID = $cur
-            expectedPlan = $(if ($exp) { Get-PlanDisplayName $exp $config })
+            expectedPlan = $(if ($exp) { Get-PlanDisplayName $exp $config $planCatalog })
             idleSeconds = $idle
             isOnAC = $bat.IsOnAC
             batteryPercent = $bat.Percent

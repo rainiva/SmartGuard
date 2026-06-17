@@ -227,7 +227,7 @@ $trayIcon.Add_DoubleClick($openSettings)
 $exitItem.Add_Click({ $trayIcon.Visible = $false; $trayIcon.Dispose(); [System.Windows.Forms.Application]::Exit() })
 
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 5000
+$timer.Interval = 1500
 $timer.Add_Tick({
     $cfg = Read-SmartGuardConfig -ConfigPath $configPath
     $notify = if ($cfg -and $null -ne $cfg.NotifyOnPlanChange) { $cfg.NotifyOnPlanChange } else { $true }

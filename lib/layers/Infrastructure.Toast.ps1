@@ -152,13 +152,22 @@ function Initialize-SmartGuardToastRegistration {
         $programs = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
         if (-not (Test-Path $programs)) { return $false }
         $lnk = Join-Path $programs 'SmartGuard.lnk'
-        $target = Join-Path $root 'Start-Tray.cmd'
-        if (-not (Test-Path -LiteralPath $target)) { $target = Join-Path $root 'Restart-Tray.cmd' }
-        if (-not (Test-Path -LiteralPath $target)) { $target = 'powershell.exe' }
+        $trayExe = Join-Path $root 'bin\SmartGuard.Tray.exe'
+        if (Test-Path -LiteralPath $trayExe) {
+            $target = $trayExe
+            $arguments = "--root `"$root`""
+        }
+        else {
+            $target = Join-Path $root 'Start-Tray.cmd'
+            $arguments = ''
+            if (-not (Test-Path -LiteralPath $target)) { $target = Join-Path $root 'Restart-Tray.cmd' }
+            if (-not (Test-Path -LiteralPath $target)) { $target = 'powershell.exe' }
+        }
 
         $wsh = New-Object -ComObject WScript.Shell
         $sc = $wsh.CreateShortcut($lnk)
         $sc.TargetPath = $target
+        $sc.Arguments = $arguments
         $sc.WorkingDirectory = $root
         $sc.Description = (Get-SmartGuardToastDisplayName)
         $iconPath = Get-TrayIconPath -ScriptRoot $root

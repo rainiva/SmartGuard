@@ -35,6 +35,26 @@ function Invoke-LogRotationIfNeeded {
     Move-Item -LiteralPath $LogPath -Destination $archive -Force
 }
 
+function Get-SmartGuardLogLevelTag {
+    param([string]$Message)
+    if ([string]::IsNullOrEmpty($Message)) { return 'INFO' }
+    if ($Message.StartsWith('EXTERNAL:', [System.StringComparison]::Ordinal)) { return 'WARN' }
+    if ($Message.StartsWith('ERROR:', [System.StringComparison]::Ordinal)) { return 'ERROR' }
+    if ($Message.StartsWith('WARN:', [System.StringComparison]::Ordinal)) { return 'WARN' }
+    if ($Message.StartsWith('[监控中]', [System.StringComparison]::Ordinal)) { return 'HEART' }
+    if ($Message.StartsWith('[LOG-FALLBACK]', [System.StringComparison]::Ordinal)) { return 'WARN' }
+    return 'INFO'
+}
+
+function Format-SmartGuardLogLine {
+    param(
+        [string]$Message,
+        [datetime]$Timestamp = (Get-Date)
+    )
+    $tag = Get-SmartGuardLogLevelTag -Message $Message
+    return "[{0}] {1} {2}" -f $tag, $Timestamp.ToString('yyyy-MM-dd HH:mm:ss'), $Message
+}
+
 function Write-SmartGuardLog {
     param(
         [string]$Message,
@@ -42,7 +62,7 @@ function Write-SmartGuardLog {
         [string]$FallbackLogPath = $null
     )
     if ([string]::IsNullOrEmpty($Config.LogFile)) { return $false }
-    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $Message"
+    $line = Format-SmartGuardLogLine -Message $Message
     try {
         $maxBytes = if ($Config.LogMaxBytes) { [long]$Config.LogMaxBytes } else { 1048576 }
         Invoke-LogRotationIfNeeded -LogPath $Config.LogFile -MaxBytes $maxBytes
@@ -53,7 +73,7 @@ function Write-SmartGuardLog {
     catch {}
     if (-not [string]::IsNullOrWhiteSpace($FallbackLogPath)) {
         try {
-            $fallbackLine = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - [LOG-FALLBACK] $Message"
+            $fallbackLine = Format-SmartGuardLogLine -Message "[LOG-FALLBACK] $Message"
             if (Add-SmartGuardLogLine -LogPath $FallbackLogPath -Line $fallbackLine) {
                 return $false
             }
@@ -69,11 +89,13 @@ function Format-HeartbeatLogMessage {
         [string]$CurrentPlanName,
         [int]$BatteryPercent,
         [bool]$IsOnAC,
-        [bool]$Paused
+        [bool]$Paused,
+        [int]$Brightness = -1
     )
     $pwr = if ($IsOnAC) { '插电' } else { '电池' }
+    $brightPart = if ($Brightness -ge 0) { "亮度${Brightness}%" } else { '亮度N/A' }
     $pause = if ($Paused) { ' | 已暂停' } else { '' }
-    return "[监控中] $Label | 计划正常 | $CurrentPlanName | 电量${BatteryPercent}% $pwr$pause"
+    return "[监控中] $Label | 计划正常 | $CurrentPlanName | 电量${BatteryPercent}% $pwr | $brightPart$pause"
 }
 
 function Test-HeartbeatDue {

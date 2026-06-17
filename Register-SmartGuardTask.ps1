@@ -1,11 +1,11 @@
 ﻿#Requires -RunAsAdministrator
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $taskName = 'SmartGuard Guardian'
 $exePath = Join-Path $root 'bin\SmartGuard.Engine.exe'
 $psFallback = Join-Path $root 'lib\SmartGuard.Core.ps1'
 
 if (Test-Path -LiteralPath $exePath) {
-    $action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $root
+    $action = New-ScheduledTaskAction -Execute $exePath -Argument "--root `"$root`"" -WorkingDirectory $root
     Write-Host "Registering C# engine: $exePath"
 }
 else {

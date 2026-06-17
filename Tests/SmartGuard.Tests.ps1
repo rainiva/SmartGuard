@@ -123,6 +123,27 @@
         }
     }
 
+    Describe 'Get-PlanDisplayName' {
+        It 'prefers config alias over system catalog' {
+            $cfg = $script:TestConfig.Clone()
+            $catalog = @{ $cfg.BalancedPlanGUID.ToLower() = '平衡(系统名)' }
+            Get-PlanDisplayName -PlanGuid $cfg.BalancedPlanGUID -Config $cfg -Catalog $catalog | Should -Be '平衡'
+        }
+
+        It 'uses system catalog for OEM plan names' {
+            $cfg = $script:TestConfig.Clone()
+            $oem = 'b8a2c9f4-7d3e-4a1b-9c2f-5e8d6a3b1c4f'
+            $catalog = @{ $oem.ToLower() = 'Honor Performance' }
+            Get-PlanDisplayName -PlanGuid $oem -Config $cfg -Catalog $catalog | Should -Be 'Honor Performance'
+        }
+
+        It 'uses preferred name when catalog misses' {
+            $cfg = $script:TestConfig.Clone()
+            $oem = 'b8a2c9f4-7d3e-4a1b-9c2f-5e8d6a3b1c4f'
+            Get-PlanDisplayName -PlanGuid $oem -Config $cfg -Catalog @{} -PreferredName 'Honor Performance' | Should -Be 'Honor Performance'
+        }
+    }
+
     Describe 'Phase2 Tray helpers' {
         It 'formats tray tooltip from status' {
             $tip = Format-TrayTooltip -Status @{
@@ -218,6 +239,11 @@
             $text | Should -Match 'line two'
         }
 
+        It 'writes level tag before timestamp' {
+            $line = Format-SmartGuardLogLine -Message 'EXTERNAL: plan changed' -Timestamp (Get-Date '2026-06-16T16:48:46')
+            $line | Should -Be '[WARN] 2026-06-16 16:48:46 EXTERNAL: plan changed'
+        }
+
         It 'returns true when primary log write succeeds' {
             $tmp = Join-Path $TestDrive 'ok.log'
             $cfg = @{ LogFile = $tmp; LogMaxBytes = 1048576 }
@@ -236,10 +262,11 @@
         }
 
         It 'formats heartbeat log message' {
-            $msg = Format-HeartbeatLogMessage -Label '活跃' -CurrentPlanName '高性能' -BatteryPercent 89 -IsOnAC $true -Paused $true
+            $msg = Format-HeartbeatLogMessage -Label '活跃' -CurrentPlanName '高性能' -BatteryPercent 89 -IsOnAC $true -Paused $true -Brightness 56
             $msg | Should -Match '^\[监控中\]'
             $msg | Should -Match '已暂停'
             $msg | Should -Match '高性能'
+            $msg | Should -Match '亮度56%'
         }
 
         It 'detects heartbeat interval elapsed' {
@@ -274,14 +301,20 @@
             Get-TrayIconPath -ScriptRoot $root | Should -Match 'SmartGuard\.ico$'
         }
 
-        It 'Create-TrayIcon.ps1 generates icon file in clean process' {
+        It 'bundled SmartGuard.ico exists for tray and installers' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            Test-Path -LiteralPath $icon | Should -Be $true
+            (Get-Item -LiteralPath $icon).Length | Should -BeGreaterThan 1000
+        }
+
+        It 'Create-TrayIcon.ps1 verifies bundled icon without regenerating' {
             $root = Split-Path -Parent $PSScriptRoot
             $script = Join-Path $root 'lib\Create-TrayIcon.ps1'
             $icon = Join-Path $root 'lib\SmartGuard.ico'
-            if (Test-Path $icon) { Remove-Item $icon -Force }
-            $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script 2>&1 | Out-String
-            $output | Should -Not -Match 'Get-TrayIconPath'
-            Test-Path $icon | Should -Be $true
+            Test-Path -LiteralPath $icon | Should -Be $true
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script | Out-Null
+            $LASTEXITCODE | Should -Be 0
         }
     }
 
@@ -340,14 +373,14 @@
         }
 
         It 'reads log file content for live viewer merge' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $logPath = Join-Path $root 'SmartGuard.log'
-            if (-not (Test-Path -LiteralPath $logPath)) {
-                Set-Content -LiteralPath $logPath -Value '2026-01-01 00:00:00 - test log line' -Encoding UTF8
-            }
-            $merged = Read-SmartGuardLogText -LogPath $logPath
+            $logPath = Join-Path $TestDrive 'viewer-primary.log'
+            $fallbackPath = Join-Path $TestDrive 'viewer-fallback.log'
+            Set-Content -LiteralPath $logPath -Value '[INFO] 2026-06-16 17:00:00 main log line' -Encoding UTF8
+            Set-Content -LiteralPath $fallbackPath -Value '2026-06-16 16:00:00 startup log line' -Encoding UTF8
+            $merged = Read-SmartGuardLogText -LogPath $logPath -FallbackLogPath $fallbackPath
             $merged | Should -Not -BeNullOrEmpty
-            $merged | Should -Match '\d{4}-\d{2}-\d{2}'
+            $merged.IndexOf('16:00:00') | Should -BeLessThan ($merged.IndexOf('17:00:00'))
+            $merged | Should -Not -Match '--- fallback ---'
         }
 
         It 'reads appended log bytes without reloading entire file' {
@@ -394,11 +427,23 @@
             $form.Dispose()
         }
 
-        It 'starts log viewer without visible console window' {
+        It 'starts log viewer without visible console window when falling back to ps1' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'lib\layers\Presentation.LogViewer.ps1') -Raw -Encoding UTF8
             $content | Should -Match 'Start-Process.*WindowStyle Hidden'
             $content | Should -Match '-WindowStyle.*Hidden'
+        }
+
+        It 'Start-SmartGuardLogViewerProcess prefers SmartGuard.LogViewer.exe with PS fallback' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'lib\layers\Presentation.LogViewer.ps1') -Raw -Encoding UTF8
+            $match = [regex]::Match($content, '(?s)function Start-SmartGuardLogViewerProcess\s*\{.*?\r?\n\}')
+            $match.Success | Should -Be $true
+            $fn = $match.Value
+            $fn | Should -Match 'SmartGuard\.LogViewer\.exe'
+            $fn | Should -Match 'Get-SmartGuardLogViewerScriptPath'
+            $fn | Should -Match 'powershell\.exe'
+            $fn.IndexOf('SmartGuard.LogViewer.exe') | Should -BeLessThan $fn.IndexOf('Get-SmartGuardLogViewerScriptPath')
         }
 
         It 'exposes log viewer launcher and standalone script' {
@@ -444,6 +489,106 @@
         It 'shows notification only once per event id' {
             Test-ShouldShowStatusNotification -LastEventId 'abc' -Event @{ id = 'abc' } | Should -Be $false
             Test-ShouldShowStatusNotification -LastEventId 'abc' -Event @{ id = 'xyz' } | Should -Be $true
+        }
+
+        It 'retains status notification until expiry' {
+            $script:RetainedNotification = $null
+            $script:RetainedNotificationUntil = $null
+            $now = Get-Date '2026-06-16T12:00:00'
+            $evt = Format-PlanSwitchNotification -PlanName '高性能' -Brightness 56
+            $active = Update-StatusNotificationRetention -NewEvent $evt -Now $now
+            $active.id | Should -Be $evt.id
+            $later = Update-StatusNotificationRetention -NewEvent $null -Now $now.AddSeconds(30)
+            $later.id | Should -Be $evt.id
+            $expired = Update-StatusNotificationRetention -NewEvent $null -Now $now.AddSeconds(61)
+            $expired | Should -BeNullOrEmpty
+        }
+
+        It 'resolves battery percent from system API before WMI' {
+            $resolved = Resolve-SmartGuardBatteryInfo -AcLineStatus 0 -BatteryLifePercent 55 -BatteryFlag 0 -WmiPercent 90 -WmiOnAc $true
+            $resolved.Percent | Should -Be 55
+            $resolved.IsOnAC | Should -Be $false
+        }
+
+        It 'does not treat unknown WMI battery status as AC' {
+            ConvertFrom-SmartGuardWmiBatteryStatus -BatteryStatus 2 | Should -Be $null
+            ConvertFrom-SmartGuardWmiBatteryStatus -BatteryStatus 3 | Should -Be $null
+        }
+
+        It 'aggregates multiple WMI batteries by design capacity' {
+            $batteries = @(
+                [pscustomobject]@{ EstimatedChargeRemaining = 80; DesignCapacity = 50000 }
+                [pscustomobject]@{ EstimatedChargeRemaining = 40; DesignCapacity = 50000 }
+            )
+            Get-SmartGuardAggregatedBatteryPercent -Batteries $batteries | Should -Be 60
+        }
+    }
+
+    Describe 'Engine packaging' {
+        It 'builds core engine without console window' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $csproj = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Engine\SmartGuard.Engine.csproj') -Raw
+            $csproj | Should -Match '<OutputType>WinExe</OutputType>'
+        }
+    }
+
+    Describe 'Phase 3.1 install CLI' {
+        It 'Program routes install and uninstall commands' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $program = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Engine\Program.cs') -Raw -Encoding UTF8
+            $program | Should -Match 'EngineCommandMode\.Install'
+            $program | Should -Match 'EngineCommandMode\.Uninstall'
+            $program | Should -Match 'InstallCommands\.RunInstall'
+            $program | Should -Match 'InstallCommands\.RunUninstall'
+        }
+    }
+
+    Describe 'Phase 1 launcher and tasks' {
+        It 'Start-Core prefers C# engine with PS fallback' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Start-Core.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Engine\.exe'
+            $content | Should -Match 'SmartGuard\.Core\.ps1'
+            $content.IndexOf('SmartGuard.Engine.exe') | Should -BeLessThan $content.IndexOf('SmartGuard.Core.ps1')
+        }
+
+        It 'Register-TrayTask resolves paths from script root' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Register-TrayTask.ps1') -Raw -Encoding UTF8
+            $content | Should -Match '\$PSScriptRoot'
+            $content | Should -Not -Match 'D:\\Project\\SmartGuard'
+        }
+
+        It 'Register-TrayTask prefers SmartGuard.Tray.exe with PS fallback' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Register-TrayTask.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Tray\.exe'
+            $content | Should -Match 'SmartGuard\.Tray\.ps1'
+            $content.IndexOf('SmartGuard.Tray.exe') | Should -BeLessThan $content.IndexOf('SmartGuard.Tray.ps1')
+        }
+
+        It 'Tray OpenLogViewer prefers SmartGuard.LogViewer.exe with PS fallback' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Infrastructure.cs') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.LogViewer\.exe'
+            $content | Should -Match 'Show-LogViewer\.ps1'
+            $content.IndexOf('SmartGuard.LogViewer.exe') | Should -BeLessThan $content.IndexOf('Show-LogViewer.ps1')
+        }
+
+        It 'Tray OpenSettings prefers SmartGuard.Settings.exe with PS fallback' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Infrastructure.cs') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Settings\.exe'
+            $content | Should -Match 'SmartGuard\.Settings\.ps1'
+            $content.IndexOf('SmartGuard.Settings.exe') | Should -BeLessThan $content.IndexOf('SmartGuard.Settings.ps1')
+        }
+
+        It 'Register-SmartGuardTask resolves paths from script root' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Register-SmartGuardTask.ps1') -Raw -Encoding UTF8
+            $content | Should -Match '\$PSScriptRoot'
+            $content | Should -Match 'SmartGuard\.Engine\.exe'
+            $content | Should -Match '--root'
         }
     }
 
@@ -505,6 +650,117 @@
             $root = Split-Path -Parent $PSScriptRoot
             $lines = (Get-Content -LiteralPath (Join-Path $root 'lib\SmartGuard.Functions.ps1')).Count
             $lines | Should -BeLessThan 40
+        }
+    }
+
+    Describe 'Phase 5 Inno installer' {
+        It 'SmartGuard.iss includes signed publisher and install hooks' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match '#define MyAppPublisher "rainiva"'
+            $iss | Should -Match 'https://github.com/rainiva/SmartGuard'
+            $iss | Should -Match 'SetupIconFile='
+            $iss | Should -Match '--skip-publish'
+            $iss | Should -Match 'ShouldDeleteUserData'
+            $iss | Should -Match 'license_zh-CN\.txt'
+            $iss | Should -Match '\{app\}\\bin\\SmartGuard\.Engine\.exe'
+        }
+
+        It 'stops SmartGuard processes before install and uninstall' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match 'CloseApplications=no'
+            $iss | Should -Match 'EnsureSmartGuardStopped'
+            $iss | Should -Match 'restartreplace'
+            $iss | Should -Match 'function PrepareToInstall'
+            $iss | Should -Match 'StopSmartGuardProcesses'
+            $iss | Should -Match 'CurPageID = wpReady'
+            $iss | Should -Match 'if not SmartGuardProcessesStillRunning\(\) then'
+            $iss | Should -Match 'SmartGuard Guardian'
+            $iss | Should -Match 'schtasks.*/End'
+            $iss | Should -Match 'taskkill.*/T'
+            $iss | Should -Match 'findstr.*/C:"SmartGuard\.Tray\.exe"'
+            $iss | Should -Not -Match 'Get-Process -Name SmartGuard\*'
+            $iss | Should -Not -Match 'Get-CimInstance Win32_Process'
+            $iss | Should -Not -Match 'CurStepChanged'
+            $iss | Should -Match 'CurUninstallStepChanged'
+            $iss | Should -Match 'SolidCompression=no'
+        }
+
+        It 'uninstall user-data choice uses InnerNotebook wizard per official InitializeUninstallProgressForm' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match 'procedure InitializeUninstallProgressForm'
+            $iss | Should -Match 'UninstallProgressForm\.InnerNotebook'
+            $iss | Should -Match 'UninstallProgressForm\.ShowModal'
+            $iss | Should -Match 'TNewNotebookPage'
+            $iss | Should -Match '保留配置与日志'
+            $iss | Should -Match '删除配置与日志'
+            $iss | Should -Match 'UninstallSilent'
+            $iss | Should -Not -Match 'CreateCustomPage'
+            $iss | Should -Not -Match 'CreateCustomForm'
+            $iss | Should -Not -Match 'Parent := WizardForm'
+        }
+
+        It 'starts guardian after install before tray' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match '/Run /TN ""SmartGuard Guardian""'
+            $iss | Should -Match '正在启动核心服务'
+        }
+
+        It 'allows only one installed SmartGuard instance' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match 'UsePreviousAppDir=yes'
+            $iss | Should -Match 'GetExistingSmartGuardInstallPath'
+            $iss | Should -Match 'wpSelectDir'
+        }
+
+        It 'bumps installer patch version on each build' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'installer\InstallVersion.ps1')
+            Get-BumpedPatchVersion -Version '1.0.0' | Should -Be '1.0.1'
+            Get-BumpedPatchVersion -Version '1.0.9' | Should -Be '1.0.10'
+
+            $versionFile = Join-Path $TestDrive 'version.txt'
+            Set-Content -LiteralPath $versionFile -Value '2.3.4' -Encoding ASCII -NoNewline
+            Update-InstallerVersionFile -VersionFile $versionFile | Should -Be '2.3.5'
+            (Get-Content -LiteralPath $versionFile -Raw).Trim() | Should -Be '2.3.5'
+            Update-InstallerVersionFile -VersionFile $versionFile -SkipBump | Should -Be '2.3.5'
+            (Get-Content -LiteralPath $versionFile -Raw).Trim() | Should -Be '2.3.5'
+        }
+
+        It 'Build-Installer.ps1 uses InstallVersion bump helper' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Installer.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'InstallVersion\.ps1'
+            $content | Should -Match 'Update-InstallerVersionFile'
+            $content | Should -Match 'SkipVersionBump'
+        }
+
+        It 'Build-Staging.ps1 publishes and validates staging layout' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') -Raw -Encoding UTF8
+            $content | Should -Match 'Publish-All\.ps1'
+            $content | Should -Match 'Test-InstallerStagingLayout'
+            $content | Should -Match 'license_zh-CN\.txt'
+        }
+
+        It 'Test-InstallerStagingLayout fails when staging is incomplete' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'installer\InstallStaging.ps1')
+            $empty = Join-Path $TestDrive 'empty-staging'
+            New-Item -ItemType Directory -Path $empty -Force | Out-Null
+            { Test-InstallerStagingLayout -StagingDir $empty } | Should -Throw
+        }
+
+        It 'Test-InstallerStagingLayout passes for minimal fake staging' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'installer\InstallStaging.ps1')
+            $staging = Join-Path $TestDrive 'staging'
+            New-InstallerFakeStaging -StagingDir $staging
+            { Test-InstallerStagingLayout -StagingDir $staging } | Should -Not -Throw
         }
     }
 }

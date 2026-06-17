@@ -1,4 +1,5 @@
-﻿using SmartGuard.Engine.Infrastructure;
+﻿using SmartGuard.Contracts;
+using SmartGuard.Engine.Cli;
 using SmartGuard.Engine.Worker;
 
 namespace SmartGuard.Engine;
@@ -7,12 +8,28 @@ public static class Program
 {
   public static int Main(string[] args)
   {
-    var root = ResolveRoot(args);
+    var parsed = CommandLineParser.Parse(args);
+    var root = RootResolver.Resolve(parsed.Root, args);
     var configPath = Path.Combine(root, "SmartGuard.config.json");
     var statusPath = Path.Combine(root, "SmartGuard.status.json");
     var initMarker = Path.Combine(root, ".SmartGuard.initialized");
     var fallbackLog = Path.Combine(root, "SmartGuard.startup.log");
 
+    return parsed.Mode switch
+    {
+      EngineCommandMode.Install => InstallCommands.RunInstall(root, parsed.SkipPublish),
+      EngineCommandMode.Uninstall => InstallCommands.RunUninstall(root),
+      _ => RunGuardian(root, configPath, statusPath, initMarker, fallbackLog),
+    };
+  }
+
+  private static int RunGuardian(
+    string root,
+    string configPath,
+    string statusPath,
+    string initMarker,
+    string fallbackLog)
+  {
     using var guard = SingleInstanceGuard.TryAcquire("Core");
     if (!guard.IsOwner)
     {
@@ -34,27 +51,5 @@ public static class Program
     };
     loop.Run(cts.Token);
     return 0;
-  }
-
-  private static string ResolveRoot(string[] args)
-  {
-    for (var i = 0; i < args.Length - 1; i++)
-    {
-      if (args[i] is "--root" or "-r")
-        return Path.GetFullPath(args[i + 1]);
-    }
-    var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
-    if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
-
-    var dir = AppContext.BaseDirectory;
-    for (var depth = 0; depth < 6; depth++)
-    {
-      if (File.Exists(Path.Combine(dir, "SmartGuard.config.json")))
-        return Path.GetFullPath(dir);
-      var parent = Directory.GetParent(dir);
-      if (parent is null) break;
-      dir = parent.FullName;
-    }
-    return @"D:\Project\SmartGuard";
   }
 }
