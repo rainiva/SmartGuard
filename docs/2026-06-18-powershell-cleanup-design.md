@@ -1,6 +1,192 @@
 # SmartGuard PowerShell 脚本精简与构建统一化设计文档
 
 **制定日期：** 2026-06-18  
+**状态：** 已执行  
+**关联契约：** [PHASE-7-TASK-CONTRACT.md](PHASE-7-TASK-CONTRACT.md)（Phase 7 已完成，本文档为 Phase 7 后续增强）
+
+---
+
+## 一、目标
+
+在 Phase 7 已完成"开发机去 PowerShell 应用栈"的基础上，进一步**精简构建与测试相关的 PowerShell 脚本**，将构建入口统一为 `dotnet` CLI / MSBuild 体系，减少维护负担。
+
+**核心原则：**
+- 能进 MSBuild / `dotnet` 的进 MSBuild，必须留 PowerShell 的做精简
+- 不删除任何集成测试（Pester 安装器/托盘集成测试保留）
+- 不改动 Inno Setup 编译逻辑（ISCC.exe 调用保留）
+- 所有变更需通过 `Run-Tests.ps1` 全绿验证
+
+---
+
+## 二、现状分析
+
+### 2.1 现有 PowerShell 脚本（变更后）
+
+| 目录 | 文件 | 功能 | 当前必要性 |
+|------|------|------|-----------|
+| 根目录 | `Run-Tests.ps1` | 运行 Pester + xUnit 测试 | **高** — 测试总入口 |
+| `Tests/Integration/` | `InstallerUserFlow.Helpers.ps1` | 安装器集成测试辅助 | **高** — 集成测试依赖 |
+| `Tests/Integration/` | `InstallerUserFlow.Tests.ps1` | 安装器集成测试 | **高** — 端到端验证 |
+| `Tests/Integration/` | `TrayCoreUserFlow.Helpers.ps1` | 托盘集成测试辅助 | **高** — 集成测试依赖 |
+| `Tests/Integration/` | `TrayCoreUserFlow.Tests.ps1` | 托盘集成测试 | **高** — 端到端验证 |
+| `Tests/` | `SmartGuard.Tests.ps1` | Pester 契约测试 | **高** — 构建链验证 |
+| `scripts/` | `Test-IsProcessElevated.ps1` | UAC 提权检测与重试 | **高** — `Run-Tests.ps1` 依赖 |
+| `scripts/` | `Measure-EngineStartup.ps1` | 测量引擎启动耗时 | **低** — 开发诊断工具 |
+| `scripts/` | `Measure-EngineMemory.ps1` | 测量引擎内存占用 | **低** — 开发诊断工具 |
+| `scripts/archive/` | `Migrate-RenameToSmartGuard.ps1` | 一次性更名迁移 | **低** — 已归档 |
+| `scripts/archive/` | `Unregister-LegacySmartPowerPlanTasks.ps1` | 卸载旧版计划任务 | **低** — 已归档 |
+
+### 2.2 已删除的 PowerShell 脚本
+
+| 文件 | 替代落点 |
+|------|----------|
+| `scripts/Publish-All.ps1` | `build.cmd` 直接调用 |
+| `lib/Create-TrayIcon.ps1` | `SmartGuard.Packaging` 内联验证 |
+| `installer/Build-Staging.ps1` | `SmartGuard.Packaging` `StageCommand` |
+| `installer/Build-Installer.ps1` | `SmartGuard.Packaging` `BuildInstallerCommand` |
+| `installer/InstallVersion.ps1` | `SmartGuard.Packaging` `InstallerVersionResolver` |
+| `installer/InstallStaging.ps1` | `SmartGuard.Packaging` `StagingLayoutValidator` / `FakeStagingBuilder` |
+
+### 2.3 新增 C# 项目
+
+| 项目 | 用途 |
+|------|------|
+| `src/SmartGuard.Packaging` | 控制台应用：staging、runtime redist 下载、ISCC 调用 |
+| `Tests/SmartGuard.Packaging.Tests` | xUnit 测试：版本号、staging、下载器、命令 |
+| `Tests/SmartGuard.Engine.PerformanceTests` | xUnit 性能测试：启动 <500ms、内存 <20MB |
+
+### 2.4 现有构建链路（变更后）
+
+```
+Setup-All.cmd
+├── [1/3] build.cmd  →  dotnet publish 四项目到 bin/
+├── [2/3] Run-Tests.ps1
+│   ├── Pester: SmartGuard.Tests.ps1
+│   ├── xUnit: 6 个测试项目（含 Packaging + Performance）
+│   └── Pester: Integration/*.Tests.ps1
+└── [3/3] Register-AllTasks.cmd  →  Engine.exe --install
+
+SmartGuard.Packaging installer
+├── StageCommand → build.cmd + PayloadCopier + RedistDownloader
+├── BuildInstallerCommand → StageCommand + ISCC.exe
+└── dist/SmartGuard-Setup-<version>-x64.exe
+```
+
+---
+
+## 三、设计方案
+
+### 3.1 总体架构（已执行）
+
+```
+构建入口统一层
+├── build.cmd          ← 唯一编译入口（已有，保留）
+├── Run-Tests.ps1      ← 唯一测试入口（保留，已加入 Packaging + Performance）
+└── SmartGuard.Packaging ← 唯一安装包入口（新增 C# 控制台应用）
+
+C# 增强层（新增）
+├── src/SmartGuard.Packaging/
+│   ├── Program.cs
+│   ├── Commands/StageCommand.cs / BuildInstallerCommand.cs
+│   ├── Staging/StagingLayout.cs / StagingLayoutValidator.cs / FakeStagingBuilder.cs / PayloadCopier.cs
+│   ├── Runtime/IRuntimeRedistDownloader.cs / DesktopRuntimeRedistDownloader.cs
+│   └── Versioning/InstallerVersionResolver.cs
+└── Tests/SmartGuard.Packaging.Tests/（xUnit 覆盖）
+
+保留的 PowerShell（8 个）
+├── Run-Tests.ps1
+├── Test-IsProcessElevated.ps1
+├── Tests/SmartGuard.Tests.ps1
+├── Tests/Integration/*.ps1（4 个）
+└── scripts/Measure-Engine*.ps1（2 个，开发诊断）
+```
+
+### 3.2 详细变更（已执行）
+
+#### 3.2.1 删除 `scripts/Publish-All.ps1`
+
+**状态：** 已完成  
+**替代：** `Setup-All.cmd` 直接调用 `build.cmd`
+
+#### 3.2.2 删除 `lib/Create-TrayIcon.ps1`
+
+**状态：** 已完成  
+**替代：** `SmartGuard.Packaging` 在 staging 时验证 `lib/SmartGuard.ico` 存在
+
+#### 3.2.3 删除 `installer/InstallVersion.ps1`
+
+**状态：** 已完成  
+**替代：** `SmartGuard.Packaging.Versioning.InstallerVersionResolver`
+
+#### 3.2.4 删除 `installer/Build-Staging.ps1`
+
+**状态：** 已完成  
+**替代：** `SmartGuard.Packaging.Commands.StageCommand` + `Staging.PayloadCopier`
+
+#### 3.2.5 删除 `installer/Build-Installer.ps1`
+
+**状态：** 已完成  
+**替代：** `SmartGuard.Packaging.Commands.BuildInstallerCommand`
+
+#### 3.2.6 删除 `installer/InstallStaging.ps1`
+
+**状态：** 已完成  
+**替代：** `SmartGuard.Packaging.Staging.StagingLayoutValidator` + `FakeStagingBuilder`
+
+---
+
+## 四、测试策略
+
+### 4.1 测试层级（已更新）
+
+| 层级 | 内容 | 验证方式 |
+|------|------|---------|
+| **单元测试** | xUnit 168+ 项（含 Packaging 11 + Performance 2） | `dotnet test` |
+| **契约测试** | Pester 36+ 项 | `SmartGuard.Tests.ps1` |
+| **集成测试** | Pester 7 项 | `Tests/Integration/*.Tests.ps1` |
+| **构建验证** | `build.cmd` 产出四 exe | 文件存在 + 版本检查 |
+| **安装器验证** | `SmartGuard.Packaging installer` 产出 `dist/*.exe` | 文件存在 + 版本检查 |
+
+### 4.2 每切片验收
+
+每个变更切片完成后必须：
+1. `Run-Tests.ps1` 全绿（xUnit 全部通过，Pester 仅 1 个已知 XAML 解析环境失败）
+2. 手工验证受影响的功能（如 `build.cmd`、`SmartGuard.Packaging`）
+3. Pester 相关断言更新并全过
+
+---
+
+## 五、完成标准（Done Criteria）
+
+- [x] 17 个 PowerShell 脚本精简至 11 个（保留测试/诊断/集成）
+- [x] `build.cmd` 成为唯一编译入口
+- [x] `Run-Tests.ps1` 成为唯一测试入口
+- [x] `SmartGuard.Packaging` 成为唯一安装包入口
+- [x] `Setup-All.cmd` 不经过任何中间 `.ps1` 直接调用 `build.cmd`
+- [x] `Run-Tests.ps1` 全绿（Pester + xUnit，1 个已知 XAML 环境失败除外）
+- [x] `SmartGuard.Packaging installer` 成功产出 `dist/SmartGuard-Setup-*-x64.exe`
+- [x] 文档（README、MIGRATION）同步更新
+
+---
+
+## 六、回滚方案
+
+若任何变更导致测试失败或构建中断：
+1. 回滚该切片的文件变更（git revert）
+2. 恢复被删除的 PowerShell 脚本
+3. 重新运行 `Run-Tests.ps1` 确认基线恢复
+
+---
+
+## 七、变更记录
+
+| 日期 | 变更 |
+|------|------|
+| 2026-06-18 | 设计文档起草 |
+| 2026-06-19 | 执行完成：Task 1–10 全部落地，6 个 PowerShell 脚本删除，C# 替代上线 |
+# SmartGuard PowerShell 脚本精简与构建统一化设计文档
+
+**制定日期：** 2026-06-18  
 **状态：** 待批准  
 **关联契约：** [PHASE-7-TASK-CONTRACT.md](PHASE-7-TASK-CONTRACT.md)（Phase 7 已完成，本文档为 Phase 7 后续增强）
 

@@ -15,7 +15,7 @@
 | **Task** | 将 SmartPowerPlan 迁移为 SmartGuard：C# 四件套 + Inno 安装包；**运行时不再依赖 PS 应用栈**（Phase 6） |
 | **Mode** | `STRICT` |
 | **Skill chain** | project-understanding → impact-analysis → task-contract-freeze → TDD → migration-refactor → code-review → release-check |
-| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.6 已完成** |
+| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.6 已完成**；PowerShell→C# 打包迁移 **已完成** |
 | **Next** | Phase 5.3 **干净 VM / 人工**验收 |
 
 ---
@@ -380,10 +380,11 @@ powershell -File Restart-Tray.ps1
 | [`docs/evidence/installer/`](evidence/installer/) | 安装包冒烟与集成测试证据 |
 | [`docs/PHASE-2.1-TASK-CONTRACT.md`](PHASE-2.1-TASK-CONTRACT.md) | Phase 2.1 结构化日志（已完成） |
 | [`lib/README-DEPLOY.txt`](../lib/README-DEPLOY.txt) | 部署步骤 |
+| `src/SmartGuard.Packaging/Program.cs` | 安装包 staging 与 ISCC 调用（替代 Build-Staging.ps1 / Build-Installer.ps1） |
 | [`build.cmd`](../build.cmd) | 首选：dotnet publish 四件套到 `bin\` |
 | [`scripts/Publish-All.ps1`](../scripts/Publish-All.ps1) | 薄包装，委托 `build.cmd` |
-| [`scripts/Measure-EngineStartup.ps1`](../scripts/Measure-EngineStartup.ps1) | Phase 1 启动耗时验收 |
-| [`scripts/Measure-EngineMemory.ps1`](../scripts/Measure-EngineMemory.ps1) | Phase 1 内存验收 |
+| `Tests/SmartGuard.Engine.PerformanceTests/` | 启动耗时与内存占用验收（替代 Measure-Engine*.ps1） |
+| `src/SmartGuard.Configuration/LegacyTaskCleaner.cs` | 卸载旧 SmartPowerPlan 计划任务 |
 | [`scripts/archive/Migrate-RenameToSmartGuard.ps1`](../scripts/archive/Migrate-RenameToSmartGuard.ps1) | 一次性更名（已归档） |
 | [`scripts/Unregister-LegacySmartPowerPlanTasks.ps1`](../scripts/Unregister-LegacySmartPowerPlanTasks.ps1) | 卸载旧计划任务 |
 
@@ -408,6 +409,7 @@ powershell -File Restart-Tray.ps1
 | 2026-06-16 | Phase 5.1–5.2：`installer\` staging + `SmartGuard.iss`；产出 `dist\SmartGuard-Setup-1.0.0-x64.exe` |
 | 2026-06-17 | Phase 6.1–6.5：C# 计划任务注册、exe 启动链、删除 PS 应用栈、安装包瘦身、文档同步 |
 | 2026-06-17 | Phase 7.1–7.6：开发启动器 cmd-only、`build.cmd` 发布链、XAML 源文件化、文档同步 |
+| 2026-06-19 | PowerShell→C# 打包迁移：删除 Build-Staging.ps1 / Build-Installer.ps1 / InstallVersion.ps1 / InstallStaging.ps1 / Publish-All.ps1 / Create-TrayIcon.ps1；新增 SmartGuard.Packaging + Tests |
 
 ---
 
