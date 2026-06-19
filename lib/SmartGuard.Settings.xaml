@@ -369,11 +369,11 @@
       </Grid.RowDefinitions>
 
       <!-- Content Pages -->
-      <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12">
-        <StackPanel>
+      <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Stretch">
 
           <!-- General Page -->
-          <StackPanel x:Name="pageGeneral">
+          <StackPanel x:Name="pageGeneral" HorizontalAlignment="Stretch">
             <TextBlock Text="常规设置" Style="{StaticResource SectionTitle}"/>
 
             <!-- System Card -->
@@ -462,7 +462,7 @@
           </StackPanel>
 
           <!-- Advanced Page -->
-          <StackPanel x:Name="pageAdvanced" Visibility="Collapsed">
+          <StackPanel x:Name="pageAdvanced" Visibility="Collapsed" HorizontalAlignment="Stretch">
             <TextBlock Text="高级设置" Style="{StaticResource SectionTitle}"/>
 
             <Border Style="{StaticResource SettingsCard}">
@@ -510,7 +510,7 @@
           </StackPanel>
 
           <!-- Notifications Page -->
-          <StackPanel x:Name="pageNotifications" Visibility="Collapsed">
+          <StackPanel x:Name="pageNotifications" Visibility="Collapsed" HorizontalAlignment="Stretch">
             <TextBlock Text="通知设置" Style="{StaticResource SectionTitle}"/>
 
             <Border Style="{StaticResource SettingsCard}">
@@ -550,7 +550,7 @@
           </StackPanel>
 
           <!-- Logs Page -->
-          <StackPanel x:Name="pageLogs" Visibility="Collapsed">
+          <StackPanel x:Name="pageLogs" Visibility="Collapsed" HorizontalAlignment="Stretch">
             <TextBlock Text="日志" Style="{StaticResource SectionTitle}"/>
 
             <Border Style="{StaticResource SettingsCard}">
