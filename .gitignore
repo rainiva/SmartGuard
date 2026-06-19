@@ -7,22 +7,49 @@ SmartGuard.status.json
 SmartGuard.config.json
 .SmartGuard.initialized
 test-result.txt
+settings-test.txt
+
+# Test / diagnostic output
+test-diag*.log
+test-diag.host.*.log
+test-run-output.*
 
 # .NET build output
-bin/
+[Bb]in/
+[Oo]bj/
 **/bin/
 **/obj/
+TestResults/
+coverage/
+*.user
+*.suo
+*.cache
+*.csproj.user
 
 # Installer build artifacts
 installer/staging/
 installer/redist/*.exe
 dist/
 
-# Generated assets (Create-TrayIcon.ps1)
+# Generated logs
+*.log
 
-# OS / editor
+# Local test / smoke evidence (generated during dev or CI runs)
+docs/evidence/
+
+# AI planning artifacts (local)
+docs/superpowers/
+
+# Duplicate license stub at repo root (canonical: installer/license_zh-CN.txt)
+/license_zh-CN.txt
+
+# OS / editor / AI tooling (local)
 Thumbs.db
 Desktop.ini
 .vs/
-*.user
+.vscode/
+.idea/
+.cursor/
+.codegraph/
+.qoder/
 *~
