@@ -1,0 +1,24 @@
+# 自动处理换行符：提交时统一为 LF，checkout 时按以下规则处理
+* text=auto
+
+# Windows 批处理脚本保留 CRLF，确保在 Windows 环境下可正常执行
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 代码与项目文件统一使用 LF
+*.cs text eol=lf
+*.csproj text eol=lf
+*.slnx text eol=lf
+*.props text eol=lf
+
+# 配置文件统一使用 LF
+*.json text eol=lf
+*.xml text eol=lf
+*.config text eol=lf
+
+# 脚本与文档统一使用 LF
+*.ps1 text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
