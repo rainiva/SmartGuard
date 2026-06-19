@@ -1,4 +1,4 @@
-﻿# Runtime / local state
+# Runtime / local state
 SmartGuard.log
 SmartGuard.log.old
 SmartGuard.log.*.bak
@@ -39,6 +39,9 @@ docs/evidence/
 
 # AI planning artifacts (local)
 docs/superpowers/
+
+# Git worktrees
+.worktrees/
 
 # Duplicate license stub at repo root (canonical: installer/license_zh-CN.txt)
 /license_zh-CN.txt
