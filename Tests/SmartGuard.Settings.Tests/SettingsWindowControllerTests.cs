@@ -368,4 +368,214 @@ public class SettingsWindowControllerTests
             window.FindName("btnCancel").Should().NotBeNull();
         });
     }
+
+    [Fact]
+    public void User_navigates_to_logs_page_and_sees_log_controls()
+    {
+        RunOnSta(() =>
+        {
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            // Create a fake log file so LogViewController initializes
+            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
+            var fallbackLogPath = Path.Combine(projectRoot, "SmartGuard.startup.log");
+            var logCreated = false;
+            if (!File.Exists(logPath) && !File.Exists(fallbackLogPath))
+            {
+                File.WriteAllText(logPath, "[INFO] Test log entry\r\n");
+                logCreated = true;
+            }
+
+            try
+            {
+                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(projectRoot);
+
+                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                // Simulate user clicking "日志" in navigation
+                var window = GetWindowField(controller);
+                var navList = window.FindName("navList") as ListBox;
+                navList.Should().NotBeNull();
+
+                // Select logs page (index 3)
+                navList.SelectedIndex = 3;
+
+                // Verify logs page is visible and general page is hidden
+                var pageGeneral = window.FindName("pageGeneral") as StackPanel;
+                var pageLogs = window.FindName("pageLogs") as StackPanel;
+                pageGeneral.Should().NotBeNull();
+                pageLogs.Should().NotBeNull();
+                pageGeneral.Visibility.Should().Be(Visibility.Collapsed);
+                pageLogs.Visibility.Should().Be(Visibility.Visible);
+
+                // Verify log controls are accessible
+                var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
+                var chkInfo = window.FindName("chkInfo") as CheckBox;
+                var txtLogView = window.FindName("txtLogView") as TextBox;
+                var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
+
+                txtLogSearch.Should().NotBeNull();
+                chkInfo.Should().NotBeNull();
+                txtLogView.Should().NotBeNull();
+                lblLogStatus.Should().NotBeNull();
+            }
+            finally
+            {
+                if (logCreated && File.Exists(logPath))
+                {
+                    try { File.Delete(logPath); } catch { }
+                }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_searches_logs_and_results_update()
+    {
+        RunOnSta(() =>
+        {
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
+            var logCreated = false;
+            if (!File.Exists(logPath))
+            {
+                File.WriteAllText(logPath,
+                    "[INFO] System idle detected\r\n" +
+                    "[WARN] Battery low warning\r\n" +
+                    "[ERROR] Failed to switch plan\r\n" +
+                    "[HEART] Monitoring active\r\n");
+                logCreated = true;
+            }
+
+            try
+            {
+                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(projectRoot);
+
+                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+
+                var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
+                var txtLogView = window.FindName("txtLogView") as TextBox;
+
+                // Simulate user typing in search box
+                txtLogSearch!.Text = "Battery";
+
+                // The TextChanged event should have fired and updated the view
+                // Give dispatcher a moment to process
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                // Verify filtered results contain the search term
+                txtLogView.Text.Should().Contain("Battery");
+            }
+            finally
+            {
+                if (logCreated && File.Exists(logPath))
+                {
+                    try { File.Delete(logPath); } catch { }
+                }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_toggles_log_filter_and_view_updates()
+    {
+        RunOnSta(() =>
+        {
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
+            var logCreated = false;
+            if (!File.Exists(logPath))
+            {
+                File.WriteAllText(logPath,
+                    "[INFO] System idle detected\r\n" +
+                    "[WARN] Battery low warning\r\n");
+                logCreated = true;
+            }
+
+            try
+            {
+                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(projectRoot);
+
+                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+
+                var chkInfo = window.FindName("chkInfo") as CheckBox;
+                var txtLogView = window.FindName("txtLogView") as TextBox;
+
+                // Initially INFO is checked, so view should contain INFO lines
+                txtLogView.Text.Should().Contain("INFO");
+
+                // Simulate user unchecking INFO filter
+                chkInfo!.IsChecked = false;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                // After unchecking INFO, the INFO line should be filtered out
+                txtLogView.Text.Should().NotContain("INFO");
+            }
+            finally
+            {
+                if (logCreated && File.Exists(logPath))
+                {
+                    try { File.Delete(logPath); } catch { }
+                }
+            }
+        });
+    }
+
+    private static Window GetWindowField(SettingsWindowController controller)
+    {
+        var field = typeof(SettingsWindowController).GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return (Window)field!.GetValue(controller)!;
+    }
 }
