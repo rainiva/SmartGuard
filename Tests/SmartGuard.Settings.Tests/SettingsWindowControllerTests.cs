@@ -273,6 +273,62 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void Log_page_controls_exist()
+    {
+        RunOnSta(() =>
+        {
+            var root = AppContext.BaseDirectory;
+            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            var xaml = File.ReadAllText(xamlPath);
+            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+
+            var pageLogs = window.FindName("pageLogs") as StackPanel;
+            var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
+            var chkInfo = window.FindName("chkInfo") as CheckBox;
+            var chkWarn = window.FindName("chkWarn") as CheckBox;
+            var chkError = window.FindName("chkError") as CheckBox;
+            var chkHeart = window.FindName("chkHeart") as CheckBox;
+            var txtLogView = window.FindName("txtLogView") as TextBox;
+            var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
+
+            pageLogs.Should().NotBeNull();
+            txtLogSearch.Should().NotBeNull();
+            chkInfo.Should().NotBeNull();
+            chkWarn.Should().NotBeNull();
+            chkError.Should().NotBeNull();
+            chkHeart.Should().NotBeNull();
+            txtLogView.Should().NotBeNull();
+            lblLogStatus.Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public void Navigation_includes_logs_page()
+    {
+        RunOnSta(() =>
+        {
+            var root = AppContext.BaseDirectory;
+            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            var xaml = File.ReadAllText(xamlPath);
+            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+
+            var navList = window.FindName("navList") as ListBox;
+            navList.Should().NotBeNull();
+            navList.Items.Count.Should().Be(4);
+        });
+    }
+
+    [Fact]
     public void All_checkbox_controls_have_correct_names()
     {
         RunOnSta(() =>
