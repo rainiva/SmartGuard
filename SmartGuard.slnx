@@ -4,13 +4,16 @@
     <Project Path="src/SmartGuard.Configuration/SmartGuard.Configuration.csproj" />
     <Project Path="src/SmartGuard.Engine/SmartGuard.Engine.csproj" />
     <Project Path="src/SmartGuard.LogViewer/SmartGuard.LogViewer.csproj" />
+    <Project Path="src/SmartGuard.Packaging/SmartGuard.Packaging.csproj" />
     <Project Path="src/SmartGuard.Settings/SmartGuard.Settings.csproj" />
     <Project Path="src/SmartGuard.Tray/SmartGuard.Tray.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj" />
+    <Project Path="tests/SmartGuard.Engine.PerformanceTests/SmartGuard.Engine.PerformanceTests.csproj" />
     <Project Path="tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj" />
     <Project Path="tests/SmartGuard.LogViewer.Tests/SmartGuard.LogViewer.Tests.csproj" />
+    <Project Path="tests/SmartGuard.Packaging.Tests/SmartGuard.Packaging.Tests.csproj" />
     <Project Path="tests/SmartGuard.Settings.Tests/SmartGuard.Settings.Tests.csproj" />
     <Project Path="tests/SmartGuard.Tray.Tests/SmartGuard.Tray.Tests.csproj" />
   </Folder>
