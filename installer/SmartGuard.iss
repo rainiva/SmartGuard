@@ -73,6 +73,11 @@ Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Descripti
 Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --uninstall"; Flags: waituntilterminated
 
 [UninstallDelete]
+; Program files (always deleted)
+Type: files; Name: "{app}\.SmartGuard.initialized"
+Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\lib"
+; User data (optional, based on user choice)
 Type: files; Name: "{app}\SmartGuard.config.json"; Check: ShouldDeleteUserData
 Type: files; Name: "{app}\SmartGuard.log"; Check: ShouldDeleteUserData
 Type: files; Name: "{app}\SmartGuard.startup.log"; Check: ShouldDeleteUserData
@@ -308,8 +313,15 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usUninstall then
-    StopSmartGuardProcesses();
+  { StopSmartGuardProcesses already called in InitializeUninstall;
+    avoid duplicate UAC prompts from schtasks /End. }
+
+  if CurUninstallStep = usPostUninstall then
+  begin
+    { Remove program directories that may still contain files after [UninstallDelete] }
+    DelTree(ExpandConstant('{app}\bin'), True, True, True);
+    DelTree(ExpandConstant('{app}\lib'), True, True, True);
+  end;
 end;
 
 function IsDesktopDotNet8Installed: Boolean;

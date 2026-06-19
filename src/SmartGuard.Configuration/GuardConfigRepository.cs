@@ -39,6 +39,13 @@ public sealed class GuardConfigRepository(string configPath)
     WriteNode(node);
   }
 
+  public void SetManualHighPerformanceUntil(DateTime until)
+  {
+    var node = LoadOrCreateNode();
+    node["ManualHighPerformanceUntil"] = until.ToString("o");
+    WriteNode(node);
+  }
+
   public void AppendInfoLog(string message, string fallbackLogPath)
   {
     var config = TryLoad();
@@ -81,6 +88,10 @@ public sealed class GuardConfigRepository(string configPath)
     node["NotifyOnPlanChange"] = config.NotifyOnPlanChange;
     node["HeartbeatIntervalMin"] = config.HeartbeatIntervalMin;
     node["AutoStartEnabled"] = config.AutoStartEnabled;
+    if (config.ManualHighPerformanceUntil is { } until)
+      node["ManualHighPerformanceUntil"] = until.ToString("o");
+    else
+      node.Remove("ManualHighPerformanceUntil");
   }
 
   private void WriteNode(JsonObject node)

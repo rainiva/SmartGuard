@@ -1,7 +1,7 @@
 # Phase 7：开发机去 PowerShell — Task Contract
 
 **制定日期：** 2026-06-17  
-**状态：** 7.1–7.5 **已完成**；7.6 部分完成
+**状态：** 7.1–7.6 **全部完成**
 
 ---
 
@@ -36,7 +36,7 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 | **7.3** | 7P-legacy | 删除 `Repair-*`；更新 `Setup-All`/`Run-Tests.cmd`；归档迁移脚本 | **已完成** |
 | **7.4** | 7P-xaml | `lib/SmartGuard.Settings.xaml` 为源；删除生成脚本 | **已完成** |
 | **7.5** | 7P-publish | `build.cmd` + `Directory.Build.props`；`Publish-All` 委托 | **已完成** |
-| **7.6** | 7P-docs | `MIGRATION.md`、README 与契约同步 | **部分完成** |
+| **7.6** | 7P-docs | `MIGRATION.md`、README 与契约同步 | **已完成** |
 
 **并行轨道：** Phase **5.3** 干净 VM / 人工验收（不阻塞 Phase 7）。
 
@@ -94,8 +94,6 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ---
 
----
-
 ## 六、7.4 — XAML 源文件化 `7P-xaml`
 
 | 动作 | 说明 |
@@ -128,11 +126,20 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ---
 
-## 八、7.6 — 文档
+## 八、7.6 — 文档 `7P-docs`
 
+| 交付 | 说明 |
+|------|------|
+| `docs/MIGRATION.md` | Phase 7 完成态、测试计数、`build.cmd` 引用表 |
+| `README.md` | `build.cmd` 首选、`Register-AllTasks.cmd`、Phase 7 契约链接 |
+| `docs/INNO-INSTALLER-TASK-CONTRACT.md` | Build-Staging 步骤与发布链同步 |
+| `docs/PHASE-6-TASK-CONTRACT.md` | 保留 PS 范围与 6+ 状态 |
+| 证据清单 | `phase-5.3-vm-checklist.md`、冒烟报告测试计数 |
 
-- `docs/MIGRATION.md` Phase 7 表
-- `README.md` / `lib/README-DEPLOY.txt` 开发流程仅写 cmd + `Publish-All`
+### 验收
+
+- [x] Pester `Phase 7.6` 全过
+- [x] 文档不再引用已删除的 `Publish-*.ps1` 分脚本 / `Write-SmartGuardSettingsXaml`
 
 ---
 
@@ -148,9 +155,9 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 
 ## 十、完成标准（Phase 7 Done）
 
-- [ ] 7.1–7.3 + 7.6 完成（或明确跳过 7.4/7.5）
-- [ ] 用户安装包仍与 Phase 6 一致
-- [ ] `Run-Tests.ps1` 全绿
+- [x] 7.1–7.6 全部完成
+- [x] 用户安装包仍与 Phase 6 一致
+- [x] `Run-Tests.ps1` 全绿
 
 ---
 
@@ -159,3 +166,4 @@ Phase 6 已消除**用户运行时**对 PowerShell 应用栈的依赖。Phase 7 
 | 日期 | 变更 |
 |------|------|
 | 2026-06-17 | 7.4–7.5：`build.cmd` 发布链；XAML 源文件化 |
+| 2026-06-17 | 7.6：文档与证据同步；Phase 7 收尾 |

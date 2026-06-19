@@ -22,6 +22,7 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 
 - [迁移规划（完整）](docs/MIGRATION.md) — DevGuard Task Contract、分期方案与实施状态
 - [Phase 6 去 PS 化](docs/PHASE-6-TASK-CONTRACT.md) — 计划任务 C# 化、删除 PS 应用栈
+- [Phase 7 开发机去 PS](docs/PHASE-7-TASK-CONTRACT.md) — cmd 启动器、`build.cmd` 发布链
 - [Inno 安装包契约](docs/INNO-INSTALLER-TASK-CONTRACT.md) — Phase 5：P5A 运行时、H1–H6 已签署
 
 ## 环境要求
@@ -33,17 +34,18 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 ## 快速开始
 
 ```powershell
-cd D:\Project\SmartGuard
+cd <仓库根目录>
 
-# 1. 编译全部 C# 组件
+# 1. 编译全部 C# 组件（首选 build.cmd）
 build.cmd
 # 或: powershell -File scripts\Publish-All.ps1
 
 # 2. 注册计划任务（管理员，会弹出 UAC）
-.\bin\SmartGuard.Engine.exe --root D:\Project\SmartGuard --install
+.\Register-AllTasks.cmd
+# 或: .\bin\SmartGuard.Engine.exe --root <仓库根目录> --install
 
 # 卸载计划任务（不删除配置与日志）
-.\bin\SmartGuard.Engine.exe --root D:\Project\SmartGuard --uninstall
+.\bin\SmartGuard.Engine.exe --root <仓库根目录> --uninstall
 
 # 3. 启动托盘
 .\Start-Tray.cmd
@@ -54,7 +56,7 @@ build.cmd
 ```powershell
 .\Start-Core.cmd
 # 或
-.\bin\SmartGuard.Engine.exe --root D:\Project\SmartGuard
+.\bin\SmartGuard.Engine.exe --root <仓库根目录>
 ```
 
 ## 架构
@@ -122,7 +124,7 @@ powershell -File installer\Build-Installer.ps1 -SkipStaging
 
 ## 故障恢复
 
-若组件缺失，请重新运行安装包或 `scripts\Publish-All.ps1` 后执行 `--install` 注册计划任务。
+若组件缺失，请重新运行安装包或 `build.cmd`（或 `scripts\Publish-All.ps1`）后执行 `--install` 注册计划任务。
 
 ## 许可证
 

@@ -4,7 +4,7 @@
 **签署日期：** 2026-06-16（H1–H6，见 §十二）
 **父规划：** [`MIGRATION.md`](MIGRATION.md) § Phase 5  
 **制定日期：** 2026-06-16  
-**前置：** Phase 4 已完成；生产态为 C# 四件套 + `Engine.exe --install` + PS 计划任务注册脚本
+**前置：** Phase 4 已完成；生产态为 C# 四件套 + `Engine.exe --install`（C# `ScheduledTaskRegistrar`，Phase 6.1）
 
 ---
 
@@ -16,7 +16,7 @@
 | **Mode** | `STANDARD`（首版以可重复构建与手动验收为主；签名与 CI 可后置） |
 | **推荐顺序** | **5.0 运行时策略决策** → **5.1 构建暂存目录** → **5.2 `.iss` + 编译** → **5.3 安装验收** → **5.4（可选）代码签名 / CI** |
 | **默认运行时策略** | **P5A**（已签署，见 §3.3、§十二） |
-| **Status** | `ALLOW` — 文档已冻结，**尚未实施** |
+| **Status** | **5.1–5.2 已实施**；Phase 6 载荷已去 PS；Build-Staging 发布链见 Phase 7.5（`build.cmd`） |
 
 ---
 
@@ -36,9 +36,9 @@
 
 | 焦点 | 说明 | 缓解 |
 |------|------|------|
-| **安装仍调 PS 注册脚本** | `Engine.exe --install` 依赖 `Register-*.ps1` | 安装包必须包含这两支脚本；目标机需 PowerShell 5.1+ |
+| **安装仍调 PS 注册脚本** | ~~`Engine.exe --install` 依赖 `Register-*.ps1`~~ | **Phase 6.1 已废止**；`ScheduledTaskRegistrar` 纯 C# |
 | **UAC / 最高权限任务** | Guardian 任务 `RunLevel Highest` | Inno `[Run]` 段 `runascurrentuser` + `runasadmin`；失败时写 `SmartGuard.startup.log` |
-| **.NET 8 缺失** | 当前 `Publish-*.ps1` 为 `--self-contained false` | 采用 §二决策树默认 **P5A** 或显式选 **P5B** |
+| **.NET 8 缺失** | `build.cmd` / `Directory.Build.props` 为 `--self-contained false` | 采用 §二决策树默认 **P5A** 或显式选 **P5B** |
 | **配置覆盖** | `SmartGuard.config.json` 在安装根目录 | 升级安装使用 `onlyifdoesntexist` 或 `[InstallDelete]` 排除 |
 | **遗留安装入口** | `Register-Task.cmd` / `Setup-All.cmd` 仅注册 PS | **禁止**打入安装包；文档与 README 标明废弃 |
 | **未签名 exe** | SmartScreen 可能拦截 | 验收记录警告；P5.4 可选 Authenticode |
@@ -89,8 +89,8 @@ flowchart TD
 
 | 代号 | 发布参数 | 安装包内容 | 预估体积 | 优点 | 缺点 |
 |------|----------|------------|----------|------|------|
-| **P5A（推荐）** | `--self-contained false` | `bin\` + 资源 + PS 注册脚本 + **内嵌** `windowsdesktop-runtime-8.0.x-win-x64.exe` | ~35–45 MB（含 runtime 引导） | 体积较小；与现 `Publish-*.ps1` 一致 | 需处理 runtime 静默安装与版本钉扎 |
-| **P5B** | `--self-contained true`（四项目） | `bin\`（膨胀）+ 资源 + PS 注册脚本 | ~80–150 MB | 目标机零依赖 .NET | 体积大；四 exe 共享运行时重复（可后续做单 host 优化，**非本阶段**） |
+| **P5A（推荐）** | `--self-contained false` | `bin\` + 资源 + **内嵌** `windowsdesktop-runtime-8.0.x-win-x64.exe` | ~35–45 MB（含 runtime 引导） | 体积较小；与 `build.cmd` 一致 | 需处理 runtime 静默安装与版本钉扎 |
+| **P5B** | `--self-contained true`（四项目） | `bin\`（膨胀）+ 资源 | ~80–150 MB | 目标机零依赖 .NET | 体积大；四 exe 共享运行时重复（可后续做单 host 优化，**非本阶段**） |
 | **P5C** | `--self-contained false` | 同 P5A 但不内嵌 runtime；`[Code]` 仅检测 | ~5–10 MB | 最小包 | 普通用户易装失败；**不推荐对外发布** |
 
 ### 3.3 冻结决策（已签署 2026-06-16）
@@ -167,14 +167,13 @@ dotnet publish $project -c Release -r win-x64 --self-contained true -o $staging\
 ### 5.2 `Build-Staging.ps1` 步骤（契约）
 
 ```text
-1. powershell -File scripts\Publish-All.ps1 -Configuration Release
-2. powershell -File lib\Write-SmartGuardSettingsXaml.ps1
-3. powershell -File lib\Create-TrayIcon.ps1（若 ico 不存在）
-4. 复制 §四 清单 → installer\staging\
-5. [P5A] 下载/校验 redist\windowsdesktop-runtime-8.0.*-win-x64.exe → staging\redist\
-6. 复制 installer\license_zh-CN.txt → staging\（供 .iss LicenseFile 引用）
-7. 写入 staging\VERSION.txt（来自 git describe 或固定 1.0.0）
-8. 调用 ISCC installer\SmartGuard.iss /DStagingDir=...
+1. build.cmd（或 powershell -File scripts\Publish-All.ps1 -Configuration Release）
+2. powershell -File lib\Create-TrayIcon.ps1（若 ico 不存在）
+3. 复制 §四 清单 → installer\staging\（含已提交的 lib\SmartGuard.Settings.xaml）
+4. [P5A] 下载/校验 redist\windowsdesktop-runtime-8.0.*-win-x64.exe → staging\redist\
+5. 复制 installer\license_zh-CN.txt → staging\（供 .iss LicenseFile 引用）
+6. 写入 staging\VERSION.txt（来自 git describe 或固定 1.0.0）
+7. 调用 ISCC installer\SmartGuard.iss /DStagingDir=...
 ```
 
 ### 5.3 版本号来源（冻结）
@@ -358,9 +357,9 @@ end;
 | 路径 | 原因 |
 |------|------|
 | `src\**\*.cs` 业务逻辑 | 本阶段仅安装器；除非修复 `--root` 路径 bug |
-| `Register-Task.cmd` / `Setup-All.cmd` | 禁止复活 |
-| 修改默认 `Publish-*.ps1` 为 self-contained | 仅 `Build-Staging.ps1` 变体允许 P5B |
-| 删除 `Register-*.ps1` | `--install` 仍依赖 |
+| `Register-Task.cmd` / `Setup-All.cmd` | 禁止复活（开发机专用，不打入安装包） |
+| 修改默认 `build.cmd` / `Directory.Build.props` 为 self-contained | 仅 `Build-Staging.ps1` 变体允许 P5B |
+| 复活 `Register-*.ps1` 载荷 | Phase 6.4 已废止 |
 
 ---
 
@@ -504,3 +503,4 @@ end;
 | 2026-06-16 | 初版冻结：决策树、staging 布局、`.iss` 骨架、验收表 |
 | 2026-06-16 | H1–H6 签署：P5A、可自定义路径、卸载可选删数据、许可占位、rainiva 发布者 |
 | 2026-06-17 | Phase 6：staging/`.iss` 移除 `Register-*.ps1`；`--install` 使用 C# `ScheduledTaskRegistrar` |
+| 2026-06-17 | Phase 7.5/7.6：Build-Staging 发布改 `build.cmd`；XAML 为已提交源文件 |

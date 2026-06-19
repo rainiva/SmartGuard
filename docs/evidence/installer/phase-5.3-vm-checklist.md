@@ -13,7 +13,7 @@
 | **V6** | 升级安装保留用户数据（侧车 `.sg-upgrade-marker`） | 同上 `upgrade install preserves...` | ✅ |
 | **载荷** | 无 `Register-*.ps1`、无 `lib\SmartGuard.Core.ps1` | 同上 | ✅ |
 | **静默装/卸** | 退出码 0 | 同上 + Tray 集成 2 项 | ✅ |
-| **回归** | `Run-Tests.ps1` | Pester 26 + 集成 7 + xUnit 157 | ✅ `PASSED=33` |
+| **回归** | `Run-Tests.ps1` | Pester 41 + 集成 7 + xUnit 157 | ✅ `PASSED=48` |
 
 证据日志：[`integration-1.0.6.log`](./integration-1.0.6.log)
 

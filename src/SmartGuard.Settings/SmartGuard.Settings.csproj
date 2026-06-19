@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <Page Include="..\..\lib\SmartGuard.Settings.xaml" Link="SmartGuard.Settings.xaml" />
+    <Page Include="..\..\lib\Themes\Light.xaml" Link="Themes\Light.xaml" />
+    <Page Include="..\..\lib\Themes\Dark.xaml" Link="Themes\Dark.xaml" />
   </ItemGroup>
 
 </Project>

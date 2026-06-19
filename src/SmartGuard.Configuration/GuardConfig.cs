@@ -28,6 +28,12 @@ public sealed class GuardConfig
   public int HeartbeatIntervalMin { get; set; } = 10;
   public bool AutoStartEnabled { get; set; } = true;
 
+  [JsonPropertyName("ManualHighPerformanceUntil")]
+  public DateTime? ManualHighPerformanceUntil { get; set; }
+
+  public bool IsManualHighPerformanceActive(DateTime now)
+    => ManualHighPerformanceUntil is { } until && until > now;
+
   public static GuardConfig LoadFromJson(string json)
   {
     var cfg = JsonSerializer.Deserialize<GuardConfig>(json, JsonOptions)

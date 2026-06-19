@@ -46,6 +46,9 @@ public sealed class TrayApplicationContext : ApplicationContext
     _pauseItem = new ToolStripMenuItem("暂停守护") { AutoSize = true };
     _pauseItem.Click += OnPauseClick;
     menu.Items.Add(_pauseItem);
+    var highPerfItem = new ToolStripMenuItem(TrayContextMenuTexts.SwitchHighPerformance) { AutoSize = true };
+    highPerfItem.Click += OnSwitchHighPerformanceClick;
+    menu.Items.Add(highPerfItem);
     var logItem = new ToolStripMenuItem("打开日志") { AutoSize = true };
     logItem.Click += (_, _) => OpenLogViewer();
     menu.Items.Add(logItem);
@@ -113,6 +116,19 @@ public sealed class TrayApplicationContext : ApplicationContext
     catch (Exception ex)
     {
       MessageBox.Show($"操作失败：\n{ex.Message}", "智能电源守护", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+  }
+
+  private void OnSwitchHighPerformanceClick(object? sender, EventArgs e)
+  {
+    try
+    {
+      HighPerformanceBoost.Apply(_configRepository, _root, new PowerPlanActivator());
+      UpdateDisplay();
+    }
+    catch (Exception ex)
+    {
+      MessageBox.Show($"切换失败：\n{ex.Message}", "智能电源守护", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
   }
 

@@ -4,13 +4,50 @@ using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Cli;
 
+public static class ElevationDeclinedMarker
+{
+  private const string MarkerFileName = ".SmartGuard.elevation-declined";
+
+  public static bool Exists(string root)
+  {
+    try
+    {
+      return File.Exists(Path.Combine(root, MarkerFileName));
+    }
+    catch
+    {
+      return false;
+    }
+  }
+
+  public static void Create(string root)
+  {
+    try
+    {
+      File.WriteAllText(Path.Combine(root, MarkerFileName), string.Empty);
+    }
+    catch
+    {
+      // marker creation is best-effort
+    }
+  }
+}
+
 public static class InstallCommands
 {
   public static int RunInstall(string root, bool skipPublish)
   {
     var startupLog = Path.Combine(root, "SmartGuard.startup.log");
     if (!IsAdministrator())
+    {
+      if (ElevationDeclinedMarker.Exists(root))
+      {
+        WriteStartupLog(startupLog, "Install: elevation was previously declined, skipping UAC prompt.");
+        Console.Error.WriteLine("Install requires administrator privileges. Run as administrator or delete the elevation marker file to retry.");
+        return 1;
+      }
       return RerunElevated(root, "--install", skipPublish ? "--skip-publish" : null, startupLog);
+    }
 
     try
     {
@@ -45,7 +82,15 @@ public static class InstallCommands
   {
     var startupLog = Path.Combine(root, "SmartGuard.startup.log");
     if (!IsAdministrator())
+    {
+      if (ElevationDeclinedMarker.Exists(root))
+      {
+        WriteStartupLog(startupLog, "Uninstall: elevation was previously declined, skipping UAC prompt.");
+        Console.Error.WriteLine("Uninstall requires administrator privileges. Run as administrator or delete the elevation marker file to retry.");
+        return 1;
+      }
       return RerunElevated(root, "--uninstall", null, startupLog);
+    }
 
     try
     {
@@ -84,7 +129,10 @@ public static class InstallCommands
     });
 
     if (proc is null)
+    {
+      ElevationDeclinedMarker.Create(root);
       return Fail(startupLog, "UAC was cancelled or elevation failed.");
+    }
 
     proc.WaitForExit();
     WriteStartupLog(startupLog, $"Elevated process exit code: {proc.ExitCode}");

@@ -8,7 +8,7 @@
 
 | 项 | 命令 / 说明 | 结果 |
 |----|-------------|------|
-| 全量测试 | `Run-Tests.ps1` | ✅ **PASSED=33 FAILED=0**（Pester 26 + 集成 7；dotnet xUnit 157 项） |
+| 全量测试 | `Run-Tests.ps1` | ✅ **PASSED=48 FAILED=0**（Pester 41 + 集成 7；dotnet xUnit 157 项） |
 | 静默安装 / 卸载 | `InstallerUserFlow.Tests.ps1` | ✅ 退出码 0 |
 | Guardian 任务 (V2) | `schtasks /Query /TN "SmartGuard Guardian" /XML` | ✅ 含 `--root` 与安装路径 |
 | Tray 任务 (V3) | `schtasks /Query /TN "SmartGuard Tray" /XML` | ✅ 含 `SmartGuard.Tray.exe` 与 `--root` |

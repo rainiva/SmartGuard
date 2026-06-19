@@ -1,6 +1,20 @@
 ﻿$testPath = Join-Path $PSScriptRoot 'Tests\SmartGuard.Tests.ps1'
 $resultPath = Join-Path $PSScriptRoot 'test-result.txt'
 
+# 确保 UTF-8 编码
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$env:DOTNET_CONSOLE_ENCODING = 'utf-8'
+if ((chcp) -notmatch '65001') {
+    chcp 65001 | Out-Null
+}
+
+. (Join-Path $PSScriptRoot 'scripts\Test-IsProcessElevated.ps1')
+if (Test-RunTestsNeedsInstallerElevation -RepoRoot $PSScriptRoot) {
+    Invoke-RunTestsSingleElevation -RunTestsScript (Join-Path $PSScriptRoot 'Run-Tests.ps1')
+}
+
 $pester = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
 if (-not $pester -or $pester.Version -lt [version]'5.0.0') {
     Write-Host 'Installing Pester 5.x...'
@@ -68,11 +82,16 @@ if (Test-Path -LiteralPath $integration) {
 }
 $installerFlow = Join-Path $PSScriptRoot 'Tests\Integration\InstallerUserFlow.Tests.ps1'
 if (Test-Path -LiteralPath $installerFlow) {
-    Write-Host 'Running integration: Installer user flow...'
-    $installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru
-    if ($installerFlowResult.FailedCount -gt 0) {
-        Write-Host "Installer integration FAILED=$($installerFlowResult.FailedCount)" -ForegroundColor Red
-        exit 1
+    if ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
+        Write-Host 'Skipping installer integration: SMARTGUARD_SKIP_INSTALLER_TESTS=1' -ForegroundColor Yellow
+    }
+    else {
+        Write-Host 'Running integration: Installer user flow...'
+        $installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru
+        if ($installerFlowResult.FailedCount -gt 0) {
+            Write-Host "Installer integration FAILED=$($installerFlowResult.FailedCount)" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 $total = $r.PassedCount + $integrationResult.PassedCount + $installerFlowResult.PassedCount

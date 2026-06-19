@@ -15,8 +15,8 @@
 | **Task** | 将 SmartPowerPlan 迁移为 SmartGuard：C# 四件套 + Inno 安装包；**运行时不再依赖 PS 应用栈**（Phase 6） |
 | **Mode** | `STRICT` |
 | **Skill chain** | project-understanding → impact-analysis → task-contract-freeze → TDD → migration-refactor → code-review → release-check |
-| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.5 已完成** |
-| **Next** | Phase 7.6 文档收尾；Phase 5.3 **VM/人工**验收 |
+| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.6 已完成** |
+| **Next** | Phase 5.3 **干净 VM / 人工**验收 |
 
 ---
 
@@ -180,11 +180,12 @@ D:\Project\SmartGuard\
 ├── lib/layers/Infrastructure.Battery.ps1
 ├── lib/                              # PowerShell 壳层（保留）
 ├── bin/SmartGuard.Engine.exe         # dotnet publish 输出
+├── build.cmd                         # Phase 7.5：dotnet publish 四件套
 └── scripts/
-    ├── Publish-Engine.ps1
+    ├── Publish-All.ps1               # 委托 build.cmd
     ├── Measure-EngineStartup.ps1
     ├── Measure-EngineMemory.ps1
-    ├── Migrate-RenameToSmartGuard.ps1
+    ├── archive/Migrate-RenameToSmartGuard.ps1
     └── Unregister-LegacySmartPowerPlanTasks.ps1
 ```
 
@@ -204,6 +205,8 @@ D:\Project\SmartGuard\
 - [x] 日志文件统一为 `SmartGuard.log`
 
 #### 5.3 部署命令
+
+> **注（Phase 7 后）：** 以下为 Phase 1 历史快照。当前开发机请使用 `build.cmd`、`Register-AllTasks.cmd`、`Restart-Tray.cmd`；计划任务由 `Engine.exe --install` 注册。
 
 ```powershell
 cd D:\Project\SmartGuard
@@ -322,7 +325,7 @@ powershell -File Restart-Tray.ps1
 | **7.3** | 7P-legacy | `Repair`/`Setup-All` 遗留脚本 | **已完成** |
 | **7.4** | 7P-xaml | XAML 源文件化 | **已完成** |
 | **7.5** | 7P-publish | `build.cmd` dotnet 发布链 | **已完成** |
-| **7.6** | 7P-docs | 文档同步 | **部分完成** |
+| **7.6** | 7P-docs | 文档同步 | **已完成** |
 
 ---
 
@@ -347,10 +350,10 @@ powershell -File Restart-Tray.ps1
 
 | 类型 | 位置 | 数量 |
 |------|------|------|
-| Pester 契约 / 安装包 | `Tests/SmartGuard.Tests.ps1` | 26 |
-| Pester 集成 | `Tests/Integration/*.ps1` | 4 |
+| Pester 契约 / 安装包 | `Tests/SmartGuard.Tests.ps1` | 43 |
+| Pester 集成 | `Tests/Integration/*.ps1` | 7 |
 | xUnit | `Tests/SmartGuard.*.Tests/` | 157 |
-| 运行 | `Run-Tests.ps1` | 串联上述全部 |
+| 运行 | `Run-Tests.ps1` | Pester 汇总 **50** 项 + xUnit 157 项 |
 
 **TDD 纪律（后续 Phase 仍适用）：** Red → Green → Refactor；声称完成前 `Run-Tests.ps1` 全绿。
 
@@ -359,7 +362,7 @@ powershell -File Restart-Tray.ps1
 ## 八、回滚方案（Phase 6 后）
 
 1. 重新运行 `dist\SmartGuard-Setup-*-x64.exe` 覆盖安装，或  
-2. `scripts\Publish-All.ps1` 后执行 `bin\SmartGuard.Engine.exe --root <安装目录> --install`  
+2. `build.cmd`（或 `scripts\Publish-All.ps1`）后执行 `bin\SmartGuard.Engine.exe --root <安装目录> --install`  
 3. 配置 / 状态 / 日志文件**无需格式迁移**
 
 > Phase 1 **A10**（回滚至 `lib\SmartGuard.Core.ps1`）已于 Phase 6.3 **废止**。
@@ -373,13 +376,15 @@ powershell -File Restart-Tray.ps1
 | [`README.md`](../README.md) | 项目概览与快速开始 |
 | [`docs/PHASE-3-TASK-CONTRACT.md`](PHASE-3-TASK-CONTRACT.md) | Phase 3 安装器 + 托盘 C# 化（3.1–3.3） |
 | [`docs/PHASE-6-TASK-CONTRACT.md`](PHASE-6-TASK-CONTRACT.md) | Phase 6 去 PS 化（6.1–6.5） |
+| [`docs/PHASE-7-TASK-CONTRACT.md`](PHASE-7-TASK-CONTRACT.md) | Phase 7 开发机去 PS（7.1–7.6） |
 | [`docs/evidence/installer/`](evidence/installer/) | 安装包冒烟与集成测试证据 |
 | [`docs/PHASE-2.1-TASK-CONTRACT.md`](PHASE-2.1-TASK-CONTRACT.md) | Phase 2.1 结构化日志（已完成） |
 | [`lib/README-DEPLOY.txt`](../lib/README-DEPLOY.txt) | 部署步骤 |
-| [`scripts/Publish-Engine.ps1`](../scripts/Publish-Engine.ps1) | 编译发布引擎 |
+| [`build.cmd`](../build.cmd) | 首选：dotnet publish 四件套到 `bin\` |
+| [`scripts/Publish-All.ps1`](../scripts/Publish-All.ps1) | 薄包装，委托 `build.cmd` |
 | [`scripts/Measure-EngineStartup.ps1`](../scripts/Measure-EngineStartup.ps1) | Phase 1 启动耗时验收 |
 | [`scripts/Measure-EngineMemory.ps1`](../scripts/Measure-EngineMemory.ps1) | Phase 1 内存验收 |
-| [`scripts/Migrate-RenameToSmartGuard.ps1`](../scripts/Migrate-RenameToSmartGuard.ps1) | 一次性更名（已执行） |
+| [`scripts/archive/Migrate-RenameToSmartGuard.ps1`](../scripts/archive/Migrate-RenameToSmartGuard.ps1) | 一次性更名（已归档） |
 | [`scripts/Unregister-LegacySmartPowerPlanTasks.ps1`](../scripts/Unregister-LegacySmartPowerPlanTasks.ps1) | 卸载旧计划任务 |
 
 ---
@@ -402,6 +407,7 @@ powershell -File Restart-Tray.ps1
 | 2026-06-16 | Phase 2.1：结构化日志 INFO/WARN/ERROR/HEART |
 | 2026-06-16 | Phase 5.1–5.2：`installer\` staging + `SmartGuard.iss`；产出 `dist\SmartGuard-Setup-1.0.0-x64.exe` |
 | 2026-06-17 | Phase 6.1–6.5：C# 计划任务注册、exe 启动链、删除 PS 应用栈、安装包瘦身、文档同步 |
+| 2026-06-17 | Phase 7.1–7.6：开发启动器 cmd-only、`build.cmd` 发布链、XAML 源文件化、文档同步 |
 
 ---
 

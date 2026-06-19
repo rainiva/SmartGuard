@@ -1,7 +1,7 @@
 # Phase 6：去 PowerShell 化 — Task Contract
 
 **制定日期：** 2026-06-17  
-**状态：** 6.1–6.3、6.5 **已完成**；干净 VM 验收与可选 6+ 构建链迁移 **未开始**
+**状态：** 6.1–6.3、6.5 **已完成**；干净 VM 验收待办；构建链迁移已由 **Phase 7.5** 完成
 
 ---
 
@@ -9,7 +9,7 @@
 
 消除**用户机器运行时**对 PowerShell 应用栈的依赖：计划任务注册、手动启动、托盘打开设置/日志、安装包载荷均只依赖已发布的 C# exe。
 
-**保留 PowerShell 的范围：** `Run-Tests.ps1`、`installer/*.ps1`、`scripts/Publish-*.ps1`、资源生成脚本（`lib/Create-TrayIcon.ps1`、`lib/Write-SmartGuardSettingsXaml.ps1`）。
+**保留 PowerShell 的范围（Phase 6 后；Phase 7 未改变用户运行时）：** `Run-Tests.ps1`、`Tests/*.ps1`、`installer/*.ps1`、`scripts/Publish-All.ps1`（委托 `build.cmd`）、`lib/Create-TrayIcon.ps1`。
 
 ---
 
@@ -22,7 +22,7 @@
 | **6.3** | 6P-fallback | 删除 `lib/layers`、PS 托盘/设置/日志/引擎；C# 无 PS 回退 | **已完成** (`c7f8146`) |
 | **6.4** | 6P-packaging | 安装包去掉 `Register-*.ps1`（与 6.3 同提交） | **已完成** (`c7f8146`) |
 | **6.5** | 6P-docs | 本文档、`MIGRATION.md`、Inno 契约同步、冒烟证据 | **已完成** |
-| **6+** | — | 用 CI/dotnet 替代 `Publish-*.ps1`（可选） | 未规划 |
+| **6+** | — | 用 CI/dotnet 替代分项目 `Publish-*.ps1` | **已由 Phase 7.5 完成**（`build.cmd`） |
 
 ---
 
@@ -101,7 +101,7 @@
 ### 新回滚方案
 
 1. 重新运行 `dist\SmartGuard-Setup-*-x64.exe` 覆盖安装，或  
-2. `scripts\Publish-All.ps1` 后执行 `bin\SmartGuard.Engine.exe --root <dir> --install`
+2. `build.cmd`（或 `scripts\Publish-All.ps1`）后执行 `bin\SmartGuard.Engine.exe --root <dir> --install`
 
 配置 / 状态 / 日志 JSON **无需格式迁移**。
 
@@ -123,7 +123,7 @@
 ## 八、非目标（Non-Goals）
 
 - 不重写 `Run-Tests.ps1` 为纯 dotnet
-- 不删除 `scripts/Publish-*.ps1`
+- 不删除 `scripts/Publish-All.ps1`（Phase 7.5 已改为委托 `build.cmd`）
 - 不将 Inno 构建迁到 MSBuild Task
 - Phase 5 **5.3** 干净 VM V1–V9 仍待执行
 

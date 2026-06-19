@@ -6,6 +6,9 @@ public static class PolicyEngine
 {
   public static Guid? GetExpectedPlanGuid(int idleSeconds, bool isOnAc, int batteryPercent, GuardConfig config)
   {
+    if (config.IsManualHighPerformanceActive(DateTime.Now))
+      return config.ActivePlanGuid;
+
     if (config.Paused) return null;
 
     if (idleSeconds >= config.PowerSaverThresholdSec)
@@ -41,15 +44,15 @@ public static class PolicyEngine
     string? preferredName = null)
   {
     if (planGuid is null) return string.Empty;
-    if (planGuid == config.ActivePlanGuid) return "高性能";
-    if (planGuid == config.BalancedPlanGuid) return "平衡";
-    if (planGuid == config.PowerSaverPlanGuid) return "节能";
+    if (!string.IsNullOrWhiteSpace(preferredName))
+      return preferredName;
     if (systemPlans is not null
         && systemPlans.TryGetValue(planGuid.Value, out var name)
         && !string.IsNullOrWhiteSpace(name))
       return name;
-    if (!string.IsNullOrWhiteSpace(preferredName))
-      return preferredName;
+    if (planGuid == config.ActivePlanGuid) return "高性能";
+    if (planGuid == config.BalancedPlanGuid) return "平衡";
+    if (planGuid == config.PowerSaverPlanGuid) return "节能";
     return planGuid.Value.ToString();
   }
 

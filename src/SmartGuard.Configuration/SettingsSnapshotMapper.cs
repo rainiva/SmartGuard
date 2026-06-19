@@ -31,6 +31,7 @@ public static class SettingsSnapshotMapper
       NotifyOnPlanChange = notifyOnPlanChange,
       HeartbeatIntervalMin = current.HeartbeatIntervalMin,
       AutoStartEnabled = autoStartEnabled,
+      ManualHighPerformanceUntil = current.ManualHighPerformanceUntil,
     };
   }
 }

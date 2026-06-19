@@ -86,6 +86,33 @@
         }
     }
 
+    Describe 'Phase 7.6 documentation sync' {
+        It 'README documents build.cmd and Phase 7 contract' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $readme = Get-Content -LiteralPath (Join-Path $root 'README.md') -Raw -Encoding UTF8
+            $readme | Should -Match 'build\.cmd'
+            $readme | Should -Match 'PHASE-7-TASK-CONTRACT'
+            $readme | Should -Not -Match 'Publish-Engine\.ps1'
+        }
+
+        It 'MIGRATION reflects Phase 7 complete and current test counts' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $md = Get-Content -LiteralPath (Join-Path $root 'docs\MIGRATION.md') -Raw -Encoding UTF8
+            $md | Should -Match '\*\*7\.6\*\*.*\*\*已完成\*\*'
+            $md | Should -Match 'Phase 7 \*\*7\.1–7\.6 已完成\*\*'
+            $md | Should -Match '\|\s*Pester.*\|\s*43\s*\|'
+            $md | Should -Match 'build\.cmd'
+            $md | Should -Not -Match 'scripts/Publish-Engine\.ps1'
+        }
+
+        It 'INNO contract Build-Staging uses build.cmd not Xaml generator' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $contract = Get-Content -LiteralPath (Join-Path $root 'docs\INNO-INSTALLER-TASK-CONTRACT.md') -Raw -Encoding UTF8
+            $contract | Should -Match 'build\.cmd'
+            $contract | Should -Not -Match 'Write-SmartGuardSettingsXaml'
+        }
+    }
+
     Describe 'Engine packaging' {
         It 'builds core engine without console window' {
             $root = Split-Path -Parent $PSScriptRoot

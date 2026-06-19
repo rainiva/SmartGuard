@@ -25,6 +25,15 @@ public class PolicyEngineTests
     }
 
     [Fact]
+    public void Returns_active_plan_when_manual_high_performance_boost_is_active_even_if_idle()
+    {
+        var cfg = TestConfig();
+        cfg.ManualHighPerformanceUntil = DateTime.Now.AddMinutes(30);
+        PolicyEngine.GetExpectedPlanGuid(900, true, 80, cfg)
+            .Should().Be(cfg.ActivePlanGuid);
+    }
+
+    [Fact]
     public void Returns_power_saver_when_idle_ge_15_minutes()
     {
         var cfg = TestConfig();
@@ -80,7 +89,7 @@ public class PolicyEngineTests
     }
 
     [Fact]
-    public void GetPlanDisplayName_uses_config_alias_before_system_catalog()
+    public void GetPlanDisplayName_uses_system_catalog_when_preferred_name_is_null()
     {
         var cfg = TestConfig();
         var catalog = new Dictionary<Guid, string>
@@ -89,6 +98,15 @@ public class PolicyEngineTests
         };
 
         PolicyEngine.GetPlanDisplayName(cfg.BalancedPlanGuid, cfg, catalog)
+            .Should().Be("平衡(系统名)");
+    }
+
+    [Fact]
+    public void GetPlanDisplayName_uses_config_alias_when_no_system_name_available()
+    {
+        var cfg = TestConfig();
+
+        PolicyEngine.GetPlanDisplayName(cfg.BalancedPlanGuid, cfg, new Dictionary<Guid, string>())
             .Should().Be("平衡");
     }
 
@@ -120,6 +138,17 @@ public class PolicyEngineTests
         var oem = Guid.Parse("b8a2c9f4-7d3e-4a1b-9c2f-5e8d6a3b1c4f");
 
         PolicyEngine.GetPlanDisplayName(oem, cfg, new Dictionary<Guid, string>(), "Honor Performance")
+            .Should().Be("Honor Performance");
+    }
+
+    [Fact]
+    public void GetPlanDisplayName_prefers_preferred_name_over_config_alias_for_oem_plan()
+    {
+        var cfg = TestConfig();
+        // Honor OEM uses the same GUID as Windows High Performance plan
+        var honorGuid = cfg.ActivePlanGuid;
+
+        PolicyEngine.GetPlanDisplayName(honorGuid, cfg, new Dictionary<Guid, string>(), "Honor Performance")
             .Should().Be("Honor Performance");
     }
 }
