@@ -51,17 +51,18 @@ public static class ExternalToolLauncher
 
   public static void OpenLogViewer(string root)
   {
-    if (SingleInstanceActivation.TryNotifyExisting("LogViewer"))
+    // Open Settings window navigated to logs page (unified WinUI 3 interface)
+    if (SingleInstanceActivation.TryNotifyExisting("Settings", "logs"))
       return;
 
-    var exe = Path.Combine(root, "bin", "SmartGuard.LogViewer.exe");
+    var exe = Path.Combine(root, "bin", "SmartGuard.Settings.exe");
     if (!File.Exists(exe))
-      throw new FileNotFoundException("SmartGuard.LogViewer.exe not found. Reinstall SmartGuard.", exe);
+      throw new FileNotFoundException("SmartGuard.Settings.exe not found. Reinstall SmartGuard.", exe);
 
     Process.Start(new ProcessStartInfo
     {
       FileName = exe,
-      Arguments = $"--root \"{root}\"",
+      Arguments = $"--root \"{root}\" --page logs",
       WorkingDirectory = root,
       UseShellExecute = false,
     });

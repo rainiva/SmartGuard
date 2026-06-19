@@ -97,10 +97,13 @@ procedure StopSmartGuardProcesses();
 var
   ResultCode: Integer;
 begin
+  { Stop tasks first, then delete them so they don't restart, then kill processes }
   Exec(
     ExpandConstant('{cmd}'),
     '/C schtasks /End /TN "SmartGuard Guardian" 2>nul &' +
     ' schtasks /End /TN "SmartGuard Tray" 2>nul &' +
+    ' schtasks /Delete /TN "SmartGuard Guardian" /F 2>nul &' +
+    ' schtasks /Delete /TN "SmartGuard Tray" /F 2>nul &' +
     ' taskkill /F /IM SmartGuard.Tray.exe /T 2>nul &' +
     ' taskkill /F /IM SmartGuard.Engine.exe /T 2>nul &' +
     ' taskkill /F /IM SmartGuard.LogViewer.exe /T 2>nul &' +
@@ -119,6 +122,8 @@ begin
 end;
 
 function TryStopSmartGuardProcesses(): Boolean;
+var
+  Attempts: Integer;
 begin
   if not SmartGuardProcessesStillRunning() then
   begin
@@ -126,8 +131,19 @@ begin
     Exit;
   end;
 
-  StopSmartGuardProcesses();
-  Result := not SmartGuardProcessesStillRunning();
+  { Retry up to 3 times with small delay between attempts }
+  for Attempts := 1 to 3 do
+  begin
+    StopSmartGuardProcesses();
+    Sleep(500);
+    if not SmartGuardProcessesStillRunning() then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  Result := False;
 end;
 
 function EnsureSmartGuardStopped(): Boolean;

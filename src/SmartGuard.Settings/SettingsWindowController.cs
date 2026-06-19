@@ -239,6 +239,26 @@ public sealed class SettingsWindowController
     SettingsSaveCoordinator.Save(_pendingSave, _originalConfig, _root, _repository);
   }
 
+  public void NavigateTo(string page)
+  {
+    _window.Dispatcher.Invoke(() =>
+    {
+      var navList = _window.FindName("navList") as ListBox;
+      if (navList is null) return;
+
+      var targetIndex = page.ToLowerInvariant() switch
+      {
+        "general" or "常规" => 0,
+        "advanced" or "高级" => 1,
+        "notifications" or "通知" => 2,
+        "logs" or "日志" => 3,
+        _ => 0,
+      };
+
+      navList.SelectedIndex = targetIndex;
+    });
+  }
+
   private void SetupNavigation(ListBox navList, Window window)
   {
     var pageGeneral = window.FindName("pageGeneral") as StackPanel;

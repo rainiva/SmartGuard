@@ -11,10 +11,12 @@ internal static class Program
   [STAThread]
   private static void Main(string[] args)
   {
+    var startPage = ParseStartPage(args);
+
     using var guard = SingleInstanceGuard.TryAcquire("Settings");
     if (!guard.IsOwner)
     {
-      SingleInstanceActivation.TryNotifyExisting("Settings");
+      SingleInstanceActivation.TryNotifyExisting("Settings", startPage);
       return;
     }
 
@@ -24,7 +26,12 @@ internal static class Program
     var activationThread = new Thread(() =>
       SingleInstanceActivation.RunActivationServer(
         "Settings",
-        () => controller?.Activate(),
+        (argument) =>
+        {
+          if (!string.IsNullOrEmpty(argument))
+            controller?.NavigateTo(argument);
+          controller?.Activate();
+        },
         activationCts.Token))
     {
       IsBackground = true,
@@ -48,11 +55,24 @@ internal static class Program
       return;
     }
 
+    if (!string.IsNullOrEmpty(startPage))
+      controller.NavigateTo(startPage);
+
     if (controller.ShowDialog() == true)
       controller.CommitPendingSave();
 
     activationCts.Cancel();
     activationThread.Join(TimeSpan.FromSeconds(1));
+  }
+
+  private static string ParseStartPage(string[] args)
+  {
+    for (var i = 0; i < args.Length - 1; i++)
+    {
+      if (string.Equals(args[i], "--page", StringComparison.OrdinalIgnoreCase))
+        return args[i + 1];
+    }
+    return string.Empty;
   }
 }
 

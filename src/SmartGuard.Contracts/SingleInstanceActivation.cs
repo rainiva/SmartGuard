@@ -9,12 +9,17 @@ public static class SingleInstanceActivation
 
   public static bool TryNotifyExisting(string component, int timeoutMs = 500)
   {
+    return TryNotifyExisting(component, string.Empty, timeoutMs);
+  }
+
+  public static bool TryNotifyExisting(string component, string argument, int timeoutMs = 500)
+  {
     try
     {
       using var client = new NamedPipeClientStream(".", PipeName(component), PipeDirection.Out);
       client.Connect(timeoutMs);
       using var writer = new StreamWriter(client, Encoding.UTF8) { AutoFlush = true };
-      writer.WriteLine("activate");
+      writer.WriteLine(argument);
       return true;
     }
     catch
@@ -24,6 +29,11 @@ public static class SingleInstanceActivation
   }
 
   public static void RunActivationServer(string component, Action onActivate, CancellationToken cancel)
+  {
+    RunActivationServer(component, _ => onActivate(), cancel);
+  }
+
+  public static void RunActivationServer(string component, Action<string> onActivate, CancellationToken cancel)
   {
     while (!cancel.IsCancellationRequested)
     {
@@ -38,8 +48,8 @@ public static class SingleInstanceActivation
         var wait = server.WaitForConnectionAsync(cancel);
         wait.GetAwaiter().GetResult();
         using var reader = new StreamReader(server, Encoding.UTF8);
-        _ = reader.ReadLine();
-        onActivate();
+        var argument = reader.ReadLine() ?? string.Empty;
+        onActivate(argument);
       }
       catch (OperationCanceledException)
       {

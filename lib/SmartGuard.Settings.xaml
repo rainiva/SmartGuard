@@ -324,25 +324,25 @@
                  ItemContainerStyle="{StaticResource NavigationItemStyle}" Margin="8,0">
           <ListBoxItem x:Name="navGeneral" IsSelected="True">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
               <TextBlock Text="常规" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
           <ListBoxItem x:Name="navAdvanced">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE9A6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="&#xE9A6;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
               <TextBlock Text="高级" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
           <ListBoxItem x:Name="navNotifications">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xEA8F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="&#xEA8F;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
               <TextBlock Text="通知" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
           <ListBoxItem x:Name="navLogs">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE9C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="&#xE9C8;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
               <TextBlock Text="日志" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
@@ -352,7 +352,7 @@
         <Button Grid.Row="2" x:Name="btnThemeToggle" Style="{StaticResource ThemeToggleButton}" Margin="16,8,16,16"
                 HorizontalAlignment="Left">
           <StackPanel Orientation="Horizontal">
-            <TextBlock x:Name="iconTheme" Text="&#xE706;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+            <TextBlock x:Name="iconTheme" Text="&#xE706;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                        Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0"/>
             <TextBlock x:Name="txtTheme" Text="深色模式" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
           </StackPanel>
@@ -565,7 +565,7 @@
                       <ColumnDefinition Width="Auto"/>
                       <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <TextBox x:Name="txtLogSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" Padding="0" FontSize="13" Foreground="{DynamicResource TextPrimary}" Text=""/>
                   </Grid>
                 </Border>
@@ -597,7 +597,7 @@
       <!-- InfoBar -->
       <Border Grid.Row="1" x:Name="infoBar" Style="{StaticResource InfoBar}" Margin="24,0,24,0">
         <StackPanel Orientation="Horizontal">
-          <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+          <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                      Foreground="{DynamicResource InfoBarForeground}" Margin="0,0,8,0" VerticalAlignment="Center"/>
           <TextBlock x:Name="txtInfoBar" Text="保存后立即生效" Foreground="{DynamicResource InfoBarForeground}"/>
         </StackPanel>
