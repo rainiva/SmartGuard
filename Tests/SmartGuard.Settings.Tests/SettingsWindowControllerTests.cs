@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Effects;
 using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings.Tests;
@@ -100,8 +102,12 @@ public class SettingsWindowControllerTests
                     "Settings should open from embedded resource when installed without external XAML. " +
                     "This simulates the real user flow: tray icon -> Settings -> window opens.");
 
-                // Verify user can see the window and interact with it
-                controller.ShowDialog();
+                // Verify window was created and is ready for interaction
+                // (ShowDialog blocks until closed, so we only verify creation here)
+                var window = GetWindowField(controller);
+                window.Should().NotBeNull();
+                window.Width.Should().BeGreaterThan(0);
+                window.Height.Should().BeGreaterThan(0);
             }
             finally
             {
@@ -305,6 +311,103 @@ public class SettingsWindowControllerTests
             txtLogView.Should().NotBeNull();
             lblLogStatus.Should().NotBeNull();
         });
+    }
+
+    [Fact]
+    public void SettingsCard_does_not_use_dropshadow_effect_to_avoid_maximize_rendering_bug()
+    {
+        RunOnSta(() =>
+        {
+            // Find XAML in project root (not test output directory)
+            // AppContext.BaseDirectory = Tests/SmartGuard.Settings.Tests/bin/Debug/net8.0-windows10.0.17763.0/
+            // Need to go up 5 levels to reach project root
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+
+            File.Exists(xamlPath).Should().BeTrue($"XAML file must exist at {xamlPath}");
+
+            var xaml = File.ReadAllText(xamlPath);
+
+            // DropShadowEffect causes rendering artifacts when window is maximized:
+            // 1. Effect expands render bounds beyond element bounds
+            // 2. On maximize, WPF may not correctly update the effect's render bounds
+            // 3. This causes content to appear clipped and black areas to show
+            // 4. The shadow renders as black patches on the right and bottom
+            xaml.Should().NotContain("DropShadowEffect",
+                "DropShadowEffect on SettingsCard causes rendering artifacts when window is maximized. " +
+                "The effect's render bounds are not correctly updated on window resize, " +
+                "causing black areas and clipped content to appear. " +
+                "Remove the effect and use BorderBrush/BorderThickness for card definition instead.");
+        });
+    }
+
+    [Fact]
+    public void Log_page_does_not_have_nested_scrollviewer_to_avoid_dual_scrollbar_confusion()
+    {
+        RunOnSta(() =>
+        {
+            // Find XAML in project root
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+
+            File.Exists(xamlPath).Should().BeTrue($"XAML file must exist at {xamlPath}");
+
+            var xaml = File.ReadAllText(xamlPath);
+
+            // Nested ScrollViewers cause dual-scrollbar UX problems:
+            // 1. User scrolls inner ScrollViewer to bottom, but outer ScrollViewer is not at bottom
+            // 2. Content appears "cut off" at the bottom (e.g., last log lines not visible)
+            // 3. User must move mouse outside inner area and scroll outer ScrollViewer to see rest
+            // 4. This is confusing and breaks the natural scrolling flow
+            //
+            // The fix: remove the inner ScrollViewer around txtLogView in pageLogs.
+            // The outer ScrollViewer (around all pages) already handles scrolling for the entire content area.
+            // Log page should have only one scrollable region.
+            xaml.Should().NotContain("<ScrollViewer VerticalScrollBarVisibility=\"Auto\" MaxHeight=\"400\">",
+                "Inner ScrollViewer in pageLogs creates nested scrolling. " +
+                "When log content exceeds MaxHeight, inner scrollbar activates while outer scrollbar also exists. " +
+                "User must scroll inner to bottom, then scroll outer to see remaining content. " +
+                "Remove inner ScrollViewer and let outer ScrollViewer handle all scrolling.");
+        });
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        if (child is null) return null;
+        var parent = VisualTreeHelper.GetParent(child);
+        while (parent is not null)
+        {
+            if (parent is T result)
+                return result;
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+        return null;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T result)
+                return result;
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+                return descendant;
+        }
+        return null;
     }
 
     [Fact]

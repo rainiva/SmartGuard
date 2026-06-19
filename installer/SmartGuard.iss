@@ -69,9 +69,6 @@ Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --ins
 Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""SmartGuard Guardian"""; StatusMsg: "正在启动核心服务..."; Flags: runhidden waituntilterminated
 Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Description: "启动 {#MyAppName} 托盘"; Flags: nowait postinstall skipifsilent; Tasks: launchtray
 
-[UninstallRun]
-Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --uninstall"; Flags: waituntilterminated
-
 [UninstallDelete]
 ; Program files (always deleted)
 Type: files; Name: "{app}\.SmartGuard.initialized"
@@ -97,17 +94,35 @@ procedure StopSmartGuardProcesses();
 var
   ResultCode: Integer;
 begin
-  { Stop tasks first, then delete them so they don't restart, then kill processes }
-  Exec(
-    ExpandConstant('{cmd}'),
-    '/C schtasks /End /TN "SmartGuard Guardian" 2>nul &' +
-    ' schtasks /End /TN "SmartGuard Tray" 2>nul &' +
-    ' schtasks /Delete /TN "SmartGuard Guardian" /F 2>nul &' +
-    ' schtasks /Delete /TN "SmartGuard Tray" /F 2>nul &' +
-    ' taskkill /F /IM SmartGuard.Tray.exe /T 2>nul &' +
-    ' taskkill /F /IM SmartGuard.Engine.exe /T 2>nul &' +
-    ' taskkill /F /IM SmartGuard.LogViewer.exe /T 2>nul &' +
-    ' taskkill /F /IM SmartGuard.Settings.exe /T 2>nul',
+  { Step 1: Kill processes FIRST (before deleting tasks).
+    This prevents RestartOnFailure from reviving processes.
+    Use sequential Exec calls with waits to ensure each step completes. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM SmartGuard.Tray.exe /T',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM SmartGuard.Engine.exe /T',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM SmartGuard.LogViewer.exe /T',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM SmartGuard.Settings.exe /T',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(1000);
+
+  { Step 2: Delete scheduled tasks after processes are stopped }
+  Exec(ExpandConstant('{cmd}'),
+    '/C schtasks /Delete /TN "SmartGuard Guardian" /F 2>nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'),
+    '/C schtasks /Delete /TN "SmartGuard Tray" /F 2>nul',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
@@ -203,7 +218,9 @@ function InitializeUninstall(): Boolean;
 begin
   Result := True;
   DeleteUserData := False;
-  StopSmartGuardProcesses();
+  { Use TryStopSmartGuardProcesses (with retry) instead of StopSmartGuardProcesses.
+    This ensures processes are actually terminated before uninstall proceeds. }
+  TryStopSmartGuardProcesses();
 end;
 
 procedure InitializeUninstallProgressForm();
@@ -329,10 +346,13 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  { StopSmartGuardProcesses already called in InitializeUninstall;
-    avoid duplicate UAC prompts from schtasks /End. }
-
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usUninstall then
+  begin
+    { Before deleting files, ensure all processes are stopped.
+      This is a second safeguard in case InitializeUninstall's stop was insufficient. }
+    TryStopSmartGuardProcesses();
+  end
+  else if CurUninstallStep = usPostUninstall then
   begin
     { Remove program directories that may still contain files after [UninstallDelete] }
     DelTree(ExpandConstant('{app}\bin'), True, True, True);

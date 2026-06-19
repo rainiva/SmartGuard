@@ -94,6 +94,19 @@ public static class InstallCommands
 
     try
     {
+      // Step 1: Kill running processes FIRST (we have admin privileges)
+      // This must happen before deleting scheduled tasks to prevent
+      // RestartOnFailure from reviving processes before file deletion.
+      WriteStartupLog(startupLog, "Uninstall: stopping running processes...");
+      TryKillProcess("SmartGuard.Tray.exe");
+      TryKillProcess("SmartGuard.Engine.exe");
+      TryKillProcess("SmartGuard.LogViewer.exe");
+      TryKillProcess("SmartGuard.Settings.exe");
+
+      // Wait for processes to actually terminate
+      Thread.Sleep(2000);
+
+      // Step 2: Remove scheduled tasks after processes are stopped
       foreach (var taskName in InstallPaths.ScheduledTaskNames)
       {
         WriteStartupLog(startupLog, $"Uninstall: removing task {taskName}...");
@@ -108,6 +121,24 @@ public static class InstallCommands
     {
       return Fail(startupLog, $"Uninstall failed: {ex.Message}");
     }
+  }
+
+  private static void TryKillProcess(string processName)
+  {
+    try
+    {
+      var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName));
+      foreach (var process in processes)
+      {
+        try
+        {
+          process.Kill();
+          process.WaitForExit(5000);
+        }
+        catch { /* ignore individual process kill failures */ }
+      }
+    }
+    catch { /* ignore */ }
   }
 
   private static int RerunElevated(string root, string command, string? extraArg, string startupLog)

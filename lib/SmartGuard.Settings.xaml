@@ -59,7 +59,7 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="ListBoxItem">
-              <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Margin="4,2">
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Margin="0">
                 <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
               </Border>
               <ControlTemplate.Triggers>
@@ -85,11 +85,6 @@
         <Setter Property="CornerRadius" Value="8"/>
         <Setter Property="Padding" Value="20,16"/>
         <Setter Property="Margin" Value="0,0,0,12"/>
-        <Setter Property="Effect">
-          <Setter.Value>
-            <DropShadowEffect ShadowDepth="0" BlurRadius="8" Opacity="0.06" Color="{DynamicResource CardShadowColor}"/>
-          </Setter.Value>
-        </Setter>
       </Style>
 
       <!-- Section Title -->
@@ -342,7 +337,7 @@
           </ListBoxItem>
           <ListBoxItem x:Name="navLogs">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE9C8;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="&#xE7C3;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
               <TextBlock Text="日志" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
@@ -580,9 +575,7 @@
 
                 <!-- Log Display -->
                 <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="400">
-                    <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
-                  </ScrollViewer>
+                  <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
                 </Border>
 
                 <!-- Status Bar -->
