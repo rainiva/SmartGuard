@@ -24,6 +24,8 @@ public sealed class SettingsWindowController
   private readonly CheckBox _tglAutoStart;
   private GuardConfig? _pendingSave;
   private bool _isDarkTheme;
+  private LogViewController? _logController;
+  private System.Windows.Threading.DispatcherTimer? _logTimer;
 
   private SettingsWindowController(
     string root,
@@ -150,6 +152,57 @@ public sealed class SettingsWindowController
 
     btnSave.Click += (_, _) => controller.OnSaveClicked(infoBar, txtInfoBar);
 
+    // Log view initialization
+    var logPath = Path.Combine(root, "SmartGuard.log");
+    var fallbackLogPath = Path.Combine(root, "SmartGuard.startup.log");
+    if (File.Exists(logPath) || File.Exists(fallbackLogPath))
+    {
+      var logController = new LogViewController(logPath, fallbackLogPath);
+      var txtLogSearch = Require<TextBox>(window, "txtLogSearch");
+      var chkInfo = Require<CheckBox>(window, "chkInfo");
+      var chkWarn = Require<CheckBox>(window, "chkWarn");
+      var chkError = Require<CheckBox>(window, "chkError");
+      var chkHeart = Require<CheckBox>(window, "chkHeart");
+      var txtLogView = Require<TextBox>(window, "txtLogView");
+      var lblLogStatus = Require<TextBlock>(window, "lblLogStatus");
+
+      void RefreshLogView()
+      {
+        logController.SearchKeyword = txtLogSearch.Text;
+        logController.ShowInfo = chkInfo.IsChecked == true;
+        logController.ShowWarn = chkWarn.IsChecked == true;
+        logController.ShowError = chkError.IsChecked == true;
+        logController.ShowHeart = chkHeart.IsChecked == true;
+
+        var lines = logController.GetFilteredLines();
+        txtLogView.Text = string.Join(Environment.NewLine, lines);
+        lblLogStatus.Text = $"{lines.Count} 行 | 刷新: {DateTime.Now:HH:mm:ss}";
+      }
+
+      txtLogSearch.TextChanged += (_, _) => RefreshLogView();
+      chkInfo.Checked += (_, _) => RefreshLogView();
+      chkInfo.Unchecked += (_, _) => RefreshLogView();
+      chkWarn.Checked += (_, _) => RefreshLogView();
+      chkWarn.Unchecked += (_, _) => RefreshLogView();
+      chkError.Checked += (_, _) => RefreshLogView();
+      chkError.Unchecked += (_, _) => RefreshLogView();
+      chkHeart.Checked += (_, _) => RefreshLogView();
+      chkHeart.Unchecked += (_, _) => RefreshLogView();
+
+      var logTimer = new System.Windows.Threading.DispatcherTimer
+      {
+        Interval = TimeSpan.FromSeconds(2),
+      };
+      logTimer.Tick += (_, _) => RefreshLogView();
+      logTimer.Start();
+
+      controller._logController = logController;
+      controller._logTimer = logTimer;
+
+      // Initial refresh
+      RefreshLogView();
+    }
+
     return controller;
   }
 
@@ -191,12 +244,14 @@ public sealed class SettingsWindowController
     var pageGeneral = window.FindName("pageGeneral") as StackPanel;
     var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
     var pageNotifications = window.FindName("pageNotifications") as StackPanel;
+    var pageLogs = window.FindName("pageLogs") as StackPanel;
 
     navList.SelectionChanged += (_, e) =>
     {
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
       if (pageAdvanced != null) pageAdvanced.Visibility = Visibility.Collapsed;
       if (pageNotifications != null) pageNotifications.Visibility = Visibility.Collapsed;
+      if (pageLogs != null) pageLogs.Visibility = Visibility.Collapsed;
 
       var selected = navList.SelectedIndex;
       switch (selected)
@@ -209,6 +264,9 @@ public sealed class SettingsWindowController
           break;
         case 2:
           if (pageNotifications != null) pageNotifications.Visibility = Visibility.Visible;
+          break;
+        case 3:
+          if (pageLogs != null) pageLogs.Visibility = Visibility.Visible;
           break;
       }
     };
