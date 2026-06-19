@@ -76,6 +76,50 @@ public class InstallCommandsTests
       "(Interval=PT1M, Count=999) will restart the process before file deletion, " +
       "causing process residue and file lock.");
   }
+
+  [Fact]
+  public void Installer_script_requires_admin_privileges_for_uninstall()
+  {
+    // Verify that SmartGuard.iss has PrivilegesRequired=admin.
+    // Root cause: uninstaller runs taskkill to stop SmartGuard.Engine, which runs
+    // with highestAvailable (admin) privileges. If uninstaller runs as lowest,
+    // taskkill cannot terminate the elevated process, causing:
+    // 1. Process still running after uninstall
+    // 2. Files locked by the running process cannot be deleted
+    // 3. Uninstall hangs waiting for [UninstallRun] --uninstall to complete (UAC prompt)
+
+    var root = Path.GetFullPath(AppContext.BaseDirectory);
+    var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+    var scriptPath = Path.Combine(projectRoot, "installer", "SmartGuard.iss");
+    if (!File.Exists(scriptPath))
+    {
+      projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
+      scriptPath = Path.Combine(projectRoot, "installer", "SmartGuard.iss");
+    }
+    if (!File.Exists(scriptPath))
+    {
+      projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
+      scriptPath = Path.Combine(projectRoot, "installer", "SmartGuard.iss");
+    }
+
+    File.Exists(scriptPath).Should().BeTrue($"Installer script must exist at {scriptPath}");
+
+    var script = File.ReadAllText(scriptPath);
+
+    // Must NOT have PrivilegesRequired=lowest (this was the bug)
+    script.Should().NotContain("PrivilegesRequired=lowest",
+      "PrivilegesRequired=lowest causes uninstaller to run without admin rights. " +
+      "This prevents taskkill from terminating elevated SmartGuard processes, " +
+      "causing process residue, file locks, and uninstall hang.");
+
+    // Must have PrivilegesRequired=admin (or not set, which defaults to admin in some cases)
+    // Inno Setup: if PrivilegesRequired is not set, it defaults to admin on non-admin install
+    // But explicit admin is safer.
+    (script.Contains("PrivilegesRequired=admin") || !script.Contains("PrivilegesRequired="))
+      .Should().BeTrue(
+        "Installer must require admin privileges. SmartGuard.Engine runs with highestAvailable, " +
+        "so the uninstaller needs admin rights to terminate it via taskkill.");
+  }
 }
 
 public class ElevationDeclinedMarkerTests

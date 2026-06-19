@@ -60,7 +60,7 @@
           <Setter.Value>
             <ControlTemplate TargetType="ListBoxItem">
               <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Margin="0">
-                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left" Margin="{TemplateBinding Padding}"/>
               </Border>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsSelected" Value="True">
