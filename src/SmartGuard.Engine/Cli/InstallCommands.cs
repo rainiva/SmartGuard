@@ -51,6 +51,7 @@ public static class InstallCommands
 
     try
     {
+      LegacyTaskCleaner.CleanLegacyTasks();
       var engineExe = InstallPaths.GetEngineExe(root);
       if (!skipPublish && !File.Exists(engineExe))
       {
@@ -94,6 +95,8 @@ public static class InstallCommands
 
     try
     {
+      LegacyTaskCleaner.CleanLegacyTasks();
+
       // Step 1: Kill running processes FIRST (we have admin privileges)
       // This must happen before deleting scheduled tasks to prevent
       // RestartOnFailure from reviving processes before file deletion.
