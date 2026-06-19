@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SmartGuard.Settings"
         Title="智能电源守护设置"
@@ -340,6 +340,12 @@
               <TextBlock Text="通知" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
+          <ListBoxItem x:Name="navLogs">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE9C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="日志" VerticalAlignment="Center"/>
+            </StackPanel>
+          </ListBoxItem>
         </ListBox>
 
         <!-- Theme Toggle -->
@@ -539,6 +545,48 @@
                     <CheckBox x:Name="tglNotify" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
                   </Grid>
                 </Border>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Logs Page -->
+          <StackPanel x:Name="pageLogs" Visibility="Collapsed">
+            <TextBlock Text="日志" Style="{StaticResource SectionTitle}"/>
+
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="实时日志" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
+                <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+
+                <!-- Search Bar -->
+                <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBox x:Name="txtLogSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" Padding="0" FontSize="13" Foreground="{DynamicResource TextPrimary}" Text=""/>
+                  </Grid>
+                </Border>
+
+                <!-- Tag Filters -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                  <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
+                  <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
+                  <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
+                  <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
+                </StackPanel>
+
+                <!-- Log Display -->
+                <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="400">
+                    <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
+                  </ScrollViewer>
+                </Border>
+
+                <!-- Status Bar -->
+                <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0"/>
               </StackPanel>
             </Border>
           </StackPanel>
