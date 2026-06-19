@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\SmartGuard.Settings\SmartGuard.Settings.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SmartGuard.LogViewer\SmartGuard.LogViewer.csproj" />
+  </ItemGroup>
+
 </Project>

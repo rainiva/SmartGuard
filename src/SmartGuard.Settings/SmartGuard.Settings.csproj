@@ -22,4 +22,8 @@
     <Page Include="..\..\lib\Themes\Dark.xaml" Link="Themes\Dark.xaml" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SmartGuard.LogViewer\SmartGuard.LogViewer.csproj" />
+  </ItemGroup>
+
 </Project>
