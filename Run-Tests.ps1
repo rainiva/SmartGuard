@@ -69,6 +69,24 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host 'dotnet test (Settings) FAILED' -ForegroundColor Red
     exit 1
 }
+
+$packagingTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Packaging.Tests\SmartGuard.Packaging.Tests.csproj'
+$perfTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Engine.PerformanceTests\SmartGuard.Engine.PerformanceTests.csproj'
+
+$dotnetPackaging = dotnet test $packagingTests --nologo -v q 2>&1
+$dotnetPackaging | Write-Host
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'dotnet test (Packaging) FAILED' -ForegroundColor Red
+    exit 1
+}
+
+$dotnetPerf = dotnet test $perfTests --nologo -v q 2>&1
+$dotnetPerf | Write-Host
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'dotnet test (Performance) FAILED' -ForegroundColor Red
+    exit 1
+}
+
 $integrationResult = [pscustomobject]@{ PassedCount = 0; FailedCount = 0 }
 $installerFlowResult = [pscustomobject]@{ PassedCount = 0; FailedCount = 0 }
 $integration = Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Tests.ps1'

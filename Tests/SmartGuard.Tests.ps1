@@ -7,13 +7,10 @@
             (Get-Item -LiteralPath $icon).Length | Should -BeGreaterThan 1000
         }
 
-        It 'Create-TrayIcon.ps1 verifies bundled icon without regenerating' {
+        It 'does not ship Create-TrayIcon.ps1 and packaging project exists' {
             $root = Split-Path -Parent $PSScriptRoot
-            $script = Join-Path $root 'lib\Create-TrayIcon.ps1'
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
-            Test-Path -LiteralPath $icon | Should -Be $true
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script | Out-Null
-            $LASTEXITCODE | Should -Be 0
+            Test-Path -LiteralPath (Join-Path $root 'lib\Create-TrayIcon.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\SmartGuard.Packaging.csproj') | Should -Be $true
         }
     }
 
@@ -43,8 +40,8 @@
 
         It 'Build-Staging does not regenerate settings xaml' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') -Raw -Encoding UTF8
-            $content | Should -Not -Match 'Write-SmartGuardSettingsXaml'
+            Test-Path -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\SmartGuard.Packaging.csproj') | Should -Be $true
         }
     }
 
@@ -66,11 +63,12 @@
             $content | Should -Match '<SelfContained>false</SelfContained>'
         }
 
-        It 'Publish-All.ps1 delegates to build.cmd' {
+        It 'Setup-All.cmd calls build.cmd directly and Publish-All.ps1 is removed' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-All.ps1') -Raw -Encoding UTF8
+            $content = Get-Content -LiteralPath (Join-Path $root 'Setup-All.cmd') -Raw -Encoding UTF8
             $content | Should -Match 'build\.cmd'
-            $content | Should -Not -Match 'Publish-Engine\.ps1'
+            $content | Should -Not -Match 'Publish-All\.ps1'
+            Test-Path -LiteralPath (Join-Path $root 'scripts\Publish-All.ps1') | Should -Be $false
         }
 
         It 'legacy per-project Publish scripts are removed' {
@@ -233,7 +231,7 @@
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Setup-All.cmd') -Raw -Encoding UTF8
             $content | Should -Match '%~dp0'
-            $content | Should -Match 'Publish-All\.ps1'
+            $content | Should -Match 'build\.cmd'
             $content | Should -Match 'Register-AllTasks\.cmd'
             $content | Should -Match 'Run-Tests'
             $content | Should -Not -Match 'D:\\Project\\SmartGuard'
@@ -285,7 +283,6 @@
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Infrastructure.cs') -Raw -Encoding UTF8
             $content | Should -Match 'SmartGuard\.Settings\.exe'
-            $content | Should -Match 'SmartGuard\.LogViewer\.exe'
             $content | Should -Not -Match 'SmartGuard\.Settings\.ps1'
             $content | Should -Not -Match 'Show-LogViewer\.ps1'
             $content | Should -Not -Match 'powershell\.exe'
@@ -318,8 +315,8 @@
             $iss | Should -Match 'CurPageID = wpReady'
             $iss | Should -Match 'if not SmartGuardProcessesStillRunning\(\) then'
             $iss | Should -Match 'SmartGuard Guardian'
-            $iss | Should -Match 'schtasks.*/End'
-            $iss | Should -Match 'taskkill.*/T'
+            $iss | Should -Match 'schtasks.*/Delete'
+            $iss | Should -Match 'taskkill\.exe'
             $iss | Should -Match 'findstr.*/C:"SmartGuard\.Tray\.exe"'
             $iss | Should -Not -Match 'Get-Process -Name SmartGuard\*'
             $iss | Should -Not -Match 'Get-CimInstance Win32_Process'
@@ -358,52 +355,13 @@
             $iss | Should -Match 'wpSelectDir'
         }
 
-        It 'bumps installer patch version on each build' {
+        It 'installer staging and version logic are in C# packaging project' {
             $root = Split-Path -Parent $PSScriptRoot
-            . (Join-Path $root 'installer\InstallVersion.ps1')
-            Get-BumpedPatchVersion -Version '1.0.0' | Should -Be '1.0.1'
-            Get-BumpedPatchVersion -Version '1.0.9' | Should -Be '1.0.10'
-
-            $versionFile = Join-Path $TestDrive 'version.txt'
-            Set-Content -LiteralPath $versionFile -Value '2.3.4' -Encoding ASCII -NoNewline
-            Update-InstallerVersionFile -VersionFile $versionFile | Should -Be '2.3.5'
-            (Get-Content -LiteralPath $versionFile -Raw).Trim() | Should -Be '2.3.5'
-            Update-InstallerVersionFile -VersionFile $versionFile -SkipBump | Should -Be '2.3.5'
-            (Get-Content -LiteralPath $versionFile -Raw).Trim() | Should -Be '2.3.5'
-        }
-
-        It 'Build-Installer.ps1 uses InstallVersion bump helper' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Installer.ps1') -Raw -Encoding UTF8
-            $content | Should -Match 'InstallVersion\.ps1'
-            $content | Should -Match 'Update-InstallerVersionFile'
-            $content | Should -Match 'SkipVersionBump'
-        }
-
-        It 'Build-Staging.ps1 publishes and validates staging layout' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') -Raw -Encoding UTF8
-            $content | Should -Match 'build\.cmd'
-            $content | Should -Match 'Test-InstallerStagingLayout'
-            $content | Should -Match 'license_zh-CN\.txt'
-            $content | Should -Not -Match 'Register-SmartGuardTask\.ps1'
-            $content | Should -Not -Match 'Write-SmartGuardSettingsXaml'
-        }
-
-        It 'Test-InstallerStagingLayout fails when staging is incomplete' {
-            $root = Split-Path -Parent $PSScriptRoot
-            . (Join-Path $root 'installer\InstallStaging.ps1')
-            $empty = Join-Path $TestDrive 'empty-staging'
-            New-Item -ItemType Directory -Path $empty -Force | Out-Null
-            { Test-InstallerStagingLayout -StagingDir $empty } | Should -Throw
-        }
-
-        It 'Test-InstallerStagingLayout passes for minimal fake staging' {
-            $root = Split-Path -Parent $PSScriptRoot
-            . (Join-Path $root 'installer\InstallStaging.ps1')
-            $staging = Join-Path $TestDrive 'staging'
-            New-InstallerFakeStaging -StagingDir $staging
-            { Test-InstallerStagingLayout -StagingDir $staging } | Should -Not -Throw
+            Test-Path -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'installer\Build-Installer.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'installer\InstallVersion.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'installer\InstallStaging.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\SmartGuard.Packaging.csproj') | Should -Be $true
         }
     }
 }

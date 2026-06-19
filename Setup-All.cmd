@@ -4,7 +4,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo === [1/3] Publishing SmartGuard desktop suite ===
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Publish-All.ps1"
+call "%~dp0build.cmd" %CFG%
 if errorlevel 1 goto fail
 
 echo.
