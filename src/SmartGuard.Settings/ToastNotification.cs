@@ -15,24 +15,23 @@ public interface IToastWindow
 
 public interface IToastWindowFactory
 {
-    IToastWindow Create(string message, bool isError, Window owner);
+    IToastWindow Create(string message, bool isError, bool isDarkMode, Window owner);
 }
 
 public sealed class ToastNotification : IToastWindow
 {
     private const double ToastWidth = 260;
-    private const double EdgeMargin = 12;
+    private const double EdgeMargin = 24;
 
     private readonly Window _window;
     private readonly Border _border;
     private bool _isClosing;
     private Storyboard? _activeStoryboard;
 
-    public ToastNotification(string message, bool isError, Window owner)
+    public ToastNotification(string message, bool isError, bool isDarkMode, Window owner)
     {
         var iconGlyph = isError ? "\xE783" : "\xE73E";
-        var background = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xEB, 0xEE) : Color.FromRgb(0xE8, 0xF5, 0xE9));
-        var foreground = new SolidColorBrush(isError ? Color.FromRgb(0xC6, 0x28, 0x28) : Color.FromRgb(0x2E, 0x7D, 0x32));
+        var (background, borderBrush, foreground) = BuildBrushes(isError, isDarkMode);
 
         var icon = new TextBlock
         {
@@ -70,6 +69,8 @@ public sealed class ToastNotification : IToastWindow
         _border = new Border
         {
             Background = background,
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(16, 12, 16, 12),
             Margin = new Thickness(10),
@@ -79,7 +80,7 @@ public sealed class ToastNotification : IToastWindow
                 Direction = 270,
                 ShadowDepth = 4,
                 BlurRadius = 12,
-                Opacity = 0.15
+                Opacity = isDarkMode ? 0.08 : 0.15
             },
             RenderTransform = new TranslateTransform(30, 0),
             Opacity = 0,
@@ -103,6 +104,26 @@ public sealed class ToastNotification : IToastWindow
 
         _window.Loaded += OnLoaded;
         _window.Closed += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static (Brush Background, Brush Border, Brush Foreground) BuildBrushes(bool isError, bool isDarkMode)
+    {
+        if (isDarkMode)
+        {
+            var background = isError
+                ? new LinearGradientBrush(Color.FromRgb(0x4A, 0x1C, 0x1F), Color.FromRgb(0x3A, 0x15, 0x17), 90)
+                : new LinearGradientBrush(Color.FromRgb(0x1B, 0x3D, 0x1F), Color.FromRgb(0x14, 0x32, 0x17), 90);
+            var border = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x53, 0x50) : Color.FromRgb(0x4C, 0xAF, 0x50));
+            var foreground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xCD, 0xD2) : Color.FromRgb(0xC8, 0xE6, 0xC9));
+            return (background, border, foreground);
+        }
+
+        var lightBackground = isError
+            ? new LinearGradientBrush(Color.FromRgb(0xFF, 0xEB, 0xEE), Color.FromRgb(0xFD, 0xDD, 0xE0), 90)
+            : new LinearGradientBrush(Color.FromRgb(0xE8, 0xF5, 0xE9), Color.FromRgb(0xD9, 0xF0, 0xDA), 90);
+        var lightBorder = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x9A, 0x9A) : Color.FromRgb(0xA5, 0xD6, 0xA7));
+        var lightForeground = new SolidColorBrush(isError ? Color.FromRgb(0xB7, 0x1C, 0x1C) : Color.FromRgb(0x1B, 0x5E, 0x20));
+        return (lightBackground, lightBorder, lightForeground);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -194,17 +215,19 @@ public sealed class ToastNotificationService
 {
     private readonly Window _owner;
     private readonly TimeSpan _displayDuration;
-    private readonly Func<string, bool, Window, IToastWindow> _factory;
+    private readonly Func<string, bool, bool, Window, IToastWindow> _factory;
     private IToastWindow? _currentToast;
     private string? _currentMessage;
     private System.Windows.Threading.DispatcherTimer? _closeTimer;
 
+    public bool IsDarkMode { get; set; }
+
     public ToastNotificationService(Window owner, TimeSpan? displayDuration = null)
-        : this(owner, displayDuration ?? TimeSpan.FromSeconds(3), (message, isError, windowOwner) => new ToastNotification(message, isError, windowOwner))
+        : this(owner, displayDuration ?? TimeSpan.FromSeconds(3), (message, isError, isDarkMode, windowOwner) => new ToastNotification(message, isError, isDarkMode, windowOwner))
     {
     }
 
-    public ToastNotificationService(Window owner, TimeSpan displayDuration, Func<string, bool, Window, IToastWindow> factory)
+    public ToastNotificationService(Window owner, TimeSpan displayDuration, Func<string, bool, bool, Window, IToastWindow> factory)
     {
         _owner = owner;
         _displayDuration = displayDuration;
@@ -223,7 +246,7 @@ public sealed class ToastNotificationService
         DismissCurrent();
 
         _currentMessage = message;
-        _currentToast = _factory(message, isError, _owner);
+        _currentToast = _factory(message, isError, IsDarkMode, _owner);
         _currentToast.Closed += (_, _) => DismissCurrent();
 
         _currentToast.Show();

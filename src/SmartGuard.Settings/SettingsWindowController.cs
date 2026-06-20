@@ -47,7 +47,7 @@ public sealed class SettingsWindowController
     _repository = repository;
     _originalConfig = originalConfig;
     _window = window;
-    _toastService = new ToastNotificationService(window);
+    _toastService = new ToastNotificationService(window) { IsDarkMode = _isDarkTheme };
     _sldBalanced = sldBalanced;
     _sldSaver = sldSaver;
     _sldBattery = sldBattery;
@@ -401,6 +401,7 @@ public sealed class SettingsWindowController
   private void ToggleTheme(Window window)
   {
     _isDarkTheme = !_isDarkTheme;
+    _toastService.IsDarkMode = _isDarkTheme;
     var resources = window.Resources;
 
     if (_isDarkTheme)

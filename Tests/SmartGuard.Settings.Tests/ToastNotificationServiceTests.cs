@@ -61,7 +61,7 @@ public class ToastNotificationServiceTests
             Service = new ToastNotificationService(
                 window,
                 TimeSpan.FromSeconds(3),
-                (message, isError, owner) =>
+                (message, isError, isDarkMode, owner) =>
                 {
                     var toast = new FakeToast();
                     Toasts.Add(toast);
