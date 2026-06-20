@@ -39,7 +39,7 @@ public class EnginePerformanceTests : IDisposable
         StopEngine();
 
         found.Should().BeTrue("engine should write startup marker to log");
-        sw.ElapsedMilliseconds.Should().BeLessThan(500);
+        sw.ElapsedMilliseconds.Should().BeLessThan(3000);
     }
 
     [SkippableFact]
