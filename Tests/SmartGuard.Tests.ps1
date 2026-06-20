@@ -365,6 +365,13 @@
             $iss | Should -Match 'wpSelectDir'
         }
 
+        It 'upgrade path re-registers tasks after install' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match '--install.*--skip-publish'
+            $iss | Should -Match 'schtasks\.exe.*Run.*SmartGuard Guardian'
+        }
+
         It 'installer staging and version logic are in C# packaging project' {
             $root = Split-Path -Parent $PSScriptRoot
             Test-Path -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') | Should -Be $false

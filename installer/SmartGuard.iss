@@ -124,6 +124,13 @@ begin
   Exec(ExpandConstant('{cmd}'),
     '/C schtasks /Delete /TN "SmartGuard Tray" /F 2>nul',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  { Step 3: Verify all processes are actually gone; if not, wait longer }
+  Sleep(1000);
+  if SmartGuardProcessesStillRunning() then
+  begin
+    Sleep(2000);
+  end;
 end;
 
 function SmartGuardProcessesStillRunning(): Boolean;
