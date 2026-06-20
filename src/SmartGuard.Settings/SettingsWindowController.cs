@@ -538,6 +538,56 @@ public sealed class SettingsWindowController
     label.Text = string.Format(format, numberBox.Value);
   }
 
+  private static (Window Window, ProgressBar Bar, TextBlock Status, CancellationTokenSource Cts) CreateDownloadProgressWindow(Window owner)
+  {
+    var cts = new CancellationTokenSource();
+
+    var grid = new Grid { Margin = new Thickness(20) };
+    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+    grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) });
+    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+    var statusText = new TextBlock
+    {
+      Text = "正在下载更新...",
+      FontSize = 13,
+      Foreground = new SolidColorBrush(System.Windows.Media.Colors.Black)
+    };
+    Grid.SetRow(statusText, 0);
+
+    var progressBar = new ProgressBar
+    {
+      Minimum = 0,
+      Maximum = 100,
+      Height = 18,
+      IsIndeterminate = false
+    };
+    Grid.SetRow(progressBar, 2);
+
+    grid.Children.Add(statusText);
+    grid.Children.Add(progressBar);
+
+    var window = new Window
+    {
+      Title = "下载更新",
+      Width = 360,
+      Height = 130,
+      WindowStartupLocation = WindowStartupLocation.CenterOwner,
+      Owner = owner,
+      ResizeMode = ResizeMode.NoResize,
+      Content = grid,
+      Background = new SolidColorBrush(System.Windows.Media.Colors.White)
+    };
+
+    window.Closing += (_, _) =>
+    {
+      if (!cts.IsCancellationRequested)
+        cts.Cancel();
+    };
+
+    return (window, progressBar, statusText, cts);
+  }
+
   private async Task CheckForUpdateAsync(Window owner)
   {
     const string repoOwner = "rainiva";
@@ -574,18 +624,71 @@ public sealed class SettingsWindowController
       if (comparison < 0)
       {
         var result = MessageBox.Show(
-          $"发现新版本：{latestVersion}\n当前版本：{currentVersion}\n\n是否打开发布页面下载？",
+          $"发现新版本：{latestVersion}\n当前版本：{currentVersion}\n\n是否下载并安装更新？",
           "发现新版本",
           MessageBoxButton.YesNo,
           MessageBoxImage.Information);
         if (result == MessageBoxResult.Yes)
         {
-          var releaseUrl = doc.RootElement.GetProperty("html_url").GetString()
-            ?? $"https://github.com/{repoOwner}/{repoName}/releases";
-          System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(releaseUrl)
+          var asset = UpdateInstallerLauncher.ResolveAsset(doc.RootElement, latestVersion);
+          if (string.IsNullOrEmpty(asset.AssetName) || string.IsNullOrEmpty(asset.DownloadUrl))
           {
-            UseShellExecute = true
-          });
+            // Fallback to browser if the expected installer asset is missing.
+            var releaseUrl = doc.RootElement.GetProperty("html_url").GetString()
+              ?? $"https://github.com/{repoOwner}/{repoName}/releases";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(releaseUrl)
+            {
+              UseShellExecute = true
+            });
+            return;
+          }
+
+          var installerPath = UpdateInstallerLauncher.GetLocalInstallerPath(asset.AssetName);
+          var (progressWindow, progressBar, statusText, cts) = CreateDownloadProgressWindow(owner);
+          var downloadCompleted = false;
+          progressWindow.Show();
+
+          try
+          {
+            using var httpClient = new System.Net.Http.HttpClient();
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateDownloader");
+            httpClient.Timeout = TimeSpan.FromMinutes(10);
+            using var downloader = new HttpUpdateAssetDownloader(httpClient);
+
+            var progress = new Progress<double>(value =>
+            {
+              progressBar.Value = value * 100;
+              statusText.Text = $"已下载 {value:P0}";
+            });
+
+            await downloader.DownloadAsync(asset.DownloadUrl, installerPath, progress, cts.Token);
+            downloadCompleted = true;
+            progressWindow.Close();
+
+            UpdateInstallerLauncher.StartInstaller(installerPath);
+            owner.Close();
+          }
+          catch (OperationCanceledException)
+          {
+            progressWindow.Close();
+            if (!downloadCompleted)
+            {
+              MessageBox.Show(
+                "下载已取消。",
+                "检查更新",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            }
+          }
+          catch (Exception ex)
+          {
+            progressWindow.Close();
+            MessageBox.Show(
+              $"下载更新失败：{ex.Message}",
+              "检查更新",
+              MessageBoxButton.OK,
+              MessageBoxImage.Error);
+          }
         }
       }
       else
