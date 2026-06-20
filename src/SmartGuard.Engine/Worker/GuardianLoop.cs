@@ -15,7 +15,11 @@ public sealed class GuardianLoop(
   private readonly BrightnessService _brightness = new();
   private readonly HashSet<string> _tickLogFingerprints = new(StringComparer.OrdinalIgnoreCase);
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
+  private readonly Dictionary<string, int> _exceptionCounts = new();
+  private readonly StatusPublisher _publisher = new(statusPath);
+  private IReadOnlyDictionary<Guid, string>? _planCatalog;
   private Guid? _lastKnownGuid;
+  private DateTime _exceptionWindowStart = DateTime.MinValue;
   private string _lastStatusLabel = string.Empty;
   private DateTime _lastHeartbeat = DateTime.MinValue;
   private bool _scriptJustSwitched;
@@ -25,9 +29,15 @@ public sealed class GuardianLoop(
 
   public void Run(CancellationToken cancellationToken = default)
   {
+    RunAsync(cancellationToken).GetAwaiter().GetResult();
+  }
+
+  public async Task RunAsync(CancellationToken cancellationToken = default)
+  {
     EnsureConfigExists();
     var config = GuardConfig.LoadFromFile(configPath);
     InitializeIfNeeded(config);
+    _planCatalog = PowerCfgExecutor.LoadPowerPlanCatalog();
     WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{config.LogFile}");
 
     using var powerListener = new PowerEventWakeListener(HandlePowerEvent);
@@ -37,14 +47,14 @@ public sealed class GuardianLoop(
       _tickLogFingerprints.Clear();
       try
       {
-        ProcessIteration();
+        await ProcessIterationAsync(cancellationToken);
       }
       catch (Exception ex)
       {
         try
         {
           var cfg = GuardConfig.LoadFromFile(configPath);
-          WriteLog(cfg, LogLevel.Error, ex.Message);
+          TrackAndLogException(ex, cfg);
         }
         catch
         {
@@ -53,8 +63,7 @@ public sealed class GuardianLoop(
       }
 
       _lastKnownGuid = PowerCfgExecutor.GetCurrentPlanGuid();
-      var interval = GuardConfig.LoadFromFile(configPath).CheckIntervalSec;
-      WaitForNextIteration(Math.Max(5, interval), cancellationToken);
+      WaitForNextIteration(Math.Max(5, config.CheckIntervalSec), cancellationToken);
     }
   }
 
@@ -80,10 +89,10 @@ public sealed class GuardianLoop(
     while (_wakeSignal.Wait(0, cancellationToken)) { }
   }
 
-  private void ProcessIteration()
+  private async Task ProcessIterationAsync(CancellationToken cancellationToken)
   {
     var config = GuardConfig.LoadFromFile(configPath);
-    var planCatalog = PowerCfgExecutor.LoadPowerPlanCatalog();
+    var planCatalog = _planCatalog ?? PowerCfgExecutor.LoadPowerPlanCatalog();
     var idle = (int)IdleDetector.GetIdleSeconds();
     var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
     var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
@@ -105,7 +114,7 @@ public sealed class GuardianLoop(
 
     if (expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
-      var result = SwitchWithBrightnessLock(expected.Value, bright, config);
+      var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, cancellationToken);
       _scriptJustSwitched = true;
       activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
       current = activePlanInfo?.Guid;
@@ -147,7 +156,7 @@ public sealed class GuardianLoop(
       _notificationRetention,
       DateTime.Now);
 
-    new StatusPublisher(statusPath).Publish(new StatusPayload
+    _publisher.Publish(new StatusPayload
     {
       timestamp = DateTime.Now.ToString("s"),
       currentPlan = ResolvePlanName(current, config, planCatalog, activePlanInfo),
@@ -183,20 +192,21 @@ public sealed class GuardianLoop(
     return PolicyEngine.GetPlanDisplayName(planGuid, config, planCatalog, preferredName);
   }
 
-  private (int Before, int After) SwitchWithBrightnessLock(Guid target, int brightnessBefore, GuardConfig config)
+  private async Task<(int Before, int After)> SwitchWithBrightnessLockAsync(Guid target, int brightnessBefore, GuardConfig config, CancellationToken cancellationToken)
   {
     if (_powerCfgBrightnessSupported && brightnessBefore >= 0)
       PowerCfgExecutor.SyncPlanBrightness(target, brightnessBefore);
 
     PowerCfgExecutor.SetActivePlan(target);
-    Thread.Sleep(config.BrightnessRestoreMs);
+    await Task.Delay(config.BrightnessRestoreMs, cancellationToken);
 
     if (brightnessBefore < 0) return (brightnessBefore, brightnessBefore);
 
-    var after = _brightness.RestoreWithRetry(
+    var after = await _brightness.RestoreWithRetryAsync(
       brightnessBefore,
       config.BrightnessRetryCount,
-      config.BrightnessRetryDelayMs);
+      config.BrightnessRetryDelayMs,
+      cancellationToken);
     return (brightnessBefore, after);
   }
 
@@ -271,5 +281,33 @@ public sealed class GuardianLoop(
       title = "检测到外部计划变更",
       body = $"计划被外部改为 [{planName}]，守护将在下轮轮询时纠偏"
     };
+  }
+
+  private void TrackAndLogException(Exception ex, GuardConfig cfg)
+  {
+    const int windowSeconds = 120;
+    const int threshold = 5;
+    var key = ex.GetType().Name;
+    var now = DateTime.UtcNow;
+    if (now - _exceptionWindowStart > TimeSpan.FromSeconds(windowSeconds))
+    {
+      _exceptionWindowStart = now;
+      _exceptionCounts.Clear();
+    }
+
+    _exceptionCounts[key] = _exceptionCounts.GetValueOrDefault(key) + 1;
+    var count = _exceptionCounts[key];
+    var suffix = count >= threshold
+      ? $" (同类异常 {count} 次，将重新初始化状态以恢复)"
+      : string.Empty;
+    WriteLog(cfg, LogLevel.Error, ex.Message + suffix);
+    if (count >= threshold)
+    {
+      _lastKnownGuid = null;
+      _lastBrightness = null;
+      _scriptJustSwitched = false;
+      _exceptionWindowStart = DateTime.MinValue;
+      _exceptionCounts.Clear();
+    }
   }
 }

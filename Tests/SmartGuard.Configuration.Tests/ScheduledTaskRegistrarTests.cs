@@ -104,7 +104,7 @@ public class ScheduledTaskRegistrarTests
     xml.Should().Contain("<RunLevel>HighestAvailable</RunLevel>");
     xml.Should().Contain("<RestartOnFailure>");
     xml.Should().Contain("<Interval>PT1M</Interval>");
-    xml.Should().Contain("<Count>999</Count>");
+    xml.Should().Contain("<Count>3</Count>");
     xml.Should().Contain("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>");
     xml.Should().Contain("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>");
     xml.Should().Contain("<StartWhenAvailable>true</StartWhenAvailable>");

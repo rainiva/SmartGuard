@@ -49,7 +49,7 @@ public static class Program
       e.Cancel = true;
       cts.Cancel();
     };
-    loop.Run(cts.Token);
+    loop.RunAsync(cts.Token).GetAwaiter().GetResult();
     return 0;
   }
 }

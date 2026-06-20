@@ -38,6 +38,7 @@ public sealed class SettingsWindowController
   private TextBlock? _lblLogStatus;
   private DateTime _lastUpdateCheckTime = DateTime.MinValue;
   private bool _lastUpdateCheckNoUpdate;
+  private CancellationTokenSource? _saveCts;
 
   private SettingsWindowController(
     string root,
@@ -334,9 +335,22 @@ public sealed class SettingsWindowController
         return;
       }
 
-      await Task.Run(() => SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository));
+      _saveCts?.Cancel();
+      _saveCts?.Dispose();
+      _saveCts = new CancellationTokenSource();
+      var token = _saveCts.Token;
+
+      await Task.Run(() =>
+      {
+        token.ThrowIfCancellationRequested();
+        SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
+      }, token);
       _originalConfig = newConfig;
       _toastService.Show("设置已保存", isError: false);
+    }
+    catch (OperationCanceledException)
+    {
+      // 窗口关闭或新保存触发时忽略已取消的旧任务
     }
     catch (Exception ex)
     {
@@ -376,6 +390,8 @@ public sealed class SettingsWindowController
   {
     _saveDebounceTimer?.Stop();
     _logTimer?.Stop();
+    _saveCts?.Cancel();
+    _saveCts?.Dispose();
     _toastService?.Dispose();
   }
 

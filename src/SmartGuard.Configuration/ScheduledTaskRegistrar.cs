@@ -79,7 +79,7 @@ public static class ScheduledTaskRegistrar
                 <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
                 <RestartOnFailure>
                   <Interval>PT1M</Interval>
-                  <Count>999</Count>
+                  <Count>3</Count>
                 </RestartOnFailure>
               </Settings>
               <Actions Context="Author">

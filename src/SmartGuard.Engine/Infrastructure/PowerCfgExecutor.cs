@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SmartGuard.Engine.Infrastructure;
 
@@ -80,6 +82,27 @@ public static partial class PowerCfgExecutor
 
   private static string RunPowerCfg(string arguments)
   {
+    return RunPowerCfg(arguments, TimeSpan.FromSeconds(5));
+  }
+
+  private static string RunPowerCfg(string arguments, TimeSpan timeout)
+  {
+    try
+    {
+      return RunPowerCfgAsync(arguments, timeout).GetAwaiter().GetResult();
+    }
+    catch (TimeoutException)
+    {
+      throw;
+    }
+    catch
+    {
+      return string.Empty;
+    }
+  }
+
+  private static async Task<string> RunPowerCfgAsync(string arguments, TimeSpan timeout)
+  {
     var psi = new ProcessStartInfo("powercfg.exe", arguments)
     {
       RedirectStandardOutput = true,
@@ -91,9 +114,24 @@ public static partial class PowerCfgExecutor
     };
     using var proc = Process.Start(psi);
     if (proc is null) return string.Empty;
-    var output = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
-    proc.WaitForExit();
-    return output;
+
+    using var cts = new CancellationTokenSource(timeout);
+    var readOutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+    var readErrTask = proc.StandardError.ReadToEndAsync(cts.Token);
+
+    try
+    {
+      await proc.WaitForExitAsync(cts.Token);
+    }
+    catch (OperationCanceledException)
+    {
+      try { proc.Kill(); } catch { }
+      throw new TimeoutException($"powercfg.exe {arguments} timed out after {timeout.TotalSeconds}s");
+    }
+
+    var output = await readOutTask;
+    var error = await readErrTask;
+    return output + error;
   }
 
   private static Encoding CreatePowerCfgConsoleEncoding()

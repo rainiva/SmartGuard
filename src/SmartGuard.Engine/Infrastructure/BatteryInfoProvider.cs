@@ -5,6 +5,10 @@ namespace SmartGuard.Engine.Infrastructure;
 
 public static class BatteryInfoProvider
 {
+  private static (int Percent, bool IsOnAc)? _cache;
+  private static DateTime _cacheAt = DateTime.MinValue;
+  private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(5);
+
   [StructLayout(LayoutKind.Sequential)]
   private struct SystemPowerStatus
   {
@@ -22,19 +26,30 @@ public static class BatteryInfoProvider
 
   public static (int Percent, bool IsOnAc) GetBatteryInfo()
   {
+    if (_cache is { } cached && DateTime.UtcNow - _cacheAt < CacheTtl)
+      return cached;
+
     try
     {
       var wmi = TryGetWmiBatteryInfo();
       var status = new SystemPowerStatus();
       if (!GetSystemPowerStatus(ref status))
-        return wmi is { } fallback ? (fallback.Percent, fallback.IsOnAc ?? true) : (100, true);
+      {
+        var fallback = wmi is { } f ? (f.Percent, f.IsOnAc ?? true) : (100, true);
+        _cache = fallback;
+        _cacheAt = DateTime.UtcNow;
+        return fallback;
+      }
 
-      return BatteryStatusInterpreter.Resolve(
+      var result = BatteryStatusInterpreter.Resolve(
         status.ACLineStatus,
         status.BatteryLifePercent,
         status.BatteryFlag,
         wmi?.Percent,
         wmi?.IsOnAc);
+      _cache = result;
+      _cacheAt = DateTime.UtcNow;
+      return result;
     }
     catch
     {

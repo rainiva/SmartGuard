@@ -1,4 +1,6 @@
 using System.Management;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SmartGuard.Engine.Infrastructure;
 
@@ -38,12 +40,17 @@ public sealed class BrightnessService
 
   public int RestoreWithRetry(int targetLevel, int maxAttempts, int delayMs)
   {
+    return RestoreWithRetryAsync(targetLevel, maxAttempts, delayMs).GetAwaiter().GetResult();
+  }
+
+  public async Task<int> RestoreWithRetryAsync(int targetLevel, int maxAttempts, int delayMs, CancellationToken cancellationToken = default)
+  {
     if (targetLevel < 0) return targetLevel;
     var after = targetLevel;
     for (var i = 0; i < maxAttempts; i++)
     {
       SetBrightness(targetLevel);
-      Thread.Sleep(delayMs);
+      await Task.Delay(delayMs, cancellationToken);
       after = GetBrightness();
       if (after == targetLevel) break;
     }
