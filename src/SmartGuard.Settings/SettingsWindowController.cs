@@ -309,18 +309,26 @@ public sealed class SettingsWindowController
     var pageGeneral = window.FindName("pageGeneral") as StackPanel;
     var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
     var pageNotifications = window.FindName("pageNotifications") as StackPanel;
-    var pageLogs = window.FindName("pageLogs") as StackPanel;
+    var pageLogs = window.FindName("pageLogs") as UIElement;
     var pageAbout = window.FindName("pageAbout") as StackPanel;
+    var contentScrollViewer = window.FindName("contentScrollViewer") as UIElement;
 
     navList.SelectionChanged += (_, e) =>
     {
+      var selected = navList.SelectedIndex;
+      var isLogsPage = selected == 3;
+
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
       if (pageAdvanced != null) pageAdvanced.Visibility = Visibility.Collapsed;
       if (pageNotifications != null) pageNotifications.Visibility = Visibility.Collapsed;
       if (pageLogs != null) pageLogs.Visibility = Visibility.Collapsed;
       if (pageAbout != null) pageAbout.Visibility = Visibility.Collapsed;
 
-      var selected = navList.SelectedIndex;
+      // The logs page is placed outside contentScrollViewer to avoid nested scrollbars.
+      // When logs are active we hide the outer ScrollViewer; otherwise we show it.
+      if (contentScrollViewer != null)
+        contentScrollViewer.Visibility = isLogsPage ? Visibility.Collapsed : Visibility.Visible;
+
       switch (selected)
       {
         case 0:

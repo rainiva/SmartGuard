@@ -294,7 +294,7 @@ public class SettingsWindowControllerTests
             var xaml = File.ReadAllText(xamlPath);
             var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
 
-            var pageLogs = window.FindName("pageLogs") as StackPanel;
+            var pageLogs = window.FindName("pageLogs") as Panel;
             var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
             var chkInfo = window.FindName("chkInfo") as CheckBox;
             var chkWarn = window.FindName("chkWarn") as CheckBox;
@@ -365,22 +365,33 @@ public class SettingsWindowControllerTests
 
             File.Exists(xamlPath).Should().BeTrue($"XAML file must exist at {xamlPath}");
 
-            var xaml = File.ReadAllText(xamlPath);
+            if (Application.Current is null)
+                _ = new Application();
 
-            // Nested ScrollViewers cause dual-scrollbar UX problems:
-            // 1. User scrolls inner ScrollViewer to bottom, but outer ScrollViewer is not at bottom
-            // 2. Content appears "cut off" at the bottom (e.g., last log lines not visible)
-            // 3. User must move mouse outside inner area and scroll outer ScrollViewer to see rest
-            // 4. This is confusing and breaks the natural scrolling flow
-            //
-            // The fix: remove the inner ScrollViewer around txtLogView in pageLogs.
-            // The outer ScrollViewer (around all pages) already handles scrolling for the entire content area.
-            // Log page should have only one scrollable region.
-            xaml.Should().NotContain("<ScrollViewer VerticalScrollBarVisibility=\"Auto\" MaxHeight=\"400\">",
-                "Inner ScrollViewer in pageLogs creates nested scrolling. " +
-                "When log content exceeds MaxHeight, inner scrollbar activates while outer scrollbar also exists. " +
-                "User must scroll inner to bottom, then scroll outer to see remaining content. " +
-                "Remove inner ScrollViewer and let outer ScrollViewer handle all scrolling.");
+            // Load the compiled BAML so custom controls (local:NumberBox) resolve correctly.
+            var window = (Window)Application.LoadComponent(
+                new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
+
+            var pageLogs = window.FindName("pageLogs") as Panel;
+            var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+
+            pageLogs.Should().NotBeNull();
+            contentScrollViewer.Should().NotBeNull();
+
+            // The logs page must live outside the outer page ScrollViewer.
+            // If pageLogs is nested inside contentScrollViewer, both the outer page ScrollViewer
+            // and the inner log ScrollViewer can show scrollbars at the same time,
+            // which is the dual-scrollbar problem.
+            var ancestor = LogicalTreeHelper.GetParent(pageLogs!);
+            while (ancestor is not null && ancestor != contentScrollViewer)
+            {
+                ancestor = LogicalTreeHelper.GetParent(ancestor);
+            }
+
+            ancestor.Should().NotBe(contentScrollViewer,
+                "pageLogs must not be a descendant of contentScrollViewer. " +
+                "The logs page has its own internal ScrollViewer for the log text; " +
+                "nesting it inside the outer page ScrollViewer creates two scrollbars.");
         });
     }
 
@@ -520,7 +531,7 @@ public class SettingsWindowControllerTests
 
                 // Verify logs page is visible and general page is hidden
                 var pageGeneral = window.FindName("pageGeneral") as StackPanel;
-                var pageLogs = window.FindName("pageLogs") as StackPanel;
+                var pageLogs = window.FindName("pageLogs") as Panel;
                 pageGeneral.Should().NotBeNull();
                 pageLogs.Should().NotBeNull();
                 pageGeneral.Visibility.Should().Be(Visibility.Collapsed);
@@ -536,6 +547,76 @@ public class SettingsWindowControllerTests
                 chkInfo.Should().NotBeNull();
                 txtLogView.Should().NotBeNull();
                 lblLogStatus.Should().NotBeNull();
+            }
+            finally
+            {
+                if (logCreated && File.Exists(logPath))
+                {
+                    try { File.Delete(logPath); } catch { }
+                }
+            }
+        });
+    }
+
+    [Fact]
+    public void Navigation_hides_scrollable_pages_when_showing_logs()
+    {
+        RunOnSta(() =>
+        {
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            // Create a fake log file so LogViewController initializes
+            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
+            var fallbackLogPath = Path.Combine(projectRoot, "SmartGuard.startup.log");
+            var logCreated = false;
+            if (!File.Exists(logPath) && !File.Exists(fallbackLogPath))
+            {
+                File.WriteAllText(logPath, "[INFO] Test log entry\r\n");
+                logCreated = true;
+            }
+
+            try
+            {
+                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(projectRoot);
+
+                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller);
+                var navList = window.FindName("navList") as ListBox;
+                var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+                var pageLogs = window.FindName("pageLogs") as Panel;
+
+                navList.Should().NotBeNull();
+                contentScrollViewer.Should().NotBeNull();
+                pageLogs.Should().NotBeNull();
+
+                // Switch to logs page: outer scrollable pages must hide and log page must show
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                contentScrollViewer!.Visibility.Should().Be(Visibility.Collapsed);
+                pageLogs!.Visibility.Should().Be(Visibility.Visible);
+
+                // Switch back to general page: outer scrollable pages must show and log page must hide
+                navList.SelectedIndex = 0;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                contentScrollViewer.Visibility.Should().Be(Visibility.Visible);
+                pageLogs.Visibility.Should().Be(Visibility.Collapsed);
             }
             finally
             {
@@ -695,17 +776,20 @@ public class SettingsWindowControllerTests
                 return;
             }
 
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            if (Application.Current is null)
+                _ = new Application();
 
-            var pageLogs = window.FindName("pageLogs") as StackPanel;
+            // Load the compiled BAML so custom controls (local:NumberBox) resolve correctly.
+            var window = (Window)Application.LoadComponent(
+                new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
+
+            var pageLogs = window.FindName("pageLogs") as Panel;
             pageLogs.Should().NotBeNull();
 
-            // The pageLogs should contain a Grid (or similar layout) with a fixed header area
+            // The pageLogs should contain a Grid with a fixed header area
             // and a scrollable content area for the log display.
             // We verify by walking the visual tree: the txtLogView must be inside a ScrollViewer
-            // that is a sibling of the header elements (search bar + filters), not sharing the same
-            // outer ScrollViewer that wraps the entire page.
+            // that is a sibling of the header elements (search bar + filters).
             var txtLogView = window.FindName("txtLogView") as TextBox;
             txtLogView.Should().NotBeNull();
 
@@ -714,16 +798,21 @@ public class SettingsWindowControllerTests
                 "txtLogView must be inside a ScrollViewer so log content can scroll independently. " +
                 "The header (title, description, search bar, filters) should remain fixed.");
 
-            // The ScrollViewer containing txtLogView must be a descendant of pageLogs,
-            // not the outer page-level ScrollViewer.
-            var pageLogsScrollViewer = FindVisualParent<ScrollViewer>(pageLogs);
-            // pageLogs is inside the outer ScrollViewer, so this should find the outer one.
-            pageLogsScrollViewer.Should().NotBeNull();
+            // The logs page itself is no longer inside the outer page ScrollViewer;
+            // it occupies the content area directly, so the outer page ScrollViewer
+            // cannot scroll while viewing logs.
+            var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+            contentScrollViewer.Should().NotBeNull();
 
-            // The txtLogView's ScrollViewer must be a different instance from the page's outer ScrollViewer.
-            logScrollViewer.Should().NotBeSameAs(pageLogsScrollViewer,
-                "Log content must have its own ScrollViewer separate from the outer page ScrollViewer. " +
-                "This ensures the header (title, search, filters) stays fixed while only the log text scrolls.");
+            var ancestor = LogicalTreeHelper.GetParent(pageLogs!);
+            while (ancestor is not null && ancestor != contentScrollViewer)
+            {
+                ancestor = LogicalTreeHelper.GetParent(ancestor);
+            }
+
+            ancestor.Should().NotBe(contentScrollViewer,
+                "pageLogs must be a direct child of the content area, not inside contentScrollViewer. " +
+                "This prevents the outer page ScrollViewer from appearing on the logs page.");
         });
     }
 

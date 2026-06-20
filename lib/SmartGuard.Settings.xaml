@@ -290,8 +290,6 @@
         </Setter>
       </Style>
 
-      <local:LogViewportHeightConverter x:Key="LogViewportHeightConverter"/>
-
     </ResourceDictionary>
   </Window.Resources>
 
@@ -608,60 +606,67 @@
             </Border>
           </StackPanel>
 
-          <!-- Logs Page -->
-          <StackPanel x:Name="pageLogs" Visibility="Collapsed" HorizontalAlignment="Stretch">
-            <TextBlock Text="日志" Style="{StaticResource SectionTitle}"/>
-
-            <Border Style="{StaticResource SettingsCard}">
-              <Grid>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="*"/>
-                  <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <!-- Fixed Header: Title, Description, Search, Filters -->
-                <StackPanel Grid.Row="0">
-                  <TextBlock Text="实时日志" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                  <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
-
-                  <!-- Search Bar -->
-                  <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                      <TextBox x:Name="txtLogSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" Padding="0" FontSize="13" Foreground="{DynamicResource TextPrimary}" Text=""/>
-                    </Grid>
-                  </Border>
-
-                  <!-- Tag Filters -->
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                    <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                    <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                    <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                    <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
-                  </StackPanel>
-                </StackPanel>
-
-                <!-- Scrollable Log Content -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                              MaxHeight="{Binding ActualHeight, ElementName=contentScrollViewer, Converter={StaticResource LogViewportHeightConverter}}">
-                  <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
-                    <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
-                  </Border>
-                </ScrollViewer>
-
-                <!-- Status Bar (outside scrollable area, stays visible) -->
-                <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0" Grid.Row="2"/>
-              </Grid>
-            </Border>
-          </StackPanel>
 
         </StackPanel>
       </ScrollViewer>
+
+      <!-- Logs Page -->
+      <!-- Kept outside contentScrollViewer so the log area is the only scrollable region on this page.
+           The outer page ScrollViewer is hidden when logs are active, preventing dual scrollbars. -->
+      <Grid x:Name="pageLogs" Grid.Row="0" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="24,20,24,12">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="日志" Style="{StaticResource SectionTitle}" Grid.Row="0"/>
+
+        <Border Style="{StaticResource SettingsCard}" Grid.Row="1" Margin="0,0,0,0">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Fixed Header: Title, Description, Search, Filters -->
+            <StackPanel Grid.Row="0">
+              <TextBlock Text="实时日志" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
+              <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+
+              <!-- Search Bar -->
+              <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                  <TextBox x:Name="txtLogSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" Padding="0" FontSize="13" Foreground="{DynamicResource TextPrimary}" Text=""/>
+                </Grid>
+              </Border>
+
+              <!-- Tag Filters -->
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
+                <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
+                <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
+                <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
+              </StackPanel>
+            </StackPanel>
+
+            <!-- Scrollable Log Content -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
+                <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
+              </Border>
+            </ScrollViewer>
+
+            <!-- Status Bar (outside scrollable area, stays visible) -->
+            <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0" Grid.Row="2"/>
+          </Grid>
+        </Border>
+      </Grid>
 
       <!-- InfoBar -->
       <Border Grid.Row="1" x:Name="infoBar" Style="{StaticResource InfoBar}" Margin="24,0,24,0">
