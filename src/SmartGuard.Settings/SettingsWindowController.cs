@@ -650,6 +650,13 @@ public sealed class SettingsWindowController
       client.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateChecker");
       client.Timeout = TimeSpan.FromSeconds(30);
 
+      var token = _originalConfig.GitHubToken;
+      if (!string.IsNullOrWhiteSpace(token))
+      {
+        client.DefaultRequestHeaders.Authorization =
+          new System.Net.Http.Headers.AuthenticationHeaderValue("token", token.Trim());
+      }
+
       var url = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
 
       const int maxAttempts = 3;
@@ -734,6 +741,13 @@ public sealed class SettingsWindowController
             using var httpClient = new System.Net.Http.HttpClient(downloadHandler);
             httpClient.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateDownloader");
             httpClient.Timeout = TimeSpan.FromMinutes(10);
+
+            var downloadToken = _originalConfig.GitHubToken;
+            if (!string.IsNullOrWhiteSpace(downloadToken))
+            {
+              httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("token", downloadToken.Trim());
+            }
             using var downloader = new HttpUpdateAssetDownloader(httpClient);
 
             var progress = new Progress<double>(value =>

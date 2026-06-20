@@ -27,6 +27,7 @@ public sealed class GuardConfig
   public bool NotifyOnPlanChange { get; set; } = true;
   public int HeartbeatIntervalMin { get; set; } = 10;
   public bool AutoStartEnabled { get; set; } = true;
+  public string GitHubToken { get; set; } = string.Empty;
 
   [JsonPropertyName("ManualHighPerformanceUntil")]
   public DateTime? ManualHighPerformanceUntil { get; set; }
