@@ -18,6 +18,176 @@ public interface IToastWindowFactory
     IToastWindow Create(string message, bool isError, bool isDarkMode, Window owner);
 }
 
+public sealed class InlineToastNotification : IToastWindow
+{
+    private readonly Border _container;
+    private readonly Border _border;
+    private bool _isClosing;
+    private Storyboard? _activeStoryboard;
+
+    public InlineToastNotification(string message, bool isError, bool isDarkMode, Border container)
+    {
+        _container = container;
+
+        var iconGlyph = isError ? "\xE783" : "\xE73E";
+        var (background, borderBrush, foreground) = BuildBrushes(isError, isDarkMode);
+
+        var icon = new TextBlock
+        {
+            Text = iconGlyph,
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 16,
+            Foreground = foreground,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+
+        var text = new TextBlock
+        {
+            Text = message,
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+            Foreground = foreground,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var content = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }
+            }
+        };
+        content.Children.Add(icon);
+        content.Children.Add(text);
+        Grid.SetColumn(text, 1);
+
+        _border = new Border
+        {
+            Background = background,
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(16, 12, 16, 12),
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                Direction = 270,
+                ShadowDepth = 4,
+                BlurRadius = 12,
+                Opacity = isDarkMode ? 0.08 : 0.15
+            },
+            RenderTransform = new TranslateTransform(30, 0),
+            Opacity = 0,
+            Child = content
+        };
+
+        _container.Child = _border;
+        _container.Visibility = Visibility.Visible;
+    }
+
+    public static (Brush Background, Brush Border, Brush Foreground) BuildBrushes(bool isError, bool isDarkMode)
+    {
+        if (isDarkMode)
+        {
+            var background = isError
+                ? new LinearGradientBrush(Color.FromRgb(0x4A, 0x1C, 0x1F), Color.FromRgb(0x3A, 0x15, 0x17), 90)
+                : new LinearGradientBrush(Color.FromRgb(0x1B, 0x3D, 0x1F), Color.FromRgb(0x14, 0x32, 0x17), 90);
+            var border = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x53, 0x50) : Color.FromRgb(0x4C, 0xAF, 0x50));
+            var foreground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xCD, 0xD2) : Color.FromRgb(0xC8, 0xE6, 0xC9));
+            return (background, border, foreground);
+        }
+
+        var lightBackground = isError
+            ? new LinearGradientBrush(Color.FromRgb(0xFF, 0xEB, 0xEE), Color.FromRgb(0xFD, 0xDD, 0xE0), 90)
+            : new LinearGradientBrush(Color.FromRgb(0xE8, 0xF5, 0xE9), Color.FromRgb(0xD9, 0xF0, 0xDA), 90);
+        var lightBorder = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x9A, 0x9A) : Color.FromRgb(0xA5, 0xD6, 0xA7));
+        var lightForeground = new SolidColorBrush(isError ? Color.FromRgb(0xB7, 0x1C, 0x1C) : Color.FromRgb(0x1B, 0x5E, 0x20));
+        return (lightBackground, lightBorder, lightForeground);
+    }
+
+    public void Show()
+    {
+        PlayEntranceAnimation();
+    }
+
+    public void Close()
+    {
+        if (_isClosing) return;
+        _isClosing = true;
+        StopActiveStoryboard();
+
+        var storyboard = new Storyboard();
+        var transform = (TranslateTransform)_border.RenderTransform;
+
+        var slide = new DoubleAnimation(0, -20, TimeSpan.FromMilliseconds(200))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(slide, transform);
+        Storyboard.SetTargetProperty(slide, new PropertyPath(TranslateTransform.YProperty));
+        storyboard.Children.Add(slide);
+
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(fade, _border);
+        Storyboard.SetTargetProperty(fade, new PropertyPath(UIElement.OpacityProperty));
+        storyboard.Children.Add(fade);
+
+        storyboard.Completed += (_, _) =>
+        {
+            // Only hide the container if this toast still owns it.
+            if (_container.Child == _border)
+            {
+                _container.Visibility = Visibility.Collapsed;
+                _container.Child = null;
+            }
+            Closed?.Invoke(this, EventArgs.Empty);
+        };
+        storyboard.Begin(_border);
+    }
+
+    private void PlayEntranceAnimation()
+    {
+        StopActiveStoryboard();
+
+        var storyboard = new Storyboard();
+        var transform = (TranslateTransform)_border.RenderTransform;
+
+        var slide = new DoubleAnimation(30, 0, TimeSpan.FromMilliseconds(250))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(slide, transform);
+        Storyboard.SetTargetProperty(slide, new PropertyPath(TranslateTransform.XProperty));
+        storyboard.Children.Add(slide);
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(fade, _border);
+        Storyboard.SetTargetProperty(fade, new PropertyPath(UIElement.OpacityProperty));
+        storyboard.Children.Add(fade);
+
+        _activeStoryboard = storyboard;
+        storyboard.Begin(_border);
+    }
+
+    private void StopActiveStoryboard()
+    {
+        _activeStoryboard?.Stop();
+        _activeStoryboard = null;
+    }
+
+    public event EventHandler? Closed;
+}
+
 public sealed class ToastNotification : IToastWindow
 {
     private const double ToastWidth = 260;
@@ -31,7 +201,7 @@ public sealed class ToastNotification : IToastWindow
     public ToastNotification(string message, bool isError, bool isDarkMode, Window owner)
     {
         var iconGlyph = isError ? "\xE783" : "\xE73E";
-        var (background, borderBrush, foreground) = BuildBrushes(isError, isDarkMode);
+        var (background, borderBrush, foreground) = InlineToastNotification.BuildBrushes(isError, isDarkMode);
 
         var icon = new TextBlock
         {
@@ -106,26 +276,6 @@ public sealed class ToastNotification : IToastWindow
         _window.Closed += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static (Brush Background, Brush Border, Brush Foreground) BuildBrushes(bool isError, bool isDarkMode)
-    {
-        if (isDarkMode)
-        {
-            var background = isError
-                ? new LinearGradientBrush(Color.FromRgb(0x4A, 0x1C, 0x1F), Color.FromRgb(0x3A, 0x15, 0x17), 90)
-                : new LinearGradientBrush(Color.FromRgb(0x1B, 0x3D, 0x1F), Color.FromRgb(0x14, 0x32, 0x17), 90);
-            var border = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x53, 0x50) : Color.FromRgb(0x4C, 0xAF, 0x50));
-            var foreground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xCD, 0xD2) : Color.FromRgb(0xC8, 0xE6, 0xC9));
-            return (background, border, foreground);
-        }
-
-        var lightBackground = isError
-            ? new LinearGradientBrush(Color.FromRgb(0xFF, 0xEB, 0xEE), Color.FromRgb(0xFD, 0xDD, 0xE0), 90)
-            : new LinearGradientBrush(Color.FromRgb(0xE8, 0xF5, 0xE9), Color.FromRgb(0xD9, 0xF0, 0xDA), 90);
-        var lightBorder = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x9A, 0x9A) : Color.FromRgb(0xA5, 0xD6, 0xA7));
-        var lightForeground = new SolidColorBrush(isError ? Color.FromRgb(0xB7, 0x1C, 0x1C) : Color.FromRgb(0x1B, 0x5E, 0x20));
-        return (lightBackground, lightBorder, lightForeground);
-    }
-
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_window.Owner is null) return;
@@ -161,6 +311,12 @@ public sealed class ToastNotification : IToastWindow
 
         _activeStoryboard = storyboard;
         storyboard.Begin(_border);
+    }
+
+    private void StopActiveStoryboard()
+    {
+        _activeStoryboard?.Stop();
+        _activeStoryboard = null;
     }
 
     public void Show()
@@ -200,12 +356,6 @@ public sealed class ToastNotification : IToastWindow
 
         storyboard.Completed += (_, _) => _window.Close();
         storyboard.Begin(_border);
-    }
-
-    private void StopActiveStoryboard()
-    {
-        _activeStoryboard?.Stop();
-        _activeStoryboard = null;
     }
 
     public event EventHandler? Closed;

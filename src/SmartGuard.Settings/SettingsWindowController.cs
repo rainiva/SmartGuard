@@ -15,6 +15,7 @@ public sealed class SettingsWindowController
   private readonly GuardConfigRepository _repository;
   private GuardConfig _originalConfig;
   private readonly Window _window;
+  private readonly Border _toastContainer;
   private readonly ToastNotificationService _toastService;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
@@ -34,6 +35,7 @@ public sealed class SettingsWindowController
     GuardConfigRepository repository,
     GuardConfig originalConfig,
     Window window,
+    Border toastContainer,
     NumberBox sldBalanced,
     NumberBox sldSaver,
     NumberBox sldBattery,
@@ -47,7 +49,14 @@ public sealed class SettingsWindowController
     _repository = repository;
     _originalConfig = originalConfig;
     _window = window;
-    _toastService = new ToastNotificationService(window) { IsDarkMode = _isDarkTheme };
+    _toastContainer = toastContainer;
+    _toastService = new ToastNotificationService(
+      window,
+      TimeSpan.FromSeconds(3),
+      (message, isError, isDarkMode, _) => new InlineToastNotification(message, isError, isDarkMode, toastContainer))
+    {
+      IsDarkMode = _isDarkTheme
+    };
     _sldBalanced = sldBalanced;
     _sldSaver = sldSaver;
     _sldBattery = sldBattery;
@@ -102,12 +111,14 @@ public sealed class SettingsWindowController
     var txtVersion = Require<TextBlock>(window, "txtVersion");
     var navList = Require<ListBox>(window, "navList");
     var btnThemeToggle = Require<Button>(window, "btnThemeToggle");
+    var toastContainer = Require<Border>(window, "toastContainer");
 
     var controller = new SettingsWindowController(
       root,
       repository,
       config,
       window,
+      toastContainer,
       sldBalanced,
       sldSaver,
       sldBattery,

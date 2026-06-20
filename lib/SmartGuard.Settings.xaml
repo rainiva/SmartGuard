@@ -365,6 +365,16 @@
     <Grid Grid.Column="1" Background="{DynamicResource WindowBackground}">
       <!-- Content pages occupy the full right area; bottom action bar removed for instant-apply UX. -->
 
+      <!-- Inline toast container -->
+      <Border x:Name="toastContainer"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Margin="0,20,24,0"
+              Visibility="Collapsed"
+              Background="Transparent"
+              BorderThickness="0"
+              Panel.ZIndex="100"/>
+
       <!-- Content Pages -->
       <ScrollViewer x:Name="contentScrollViewer" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
         <StackPanel HorizontalAlignment="Stretch">
