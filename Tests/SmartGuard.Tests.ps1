@@ -321,6 +321,8 @@
             $iss | Should -Match 'if not SmartGuardProcessesStillRunning\(\) then'
             $iss | Should -Match 'SmartGuard Guardian'
             $iss | Should -Match 'schtasks.*/Delete'
+            $iss | Should -Match 'schtasks.*/End'
+            $iss | Should -Match 'schtasks.*/Change.*/Disable'
             $iss | Should -Match 'taskkill\.exe'
             $iss | Should -Match 'findstr.*/C:"SmartGuard\.Tray\.exe"'
             $iss | Should -Not -Match 'Get-Process -Name SmartGuard\*'

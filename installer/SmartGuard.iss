@@ -94,9 +94,25 @@ procedure StopSmartGuardProcesses();
 var
   ResultCode: Integer;
 begin
-  { Step 1: Kill processes FIRST (before deleting tasks).
-    This prevents RestartOnFailure from reviving processes.
-    Use sequential Exec calls with waits to ensure each step completes. }
+  { Step 0: Stop and disable scheduled tasks FIRST.
+    If the engine is running under the task scheduler (e.g. as SYSTEM),
+    taskkill alone may fail or the task may immediately restart it via
+    RestartOnFailure. Ending and disabling the tasks prevents revival. }
+  Exec(ExpandConstant('{cmd}'),
+    '/C schtasks /End /TN "SmartGuard Guardian" /F 2>nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'),
+    '/C schtasks /End /TN "SmartGuard Tray" /F 2>nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'),
+    '/C schtasks /Change /TN "SmartGuard Guardian" /Disable 2>nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'),
+    '/C schtasks /Change /TN "SmartGuard Tray" /Disable 2>nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(1000);
+
+  { Step 1: Kill processes after tasks are disabled. }
   Exec(ExpandConstant('{sys}\taskkill.exe'),
     '/F /IM SmartGuard.Tray.exe /T',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
