@@ -363,14 +363,10 @@
 
     <!-- Right Content Area -->
     <Grid Grid.Column="1" Background="{DynamicResource WindowBackground}">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="*"/>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="Auto"/>
-      </Grid.RowDefinitions>
+      <!-- Content pages occupy the full right area; bottom action bar removed for instant-apply UX. -->
 
       <!-- Content Pages -->
-      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
+      <ScrollViewer x:Name="contentScrollViewer" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
         <StackPanel HorizontalAlignment="Stretch">
 
           <!-- General Page -->
@@ -668,26 +664,7 @@
         </Border>
       </Grid>
 
-      <!-- InfoBar -->
-      <Border Grid.Row="1" x:Name="infoBar" Style="{StaticResource InfoBar}" Margin="24,0,24,0">
-        <StackPanel Orientation="Horizontal">
-          <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="16"
-                     Foreground="{DynamicResource InfoBarForeground}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-          <TextBlock x:Name="txtInfoBar" Text="保存后立即生效" Foreground="{DynamicResource InfoBarForeground}"/>
-        </StackPanel>
-      </Border>
-
-      <!-- Bottom Action Bar -->
-      <Border Grid.Row="2" Background="{DynamicResource WindowBackground}" BorderBrush="{DynamicResource DividerBrush}"
-              BorderThickness="0,1,0,0" Padding="24,16">
-        <Grid>
-          <TextBlock Text="保存后立即生效" Foreground="{DynamicResource TextTertiary}" VerticalAlignment="Center"/>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="btnCancel" Content="取消" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-            <Button x:Name="btnSave" Content="保存" Style="{StaticResource PrimaryButton}" IsDefault="True"/>
-          </StackPanel>
-        </Grid>
-      </Border>
+      <!-- Settings are applied instantly; no bottom action bar is needed. -->
     </Grid>
   </Grid>
 </Window>

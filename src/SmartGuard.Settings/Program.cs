@@ -58,8 +58,7 @@ internal static class Program
     if (!string.IsNullOrEmpty(startPage))
       controller.NavigateTo(startPage);
 
-    if (controller.ShowDialog() == true)
-      controller.CommitPendingSave();
+    controller.ShowDialog();
 
     activationCts.Cancel();
     activationThread.Join(TimeSpan.FromSeconds(1));

@@ -13,7 +13,7 @@ public sealed class SettingsWindowController
 {
   private readonly string _root;
   private readonly GuardConfigRepository _repository;
-  private readonly GuardConfig _originalConfig;
+  private GuardConfig _originalConfig;
   private readonly Window _window;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
@@ -23,10 +23,10 @@ public sealed class SettingsWindowController
   private readonly CheckBox _tglPaused;
   private readonly CheckBox _tglNotify;
   private readonly CheckBox _tglAutoStart;
-  private GuardConfig? _pendingSave;
   private bool _isDarkTheme;
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
+  private System.Windows.Threading.DispatcherTimer? _saveDebounceTimer;
 
   private SettingsWindowController(
     string root,
@@ -98,12 +98,8 @@ public sealed class SettingsWindowController
     var tglNotify = Require<CheckBox>(window, "tglNotify");
     var tglAutoStart = Require<CheckBox>(window, "tglAutoStart");
     var txtVersion = Require<TextBlock>(window, "txtVersion");
-    var btnSave = Require<Button>(window, "btnSave");
-    var btnCancel = Require<Button>(window, "btnCancel");
     var navList = Require<ListBox>(window, "navList");
     var btnThemeToggle = Require<Button>(window, "btnThemeToggle");
-    var infoBar = Require<Border>(window, "infoBar");
-    var txtInfoBar = Require<TextBlock>(window, "txtInfoBar");
 
     var controller = new SettingsWindowController(
       root,
@@ -139,23 +135,26 @@ public sealed class SettingsWindowController
     RegisterNumberBoxLabel(sldPoll, lblPoll, "{0} 秒");
     RegisterNumberBoxLabel(sldBrightMs, lblBrightMs, "{0} 毫秒");
 
+    // Instant-apply: queue a save when any setting changes.
+    void QueueSave() => controller.QueueSave();
+    sldBalanced.ValueChanged += (_, _) => QueueSave();
+    sldSaver.ValueChanged += (_, _) => QueueSave();
+    sldBattery.ValueChanged += (_, _) => QueueSave();
+    sldPoll.ValueChanged += (_, _) => QueueSave();
+    sldBrightMs.ValueChanged += (_, _) => QueueSave();
+
+    tglPaused.Checked += (_, _) => QueueSave();
+    tglPaused.Unchecked += (_, _) => QueueSave();
+    tglNotify.Checked += (_, _) => QueueSave();
+    tglNotify.Unchecked += (_, _) => QueueSave();
+    tglAutoStart.Checked += (_, _) => QueueSave();
+    tglAutoStart.Unchecked += (_, _) => QueueSave();
+
     // Navigation
     controller.SetupNavigation(navList, window);
 
     // Theme toggle
     btnThemeToggle.Click += (_, _) => controller.ToggleTheme(window);
-
-    // InfoBar default message
-    txtInfoBar.Text = "保存后立即生效";
-    infoBar.Visibility = Visibility.Collapsed;
-
-    btnCancel.Click += (_, _) =>
-    {
-      window.DialogResult = false;
-      window.Close();
-    };
-
-    btnSave.Click += (_, _) => controller.OnSaveClicked(infoBar, txtInfoBar);
 
     // Repository link
     var lnkRepo = window.FindName("lnkRepo") as Hyperlink;
@@ -277,10 +276,112 @@ public sealed class SettingsWindowController
     });
   }
 
-  public void CommitPendingSave()
+  private void QueueSave()
   {
-    if (_pendingSave is null) return;
-    SettingsSaveCoordinator.Save(_pendingSave, _originalConfig, _root, _repository);
+    if (_saveDebounceTimer is null)
+    {
+      _saveDebounceTimer = new System.Windows.Threading.DispatcherTimer(
+        System.Windows.Threading.DispatcherPriority.Background,
+        _window.Dispatcher)
+      {
+        Interval = TimeSpan.FromMilliseconds(300)
+      };
+      _saveDebounceTimer.Tick += (_, _) =>
+      {
+        _saveDebounceTimer.Stop();
+        SaveCurrentSettings();
+      };
+    }
+
+    _saveDebounceTimer.Stop();
+    _saveDebounceTimer.Start();
+  }
+
+  private void SaveCurrentSettings()
+  {
+    try
+    {
+      var newConfig = SettingsSnapshotMapper.ApplyTraySettings(
+        _originalConfig,
+        balancedThresholdMin: _sldBalanced.Value,
+        powerSaverThresholdMin: _sldSaver.Value,
+        lowBatteryPercent: _sldBattery.Value,
+        checkIntervalSec: _sldPoll.Value,
+        brightnessRestoreMs: _sldBrightMs.Value,
+        paused: _tglPaused.IsChecked == true,
+        notifyOnPlanChange: _tglNotify.IsChecked == true,
+        autoStartEnabled: _tglAutoStart.IsChecked == true);
+
+      var errors = GuardConfigValidator.Validate(newConfig);
+      if (errors.Count > 0)
+      {
+        ShowToast("保存失败：" + string.Join("；", errors), isError: true);
+        return;
+      }
+
+      SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
+      _originalConfig = newConfig;
+      ShowToast("设置已保存", isError: false);
+    }
+    catch (Exception ex)
+    {
+      ShowToast($"保存失败：{ex.Message}", isError: true);
+    }
+  }
+
+  private void ShowToast(string message, bool isError)
+  {
+    var toast = new Window
+    {
+      Title = string.Empty,
+      WindowStyle = WindowStyle.None,
+      AllowsTransparency = true,
+      Background = Brushes.Transparent,
+      ShowInTaskbar = false,
+      Topmost = true,
+      Width = 240,
+      SizeToContent = SizeToContent.Height,
+      ResizeMode = ResizeMode.NoResize,
+      Owner = _window,
+      Content = new Border
+      {
+        Background = new SolidColorBrush(isError ? Color.FromRgb(253, 231, 233) : Color.FromRgb(232, 244, 232)),
+        BorderBrush = new SolidColorBrush(isError ? Color.FromRgb(245, 165, 169) : Color.FromRgb(186, 216, 186)),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(6),
+        Padding = new Thickness(12, 10, 12, 10),
+        Margin = new Thickness(10),
+        Child = new TextBlock
+        {
+          Text = message,
+          FontSize = 13,
+          TextWrapping = TextWrapping.Wrap,
+          Foreground = new SolidColorBrush(isError ? Color.FromRgb(197, 54, 59) : Color.FromRgb(56, 118, 56))
+        }
+      }
+    };
+
+    toast.Loaded += (_, _) =>
+    {
+      var owner = toast.Owner;
+      if (owner is null) return;
+      toast.Left = owner.Left + owner.ActualWidth - toast.ActualWidth - 12;
+      toast.Top = owner.Top + 12;
+    };
+
+    toast.Show();
+
+    System.Windows.Threading.DispatcherTimer? closeTimer = null;
+    closeTimer = new System.Windows.Threading.DispatcherTimer(
+      TimeSpan.FromSeconds(3),
+      System.Windows.Threading.DispatcherPriority.Background,
+      (_, _) =>
+      {
+        closeTimer?.Stop();
+        toast.Close();
+      },
+      _window.Dispatcher);
+    closeTimer.Start();
   }
 
   public void NavigateTo(string page)
@@ -462,37 +563,6 @@ public sealed class SettingsWindowController
         resources[key] = newColor;
       }
     }
-  }
-
-  private void OnSaveClicked(Border infoBar, TextBlock txtInfoBar)
-  {
-    var newConfig = SettingsSnapshotMapper.ApplyTraySettings(
-      _originalConfig,
-      balancedThresholdMin: _sldBalanced.Value,
-      powerSaverThresholdMin: _sldSaver.Value,
-      lowBatteryPercent: _sldBattery.Value,
-      checkIntervalSec: _sldPoll.Value,
-      brightnessRestoreMs: _sldBrightMs.Value,
-      paused: _tglPaused.IsChecked == true,
-      notifyOnPlanChange: _tglNotify.IsChecked == true,
-      autoStartEnabled: _tglAutoStart.IsChecked == true);
-
-    var errors = GuardConfigValidator.Validate(newConfig);
-    if (errors.Count > 0)
-    {
-      txtInfoBar.Text = string.Join("; ", errors);
-      infoBar.Background = new SolidColorBrush(Color.FromRgb(253, 231, 233));
-      infoBar.BorderBrush = new SolidColorBrush(Color.FromRgb(245, 165, 169));
-      var txtInfoBarForeground = infoBar.FindName("txtInfoBar") as TextBlock;
-      if (txtInfoBarForeground != null)
-        txtInfoBarForeground.Foreground = new SolidColorBrush(Color.FromRgb(197, 54, 59));
-      infoBar.Visibility = Visibility.Visible;
-      return;
-    }
-
-    _pendingSave = newConfig;
-    _window.DialogResult = true;
-    _window.Close();
   }
 
   private static Window? TryLoadEmbeddedWindow()

@@ -29,7 +29,13 @@ public sealed class GuardConfigRepository(string configPath)
   {
     var node = LoadOrCreateNode();
     ApplyConfig(node, config);
-    WriteNode(node);
+    var content = node.ToJsonString(WriteOptions);
+
+    // Idempotent save: do not touch the file if the serialized content is unchanged.
+    if (File.Exists(configPath) && File.ReadAllText(configPath) == content)
+      return;
+
+    WriteNode(content);
   }
 
   public void UpdatePaused(bool paused)
@@ -94,10 +100,12 @@ public sealed class GuardConfigRepository(string configPath)
       node.Remove("ManualHighPerformanceUntil");
   }
 
-  private void WriteNode(JsonObject node)
+  private void WriteNode(JsonObject node) => WriteNode(node.ToJsonString(WriteOptions));
+
+  private void WriteNode(string content)
   {
     var dir = Path.GetDirectoryName(configPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    File.WriteAllText(configPath, node.ToJsonString(WriteOptions));
+    File.WriteAllText(configPath, content);
   }
 }

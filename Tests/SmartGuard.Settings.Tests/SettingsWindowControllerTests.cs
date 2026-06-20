@@ -233,26 +233,19 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void InfoBar_exists_and_is_hidden_by_default()
+    public void InfoBar_is_removed_in_favor_of_toast_notifications()
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
+            if (Application.Current is null)
+                _ = new Application();
 
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = (Window)Application.LoadComponent(
+                new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
 
-            var infoBar = window.FindName("infoBar") as Border;
-            var txtInfoBar = window.FindName("txtInfoBar") as TextBlock;
-
-            infoBar.Should().NotBeNull();
-            txtInfoBar.Should().NotBeNull();
-            infoBar.Visibility.Should().Be(Visibility.Collapsed);
+            window.FindName("infoBar").Should().BeNull(
+                "The inline InfoBar is replaced by top-right toast notifications for instant-apply UX.");
+            window.FindName("txtInfoBar").Should().BeNull();
         });
     }
 
@@ -465,22 +458,20 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void Save_and_cancel_buttons_exist()
+    public void Save_and_cancel_buttons_are_removed_for_instant_apply()
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
+            if (Application.Current is null)
+                _ = new Application();
 
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = (Window)Application.LoadComponent(
+                new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
 
-            window.FindName("btnSave").Should().NotBeNull();
-            window.FindName("btnCancel").Should().NotBeNull();
+            window.FindName("btnSave").Should().BeNull(
+                "Save button is removed because settings are applied instantly.");
+            window.FindName("btnCancel").Should().BeNull(
+                "Cancel button is removed because there is no pending save to discard.");
         });
     }
 
