@@ -130,11 +130,7 @@ Run-Tests.cmd
 - [迁移规划](docs/MIGRATION.md)
 - [Phase 7 开发机去 PS](docs/PHASE-7-TASK-CONTRACT.md)
 - [Phase 6 去 PS 化](docs/PHASE-6-TASK-CONTRACT.md)
-- [Phase 4 设置与日志查看器](docs/PHASE-4-TASK-CONTRACT.md)
-- [Phase 3 安装与计划任务](docs/PHASE-3-TASK-CONTRACT.md)
-- [Phase 2.1 托盘与通知](docs/PHASE-2.1-TASK-CONTRACT.md)
 - [Inno 安装包契约](docs/INNO-INSTALLER-TASK-CONTRACT.md)
-- [PowerShell 清理设计](docs/2026-06-18-powershell-cleanup-design.md)
 
 ## 故障恢复
 
