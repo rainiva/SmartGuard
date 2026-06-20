@@ -158,6 +158,14 @@ begin
     end;
   end;
 
+  { Final wait: if processes still running after retries, give extra time }
+  Sleep(2000);
+  if not SmartGuardProcessesStillRunning() then
+  begin
+    Result := True;
+    Exit;
+  end;
+
   Result := False;
 end;
 
