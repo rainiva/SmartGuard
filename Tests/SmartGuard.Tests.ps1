@@ -330,16 +330,16 @@
             $iss | Should -Match 'SolidCompression=no'
         }
 
-        It 'uninstall user-data choice uses InnerNotebook wizard per official InitializeUninstallProgressForm' {
+        It 'uninstall user-data choice prompts in InitializeUninstall with a Yes/No message box' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $iss | Should -Match 'procedure InitializeUninstallProgressForm'
-            $iss | Should -Match 'UninstallProgressForm\.InnerNotebook'
-            $iss | Should -Match 'UninstallProgressForm\.ShowModal'
-            $iss | Should -Match 'TNewNotebookPage'
+            $iss | Should -Match 'function InitializeUninstall\(\): Boolean'
+            $iss | Should -Match 'MsgBox\('
+            $iss | Should -Match 'MB_YESNO'
             $iss | Should -Match '保留配置与日志'
             $iss | Should -Match '删除配置与日志'
             $iss | Should -Match 'UninstallSilent'
+            $iss | Should -Match 'DeleteUserData := \(Choice = IDYES\)'
             $iss | Should -Not -Match 'CreateCustomPage'
             $iss | Should -Not -Match 'CreateCustomForm'
             $iss | Should -Not -Match 'Parent := WizardForm'

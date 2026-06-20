@@ -222,101 +222,28 @@ end;
 #endif
 
 #ifdef uninstaller
-var
-  UninstallOptionsPage: TNewNotebookPage;
-  UninstallProceedButton: TNewButton;
-  KeepUserDataRadio: TNewRadioButton;
-  DeleteUserDataRadio: TNewRadioButton;
-
 function InitializeUninstall(): Boolean;
+var
+  Choice: Integer;
 begin
   Result := True;
   DeleteUserData := False;
+
   { Use TryStopSmartGuardProcesses (with retry) instead of StopSmartGuardProcesses.
     This ensures processes are actually terminated before uninstall proceeds. }
   TryStopSmartGuardProcesses();
-end;
 
-procedure InitializeUninstallProgressForm();
-var
-  HintLabel: TNewStaticText;
-  OriginalPageNameLabel: string;
-  OriginalPageDescriptionLabel: string;
-  OriginalCancelButtonEnabled: Boolean;
-  OriginalCancelButtonModalResult: Integer;
-  Ctrl: TWinControl;
-begin
   if UninstallSilent then
     Exit;
 
-  DeleteUserData := False;
+  Choice := MsgBox(
+    '程序文件与计划任务将被移除。' + #13#10 + #13#10 +
+    '是否同时删除配置与日志文件？' + #13#10 +
+    '点击“是”删除这些数据；点击“否”保留配置与日志。',
+    mbConfirmation,
+    MB_YESNO);
 
-  Ctrl := UninstallProgressForm.CancelButton;
-  UninstallProceedButton := TNewButton.Create(UninstallProgressForm);
-  UninstallProceedButton.Parent := UninstallProgressForm;
-  UninstallProceedButton.Left := Ctrl.Left - Ctrl.Width - ScaleX(10);
-  UninstallProceedButton.Top := Ctrl.Top;
-  UninstallProceedButton.Width := Ctrl.Width;
-  UninstallProceedButton.Height := Ctrl.Height;
-  UninstallProceedButton.TabOrder := Ctrl.TabOrder;
-  UninstallProceedButton.Caption := SetupMessage(msgButtonNext);
-  UninstallProceedButton.ModalResult := mrOk;
-  UninstallProgressForm.CancelButton.TabOrder := UninstallProceedButton.TabOrder + 1;
-
-  UninstallOptionsPage := TNewNotebookPage.Create(UninstallProgressForm);
-  UninstallOptionsPage.Notebook := UninstallProgressForm.InnerNotebook;
-  UninstallOptionsPage.Parent := UninstallProgressForm.InnerNotebook;
-  UninstallOptionsPage.Align := alClient;
-  UninstallProgressForm.InnerNotebook.ActivePage := UninstallOptionsPage;
-
-  HintLabel := TNewStaticText.Create(UninstallProgressForm);
-  HintLabel.Parent := UninstallOptionsPage;
-  HintLabel.Top := ScaleY(8);
-  HintLabel.Left := ScaleX(8);
-  HintLabel.Width := UninstallOptionsPage.ClientWidth - ScaleX(16);
-  HintLabel.Height := ScaleY(44);
-  HintLabel.AutoSize := False;
-  HintLabel.WordWrap := True;
-  HintLabel.ShowAccelChar := False;
-  HintLabel.Caption := '程序文件与计划任务将被移除。请选择如何处理配置与日志：';
-
-  KeepUserDataRadio := TNewRadioButton.Create(UninstallOptionsPage);
-  KeepUserDataRadio.Parent := UninstallOptionsPage;
-  KeepUserDataRadio.Left := ScaleX(8);
-  KeepUserDataRadio.Top := ScaleY(60);
-  KeepUserDataRadio.Width := UninstallOptionsPage.ClientWidth - ScaleX(16);
-  KeepUserDataRadio.Caption := '保留配置与日志（推荐）';
-  KeepUserDataRadio.Checked := True;
-
-  DeleteUserDataRadio := TNewRadioButton.Create(UninstallOptionsPage);
-  DeleteUserDataRadio.Parent := UninstallOptionsPage;
-  DeleteUserDataRadio.Left := ScaleX(8);
-  DeleteUserDataRadio.Top := ScaleY(88);
-  DeleteUserDataRadio.Width := UninstallOptionsPage.ClientWidth - ScaleX(16);
-  DeleteUserDataRadio.Caption := '删除配置与日志（不可恢复）';
-
-  OriginalPageNameLabel := UninstallProgressForm.PageNameLabel.Caption;
-  OriginalPageDescriptionLabel := UninstallProgressForm.PageDescriptionLabel.Caption;
-  OriginalCancelButtonEnabled := UninstallProgressForm.CancelButton.Enabled;
-  OriginalCancelButtonModalResult := UninstallProgressForm.CancelButton.ModalResult;
-
-  UninstallProgressForm.PageNameLabel.Caption := '用户数据';
-  UninstallProgressForm.PageDescriptionLabel.Caption :=
-    '默认保留配置与日志；仅在选择删除时才会移除这些文件。';
-  UninstallProgressForm.CancelButton.Enabled := True;
-  UninstallProgressForm.CancelButton.ModalResult := mrCancel;
-
-  if UninstallProgressForm.ShowModal = mrCancel then
-    Abort;
-
-  DeleteUserData := DeleteUserDataRadio.Checked;
-
-  UninstallProceedButton.Visible := False;
-  UninstallProgressForm.PageNameLabel.Caption := OriginalPageNameLabel;
-  UninstallProgressForm.PageDescriptionLabel.Caption := OriginalPageDescriptionLabel;
-  UninstallProgressForm.CancelButton.Enabled := OriginalCancelButtonEnabled;
-  UninstallProgressForm.CancelButton.ModalResult := OriginalCancelButtonModalResult;
-  UninstallProgressForm.InnerNotebook.ActivePage := UninstallProgressForm.InstallingPage;
+  DeleteUserData := (Choice = IDYES);
 end;
 #endif
 
