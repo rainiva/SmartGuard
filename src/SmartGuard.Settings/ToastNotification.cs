@@ -85,8 +85,6 @@ public sealed class InlineToastNotification : IToastWindow
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(14, 12, 18, 12),
             Margin = new Thickness(8),
-            RenderTransform = new TranslateTransform(30, 0),
-            Opacity = 0,
             Child = content
         };
 
@@ -100,7 +98,11 @@ public sealed class InlineToastNotification : IToastWindow
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
-        _root = new Grid();
+        _root = new Grid
+        {
+            RenderTransform = new TranslateTransform(30, 0),
+            Opacity = 0
+        };
         _root.Children.Add(shadow);
         _root.Children.Add(_border);
 
@@ -140,7 +142,7 @@ public sealed class InlineToastNotification : IToastWindow
         StopActiveStoryboard();
 
         var storyboard = new Storyboard();
-        var transform = (TranslateTransform)_border.RenderTransform;
+        var transform = (TranslateTransform)_root.RenderTransform;
 
         var slide = new DoubleAnimation(0, -20, TimeSpan.FromMilliseconds(200))
         {
@@ -154,7 +156,7 @@ public sealed class InlineToastNotification : IToastWindow
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
-        Storyboard.SetTarget(fade, _border);
+        Storyboard.SetTarget(fade, _root);
         Storyboard.SetTargetProperty(fade, new PropertyPath(UIElement.OpacityProperty));
         storyboard.Children.Add(fade);
 
@@ -168,7 +170,7 @@ public sealed class InlineToastNotification : IToastWindow
             }
             Closed?.Invoke(this, EventArgs.Empty);
         };
-        storyboard.Begin(_border);
+        storyboard.Begin(_root);
     }
 
     private void PlayEntranceAnimation()
@@ -176,7 +178,7 @@ public sealed class InlineToastNotification : IToastWindow
         StopActiveStoryboard();
 
         var storyboard = new Storyboard();
-        var transform = (TranslateTransform)_border.RenderTransform;
+        var transform = (TranslateTransform)_root.RenderTransform;
 
         var slide = new DoubleAnimation(30, 0, TimeSpan.FromMilliseconds(250))
         {
@@ -190,12 +192,12 @@ public sealed class InlineToastNotification : IToastWindow
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
-        Storyboard.SetTarget(fade, _border);
+        Storyboard.SetTarget(fade, _root);
         Storyboard.SetTargetProperty(fade, new PropertyPath(UIElement.OpacityProperty));
         storyboard.Children.Add(fade);
 
         _activeStoryboard = storyboard;
-        storyboard.Begin(_border);
+        storyboard.Begin(_root);
     }
 
     private void StopActiveStoryboard()

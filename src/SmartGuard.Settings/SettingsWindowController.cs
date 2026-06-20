@@ -625,7 +625,14 @@ public sealed class SettingsWindowController
 
     try
     {
-      using var handler = new System.Net.Http.HttpClientHandler { UseProxy = true };
+      var proxy = System.Net.WebRequest.GetSystemWebProxy();
+      proxy.Credentials = System.Net.CredentialCache.DefaultNetworkCredentials;
+      using var handler = new System.Net.Http.HttpClientHandler
+      {
+        Proxy = proxy,
+        UseProxy = true,
+        DefaultProxyCredentials = System.Net.CredentialCache.DefaultNetworkCredentials
+      };
       using var client = new System.Net.Http.HttpClient(handler);
       client.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateChecker");
       client.Timeout = TimeSpan.FromSeconds(30);
@@ -703,7 +710,15 @@ public sealed class SettingsWindowController
 
           try
           {
-            using var httpClient = new System.Net.Http.HttpClient();
+            var downloadProxy = System.Net.WebRequest.GetSystemWebProxy();
+            downloadProxy.Credentials = System.Net.CredentialCache.DefaultNetworkCredentials;
+            using var downloadHandler = new System.Net.Http.HttpClientHandler
+            {
+              Proxy = downloadProxy,
+              UseProxy = true,
+              DefaultProxyCredentials = System.Net.CredentialCache.DefaultNetworkCredentials
+            };
+            using var httpClient = new System.Net.Http.HttpClient(downloadHandler);
             httpClient.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateDownloader");
             httpClient.Timeout = TimeSpan.FromMinutes(10);
             using var downloader = new HttpUpdateAssetDownloader(httpClient);
@@ -756,9 +771,10 @@ public sealed class SettingsWindowController
     catch (System.Net.Http.HttpRequestException ex)
     {
       var statusCode = ex.StatusCode;
+      var detail = ex.InnerException?.Message ?? ex.Message;
       var message = statusCode == System.Net.HttpStatusCode.NotFound
-        ? "未找到发布版本，请确认仓库地址正确。"
-        : "网络连接失败，请检查网络后重试。";
+        ? $"未找到发布版本，请确认仓库地址正确。\n\n详情：{detail}"
+        : $"网络连接失败，请检查网络后重试。\n\n详情：{detail}";
       MessageBox.Show(
         message,
         "检查更新",
