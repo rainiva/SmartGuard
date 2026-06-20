@@ -4,21 +4,23 @@
     Integration test for the SmartGuard uninstaller user-data choice dialog.
 .DESCRIPTION
     Installs SmartGuard to a temporary directory, creates synthetic user data,
-    then launches the uninstaller interactively. A background watcher finds the
-    confirmation message box and presses the "Yes" button, verifying that the
-    uninstaller reaches InitializeUninstall and presents the keep/delete choice.
+    then launches the uninstaller interactively. The Inno Setup uninstaller
+    first shows its own "Are you sure?" confirmation; after confirming that,
+    our InitializeUninstall MsgBox asking whether to keep or delete config/logs
+    should appear. A background watcher presses Yes on both dialogs, verifying
+    that the choice dialog is actually reached.
 
     Note: Because the installer registers a scheduled task that starts the
-    engine, the actual file-deletion phase may be blocked by a running process.
-    This test therefore treats "dialog detected" as the primary success
-    criterion and only reports the deletion result as additional evidence.
+    engine, the actual file-deletion phase may be blocked by a running process
+    if the uninstaller is not elevated. This test treats "choice dialog
+    detected after the standard confirmation" as the primary success criterion.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [string]$InstallerPath,
 
-    [string]$InstallDir = "C:\Temp\SmartGuardUninstallTest"
+    [string]$InstallDir = "C:\Temp\SmartGuardUninstallTest-$([Guid]::NewGuid().ToString('N'))"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +32,8 @@ function Remove-TestDirectory {
         Start-Sleep -Milliseconds 200
     }
 }
+
+Add-Type -AssemblyName System.Windows.Forms
 
 Add-Type -TypeDefinition @"
 using System;
@@ -58,7 +62,9 @@ public class WinApi {
 }
 "@
 
-function Find-UninstallerMessageBox {
+function Find-WindowByTitlePattern {
+    param([string]$Pattern)
+
     $found = [IntPtr]::Zero
     $sb = New-Object System.Text.StringBuilder(256)
 
@@ -67,7 +73,7 @@ function Find-UninstallerMessageBox {
             param($hWnd, $lParam)
             [void][WinApi]::GetWindowText($hWnd, $sb, $sb.Capacity)
             $title = $sb.ToString()
-            if ($title -like '*SmartGuard*' -or $title -eq '确认' -or $title -eq 'Confirm') {
+            if ($title -like $Pattern) {
                 if ([WinApi]::IsWindowVisible($hWnd)) {
                     $script:found = $hWnd
                     return $false
@@ -81,11 +87,39 @@ function Find-UninstallerMessageBox {
 }
 
 function Send-YesToMessageBox {
-    param([IntPtr]$hWnd)
+    param($hWnd)
+    if ($hWnd -eq $null -or $hWnd -eq [IntPtr]::Zero) {
+        throw "Cannot click Yes on a null/invalid window handle."
+    }
     [void][WinApi]::SetForegroundWindow($hWnd)
-    Start-Sleep -Milliseconds 250
-    # WM_COMMAND with IDYES (6) and BN_CLICKED (0)
-    [void][WinApi]::SendMessage($hWnd, 0x0111, [IntPtr]6, [IntPtr]0)
+    Start-Sleep -Milliseconds 300
+    # Send Alt+Y to activate the "Yes" button on the message box.
+    [System.Windows.Forms.SendKeys]::SendWait('%y')
+    Start-Sleep -Milliseconds 200
+}
+
+function Wait-ForWindow {
+    param([string]$Pattern, [int]$TimeoutSeconds = 15)
+
+    $box = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ($box -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 250
+        $box = Find-WindowByTitlePattern -Pattern $Pattern
+        if ($box -ne [IntPtr]::Zero) {
+            Write-Host "  Matched pattern '$Pattern' to window hWnd=$box"
+        }
+    }
+    return $box
+}
+
+function Wait-ForWindowClosed {
+    param([IntPtr]$hWnd, [int]$TimeoutSeconds = 10)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ([WinApi]::IsWindow($hWnd) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 250
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -107,25 +141,29 @@ $logPath = "$InstallDir\SmartGuard.log"
 [System.IO.File]::WriteAllText($logPath, 'test log', [System.Text.UTF8Encoding]::new($false))
 
 # ---------------------------------------------------------------------------
-# 2. Launch uninstaller interactively and auto-press Yes on the choice dialog
+# 2. Launch uninstaller interactively
 # ---------------------------------------------------------------------------
 Write-Host "Launching interactive uninstaller..."
 $proc = Start-Process -FilePath "$InstallDir\unins000.exe" -PassThru -WindowStyle Normal
 
-$box = [IntPtr]::Zero
-$deadline = (Get-Date).AddSeconds(15)
-while ($box -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline) {
-    Start-Sleep -Milliseconds 250
-    $box = Find-UninstallerMessageBox
-}
-
-if ($box -eq [IntPtr]::Zero) {
+# 2a. Confirm the standard Inno Setup "Are you sure?" uninstall confirmation
+$confirmBox = Wait-ForWindow -Pattern '*SmartGuard*' -TimeoutSeconds 15
+if ($confirmBox -eq [IntPtr]::Zero) {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    throw "Uninstaller message box was not detected."
+    throw "Standard uninstall confirmation dialog was not detected."
 }
+Write-Host "Detected standard uninstall confirmation; pressing Yes..."
+Send-YesToMessageBox -hWnd $confirmBox
+Wait-ForWindowClosed -hWnd $confirmBox -TimeoutSeconds 10
 
-Write-Host "Detected uninstaller choice dialog (hWnd=$box); pressing Yes to delete user data..."
-Send-YesToMessageBox -hWnd $box
+# 2b. Our InitializeUninstall MsgBox should now appear
+$choiceBox = Wait-ForWindow -Pattern '*SmartGuard*' -TimeoutSeconds 15
+if ($choiceBox -eq [IntPtr]::Zero) {
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    throw "User-data choice dialog (InitializeUninstall MsgBox) was not detected after confirming uninstall."
+}
+Write-Host "Detected user-data choice dialog (hWnd=$choiceBox); pressing Yes to delete user data..."
+Send-YesToMessageBox -hWnd $choiceBox
 
 # Wait for uninstaller process to finish
 $finished = $proc.WaitForExit(60000)
@@ -144,5 +182,4 @@ if ($dataDeleted) {
     Write-Warning "User data files were not deleted. This is usually because the engine process is still running and locks the installation directory."
 }
 
-# The primary test goal is to prove the choice dialog appears.
-Write-Host "SUCCESS: Uninstaller choice dialog appeared during interactive uninstall."
+Write-Host "SUCCESS: Uninstaller choice dialog appeared after the standard confirmation."

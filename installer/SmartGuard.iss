@@ -216,7 +216,6 @@ begin
       Result := RemoveBackslash(Path);
 end;
 
-#ifndef uninstaller
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -235,9 +234,7 @@ begin
       '无法自动关闭正在运行的 SmartGuard（托盘/引擎/日志/设置）。' + #13#10 +
       '请在任务管理器中结束 SmartGuard*.exe 后重试。';
 end;
-#endif
 
-#ifdef uninstaller
 function InitializeUninstall(): Boolean;
 var
   Choice: Integer;
@@ -261,7 +258,6 @@ begin
 
   DeleteUserData := (Choice = IDYES);
 end;
-#endif
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
@@ -270,7 +266,6 @@ var
 begin
   Result := True;
 
-#ifndef uninstaller
   if CurPageID = wpReady then
   begin
     if SmartGuardProcessesStillRunning() then
@@ -292,7 +287,6 @@ begin
       Exit;
     end;
   end;
-#endif
 end;
 
 function InitializeSetup: Boolean;
