@@ -613,13 +613,37 @@ public sealed class SettingsWindowController
 
     try
     {
-      using var client = new System.Net.Http.HttpClient();
+      using var handler = new System.Net.Http.HttpClientHandler { UseProxy = true };
+      using var client = new System.Net.Http.HttpClient(handler);
       client.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateChecker");
-      client.Timeout = TimeSpan.FromSeconds(10);
+      client.Timeout = TimeSpan.FromSeconds(30);
 
       var url = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
-      var response = await client.GetAsync(url);
-      response.EnsureSuccessStatusCode();
+
+      const int maxAttempts = 3;
+      Exception? lastException = null;
+      System.Net.Http.HttpResponseMessage? response = null;
+      for (var attempt = 1; attempt <= maxAttempts; attempt++)
+      {
+        try
+        {
+          response = await client.GetAsync(url);
+          response.EnsureSuccessStatusCode();
+          lastException = null;
+          break;
+        }
+        catch (Exception ex) when (attempt < maxAttempts)
+        {
+          lastException = ex;
+          await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt));
+        }
+      }
+
+      if (lastException is not null)
+        throw lastException;
+
+      if (response is null)
+        throw new InvalidOperationException("No response received from update server.");
 
       var json = await response.Content.ReadAsStringAsync();
       using var doc = System.Text.Json.JsonDocument.Parse(json);
