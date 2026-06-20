@@ -127,10 +127,7 @@ Run-Tests.cmd
 
 ## 文档
 
-- [迁移规划](docs/MIGRATION.md)
 - [Phase 7 开发机去 PS](docs/PHASE-7-TASK-CONTRACT.md)
-- [Phase 6 去 PS 化](docs/PHASE-6-TASK-CONTRACT.md)
-- [Inno 安装包契约](docs/INNO-INSTALLER-TASK-CONTRACT.md)
 
 ## 故障恢复
 
