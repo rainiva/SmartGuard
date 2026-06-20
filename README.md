@@ -10,6 +10,9 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 | `src/SmartGuard.Tray/` | C# 托盘 |
 | `src/SmartGuard.LogViewer/` | C# 日志查看器 |
 | `src/SmartGuard.Settings/` | C# 设置窗体（WPF） |
+| `src/SmartGuard.Configuration/` | 配置、计划任务与自动启动服务 |
+| `src/SmartGuard.Contracts/` | 共享契约与状态模型 |
+| `src/SmartGuard.Packaging/` | 发布、打包与安装包生成 |
 | `lib/` | 图标、Settings XAML |
 | `bin/*.exe` | `build.cmd` 发布后四件套：Engine / Tray / LogViewer / Settings |
 | `installer/` | Inno Setup 6 脚本与 staging 文件 |
@@ -87,7 +90,11 @@ Engine.exe --install（计划任务）
 | `PowerSaverThresholdSec` | 900 | 空闲 15 分钟 → 节能 |
 | `LowBatteryPercent` | 30 | 低电量时活跃态改用平衡 |
 | `CheckIntervalSec` | 15 | 轮询间隔 |
-| `BrightnessRestoreMs` | 800 | 切计划后等待亮度恢复的时间 |
+| `BrightnessRestoreMs` | 300 | 切计划后等待亮度恢复的时间 |
+| `AutoStartEnabled` | true | 是否随用户登录启动托盘 |
+| `NotifyOnPlanChange` | true | 切换电源计划时是否弹出 Toast 通知 |
+| `HeartbeatIntervalMin` | 30 | 心跳日志写入间隔（分钟） |
+| `LogMaxBytes` | 1048576 | 单个日志文件大小上限（字节） |
 | `Paused` | false | 暂停自动切换 |
 | `LogFile` | `SmartGuard.log` | 日志路径 |
 
@@ -111,26 +118,23 @@ dotnet run --project src\SmartGuard.Packaging -- installer --root . --configurat
 Run-Tests.cmd
 ```
 
-- **Pester**：39 项集成/契约测试
-- **xUnit**：232 项 C# 组件测试
+- **Pester**：39 项仓库契约测试 + 7 项集成/安装流程测试
+- **xUnit**：232 项 C# 组件测试（含 2 项性能测试）
 
 日志行格式（C# 引擎）：`yyyy-MM-dd HH:mm:ss [LEVEL] message`（LEVEL 为 INFO / WARN / ERROR / HEART）。
 归档文件：`SmartGuard.log.yyyyMMdd.bak`（保留 7 天）。
 插拔电源后引擎会立即重新评估策略（无需等轮询间隔）。
-
-## 最近更新
-
-- **卸载响应优化**：停止逻辑移到卸载进度页，计划任务结束/禁用改为异步下发，`tasklist` 进程检测改为单次读取 + Pascal 解析，双击卸载后基本立刻出现确认对话框。
-- **引擎稳定性**：主循环改为异步，`powercfg.exe` 调用增加 5 秒超时，亮度恢复使用非阻塞延迟，重复异常会自动重置状态。
-- **设置窗体**：保存操作支持取消，关闭窗口时不会误报保存失败。
-- **计划任务**：`RestartOnFailure` 次数从 999 降至 3，避免引擎异常时无限复活。
 
 ## 文档
 
 - [迁移规划](docs/MIGRATION.md)
 - [Phase 7 开发机去 PS](docs/PHASE-7-TASK-CONTRACT.md)
 - [Phase 6 去 PS 化](docs/PHASE-6-TASK-CONTRACT.md)
+- [Phase 4 设置与日志查看器](docs/PHASE-4-TASK-CONTRACT.md)
+- [Phase 3 安装与计划任务](docs/PHASE-3-TASK-CONTRACT.md)
+- [Phase 2.1 托盘与通知](docs/PHASE-2.1-TASK-CONTRACT.md)
 - [Inno 安装包契约](docs/INNO-INSTALLER-TASK-CONTRACT.md)
+- [PowerShell 清理设计](docs/2026-06-18-powershell-cleanup-design.md)
 
 ## 故障恢复
 
