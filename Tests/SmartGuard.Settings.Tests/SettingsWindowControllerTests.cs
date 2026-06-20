@@ -779,6 +779,54 @@ public class SettingsWindowControllerTests
         });
     }
 
+    [Fact]
+    public void User_clicks_check_update_button_and_button_text_changes()
+    {
+        RunOnSta(() =>
+        {
+            if (Application.Current is null)
+                _ = new Application();
+
+            var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(installRoot);
+            Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+
+            try
+            {
+                var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
+                File.WriteAllText(configPath, "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000}");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(installRoot);
+
+                var controller = SettingsWindowController.TryCreate(installRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller);
+                var navList = window.FindName("navList") as ListBox;
+                navList.Should().NotBeNull();
+                navList!.SelectedIndex = 4;
+
+                var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
+                btnCheckUpdate.Should().NotBeNull();
+
+                // Before click: button should show default text
+                btnCheckUpdate!.Content.Should().Be("检查更新");
+
+                // Simulate user clicking the check update button
+                btnCheckUpdate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                // After click: button text should change to indicate checking (async operation started)
+                // We verify the immediate UI feedback before async completion
+                btnCheckUpdate.Content.Should().Be("检查中...",
+                    "Button text should change immediately after click to indicate checking is in progress");
+            }
+            finally
+            {
+                try { Directory.Delete(installRoot, true); } catch { }
+            }
+        });
+    }
+
     private static Window GetWindowField(SettingsWindowController controller)
     {
         var field = typeof(SettingsWindowController).GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);

@@ -152,6 +152,26 @@ public sealed class SettingsWindowController
 
     btnSave.Click += (_, _) => controller.OnSaveClicked(infoBar, txtInfoBar);
 
+    // Check update button
+    var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
+    if (btnCheckUpdate != null)
+    {
+      btnCheckUpdate.Click += async (_, _) =>
+      {
+        btnCheckUpdate.Content = "检查中...";
+        btnCheckUpdate.IsEnabled = false;
+        try
+        {
+          await controller.CheckForUpdateAsync(window);
+        }
+        finally
+        {
+          btnCheckUpdate.Content = "检查更新";
+          btnCheckUpdate.IsEnabled = true;
+        }
+      };
+    }
+
     // Log view initialization
     var logPath = Path.Combine(root, "SmartGuard.log");
     var fallbackLogPath = Path.Combine(root, "SmartGuard.startup.log");
@@ -474,5 +494,82 @@ public sealed class SettingsWindowController
 
     numberBox.ValueChanged += Update;
     label.Text = string.Format(format, numberBox.Value);
+  }
+
+  private async Task CheckForUpdateAsync(Window owner)
+  {
+    const string repoOwner = "rainiva";
+    const string repoName = "SmartGuard";
+    var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+
+    try
+    {
+      using var client = new System.Net.Http.HttpClient();
+      client.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateChecker");
+      client.Timeout = TimeSpan.FromSeconds(10);
+
+      var url = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
+      var response = await client.GetAsync(url);
+      response.EnsureSuccessStatusCode();
+
+      var json = await response.Content.ReadAsStringAsync();
+      using var doc = System.Text.Json.JsonDocument.Parse(json);
+      var tagName = doc.RootElement.GetProperty("tag_name").GetString() ?? "";
+
+      // Parse version from tag (e.g., "v1.2.3" -> "1.2.3")
+      var latestVersionString = tagName.TrimStart('v', 'V');
+      if (!Version.TryParse(latestVersionString, out var latestVersion))
+      {
+        MessageBox.Show(
+          "无法解析最新版本号。",
+          "检查更新",
+          MessageBoxButton.OK,
+          MessageBoxImage.Warning);
+        return;
+      }
+
+      var comparison = currentVersion.CompareTo(latestVersion);
+      if (comparison < 0)
+      {
+        var result = MessageBox.Show(
+          $"发现新版本：{latestVersion}\n当前版本：{currentVersion}\n\n是否打开发布页面下载？",
+          "发现新版本",
+          MessageBoxButton.YesNo,
+          MessageBoxImage.Information);
+        if (result == MessageBoxResult.Yes)
+        {
+          var releaseUrl = doc.RootElement.GetProperty("html_url").GetString()
+            ?? $"https://github.com/{repoOwner}/{repoName}/releases";
+          System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(releaseUrl)
+          {
+            UseShellExecute = true
+          });
+        }
+      }
+      else
+      {
+        MessageBox.Show(
+          "当前已是最新版本。",
+          "检查更新",
+          MessageBoxButton.OK,
+          MessageBoxImage.Information);
+      }
+    }
+    catch (System.Net.Http.HttpRequestException)
+    {
+      MessageBox.Show(
+        "网络连接失败，请检查网络后重试。",
+        "检查更新",
+        MessageBoxButton.OK,
+        MessageBoxImage.Warning);
+    }
+    catch (Exception ex)
+    {
+      MessageBox.Show(
+        $"检查更新时发生错误：{ex.Message}",
+        "检查更新",
+        MessageBoxButton.OK,
+        MessageBoxImage.Error);
+    }
   }
 }
