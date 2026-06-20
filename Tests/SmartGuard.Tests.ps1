@@ -324,7 +324,8 @@
             $iss | Should -Match 'schtasks.*/End'
             $iss | Should -Match 'schtasks.*/Change.*/Disable'
             $iss | Should -Match 'taskkill\.exe'
-            $iss | Should -Match 'findstr.*/C:"SmartGuard\.Tray\.exe"'
+            $iss | Should -Match 'tasklist /NH'
+            $iss | Should -Match "Pos\('SmartGuard\.Tray\.exe'"
             $iss | Should -Not -Match 'Get-Process -Name SmartGuard\*'
             $iss | Should -Not -Match 'Get-CimInstance Win32_Process'
             $iss | Should -Not -Match 'CurStepChanged'

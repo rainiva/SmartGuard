@@ -93,11 +93,25 @@ end;
 function SmartGuardProcessesStillRunning(): Boolean;
 var
   ResultCode: Integer;
+  OutputFile: String;
+  Output: AnsiString;
 begin
-  Result := Exec(
-    ExpandConstant('{cmd}'),
-    '/C tasklist /NH 2>nul | findstr /I /C:"SmartGuard.Tray.exe" /C:"SmartGuard.Engine.exe" /C:"SmartGuard.LogViewer.exe" /C:"SmartGuard.Settings.exe" >nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  Result := False;
+  OutputFile := ExpandConstant('{tmp}\sg_tasklist.txt');
+  if Exec(ExpandConstant('{cmd}'),
+    '/C tasklist /NH > "' + OutputFile + '" 2>nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    if LoadStringFromFile(OutputFile, Output) then
+    begin
+      Result :=
+        (Pos('SmartGuard.Tray.exe', Output) > 0) or
+        (Pos('SmartGuard.Engine.exe', Output) > 0) or
+        (Pos('SmartGuard.LogViewer.exe', Output) > 0) or
+        (Pos('SmartGuard.Settings.exe', Output) > 0);
+    end;
+  end;
+  DeleteFile(OutputFile);
 end;
 
 procedure StopSmartGuardProcesses();
@@ -105,51 +119,34 @@ var
   ResultCode: Integer;
   WaitAttempts: Integer;
 begin
-  { Step 0: Stop and disable scheduled tasks FIRST.
+  { Step 0: Stop and disable scheduled tasks FIRST in a single shell call.
     If the engine is running under the task scheduler (e.g. as SYSTEM),
     taskkill alone may fail or the task may immediately restart it via
     RestartOnFailure. Ending and disabling the tasks prevents revival. }
   Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /End /TN "SmartGuard Guardian" /F 2>nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /End /TN "SmartGuard Tray" /F 2>nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /Change /TN "SmartGuard Guardian" /Disable 2>nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /Change /TN "SmartGuard Tray" /Disable 2>nul',
+    '/C schtasks /End /TN "SmartGuard Guardian" /F >nul 2>&1 & ' +
+    'schtasks /End /TN "SmartGuard Tray" /F >nul 2>&1 & ' +
+    'schtasks /Change /TN "SmartGuard Guardian" /Disable >nul 2>&1 & ' +
+    'schtasks /Change /TN "SmartGuard Tray" /Disable >nul 2>&1',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  { Step 1: Kill processes after tasks are disabled. }
+  { Step 1: Kill all SmartGuard processes in one taskkill call. }
   Exec(ExpandConstant('{sys}\taskkill.exe'),
-    '/F /IM SmartGuard.Tray.exe /T',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{sys}\taskkill.exe'),
-    '/F /IM SmartGuard.Engine.exe /T',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{sys}\taskkill.exe'),
-    '/F /IM SmartGuard.LogViewer.exe /T',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{sys}\taskkill.exe'),
-    '/F /IM SmartGuard.Settings.exe /T',
+    '/F /IM SmartGuard.Tray.exe /IM SmartGuard.Engine.exe /IM SmartGuard.LogViewer.exe /IM SmartGuard.Settings.exe /T',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  { Step 2: Wait for processes to actually exit (max 5s) instead of fixed sleeps. }
-  for WaitAttempts := 1 to 25 do
+  { Step 2: Wait for processes to actually exit (max 3s) with fast polling. }
+  for WaitAttempts := 1 to 60 do
   begin
     if not SmartGuardProcessesStillRunning() then
       break;
-    Sleep(200);
+    Sleep(50);
   end;
 
-  { Step 3: Delete scheduled tasks after processes are stopped }
+  { Step 3: Delete scheduled tasks after processes are stopped (single shell call). }
   Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /Delete /TN "SmartGuard Guardian" /F 2>nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /Delete /TN "SmartGuard Tray" /F 2>nul',
+    '/C schtasks /Delete /TN "SmartGuard Guardian" /F >nul 2>&1 & ' +
+    'schtasks /Delete /TN "SmartGuard Tray" /F >nul 2>&1',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
@@ -220,10 +217,7 @@ function InitializeUninstall(): Boolean;
 begin
   Result := True;
   DeleteUserData := False;
-
-  { Stop processes and tasks as early as possible, before the progress page
-    is shown, so the uninstall progress does not appear to hang. }
-  TryStopSmartGuardProcesses();
+  SmartGuardStopCompleted := False;
 end;
 
 procedure InitializeUninstallProgressForm();
@@ -308,7 +302,19 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usUninstall then
+  begin
+    { Show the progress page before stopping processes so the uninstaller
+      does not appear to hang on the initial click. }
+    if not SmartGuardStopCompleted then
+    begin
+      UninstallProgressForm.StatusLabel.Caption := '正在关闭 SmartGuard 进程…';
+      UninstallProgressForm.Repaint;
+      EnsureSmartGuardStopped();
+      UninstallProgressForm.StatusLabel.Caption := '正在删除文件…';
+    end;
+  end
+  else if CurUninstallStep = usPostUninstall then
   begin
     { If the user chose to delete user data and the files are still present,
       stop processes one last time and delete them. This covers cases where
