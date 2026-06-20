@@ -30,25 +30,36 @@ public sealed class InlineToastNotification : IToastWindow
         _container = container;
 
         var iconGlyph = isError ? "\xE783" : "\xE73E";
-        var (background, borderBrush, foreground) = BuildBrushes(isError, isDarkMode);
+        var (cardBackground, cardBorder, textForeground, iconBackground, iconForeground) = BuildBrushes(isError, isDarkMode);
 
-        var icon = new TextBlock
+        var iconText = new TextBlock
         {
             Text = iconGlyph,
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 16,
-            Foreground = foreground,
+            FontSize = 14,
+            Foreground = iconForeground,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0)
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var iconCircle = new Border
+        {
+            Width = 28,
+            Height = 28,
+            CornerRadius = new CornerRadius(14),
+            Background = iconBackground,
+            Child = iconText,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
         };
 
         var text = new TextBlock
         {
             Text = message,
-            FontSize = 13,
+            FontSize = 14,
             FontWeight = FontWeights.Medium,
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
-            Foreground = foreground,
+            Foreground = textForeground,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -61,29 +72,29 @@ public sealed class InlineToastNotification : IToastWindow
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }
             }
         };
-        content.Children.Add(icon);
+        content.Children.Add(iconCircle);
         content.Children.Add(text);
         Grid.SetColumn(text, 1);
 
         _border = new Border
         {
-            Background = background,
-            BorderBrush = borderBrush,
+            Background = cardBackground,
+            BorderBrush = cardBorder,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(16, 12, 16, 12),
-            Margin = new Thickness(8, 8, 8, 12),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14, 12, 18, 12),
+            Margin = new Thickness(8),
             RenderTransform = new TranslateTransform(30, 0),
             Opacity = 0,
             Child = content
         };
 
-        // Manual drop shadow avoids WPF clipping the border corners.
+        // Soft diffuse shadow that extends slightly on all sides, more below.
         var shadow = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb((byte)(isDarkMode ? 12 : 28), 0, 0, 0)),
-            CornerRadius = new CornerRadius(10),
-            Margin = new Thickness(8, 8, 8, -4),
+            Background = new SolidColorBrush(Color.FromArgb((byte)(isDarkMode ? 40 : 20), 0, 0, 0)),
+            CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(4, 4, 4, 0),
             VerticalAlignment = VerticalAlignment.Stretch,
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
@@ -96,20 +107,24 @@ public sealed class InlineToastNotification : IToastWindow
         _container.Visibility = Visibility.Visible;
     }
 
-    public static (Brush Background, Brush Border, Brush Foreground) BuildBrushes(bool isError, bool isDarkMode)
+    public static (Brush CardBackground, Brush CardBorder, Brush TextForeground, Brush IconBackground, Brush IconForeground) BuildBrushes(bool isError, bool isDarkMode)
     {
         if (isDarkMode)
         {
-            var background = new SolidColorBrush(isError ? Color.FromRgb(0x4A, 0x1C, 0x1F) : Color.FromRgb(0x1B, 0x3D, 0x1F));
-            var border = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x53, 0x50) : Color.FromRgb(0x4C, 0xAF, 0x50));
-            var foreground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xCD, 0xD2) : Color.FromRgb(0xC8, 0xE6, 0xC9));
-            return (background, border, foreground);
+            var cardBackground = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x2D));
+            var cardBorder = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A));
+            var textForeground = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+            var iconBackground = new SolidColorBrush(isError ? Color.FromRgb(0x4A, 0x1C, 0x1F) : Color.FromRgb(0x1B, 0x3D, 0x1F));
+            var iconForeground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xCD, 0xD2) : Color.FromRgb(0x81, 0xC7, 0x84));
+            return (cardBackground, cardBorder, textForeground, iconBackground, iconForeground);
         }
 
-        var lightBackground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xEB, 0xEE) : Color.FromRgb(0xE8, 0xF5, 0xE9));
-        var lightBorder = new SolidColorBrush(isError ? Color.FromRgb(0xEF, 0x9A, 0x9A) : Color.FromRgb(0xA5, 0xD6, 0xA7));
-        var lightForeground = new SolidColorBrush(isError ? Color.FromRgb(0xB7, 0x1C, 0x1C) : Color.FromRgb(0x1B, 0x5E, 0x20));
-        return (lightBackground, lightBorder, lightForeground);
+        var lightCardBackground = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        var lightCardBorder = new SolidColorBrush(Color.FromRgb(0xE5, 0xE5, 0xE5));
+        var lightTextForeground = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
+        var lightIconBackground = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xEB, 0xEE) : Color.FromRgb(0xE8, 0xF5, 0xE9));
+        var lightIconForeground = new SolidColorBrush(isError ? Color.FromRgb(0xC6, 0x28, 0x28) : Color.FromRgb(0x2E, 0x7D, 0x32));
+        return (lightCardBackground, lightCardBorder, lightTextForeground, lightIconBackground, lightIconForeground);
     }
 
     public void Show()
@@ -204,7 +219,7 @@ public sealed class ToastNotification : IToastWindow
     public ToastNotification(string message, bool isError, bool isDarkMode, Window owner)
     {
         var iconGlyph = isError ? "\xE783" : "\xE73E";
-        var (background, borderBrush, foreground) = InlineToastNotification.BuildBrushes(isError, isDarkMode);
+        var (background, borderBrush, foreground, _, _) = InlineToastNotification.BuildBrushes(isError, isDarkMode);
 
         var icon = new TextBlock
         {
