@@ -15,6 +15,7 @@ public sealed class SettingsWindowController
   private readonly GuardConfigRepository _repository;
   private GuardConfig _originalConfig;
   private readonly Window _window;
+  private readonly ToastNotificationService _toastService;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
   private readonly NumberBox _sldBattery;
@@ -46,6 +47,7 @@ public sealed class SettingsWindowController
     _repository = repository;
     _originalConfig = originalConfig;
     _window = window;
+    _toastService = new ToastNotificationService(window);
     _sldBalanced = sldBalanced;
     _sldSaver = sldSaver;
     _sldBattery = sldBattery;
@@ -315,73 +317,18 @@ public sealed class SettingsWindowController
       var errors = GuardConfigValidator.Validate(newConfig);
       if (errors.Count > 0)
       {
-        ShowToast("保存失败：" + string.Join("；", errors), isError: true);
+        _toastService.Show("保存失败：" + string.Join("；", errors), isError: true);
         return;
       }
 
       SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
       _originalConfig = newConfig;
-      ShowToast("设置已保存", isError: false);
+      _toastService.Show("设置已保存", isError: false);
     }
     catch (Exception ex)
     {
-      ShowToast($"保存失败：{ex.Message}", isError: true);
+      _toastService.Show($"保存失败：{ex.Message}", isError: true);
     }
-  }
-
-  private void ShowToast(string message, bool isError)
-  {
-    var toast = new Window
-    {
-      Title = string.Empty,
-      WindowStyle = WindowStyle.None,
-      AllowsTransparency = true,
-      Background = Brushes.Transparent,
-      ShowInTaskbar = false,
-      Topmost = true,
-      Width = 240,
-      SizeToContent = SizeToContent.Height,
-      ResizeMode = ResizeMode.NoResize,
-      Owner = _window,
-      Content = new Border
-      {
-        Background = new SolidColorBrush(isError ? Color.FromRgb(253, 231, 233) : Color.FromRgb(232, 244, 232)),
-        BorderBrush = new SolidColorBrush(isError ? Color.FromRgb(245, 165, 169) : Color.FromRgb(186, 216, 186)),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(6),
-        Padding = new Thickness(12, 10, 12, 10),
-        Margin = new Thickness(10),
-        Child = new TextBlock
-        {
-          Text = message,
-          FontSize = 13,
-          TextWrapping = TextWrapping.Wrap,
-          Foreground = new SolidColorBrush(isError ? Color.FromRgb(197, 54, 59) : Color.FromRgb(56, 118, 56))
-        }
-      }
-    };
-
-    toast.Loaded += (_, _) =>
-    {
-      var owner = toast.Owner;
-      if (owner is null) return;
-      toast.Left = owner.Left + owner.ActualWidth - toast.ActualWidth - 12;
-      toast.Top = owner.Top + 12;
-    };
-
-    toast.Show();
-
-    System.Windows.Threading.DispatcherTimer? closeTimer = null;
-    closeTimer = new System.Windows.Threading.DispatcherTimer(
-      TimeSpan.FromSeconds(3),
-      System.Windows.Threading.DispatcherPriority.Background,
-      (_, _) =>
-      {
-        closeTimer?.Stop();
-        toast.Close();
-      },
-      _window.Dispatcher);
-    closeTimer.Start();
   }
 
   public void NavigateTo(string page)
