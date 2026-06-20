@@ -90,9 +90,20 @@ begin
   Result := DeleteUserData;
 end;
 
+function SmartGuardProcessesStillRunning(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec(
+    ExpandConstant('{cmd}'),
+    '/C tasklist /NH 2>nul | findstr /I /C:"SmartGuard.Tray.exe" /C:"SmartGuard.Engine.exe" /C:"SmartGuard.LogViewer.exe" /C:"SmartGuard.Settings.exe" >nul',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
 procedure StopSmartGuardProcesses();
 var
   ResultCode: Integer;
+  WaitAttempts: Integer;
 begin
   { Step 0: Stop and disable scheduled tasks FIRST.
     If the engine is running under the task scheduler (e.g. as SYSTEM),
@@ -110,30 +121,30 @@ begin
   Exec(ExpandConstant('{cmd}'),
     '/C schtasks /Change /TN "SmartGuard Tray" /Disable 2>nul',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(1000);
 
   { Step 1: Kill processes after tasks are disabled. }
   Exec(ExpandConstant('{sys}\taskkill.exe'),
     '/F /IM SmartGuard.Tray.exe /T',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(500);
-
   Exec(ExpandConstant('{sys}\taskkill.exe'),
     '/F /IM SmartGuard.Engine.exe /T',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(500);
-
   Exec(ExpandConstant('{sys}\taskkill.exe'),
     '/F /IM SmartGuard.LogViewer.exe /T',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(500);
-
   Exec(ExpandConstant('{sys}\taskkill.exe'),
     '/F /IM SmartGuard.Settings.exe /T',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(1000);
 
-  { Step 2: Delete scheduled tasks after processes are stopped }
+  { Step 2: Wait for processes to actually exit (max 5s) instead of fixed sleeps. }
+  for WaitAttempts := 1 to 25 do
+  begin
+    if not SmartGuardProcessesStillRunning() then
+      break;
+    Sleep(200);
+  end;
+
+  { Step 3: Delete scheduled tasks after processes are stopped }
   Exec(ExpandConstant('{cmd}'),
     '/C schtasks /Delete /TN "SmartGuard Guardian" /F 2>nul',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -142,19 +153,7 @@ begin
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-function SmartGuardProcessesStillRunning(): Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := Exec(
-    ExpandConstant('{cmd}'),
-    '/C tasklist /NH 2>nul | findstr /I /C:"SmartGuard.Tray.exe" /C:"SmartGuard.Engine.exe" /C:"SmartGuard.LogViewer.exe" /C:"SmartGuard.Settings.exe" >nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-end;
-
 function TryStopSmartGuardProcesses(): Boolean;
-var
-  Attempts: Integer;
 begin
   if not SmartGuardProcessesStillRunning() then
   begin
@@ -162,27 +161,9 @@ begin
     Exit;
   end;
 
-  { Retry up to 3 times with small delay between attempts }
-  for Attempts := 1 to 3 do
-  begin
-    StopSmartGuardProcesses();
-    Sleep(500);
-    if not SmartGuardProcessesStillRunning() then
-    begin
-      Result := True;
-      Exit;
-    end;
-  end;
+  StopSmartGuardProcesses();
 
-  { Final wait: if processes still running after retries, give extra time }
-  Sleep(2000);
-  if not SmartGuardProcessesStillRunning() then
-  begin
-    Result := True;
-    Exit;
-  end;
-
-  Result := False;
+  Result := not SmartGuardProcessesStillRunning();
 end;
 
 function EnsureSmartGuardStopped(): Boolean;
@@ -327,14 +308,7 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usUninstall then
-  begin
-    { Stop processes and tasks before the file-deletion phase runs.
-      The processes were already stopped in InitializeUninstall, but stop
-      them again here in case they were restarted in the meantime. }
-    TryStopSmartGuardProcesses();
-  end
-  else if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usPostUninstall then
   begin
     { If the user chose to delete user data and the files are still present,
       stop processes one last time and delete them. This covers cases where
