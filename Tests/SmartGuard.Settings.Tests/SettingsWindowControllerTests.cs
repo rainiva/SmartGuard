@@ -772,6 +772,11 @@ public class SettingsWindowControllerTests
                 var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
 
                 txtVersion.Should().NotBeNull("About page must show version info");
+                txtVersion!.Text.Should().NotBe("1.0.0",
+                    "Displayed version must be synced with the actual assembly version, not a hard-coded placeholder");
+                txtVersion.Text.Should().MatchRegex(@"^\d+\.\d+(\.\d+)?$",
+                    "Displayed version should be a valid version string");
+
                 lnkRepo.Should().NotBeNull("About page must have repository link");
                 lnkRepo!.NavigateUri.Should().NotBeNull();
                 lnkRepo.NavigateUri.AbsoluteUri.Should().Be("https://github.com/rainiva/SmartGuard",

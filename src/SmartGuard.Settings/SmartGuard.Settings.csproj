@@ -9,6 +9,8 @@
     <RootNamespace>SmartGuard.Settings</RootNamespace>
     <AssemblyName>SmartGuard.Settings</AssemblyName>
     <ApplicationIcon>..\..\lib\SmartGuard.ico</ApplicationIcon>
+    <InstallerVersionFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '..\..\installer\version.txt'))</InstallerVersionFile>
+    <Version>$([System.IO.File]::ReadAllText('$(InstallerVersionFile)').Trim())</Version>
   </PropertyGroup>
 
   <ItemGroup>

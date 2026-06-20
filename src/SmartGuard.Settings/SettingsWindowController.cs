@@ -97,6 +97,7 @@ public sealed class SettingsWindowController
     var tglPaused = Require<CheckBox>(window, "tglPaused");
     var tglNotify = Require<CheckBox>(window, "tglNotify");
     var tglAutoStart = Require<CheckBox>(window, "tglAutoStart");
+    var txtVersion = Require<TextBlock>(window, "txtVersion");
     var btnSave = Require<Button>(window, "btnSave");
     var btnCancel = Require<Button>(window, "btnCancel");
     var navList = Require<ListBox>(window, "navList");
@@ -127,6 +128,9 @@ public sealed class SettingsWindowController
     tglPaused.IsChecked = config.Paused;
     tglNotify.IsChecked = config.NotifyOnPlanChange;
     tglAutoStart.IsChecked = config.AutoStartEnabled;
+
+    // Sync displayed version with the actual assembly / installer version
+    txtVersion.Text = GetDisplayVersion();
 
     // Register label updates for NumberBox
     RegisterNumberBoxLabel(sldBalanced, lblBalanced, "{0} 分钟");
@@ -424,6 +428,16 @@ public sealed class SettingsWindowController
       iconTheme.Text = _isDarkTheme ? "\uE706" : "\uE708";
   }
 
+  private static string GetDisplayVersion()
+  {
+    var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+    if (version is null) return "1.0.0";
+    // Show major.minor.build when build is non-zero; otherwise major.minor
+    if (version.Build > 0)
+      return $"{version.Major}.{version.Minor}.{version.Build}";
+    return $"{version.Major}.{version.Minor}";
+  }
+
   private static void SetResource(ResourceDictionary resources, string key, string colorHex)
   {
     if (resources.Contains(key))
@@ -575,10 +589,14 @@ public sealed class SettingsWindowController
           MessageBoxImage.Information);
       }
     }
-    catch (System.Net.Http.HttpRequestException)
+    catch (System.Net.Http.HttpRequestException ex)
     {
+      var statusCode = ex.StatusCode;
+      var message = statusCode == System.Net.HttpStatusCode.NotFound
+        ? "未找到发布版本，请确认仓库地址正确。"
+        : "网络连接失败，请检查网络后重试。";
       MessageBox.Show(
-        "网络连接失败，请检查网络后重试。",
+        message,
         "检查更新",
         MessageBoxButton.OK,
         MessageBoxImage.Warning);
