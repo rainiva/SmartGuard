@@ -35,6 +35,30 @@ public class BuildInstallerCommandTests : IDisposable
         File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.25");
     }
 
+    [Fact]
+    public void Run_bumps_version_before_stage_runs()
+    {
+        var root = CreateFakeRepo();
+        var staging = Path.Combine(root, "installer", "staging");
+        var fakeDownloader = new FakeDownloader("windowsdesktop-runtime-8.0.18-win-x64.exe");
+        var versionAtStageTime = "not-set";
+        var cmd = new BuildInstallerCommand(
+            _ => { },
+            (r, c) =>
+            {
+                versionAtStageTime = File.ReadAllText(Path.Combine(r, "installer", "version.txt")).Trim();
+                return 0;
+            },
+            fakeDownloader,
+            _ => 0);
+
+        var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: false));
+
+        exit.Should().Be(0);
+        versionAtStageTime.Should().Be("1.0.26", "version must be bumped before the publish/stage step reads it");
+        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.26");
+    }
+
     private string CreateFakeRepo()
     {
         Directory.CreateDirectory(Path.Combine(_tempDir, "bin"));

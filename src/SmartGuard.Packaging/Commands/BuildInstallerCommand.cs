@@ -26,15 +26,15 @@ public class BuildInstallerCommand
             ? Path.Combine(root, "installer", "staging")
             : Path.GetFullPath(options.StagingDir);
 
-        var stage = new StageCommand(_log, _publishRunner, _downloader);
-        var stageExit = stage.Run(new StageOptions(root, options.Configuration, stagingDir, options.RuntimeVersion, options.SkipPublish, options.SkipRedistDownload));
-        if (stageExit != 0) return stageExit;
-
         var versionFile = Path.Combine(root, "installer", "version.txt");
         var version = options.SkipVersionBump
             ? InstallerVersionResolver.ReadCurrentVersion(versionFile)
             : InstallerVersionResolver.BumpVersionFile(versionFile);
         _log($"Installer version: {version}");
+
+        var stage = new StageCommand(_log, _publishRunner, _downloader);
+        var stageExit = stage.Run(new StageOptions(root, options.Configuration, stagingDir, options.RuntimeVersion, options.SkipPublish, options.SkipRedistDownload));
+        if (stageExit != 0) return stageExit;
 
         var runtimeMarker = Path.Combine(stagingDir, "redist", "runtime-installer.txt");
         var runtimeFile = File.ReadAllText(runtimeMarker).Trim();
