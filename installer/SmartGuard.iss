@@ -236,15 +236,21 @@ begin
 end;
 
 function InitializeUninstall(): Boolean;
-var
-  Choice: Integer;
 begin
   Result := True;
   DeleteUserData := False;
 
-  { Show the choice dialog immediately. Do NOT stop processes here; that
-    work is deferred to CurUninstallStepChanged(usUninstall) so the user
-    gets instant feedback after clicking Uninstall. }
+  { Stop processes and tasks as early as possible, before the progress page
+    is shown, so the uninstall progress does not appear to hang. }
+  TryStopSmartGuardProcesses();
+end;
+
+procedure InitializeUninstallProgressForm();
+var
+  Choice: Integer;
+begin
+  { This runs after the standard "Are you sure you want to uninstall?" dialog,
+    so the user-data choice appears in the correct order. }
   if UninstallSilent then
     Exit;
 
@@ -323,7 +329,9 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
-    { Stop processes and tasks before the file-deletion phase runs. }
+    { Stop processes and tasks before the file-deletion phase runs.
+      The processes were already stopped in InitializeUninstall, but stop
+      them again here in case they were restarted in the meantime. }
     TryStopSmartGuardProcesses();
   end
   else if CurUninstallStep = usPostUninstall then
