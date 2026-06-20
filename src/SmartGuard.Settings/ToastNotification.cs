@@ -22,6 +22,7 @@ public sealed class InlineToastNotification : IToastWindow
 {
     private readonly Border _container;
     private readonly Border _border;
+    private readonly Grid _root;
     private bool _isClosing;
     private Storyboard? _activeStoryboard;
 
@@ -99,11 +100,11 @@ public sealed class InlineToastNotification : IToastWindow
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
-        var root = new Grid();
-        root.Children.Add(shadow);
-        root.Children.Add(_border);
+        _root = new Grid();
+        _root.Children.Add(shadow);
+        _root.Children.Add(_border);
 
-        _container.Child = root;
+        _container.Child = _root;
         _container.Visibility = Visibility.Visible;
     }
 
@@ -160,7 +161,7 @@ public sealed class InlineToastNotification : IToastWindow
         storyboard.Completed += (_, _) =>
         {
             // Only hide the container if this toast still owns it.
-            if (_container.Child == _border)
+            if (_container.Child == _root)
             {
                 _container.Visibility = Visibility.Collapsed;
                 _container.Child = null;
