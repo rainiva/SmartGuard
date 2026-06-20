@@ -56,7 +56,8 @@ public sealed class ToastNotification : IToastWindow
         {
             if (_window.Owner is null) return;
             _window.Left = _window.Owner.Left + _window.Owner.ActualWidth - _window.ActualWidth - 12;
-            _window.Top = _window.Owner.Top + 12;
+            // Align toast top with the content section title (owner caption + content top padding).
+            _window.Top = _window.Owner.Top + SystemParameters.CaptionHeight;
         };
 
         _window.Closed += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
