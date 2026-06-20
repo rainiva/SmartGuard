@@ -290,6 +290,16 @@
     }
 
     Describe 'Phase 5 Inno installer' {
+        It 'upgrade path detects existing installation via registry' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match 'GetExistingSmartGuardInstallPath'
+            $iss | Should -Match 'UsePreviousAppDir=yes'
+            $iss | Should -Match 'HKCU'
+            $iss | Should -Match 'HKLM'
+            $iss | Should -Match 'RegQueryStringValue'
+        }
+
         It 'SmartGuard.iss includes signed publisher and install hooks' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
