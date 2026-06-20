@@ -1,4 +1,4 @@
-﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SmartGuard.Settings"
         Title="智能电源守护设置"
@@ -290,6 +290,8 @@
         </Setter>
       </Style>
 
+      <local:LogViewportHeightConverter x:Key="LogViewportHeightConverter"/>
+
     </ResourceDictionary>
   </Window.Resources>
 
@@ -370,7 +372,7 @@
       </Grid.RowDefinitions>
 
       <!-- Content Pages -->
-      <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
+      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
         <StackPanel HorizontalAlignment="Stretch">
 
           <!-- General Page -->
@@ -611,6 +613,7 @@
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="*"/>
+                  <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Fixed Header: Title, Description, Search, Filters -->
@@ -640,14 +643,15 @@
                 </StackPanel>
 
                 <!-- Scrollable Log Content -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              MaxHeight="{Binding ActualHeight, ElementName=contentScrollViewer, Converter={StaticResource LogViewportHeightConverter}}">
                   <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
                     <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
                   </Border>
                 </ScrollViewer>
 
                 <!-- Status Bar (outside scrollable area, stays visible) -->
-                <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0" Grid.Row="1" VerticalAlignment="Bottom"/>
+                <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0" Grid.Row="2"/>
               </Grid>
             </Border>
           </StackPanel>

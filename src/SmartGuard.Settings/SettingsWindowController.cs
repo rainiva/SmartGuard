@@ -153,24 +153,29 @@ public sealed class SettingsWindowController
     btnSave.Click += (_, _) => controller.OnSaveClicked(infoBar, txtInfoBar);
 
     // Check update button
-    var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
-    if (btnCheckUpdate != null)
+    var btnCheckUpdate = Require<Button>(window, "btnCheckUpdate");
+    btnCheckUpdate.Click += async (_, _) =>
     {
-      btnCheckUpdate.Click += async (_, _) =>
+      btnCheckUpdate.Content = "检查中...";
+      btnCheckUpdate.IsEnabled = false;
+      try
       {
-        btnCheckUpdate.Content = "检查中...";
-        btnCheckUpdate.IsEnabled = false;
-        try
-        {
-          await controller.CheckForUpdateAsync(window);
-        }
-        finally
-        {
-          btnCheckUpdate.Content = "检查更新";
-          btnCheckUpdate.IsEnabled = true;
-        }
-      };
-    }
+        await controller.CheckForUpdateAsync(window);
+      }
+      catch (Exception ex)
+      {
+        MessageBox.Show(
+          $"检查更新时发生错误：{ex.Message}",
+          "检查更新",
+          MessageBoxButton.OK,
+          MessageBoxImage.Error);
+      }
+      finally
+      {
+        btnCheckUpdate.Content = "检查更新";
+        btnCheckUpdate.IsEnabled = true;
+      }
+    };
 
     // Log view initialization
     var logPath = Path.Combine(root, "SmartGuard.log");
