@@ -654,7 +654,7 @@ public sealed class SettingsWindowController
       if (!string.IsNullOrWhiteSpace(token))
       {
         client.DefaultRequestHeaders.Authorization =
-          new System.Net.Http.Headers.AuthenticationHeaderValue("token", token.Trim());
+          new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Trim());
       }
 
       var url = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
@@ -746,7 +746,7 @@ public sealed class SettingsWindowController
             if (!string.IsNullOrWhiteSpace(downloadToken))
             {
               httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("token", downloadToken.Trim());
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", downloadToken.Trim());
             }
             using var downloader = new HttpUpdateAssetDownloader(httpClient);
 
@@ -801,13 +801,14 @@ public sealed class SettingsWindowController
     {
       var statusCode = ex.StatusCode;
       var detail = ex.InnerException?.Message ?? ex.Message;
+      var tokenConfigured = !string.IsNullOrWhiteSpace(_originalConfig.GitHubToken) ? "已配置" : "未配置";
       string message;
       if (statusCode == System.Net.HttpStatusCode.NotFound)
-        message = $"未找到发布版本，请确认仓库地址正确。\n\n详情：{detail}";
+        message = $"未找到发布版本，请确认仓库地址正确。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
       else if (statusCode == System.Net.HttpStatusCode.Forbidden)
-        message = $"请求过于频繁，请稍后再试。\n\n详情：{detail}";
+        message = $"请求过于频繁，请稍后再试。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
       else
-        message = $"网络连接失败，请检查网络后重试。\n\n详情：{detail}";
+        message = $"网络连接失败，请检查网络后重试。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
       MessageBox.Show(
         message,
         "检查更新",

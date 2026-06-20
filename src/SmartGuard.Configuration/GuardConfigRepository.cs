@@ -94,6 +94,7 @@ public sealed class GuardConfigRepository(string configPath)
     node["NotifyOnPlanChange"] = config.NotifyOnPlanChange;
     node["HeartbeatIntervalMin"] = config.HeartbeatIntervalMin;
     node["AutoStartEnabled"] = config.AutoStartEnabled;
+    node["GitHubToken"] = config.GitHubToken;
     if (config.ManualHighPerformanceUntil is { } until)
       node["ManualHighPerformanceUntil"] = until.ToString("o");
     else
