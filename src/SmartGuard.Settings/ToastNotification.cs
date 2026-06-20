@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 
 namespace SmartGuard.Settings;
 
@@ -18,10 +20,72 @@ public interface IToastWindowFactory
 
 public sealed class ToastNotification : IToastWindow
 {
+    private const double ToastWidth = 260;
+    private const double EdgeMargin = 12;
+
     private readonly Window _window;
+    private readonly Border _border;
+    private bool _isClosing;
+    private Storyboard? _activeStoryboard;
 
     public ToastNotification(string message, bool isError, Window owner)
     {
+        var iconGlyph = isError ? "\xE783" : "\xE73E";
+        var background = new SolidColorBrush(isError ? Color.FromRgb(0xFF, 0xEB, 0xEE) : Color.FromRgb(0xE8, 0xF5, 0xE9));
+        var foreground = new SolidColorBrush(isError ? Color.FromRgb(0xC6, 0x28, 0x28) : Color.FromRgb(0x2E, 0x7D, 0x32));
+
+        var icon = new TextBlock
+        {
+            Text = iconGlyph,
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 16,
+            Foreground = foreground,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+
+        var text = new TextBlock
+        {
+            Text = message,
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
+            Foreground = foreground,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var content = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }
+            }
+        };
+        content.Children.Add(icon);
+        content.Children.Add(text);
+        Grid.SetColumn(text, 1);
+
+        _border = new Border
+        {
+            Background = background,
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(16, 12, 16, 12),
+            Margin = new Thickness(10),
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                Direction = 270,
+                ShadowDepth = 4,
+                BlurRadius = 12,
+                Opacity = 0.15
+            },
+            RenderTransform = new TranslateTransform(30, 0),
+            Opacity = 0,
+            Child = content
+        };
+
         _window = new Window
         {
             Title = string.Empty,
@@ -30,37 +94,52 @@ public sealed class ToastNotification : IToastWindow
             Background = Brushes.Transparent,
             ShowInTaskbar = false,
             Topmost = true,
-            Width = 240,
+            Width = ToastWidth,
             SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize,
             Owner = owner,
-            Content = new Border
-            {
-                Background = new SolidColorBrush(isError ? Color.FromRgb(253, 231, 233) : Color.FromRgb(232, 244, 232)),
-                BorderBrush = new SolidColorBrush(isError ? Color.FromRgb(245, 165, 169) : Color.FromRgb(186, 216, 186)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(12, 10, 12, 10),
-                Margin = new Thickness(10),
-                Child = new TextBlock
-                {
-                    Text = message,
-                    FontSize = 13,
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(isError ? Color.FromRgb(197, 54, 59) : Color.FromRgb(56, 118, 56))
-                }
-            }
+            Content = _border
         };
 
-        _window.Loaded += (_, _) =>
-        {
-            if (_window.Owner is null) return;
-            _window.Left = _window.Owner.Left + _window.Owner.ActualWidth - _window.ActualWidth - 12;
-            // Align toast top with the content section title (owner caption + content top padding).
-            _window.Top = _window.Owner.Top + SystemParameters.CaptionHeight;
-        };
-
+        _window.Loaded += OnLoaded;
         _window.Closed += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_window.Owner is null) return;
+
+        _window.Left = _window.Owner.Left + _window.Owner.ActualWidth - ToastWidth - EdgeMargin;
+        _window.Top = _window.Owner.Top + SystemParameters.CaptionHeight;
+
+        PlayEntranceAnimation();
+    }
+
+    private void PlayEntranceAnimation()
+    {
+        StopActiveStoryboard();
+
+        var storyboard = new Storyboard();
+        var transform = (TranslateTransform)_border.RenderTransform;
+
+        var slide = new DoubleAnimation(30, 0, TimeSpan.FromMilliseconds(250))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(slide, transform);
+        Storyboard.SetTargetProperty(slide, new PropertyPath(TranslateTransform.XProperty));
+        storyboard.Children.Add(slide);
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(fade, _border);
+        Storyboard.SetTargetProperty(fade, new PropertyPath(UIElement.OpacityProperty));
+        storyboard.Children.Add(fade);
+
+        _activeStoryboard = storyboard;
+        storyboard.Begin(_border);
     }
 
     public void Show()
@@ -70,7 +149,42 @@ public sealed class ToastNotification : IToastWindow
 
     public void Close()
     {
-        _window.Close();
+        if (_isClosing || !_window.IsVisible)
+        {
+            _window.Close();
+            return;
+        }
+
+        _isClosing = true;
+        StopActiveStoryboard();
+
+        var storyboard = new Storyboard();
+        var transform = (TranslateTransform)_border.RenderTransform;
+
+        var slide = new DoubleAnimation(0, -20, TimeSpan.FromMilliseconds(200))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(slide, transform);
+        Storyboard.SetTargetProperty(slide, new PropertyPath(TranslateTransform.YProperty));
+        storyboard.Children.Add(slide);
+
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(200))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        Storyboard.SetTarget(fade, _border);
+        Storyboard.SetTargetProperty(fade, new PropertyPath(UIElement.OpacityProperty));
+        storyboard.Children.Add(fade);
+
+        storyboard.Completed += (_, _) => _window.Close();
+        storyboard.Begin(_border);
+    }
+
+    private void StopActiveStoryboard()
+    {
+        _activeStoryboard?.Stop();
+        _activeStoryboard = null;
     }
 
     public event EventHandler? Closed;
