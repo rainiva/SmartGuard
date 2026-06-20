@@ -29,6 +29,8 @@ public sealed class SettingsWindowController
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private System.Windows.Threading.DispatcherTimer? _saveDebounceTimer;
+  private DateTime _lastUpdateCheckTime = DateTime.MinValue;
+  private bool _lastUpdateCheckNoUpdate;
 
   private SettingsWindowController(
     string root,
@@ -623,6 +625,17 @@ public sealed class SettingsWindowController
     const string repoName = "SmartGuard";
     var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
 
+    // Cache "no update" results for 5 minutes to avoid GitHub API rate limits.
+    if (_lastUpdateCheckNoUpdate && DateTime.Now - _lastUpdateCheckTime < TimeSpan.FromMinutes(5))
+    {
+      MessageBox.Show(
+        "当前已是最新版本。",
+        "检查更新",
+        MessageBoxButton.OK,
+        MessageBoxImage.Information);
+      return;
+    }
+
     try
     {
       var proxy = System.Net.WebRequest.GetSystemWebProxy();
@@ -761,6 +774,8 @@ public sealed class SettingsWindowController
       }
       else
       {
+        _lastUpdateCheckNoUpdate = true;
+        _lastUpdateCheckTime = DateTime.Now;
         MessageBox.Show(
           "当前已是最新版本。",
           "检查更新",
@@ -772,9 +787,13 @@ public sealed class SettingsWindowController
     {
       var statusCode = ex.StatusCode;
       var detail = ex.InnerException?.Message ?? ex.Message;
-      var message = statusCode == System.Net.HttpStatusCode.NotFound
-        ? $"未找到发布版本，请确认仓库地址正确。\n\n详情：{detail}"
-        : $"网络连接失败，请检查网络后重试。\n\n详情：{detail}";
+      string message;
+      if (statusCode == System.Net.HttpStatusCode.NotFound)
+        message = $"未找到发布版本，请确认仓库地址正确。\n\n详情：{detail}";
+      else if (statusCode == System.Net.HttpStatusCode.Forbidden)
+        message = $"请求过于频繁，请稍后再试。\n\n详情：{detail}";
+      else
+        message = $"网络连接失败，请检查网络后重试。\n\n详情：{detail}";
       MessageBox.Show(
         message,
         "检查更新",

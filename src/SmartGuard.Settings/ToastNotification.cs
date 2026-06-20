@@ -88,22 +88,11 @@ public sealed class InlineToastNotification : IToastWindow
             Child = content
         };
 
-        // Soft diffuse shadow that extends slightly on all sides, more below.
-        var shadow = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb((byte)(isDarkMode ? 40 : 20), 0, 0, 0)),
-            CornerRadius = new CornerRadius(8),
-            Margin = new Thickness(4, 4, 4, 0),
-            VerticalAlignment = VerticalAlignment.Stretch,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-
         _root = new Grid
         {
             RenderTransform = new TranslateTransform(30, 0),
             Opacity = 0
         };
-        _root.Children.Add(shadow);
         _root.Children.Add(_border);
 
         _container.Child = _root;
