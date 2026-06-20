@@ -5,7 +5,7 @@
   #define StagingDir "staging"
 #endif
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion Trim(FileRead(FileOpen(SourcePath + 'version.txt')))
 #endif
 #ifndef RuntimeInstallerFile
   #define RuntimeInstallerFile "windowsdesktop-runtime-8.0.18-win-x64.exe"
