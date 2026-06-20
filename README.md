@@ -133,8 +133,8 @@ Run-Tests.cmd
 
 若组件缺失或行为异常：
 
-1. 重新运行最新 Release 安装包，或
-2. 执行 `build.cmd` 后运行 `bin\SmartGuard.Engine.exe --root <目录> --install` 重新注册任务。
+1. 普通用户：重新运行最新 Release 安装包。
+2. 开发者：在仓库根目录执行 `build.cmd` 后，运行 `bin\SmartGuard.Engine.exe --root . --install` 重新注册任务。
 
 ## 许可证
 
