@@ -123,12 +123,15 @@ begin
     If the engine is running under the task scheduler (e.g. as SYSTEM),
     taskkill alone may fail or the task may immediately restart it via
     RestartOnFailure. Ending and disabling the tasks prevents revival. }
+  { End/disable tasks without waiting: taskkill and task deletion below are the
+    real synchronization points. This avoids hangs when the Task Scheduler
+    service is slow to respond. }
   Exec(ExpandConstant('{cmd}'),
     '/C schtasks /End /TN "SmartGuard Guardian" /F >nul 2>&1 & ' +
     'schtasks /End /TN "SmartGuard Tray" /F >nul 2>&1 & ' +
     'schtasks /Change /TN "SmartGuard Guardian" /Disable >nul 2>&1 & ' +
     'schtasks /Change /TN "SmartGuard Tray" /Disable >nul 2>&1',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    '', SW_HIDE, ewNoWait, ResultCode);
 
   { Step 1: Kill all SmartGuard processes in one taskkill call. }
   Exec(ExpandConstant('{sys}\taskkill.exe'),
