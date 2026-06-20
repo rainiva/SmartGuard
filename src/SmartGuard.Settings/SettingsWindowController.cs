@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -151,6 +152,20 @@ public sealed class SettingsWindowController
     };
 
     btnSave.Click += (_, _) => controller.OnSaveClicked(infoBar, txtInfoBar);
+
+    // Repository link
+    var lnkRepo = window.FindName("lnkRepo") as Hyperlink;
+    if (lnkRepo != null)
+    {
+      lnkRepo.RequestNavigate += (_, e) =>
+      {
+        e.Handled = true;
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri)
+        {
+          UseShellExecute = true
+        });
+      };
+    }
 
     // Check update button
     var btnCheckUpdate = Require<Button>(window, "btnCheckUpdate");
@@ -564,6 +579,14 @@ public sealed class SettingsWindowController
     {
       MessageBox.Show(
         "网络连接失败，请检查网络后重试。",
+        "检查更新",
+        MessageBoxButton.OK,
+        MessageBoxImage.Warning);
+    }
+    catch (TaskCanceledException)
+    {
+      MessageBox.Show(
+        "连接超时，请检查网络后重试。",
         "检查更新",
         MessageBoxButton.OK,
         MessageBoxImage.Warning);

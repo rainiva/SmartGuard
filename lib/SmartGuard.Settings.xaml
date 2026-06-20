@@ -582,7 +582,11 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
                       <TextBlock Text="仓库地址" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="https://github.com/yourusername/SmartGuard" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0">
+                        <Hyperlink x:Name="lnkRepo" NavigateUri="https://github.com/rainiva/SmartGuard" Foreground="{DynamicResource TextAccent}">
+                          https://github.com/rainiva/SmartGuard
+                        </Hyperlink>
+                      </TextBlock>
                     </StackPanel>
                   </Grid>
                 </Border>

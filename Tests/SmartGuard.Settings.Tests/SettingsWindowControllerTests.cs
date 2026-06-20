@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using SmartGuard.Configuration;
@@ -765,11 +766,16 @@ public class SettingsWindowControllerTests
                 pageGeneral.Should().NotBeNull();
                 pageGeneral!.Visibility.Should().Be(Visibility.Collapsed);
 
-                // Verify version info and check update button exist
+                // Verify version info, repository link and check update button exist
                 var txtVersion = window.FindName("txtVersion") as TextBlock;
+                var lnkRepo = window.FindName("lnkRepo") as Hyperlink;
                 var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
 
                 txtVersion.Should().NotBeNull("About page must show version info");
+                lnkRepo.Should().NotBeNull("About page must have repository link");
+                lnkRepo!.NavigateUri.Should().NotBeNull();
+                lnkRepo.NavigateUri.AbsoluteUri.Should().Be("https://github.com/rainiva/SmartGuard",
+                    "Repository link must point to the actual project repository");
                 btnCheckUpdate.Should().NotBeNull("About page must have check update button");
             }
             finally
