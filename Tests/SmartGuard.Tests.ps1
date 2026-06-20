@@ -93,7 +93,7 @@
             $md = Get-Content -LiteralPath (Join-Path $root 'docs\MIGRATION.md') -Raw -Encoding UTF8
             $md | Should -Match '\*\*7\.6\*\*.*\*\*已完成\*\*'
             $md | Should -Match 'Phase 7 \*\*7\.1–7\.6 已完成\*\*'
-            $md | Should -Match '\|\s*Pester.*\|\s*43\s*\|'
+            $md | Should -Match '\|\s*Pester.*\|\s*39\s*\|'
             $md | Should -Match 'build\.cmd'
             $md | Should -Not -Match 'scripts/Publish-Engine\.ps1'
         }

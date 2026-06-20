@@ -350,10 +350,9 @@ powershell -File Restart-Tray.ps1
 
 | 类型 | 位置 | 数量 |
 |------|------|------|
-| Pester 契约 / 安装包 | `Tests/SmartGuard.Tests.ps1` | 43 |
-| Pester 集成 | `Tests/Integration/*.ps1` | 7 |
-| xUnit | `Tests/SmartGuard.*.Tests/` | 157 |
-| 运行 | `Run-Tests.ps1` | Pester 汇总 **50** 项 + xUnit 157 项 |
+| Pester 契约 / 安装包 | `Tests/SmartGuard.Tests.ps1` | 39 |
+| xUnit | `Tests/SmartGuard.*.Tests/` | 232 |
+| 运行 | `Run-Tests.cmd` / `Run-Tests.ps1` | Pester 39 项 + xUnit 232 项 |
 
 **TDD 纪律（后续 Phase 仍适用）：** Red → Green → Refactor；声称完成前 `Run-Tests.ps1` 全绿。
 
@@ -362,7 +361,7 @@ powershell -File Restart-Tray.ps1
 ## 八、回滚方案（Phase 6 后）
 
 1. 重新运行 `dist\SmartGuard-Setup-*-x64.exe` 覆盖安装，或  
-2. `build.cmd`（或 `scripts\Publish-All.ps1`）后执行 `bin\SmartGuard.Engine.exe --root <安装目录> --install`  
+2. `build.cmd` 后执行 `bin\SmartGuard.Engine.exe --root <安装目录> --install`  
 3. 配置 / 状态 / 日志文件**无需格式迁移**
 
 > Phase 1 **A10**（回滚至 `lib\SmartGuard.Core.ps1`）已于 Phase 6.3 **废止**。
@@ -382,7 +381,7 @@ powershell -File Restart-Tray.ps1
 | [`lib/README-DEPLOY.txt`](../lib/README-DEPLOY.txt) | 部署步骤 |
 | `src/SmartGuard.Packaging/Program.cs` | 安装包 staging 与 ISCC 调用（替代 Build-Staging.ps1 / Build-Installer.ps1） |
 | [`build.cmd`](../build.cmd) | 首选：dotnet publish 四件套到 `bin\` |
-| [`scripts/Publish-All.ps1`](../scripts/Publish-All.ps1) | 薄包装，委托 `build.cmd` |
+| `src/SmartGuard.Packaging/` | 安装包 staging 与 ISCC 调用（替代已删除的 Build-Staging.ps1 / Build-Installer.ps1） |
 | `Tests/SmartGuard.Engine.PerformanceTests/` | 启动耗时与内存占用验收（替代 Measure-Engine*.ps1） |
 | `src/SmartGuard.Configuration/LegacyTaskCleaner.cs` | 卸载旧 SmartPowerPlan 计划任务 |
 | [`scripts/archive/Migrate-RenameToSmartGuard.ps1`](../scripts/archive/Migrate-RenameToSmartGuard.ps1) | 一次性更名（已归档） |
@@ -410,6 +409,7 @@ powershell -File Restart-Tray.ps1
 | 2026-06-17 | Phase 6.1–6.5：C# 计划任务注册、exe 启动链、删除 PS 应用栈、安装包瘦身、文档同步 |
 | 2026-06-17 | Phase 7.1–7.6：开发启动器 cmd-only、`build.cmd` 发布链、XAML 源文件化、文档同步 |
 | 2026-06-19 | PowerShell→C# 打包迁移：删除 Build-Staging.ps1 / Build-Installer.ps1 / InstallVersion.ps1 / InstallStaging.ps1 / Publish-All.ps1 / Create-TrayIcon.ps1；新增 SmartGuard.Packaging + Tests |
+| 2026-06-20 | 性能与稳定性优化：卸载响应提速、引擎主循环异步化、powercfg 5 秒超时、亮度恢复非阻塞、计划任务 RestartOnFailure 降至 3、Settings 保存取消令牌 |
 
 ---
 
