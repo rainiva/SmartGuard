@@ -73,12 +73,30 @@ public class StageCommand
         if (Directory.Exists(redistDir))
         {
             backup = Path.Combine(Path.GetTempPath(), "sg-redist-backup-" + Guid.NewGuid().ToString("N"));
-            Directory.Move(redistDir, backup);
+            CopyDirectory(redistDir, backup);
+            Directory.Delete(redistDir, true);
         }
         if (Directory.Exists(stagingDir))
             Directory.Delete(stagingDir, true);
         Directory.CreateDirectory(stagingDir);
         if (backup != null && Directory.Exists(backup))
-            Directory.Move(backup, redistDir);
+        {
+            CopyDirectory(backup, redistDir);
+            Directory.Delete(backup, true);
+        }
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(source, file);
+            var target = Path.Combine(destination, relative);
+            var parent = Path.GetDirectoryName(target);
+            if (!string.IsNullOrEmpty(parent))
+                Directory.CreateDirectory(parent);
+            File.Copy(file, target, true);
+        }
     }
 }
