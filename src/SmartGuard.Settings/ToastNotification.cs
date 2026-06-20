@@ -371,7 +371,7 @@ public sealed class ToastNotification : IToastWindow
     public event EventHandler? Closed;
 }
 
-public sealed class ToastNotificationService
+public sealed class ToastNotificationService : IDisposable
 {
     private readonly Window _owner;
     private readonly TimeSpan _displayDuration;
@@ -379,6 +379,7 @@ public sealed class ToastNotificationService
     private IToastWindow? _currentToast;
     private string? _currentMessage;
     private System.Windows.Threading.DispatcherTimer? _closeTimer;
+    private bool _disposed;
 
     public bool IsDarkMode { get; set; }
 
@@ -440,5 +441,12 @@ public sealed class ToastNotificationService
             (_, _) => DismissCurrent(),
             _owner.Dispatcher);
         _closeTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        DismissCurrent();
     }
 }

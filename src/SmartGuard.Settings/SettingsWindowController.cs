@@ -29,6 +29,13 @@ public sealed class SettingsWindowController
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private System.Windows.Threading.DispatcherTimer? _saveDebounceTimer;
+  private TextBox? _txtLogSearch;
+  private CheckBox? _chkInfo;
+  private CheckBox? _chkWarn;
+  private CheckBox? _chkError;
+  private CheckBox? _chkHeart;
+  private TextBox? _txtLogView;
+  private TextBlock? _lblLogStatus;
   private DateTime _lastUpdateCheckTime = DateTime.MinValue;
   private bool _lastUpdateCheckNoUpdate;
 
@@ -216,49 +223,42 @@ public sealed class SettingsWindowController
     if (File.Exists(logPath) || File.Exists(fallbackLogPath))
     {
       var logController = new LogViewController(logPath, fallbackLogPath);
-      var txtLogSearch = Require<TextBox>(window, "txtLogSearch");
-      var chkInfo = Require<CheckBox>(window, "chkInfo");
-      var chkWarn = Require<CheckBox>(window, "chkWarn");
-      var chkError = Require<CheckBox>(window, "chkError");
-      var chkHeart = Require<CheckBox>(window, "chkHeart");
-      var txtLogView = Require<TextBox>(window, "txtLogView");
-      var lblLogStatus = Require<TextBlock>(window, "lblLogStatus");
+      controller._txtLogSearch = Require<TextBox>(window, "txtLogSearch");
+      controller._chkInfo = Require<CheckBox>(window, "chkInfo");
+      controller._chkWarn = Require<CheckBox>(window, "chkWarn");
+      controller._chkError = Require<CheckBox>(window, "chkError");
+      controller._chkHeart = Require<CheckBox>(window, "chkHeart");
+      controller._txtLogView = Require<TextBox>(window, "txtLogView");
+      controller._lblLogStatus = Require<TextBlock>(window, "lblLogStatus");
 
-      void RefreshLogView()
-      {
-        logController.SearchKeyword = txtLogSearch.Text;
-        logController.ShowInfo = chkInfo.IsChecked == true;
-        logController.ShowWarn = chkWarn.IsChecked == true;
-        logController.ShowError = chkError.IsChecked == true;
-        logController.ShowHeart = chkHeart.IsChecked == true;
-
-        var lines = logController.GetFilteredLines();
-        txtLogView.Text = string.Join(Environment.NewLine, lines);
-        lblLogStatus.Text = $"{lines.Count} 行 | 刷新: {DateTime.Now:HH:mm:ss}";
-      }
-
-      txtLogSearch.TextChanged += (_, _) => RefreshLogView();
-      chkInfo.Checked += (_, _) => RefreshLogView();
-      chkInfo.Unchecked += (_, _) => RefreshLogView();
-      chkWarn.Checked += (_, _) => RefreshLogView();
-      chkWarn.Unchecked += (_, _) => RefreshLogView();
-      chkError.Checked += (_, _) => RefreshLogView();
-      chkError.Unchecked += (_, _) => RefreshLogView();
-      chkHeart.Checked += (_, _) => RefreshLogView();
-      chkHeart.Unchecked += (_, _) => RefreshLogView();
+      controller._txtLogSearch.TextChanged += (_, _) => controller.RefreshLogView();
+      controller._chkInfo.Checked += (_, _) => controller.RefreshLogView();
+      controller._chkInfo.Unchecked += (_, _) => controller.RefreshLogView();
+      controller._chkWarn.Checked += (_, _) => controller.RefreshLogView();
+      controller._chkWarn.Unchecked += (_, _) => controller.RefreshLogView();
+      controller._chkError.Checked += (_, _) => controller.RefreshLogView();
+      controller._chkError.Unchecked += (_, _) => controller.RefreshLogView();
+      controller._chkHeart.Checked += (_, _) => controller.RefreshLogView();
+      controller._chkHeart.Unchecked += (_, _) => controller.RefreshLogView();
 
       var logTimer = new System.Windows.Threading.DispatcherTimer
       {
         Interval = TimeSpan.FromSeconds(2),
       };
-      logTimer.Tick += (_, _) => RefreshLogView();
-      logTimer.Start();
+      logTimer.Tick += (_, _) => controller.RefreshLogView();
+      // Log timer is started on demand when the logs page becomes active.
 
       controller._logController = logController;
       controller._logTimer = logTimer;
 
-      // Initial refresh
-      RefreshLogView();
+      window.Closing += (_, _) => controller.Dispose();
+      window.StateChanged += (_, _) =>
+      {
+        if (window.WindowState == WindowState.Minimized)
+          controller.SetLogPageActive(false);
+        else
+          controller.SetLogPageActive(navList.SelectedIndex == 3);
+      };
     }
 
     return controller;
@@ -312,7 +312,7 @@ public sealed class SettingsWindowController
     _saveDebounceTimer.Start();
   }
 
-  private void SaveCurrentSettings()
+  private async void SaveCurrentSettings()
   {
     try
     {
@@ -334,7 +334,7 @@ public sealed class SettingsWindowController
         return;
       }
 
-      SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
+      await Task.Run(() => SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository));
       _originalConfig = newConfig;
       _toastService.Show("设置已保存", isError: false);
     }
@@ -342,6 +342,41 @@ public sealed class SettingsWindowController
     {
       _toastService.Show($"保存失败：{ex.Message}", isError: true);
     }
+  }
+
+  private void RefreshLogView()
+  {
+    if (_logController is null || _txtLogView is null || _lblLogStatus is null) return;
+    _logController.SearchKeyword = _txtLogSearch?.Text ?? string.Empty;
+    _logController.ShowInfo = _chkInfo?.IsChecked == true;
+    _logController.ShowWarn = _chkWarn?.IsChecked == true;
+    _logController.ShowError = _chkError?.IsChecked == true;
+    _logController.ShowHeart = _chkHeart?.IsChecked == true;
+
+    var lines = _logController.GetFilteredLines();
+    _txtLogView.Text = string.Join(Environment.NewLine, lines);
+    _lblLogStatus.Text = $"{lines.Count} 行 | 刷新: {DateTime.Now:HH:mm:ss}";
+  }
+
+  public void SetLogPageActive(bool active)
+  {
+    if (_logTimer is null) return;
+    if (active)
+    {
+      _logTimer.Start();
+      RefreshLogView();
+    }
+    else
+    {
+      _logTimer.Stop();
+    }
+  }
+
+  public void Dispose()
+  {
+    _saveDebounceTimer?.Stop();
+    _logTimer?.Stop();
+    _toastService?.Dispose();
   }
 
   public void NavigateTo(string page)
@@ -378,6 +413,7 @@ public sealed class SettingsWindowController
     {
       var selected = navList.SelectedIndex;
       var isLogsPage = selected == 3;
+      this.SetLogPageActive(isLogsPage);
 
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
       if (pageAdvanced != null) pageAdvanced.Visibility = Visibility.Collapsed;

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 using SmartGuard.Tray.Toast;
@@ -74,7 +75,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _invokeSink.BeginInvoke(UpdateDisplay);
     });
 
-    _timer = new System.Windows.Forms.Timer { Interval = 1500 };
+    _timer = new System.Windows.Forms.Timer { Interval = 5000 };
     _timer.Tick += (_, _) => UpdateDisplay();
     _timer.Start();
 
@@ -96,19 +97,24 @@ public sealed class TrayApplicationContext : ApplicationContext
     base.Dispose(disposing);
   }
 
-  private void OnPauseClick(object? sender, EventArgs e)
+  private async void OnPauseClick(object? sender, EventArgs e)
   {
+    _pauseItem.Enabled = false;
     try
     {
-      var previous = _configRepository.TryLoad()?.Paused;
-      var next = !(previous ?? false);
-      _configRepository.UpdatePaused(next);
-      var msg = PauseGuardMessages.GetLogMessage(previous, next);
-      if (msg is not null)
+      var next = await Task.Run(() =>
       {
-        var fallback = Path.Combine(_root, "SmartGuard.startup.log");
-        _configRepository.AppendInfoLog(msg, fallback);
-      }
+        var previous = _configRepository.TryLoad()?.Paused;
+        var value = !(previous ?? false);
+        _configRepository.UpdatePaused(value);
+        var msg = PauseGuardMessages.GetLogMessage(previous, value);
+        if (msg is not null)
+        {
+          var fallback = Path.Combine(_root, "SmartGuard.startup.log");
+          _configRepository.AppendInfoLog(msg, fallback);
+        }
+        return value;
+      });
 
       _pauseItem.Text = next ? "恢复守护" : "暂停守护";
       UpdateDisplay();
@@ -117,26 +123,36 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
       MessageBox.Show($"操作失败：\n{ex.Message}", "智能电源守护", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
+    finally
+    {
+      _pauseItem.Enabled = true;
+    }
   }
 
-  private void OnSwitchHighPerformanceClick(object? sender, EventArgs e)
+  private async void OnSwitchHighPerformanceClick(object? sender, EventArgs e)
   {
+    var item = sender as ToolStripMenuItem;
+    if (item is not null) item.Enabled = false;
     try
     {
-      HighPerformanceBoost.Apply(_configRepository, _root, new PowerPlanActivator());
+      await Task.Run(() => HighPerformanceBoost.Apply(_configRepository, _root, new PowerPlanActivator()));
       UpdateDisplay();
     }
     catch (Exception ex)
     {
       MessageBox.Show($"切换失败：\n{ex.Message}", "智能电源守护", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
+    finally
+    {
+      if (item is not null) item.Enabled = true;
+    }
   }
 
-  private void OnOpenSettings(object? sender, EventArgs e)
+  private async void OnOpenSettings(object? sender, EventArgs e)
   {
     try
     {
-      ExternalToolLauncher.OpenSettings(_root);
+      await Task.Run(() => ExternalToolLauncher.OpenSettings(_root));
     }
     catch (Exception ex)
     {
@@ -144,11 +160,11 @@ public sealed class TrayApplicationContext : ApplicationContext
     }
   }
 
-  private void OpenLogViewer()
+  private async void OpenLogViewer()
   {
     try
     {
-      ExternalToolLauncher.OpenLogViewer(_root);
+      await Task.Run(() => ExternalToolLauncher.OpenLogViewer(_root));
     }
     catch (Exception ex)
     {
