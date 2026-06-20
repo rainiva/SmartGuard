@@ -242,10 +242,9 @@ begin
   Result := True;
   DeleteUserData := False;
 
-  { Use TryStopSmartGuardProcesses (with retry) instead of StopSmartGuardProcesses.
-    This ensures processes are actually terminated before uninstall proceeds. }
-  TryStopSmartGuardProcesses();
-
+  { Show the choice dialog immediately. Do NOT stop processes here; that
+    work is deferred to CurUninstallStepChanged(usUninstall) so the user
+    gets instant feedback after clicking Uninstall. }
   if UninstallSilent then
     Exit;
 
@@ -295,16 +294,53 @@ begin
   Result := True;
 end;
 
+procedure DeleteUserDataFiles;
+var
+  FindRec: TFindRec;
+  LogPattern: String;
+begin
+  DeleteFile(ExpandConstant('{app}\SmartGuard.config.json'));
+  DeleteFile(ExpandConstant('{app}\SmartGuard.log'));
+  DeleteFile(ExpandConstant('{app}\SmartGuard.startup.log'));
+  DeleteFile(ExpandConstant('{app}\SmartGuard.status.json'));
+
+  { Also remove rotated log backups such as SmartGuard.log.20260619.bak }
+  LogPattern := ExpandConstant('{app}\SmartGuard.log.*.bak');
+  if FindFirst(LogPattern, FindRec) then
+  begin
+    try
+      repeat
+        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = 0 then
+          DeleteFile(ExpandConstant('{app}\') + FindRec.Name);
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
-    { Before deleting files, ensure all processes are stopped.
-      This is a second safeguard in case InitializeUninstall's stop was insufficient. }
+    { Stop processes and tasks before the file-deletion phase runs. }
     TryStopSmartGuardProcesses();
   end
   else if CurUninstallStep = usPostUninstall then
   begin
+    { If the user chose to delete user data and the files are still present,
+      stop processes one last time and delete them. This covers cases where
+      the engine was restarted between usUninstall and usPostUninstall. }
+    if DeleteUserData and
+       (FileExists(ExpandConstant('{app}\SmartGuard.config.json')) or
+        FileExists(ExpandConstant('{app}\SmartGuard.log')) or
+        FileExists(ExpandConstant('{app}\SmartGuard.startup.log')) or
+        FileExists(ExpandConstant('{app}\SmartGuard.status.json'))) then
+    begin
+      TryStopSmartGuardProcesses();
+      DeleteUserDataFiles;
+    end;
+
     { Remove program directories that may still contain files after [UninstallDelete] }
     DelTree(ExpandConstant('{app}\bin'), True, True, True);
     DelTree(ExpandConstant('{app}\lib'), True, True, True);
