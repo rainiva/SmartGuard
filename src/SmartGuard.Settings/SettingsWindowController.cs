@@ -252,6 +252,7 @@ public sealed class SettingsWindowController
         "advanced" or "高级" => 1,
         "notifications" or "通知" => 2,
         "logs" or "日志" => 3,
+        "about" or "关于" => 4,
         _ => 0,
       };
 
@@ -265,6 +266,7 @@ public sealed class SettingsWindowController
     var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
     var pageNotifications = window.FindName("pageNotifications") as StackPanel;
     var pageLogs = window.FindName("pageLogs") as StackPanel;
+    var pageAbout = window.FindName("pageAbout") as StackPanel;
 
     navList.SelectionChanged += (_, e) =>
     {
@@ -272,6 +274,7 @@ public sealed class SettingsWindowController
       if (pageAdvanced != null) pageAdvanced.Visibility = Visibility.Collapsed;
       if (pageNotifications != null) pageNotifications.Visibility = Visibility.Collapsed;
       if (pageLogs != null) pageLogs.Visibility = Visibility.Collapsed;
+      if (pageAbout != null) pageAbout.Visibility = Visibility.Collapsed;
 
       var selected = navList.SelectedIndex;
       switch (selected)
@@ -287,6 +290,9 @@ public sealed class SettingsWindowController
           break;
         case 3:
           if (pageLogs != null) pageLogs.Visibility = Visibility.Visible;
+          break;
+        case 4:
+          if (pageAbout != null) pageAbout.Visibility = Visibility.Visible;
           break;
       }
     };

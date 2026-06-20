@@ -676,6 +676,109 @@ public class SettingsWindowControllerTests
         });
     }
 
+    [Fact]
+    public void Log_page_header_and_filters_remain_fixed_above_scrollable_log_content()
+    {
+        RunOnSta(() =>
+        {
+            var root = Path.GetFullPath(AppContext.BaseDirectory);
+            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            if (!File.Exists(xamlPath))
+            {
+                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
+                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+            }
+            if (!File.Exists(xamlPath))
+            {
+                return;
+            }
+
+            var xaml = File.ReadAllText(xamlPath);
+            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+
+            var pageLogs = window.FindName("pageLogs") as StackPanel;
+            pageLogs.Should().NotBeNull();
+
+            // The pageLogs should contain a Grid (or similar layout) with a fixed header area
+            // and a scrollable content area for the log display.
+            // We verify by walking the visual tree: the txtLogView must be inside a ScrollViewer
+            // that is a sibling of the header elements (search bar + filters), not sharing the same
+            // outer ScrollViewer that wraps the entire page.
+            var txtLogView = window.FindName("txtLogView") as TextBox;
+            txtLogView.Should().NotBeNull();
+
+            var logScrollViewer = FindVisualParent<ScrollViewer>(txtLogView);
+            logScrollViewer.Should().NotBeNull(
+                "txtLogView must be inside a ScrollViewer so log content can scroll independently. " +
+                "The header (title, description, search bar, filters) should remain fixed.");
+
+            // The ScrollViewer containing txtLogView must be a descendant of pageLogs,
+            // not the outer page-level ScrollViewer.
+            var pageLogsScrollViewer = FindVisualParent<ScrollViewer>(pageLogs);
+            // pageLogs is inside the outer ScrollViewer, so this should find the outer one.
+            pageLogsScrollViewer.Should().NotBeNull();
+
+            // The txtLogView's ScrollViewer must be a different instance from the page's outer ScrollViewer.
+            logScrollViewer.Should().NotBeSameAs(pageLogsScrollViewer,
+                "Log content must have its own ScrollViewer separate from the outer page ScrollViewer. " +
+                "This ensures the header (title, search, filters) stays fixed while only the log text scrolls.");
+        });
+    }
+
+    [Fact]
+    public void User_navigates_to_about_page_and_sees_version_and_check_update()
+    {
+        RunOnSta(() =>
+        {
+            // Ensure Application exists for embedded resource loading
+            if (Application.Current is null)
+                _ = new Application();
+
+            var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-about-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(installRoot);
+            Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+            // Intentionally do NOT create lib/SmartGuard.Settings.xaml so embedded resource is used
+
+            try
+            {
+                var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
+                File.WriteAllText(configPath, "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000}");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(installRoot);
+
+                var controller = SettingsWindowController.TryCreate(installRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller);
+                var navList = window.FindName("navList") as ListBox;
+                navList.Should().NotBeNull();
+
+                // Simulate user clicking "关于" in navigation (index 4)
+                navList.SelectedIndex = 4;
+
+                var pageAbout = window.FindName("pageAbout") as StackPanel;
+                pageAbout.Should().NotBeNull();
+                pageAbout!.Visibility.Should().Be(Visibility.Visible);
+
+                var pageGeneral = window.FindName("pageGeneral") as StackPanel;
+                pageGeneral.Should().NotBeNull();
+                pageGeneral!.Visibility.Should().Be(Visibility.Collapsed);
+
+                // Verify version info and check update button exist
+                var txtVersion = window.FindName("txtVersion") as TextBlock;
+                var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
+
+                txtVersion.Should().NotBeNull("About page must show version info");
+                btnCheckUpdate.Should().NotBeNull("About page must have check update button");
+            }
+            finally
+            {
+                try { Directory.Delete(installRoot, true); } catch { }
+            }
+        });
+    }
+
     private static Window GetWindowField(SettingsWindowController controller)
     {
         var field = typeof(SettingsWindowController).GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
