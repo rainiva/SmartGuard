@@ -17,6 +17,20 @@ public static partial class PowerPlanCatalogParser
     return result;
   }
 
+  public static bool TryParseQueryHeader(string output, out Guid guid, out string name)
+  {
+    guid = Guid.Empty;
+    name = string.Empty;
+
+    var match = PowerSchemeListPattern().Match(output);
+    if (!match.Success)
+      return false;
+
+    guid = Guid.Parse(match.Groups[1].Value);
+    name = match.Groups[2].Value.Trim();
+    return true;
+  }
+
   [GeneratedRegex(@"GUID:\s+([0-9a-fA-F-]{36})\s+\(([^)]+)\)", RegexOptions.IgnoreCase)]
   private static partial Regex PowerSchemeListPattern();
 }

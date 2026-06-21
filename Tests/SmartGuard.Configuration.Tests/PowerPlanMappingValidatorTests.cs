@@ -38,4 +38,23 @@ public class PowerPlanMappingValidatorTests
     PowerPlanMappingValidator.Validate(config, catalog)
       .Should().Contain("节能计划未在本机找到");
   }
+
+  [Fact]
+  public void Validate_accepts_hidden_power_saver_when_catalog_was_enriched()
+  {
+    var config = new GuardConfig
+    {
+      ActivePlanGuid = HighPerf,
+      BalancedPlanGuid = Balanced,
+      PowerSaverPlanGuid = Saver,
+    };
+    var catalog = new Dictionary<Guid, string>
+    {
+      [HighPerf] = "高性能",
+      [Balanced] = "平衡",
+      [Saver] = "节能",
+    };
+
+    PowerPlanMappingValidator.Validate(config, catalog).Should().BeEmpty();
+  }
 }
