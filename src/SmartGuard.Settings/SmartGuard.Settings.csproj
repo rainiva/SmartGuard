@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="..\..\lib\SmartGuard.ico" Link="Assets\SmartGuard.ico" />
     <Page Include="..\..\lib\SmartGuard.Settings.xaml" Link="SmartGuard.Settings.xaml" />
     <Page Include="..\..\lib\Themes\Light.xaml" Link="Themes\Light.xaml" />
     <Page Include="..\..\lib\Themes\Dark.xaml" Link="Themes\Dark.xaml" />
@@ -26,6 +27,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SmartGuard.LogViewer\SmartGuard.LogViewer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartGuard.Settings.Tests" />
   </ItemGroup>
 
 </Project>

@@ -15,7 +15,9 @@ public class SettingsSaveCoordinatorTests
       var repo = new GuardConfigRepository(path);
       var previous = repo.TryLoad()!;
       var updated = SettingsSnapshotMapper.ApplyTraySettings(
-        previous, 5, 15, 30, 15, 300, false, true, true);
+        previous, 5, 15, 30, 15, 300, previous.HeartbeatIntervalMin,
+        previous.ActivePlanGuid, previous.BalancedPlanGuid, previous.PowerSaverPlanGuid,
+        false, true, true);
 
       SettingsSaveCoordinator.Save(updated, previous, dir, repo);
 

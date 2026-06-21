@@ -13,8 +13,15 @@ public class SettingsXamlTests
         object? result = null;
         var t = new Thread(() =>
         {
-            if (Application.Current is null)
-                _ = new Application();
+            try
+            {
+                if (Application.Current is null)
+                    _ = new Application();
+            }
+            catch (InvalidOperationException)
+            {
+                // Application already exists in this AppDomain.
+            }
 
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;

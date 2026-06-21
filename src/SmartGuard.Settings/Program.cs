@@ -16,7 +16,15 @@ internal static class Program
     using var guard = SingleInstanceGuard.TryAcquire("Settings");
     if (!guard.IsOwner)
     {
-      SingleInstanceActivation.TryNotifyExisting("Settings", startPage);
+      if (!SingleInstanceActivation.TryNotifyExisting("Settings", startPage))
+      {
+        MessageBox.Show(
+          "设置窗口已在运行但未能响应。请在任务管理器中结束 SmartGuard.Settings.exe 后重试。",
+          "智能电源守护",
+          MessageBoxButton.OK,
+          MessageBoxImage.Warning);
+      }
+
       return;
     }
 
@@ -43,11 +51,13 @@ internal static class Program
     var repository = new GuardConfigRepository(configPath);
     var config = repository.LoadOrDefault(root);
 
-    controller = SettingsWindowController.TryCreate(root, repository, config);
+    controller = SettingsWindowController.TryCreate(root, repository, config, out var loadError);
     if (controller is null)
     {
       MessageBox.Show(
-        "设置界面加载失败。",
+        string.IsNullOrWhiteSpace(loadError)
+          ? "设置界面加载失败。"
+          : $"设置界面加载失败：\n{loadError}",
         "智能电源守护",
         MessageBoxButton.OK,
         MessageBoxImage.Error);
@@ -56,9 +66,20 @@ internal static class Program
     }
 
     if (!string.IsNullOrEmpty(startPage))
-      controller.NavigateTo(startPage);
+      controller.SetInitialPage(startPage);
 
-    controller.ShowDialog();
+    try
+    {
+      controller.ShowDialog();
+    }
+    catch (Exception ex)
+    {
+      MessageBox.Show(
+        $"设置界面显示失败：\n{ex.Message}",
+        "智能电源守护",
+        MessageBoxButton.OK,
+        MessageBoxImage.Error);
+    }
 
     activationCts.Cancel();
     activationThread.Join(TimeSpan.FromSeconds(1));

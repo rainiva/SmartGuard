@@ -93,7 +93,7 @@ Engine.exe --install（计划任务）
 | `BrightnessRestoreMs` | 300 | 切计划后等待亮度恢复的时间 |
 | `AutoStartEnabled` | true | 是否随用户登录启动托盘 |
 | `NotifyOnPlanChange` | true | 切换电源计划时是否弹出 Toast 通知 |
-| `HeartbeatIntervalMin` | 30 | 心跳日志写入间隔（分钟） |
+| `HeartbeatIntervalMin` | 10 | 无事件时 HEART 心跳日志写入间隔（分钟；0 表示关闭；可在设置 · 高级中调整） |
 | `LogMaxBytes` | 1048576 | 单个日志文件大小上限（字节） |
 | `Paused` | false | 暂停自动切换 |
 | `LogFile` | `SmartGuard.log` | 日志路径 |

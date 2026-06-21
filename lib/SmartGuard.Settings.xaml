@@ -49,6 +49,7 @@
       <SolidColorBrush x:Key="InfoBarForeground" Color="#005FB8"/>
       <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#B3D7F7"/>
       <SolidColorBrush x:Key="DividerBrush" Color="#E5E5E5"/>
+      <Thickness x:Key="SettingsContentPageMargin">24,24,24,12</Thickness>
 
       <!-- Navigation Item Style -->
       <Style x:Key="NavigationItemStyle" TargetType="ListBoxItem">
@@ -106,6 +107,8 @@
 
       <!-- Toggle Switch (CheckBox Template) -->
       <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="CheckBox">
@@ -197,6 +200,39 @@
         </Setter>
       </Style>
 
+      <!-- Compact toolbar button (log page) -->
+      <Style x:Key="LogToolbarCompactButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="FontSize" Value="12"/>
+      </Style>
+
+      <!-- NumberBox increment/decrement button (must be defined before NumberBox template) -->
+      <Style x:Key="NumberBoxButton" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource NumberBoxButtonBackground}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderThickness="0">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NumberBoxButtonHoverBackground}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
       <!-- NumberBox Style -->
       <Style TargetType="local:NumberBox">
         <Setter Property="Width" Value="120"/>
@@ -213,45 +249,287 @@
                     <ColumnDefinition Width="28"/>
                   </Grid.ColumnDefinitions>
                   <TextBox x:Name="PART_TextBox" Grid.Column="0" BorderThickness="0" Background="Transparent"
+                           Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                            Text="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
                            Padding="4,0"/>
                   <Button Grid.Column="1" Content="-" Command="{TemplateBinding DecrementCommand}"
-                          Background="{DynamicResource NumberBoxButtonBackground}" BorderThickness="0"
-                          FontSize="14" FontWeight="Bold" Cursor="Hand">
-                    <Button.Style>
-                      <Style TargetType="Button">
-                        <Setter Property="Template">
-                          <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                              <Border Background="{TemplateBinding Background}" BorderThickness="0">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                              </Border>
-                            </ControlTemplate>
-                          </Setter.Value>
-                        </Setter>
-                      </Style>
-                    </Button.Style>
-                  </Button>
+                          Style="{StaticResource NumberBoxButton}" FontSize="14" FontWeight="Bold"/>
                   <Button Grid.Column="2" Content="+" Command="{TemplateBinding IncrementCommand}"
-                          Background="{DynamicResource NumberBoxButtonBackground}" BorderThickness="0"
-                          FontSize="14" FontWeight="Bold" Cursor="Hand">
-                    <Button.Style>
-                      <Style TargetType="Button">
-                        <Setter Property="Template">
-                          <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                              <Border Background="{TemplateBinding Background}" BorderThickness="0">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                              </Border>
-                            </ControlTemplate>
-                          </Setter.Value>
-                        </Setter>
-                      </Style>
-                    </Button.Style>
-                  </Button>
+                          Style="{StaticResource NumberBoxButton}" FontSize="14" FontWeight="Bold"/>
                 </Grid>
               </Border>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Fluent TextBox -->
+      <Style x:Key="SettingsTextBox" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Background" Value="{DynamicResource NumberBoxBackground}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource NumberBoxBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="SelectionBrush" Value="{DynamicResource TextAccent}"/>
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="TextBox">
+              <Border x:Name="Bd"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="4">
+                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                  <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TextAccent}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="Bd" Property="Opacity" Value="0.6"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="SettingsTextBoxBorderless" TargetType="TextBox" BasedOn="{StaticResource SettingsTextBox}">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+      </Style>
+
+      <!-- Fluent Hyperlink -->
+      <Style TargetType="Hyperlink">
+        <Setter Property="Foreground" Value="{DynamicResource TextAccent}"/>
+        <Setter Property="TextDecorations" Value="None"/>
+        <Style.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter Property="TextDecorations" Value="Underline"/>
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+
+      <!-- Fluent ScrollBar -->
+      <Style x:Key="SettingsScrollBar" TargetType="ScrollBar">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Width" Value="8"/>
+        <Setter Property="MinWidth" Value="8"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ScrollBar">
+              <Grid Background="Transparent">
+                <Track x:Name="PART_Track" IsDirectionReversed="True">
+                  <Track.Thumb>
+                    <Thumb>
+                      <Thumb.Template>
+                        <ControlTemplate TargetType="Thumb">
+                          <Border Background="{DynamicResource TextTertiary}" CornerRadius="4" Opacity="0.55"/>
+                        </ControlTemplate>
+                      </Thumb.Template>
+                    </Thumb>
+                  </Track.Thumb>
+                </Track>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+          <Trigger Property="Orientation" Value="Horizontal">
+            <Setter Property="Width" Value="Auto"/>
+            <Setter Property="Height" Value="8"/>
+            <Setter Property="MinHeight" Value="8"/>
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+
+      <Style x:Key="SettingsScrollViewer" TargetType="ScrollViewer">
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ScrollViewer">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <ScrollContentPresenter Grid.Row="0" Grid.Column="0" Margin="{TemplateBinding Padding}"/>
+                <ScrollBar x:Name="PART_VerticalScrollBar"
+                           Grid.Row="0"
+                           Grid.Column="1"
+                           Style="{StaticResource SettingsScrollBar}"
+                           Value="{TemplateBinding VerticalOffset}"
+                           Maximum="{TemplateBinding ScrollableHeight}"
+                           ViewportSize="{TemplateBinding ViewportHeight}"
+                           Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
+                           HorizontalAlignment="Right"/>
+                <ScrollBar x:Name="PART_HorizontalScrollBar"
+                           Grid.Row="1"
+                           Grid.Column="0"
+                           Style="{StaticResource SettingsScrollBar}"
+                           Orientation="Horizontal"
+                           Value="{TemplateBinding HorizontalOffset}"
+                           Maximum="{TemplateBinding ScrollableWidth}"
+                           ViewportSize="{TemplateBinding ViewportWidth}"
+                           Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"
+                           VerticalAlignment="Bottom"/>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Settings ComboBox -->
+      <Style x:Key="SettingsComboBoxItem" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Background" Value="{DynamicResource NumberBoxBackground}"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ComboBoxItem">
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                <ContentPresenter/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                  <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavigationItemHoverBackground}"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavigationItemSelectedBackground}"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="SettingsComboBox" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="ItemContainerStyle" Value="{StaticResource SettingsComboBoxItem}"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ComboBox">
+              <Grid SnapsToDevicePixels="True">
+                <ToggleButton x:Name="ToggleButton"
+                              Focusable="False"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              OverridesDefaultStyle="True"
+                              FocusVisualStyle="{x:Null}"
+                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                              ClickMode="Press">
+                  <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                      <Border x:Name="Bd"
+                              Background="{DynamicResource NumberBoxBackground}"
+                              BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="24"/>
+                          </Grid.ColumnDefinitions>
+                          <ContentPresenter Grid.Column="0" Margin="8,0,4,0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                          <TextBlock Grid.Column="1" Text="▾" Foreground="{DynamicResource TextSecondary}" FontSize="12"
+                                     VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Grid>
+                      </Border>
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TextAccent}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                          <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TextAccent}"/>
+                        </Trigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </ToggleButton.Template>
+                </ToggleButton>
+                <ContentPresenter x:Name="ContentSite"
+                                  IsHitTestVisible="False"
+                                  Content="{TemplateBinding SelectionBoxItem}"
+                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                  Margin="8,0,28,0"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Left"/>
+                <Popup x:Name="Popup"
+                       Placement="Bottom"
+                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                       AllowsTransparency="True"
+                       Focusable="False"
+                       PopupAnimation="Slide">
+                  <Border Background="{DynamicResource NumberBoxBackground}"
+                          BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          MinWidth="{TemplateBinding ActualWidth}"
+                          MaxHeight="240">
+                    <ScrollViewer SnapsToDevicePixels="True">
+                      <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                    </ScrollViewer>
+                  </Border>
+                </Popup>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <!-- Filter checkbox (log page and inline options) -->
+      <Style x:Key="SettingsFilterCheckBox" TargetType="CheckBox">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="CheckBox">
+              <StackPanel Orientation="Horizontal">
+                <Border x:Name="Box" Width="16" Height="16" CornerRadius="3"
+                        BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource NumberBoxBackground}" Margin="0,0,6,0">
+                  <TextBlock x:Name="CheckMark" Text="✓" FontSize="11" FontWeight="Bold"
+                             Foreground="{DynamicResource TextAccent}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                </Border>
+                <ContentPresenter VerticalAlignment="Center"/>
+              </StackPanel>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                  <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource TextAccent}"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Box" Property="Background" Value="{DynamicResource NumberBoxButtonHoverBackground}"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
             </ControlTemplate>
           </Setter.Value>
         </Setter>
@@ -290,6 +568,10 @@
         </Setter>
       </Style>
 
+      <!-- Default Fluent styles for common controls (explicit styles remain on toggles/buttons) -->
+      <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource SettingsTextBox}"/>
+      <Style TargetType="{x:Type ComboBox}" BasedOn="{StaticResource SettingsComboBox}"/>
+
     </ResourceDictionary>
   </Window.Resources>
 
@@ -309,13 +591,17 @@
         </Grid.RowDefinitions>
 
         <!-- App Header -->
-        <StackPanel Grid.Row="0" Margin="20,24,20,16">
-          <TextBlock Text="智能电源守护" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
-          <TextBlock Text="设置" FontSize="12" Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+        <StackPanel Grid.Row="0" Margin="20,24,20,16" Orientation="Horizontal">
+          <Image x:Name="imgAppIcon" Width="24" Height="24" Margin="0,0,10,0" VerticalAlignment="Top"/>
+          <StackPanel>
+            <TextBlock Text="智能电源守护" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+            <TextBlock Text="设置" FontSize="12" Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
+          </StackPanel>
         </StackPanel>
 
         <!-- Navigation Items -->
         <ListBox Grid.Row="1" x:Name="navList" BorderThickness="0" Background="Transparent"
+                 FocusVisualStyle="{x:Null}"
                  ItemContainerStyle="{StaticResource NavigationItemStyle}" Margin="8,0">
           <ListBoxItem x:Name="navGeneral" IsSelected="True">
             <StackPanel Orientation="Horizontal">
@@ -353,7 +639,7 @@
         <Button Grid.Row="2" x:Name="btnThemeToggle" Style="{StaticResource ThemeToggleButton}" Margin="16,8,16,16"
                 HorizontalAlignment="Left">
           <StackPanel Orientation="Horizontal">
-            <TextBlock x:Name="iconTheme" Text="&#xE706;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+            <TextBlock x:Name="iconTheme" Text="&#xE708;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                        Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0"/>
             <TextBlock x:Name="txtTheme" Text="深色模式" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
           </StackPanel>
@@ -362,16 +648,20 @@
     </Border>
 
     <!-- Right Content Area -->
-    <Grid Grid.Column="1" Background="{DynamicResource WindowBackground}">
-      <!-- Content pages occupy the full right area; bottom action bar removed for instant-apply UX. -->
+    <Grid x:Name="rightContentRoot" Grid.Column="1" Background="{DynamicResource WindowBackground}" Margin="{StaticResource SettingsContentPageMargin}">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+
+      <TextBlock x:Name="txtPageTitle" Grid.Row="0" Text="常规设置" Style="{StaticResource SectionTitle}"/>
 
       <!-- Content Pages -->
-      <ScrollViewer x:Name="contentScrollViewer" VerticalScrollBarVisibility="Auto" Padding="24,20,24,12" HorizontalContentAlignment="Stretch">
+      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Style="{StaticResource SettingsScrollViewer}" HorizontalContentAlignment="Stretch" local:ScrollBarAutoHide.IsEnabled="True">
         <StackPanel HorizontalAlignment="Stretch">
 
           <!-- General Page -->
           <StackPanel x:Name="pageGeneral" HorizontalAlignment="Stretch">
-            <TextBlock Text="常规设置" Style="{StaticResource SectionTitle}"/>
 
             <!-- System Card -->
             <Border Style="{StaticResource SettingsCard}">
@@ -379,7 +669,7 @@
                 <TextBlock Text="系统" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
                 <TextBlock Text="管理开机启动和基本系统行为" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
 
-                <Border Style="{StaticResource SettingsItemRow}">
+                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*"/>
@@ -460,12 +750,11 @@
 
           <!-- Advanced Page -->
           <StackPanel x:Name="pageAdvanced" Visibility="Collapsed" HorizontalAlignment="Stretch">
-            <TextBlock Text="高级设置" Style="{StaticResource SectionTitle}"/>
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
                 <TextBlock Text="运行参数" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="调整引擎轮询频率和亮度恢复延迟" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="调整引擎轮询频率、心跳日志和亮度恢复延迟" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
 
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
@@ -481,6 +770,24 @@
                       <TextBlock x:Name="lblPoll" Text="15 秒" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
                                  VerticalAlignment="Center" Margin="0,0,12,0"/>
                       <local:NumberBox x:Name="sldPoll" Minimum="5" Maximum="120" SmallChange="5"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="心跳日志间隔" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                      <TextBlock Text="无事件时，每隔多久写入一条 HEART 状态日志（分钟；0 表示关闭）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                      <TextBlock x:Name="lblHeartbeat" Text="10 分钟" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
+                                 VerticalAlignment="Center" Margin="0,0,12,0"/>
+                      <local:NumberBox x:Name="sldHeartbeat" Minimum="0" Maximum="1440" SmallChange="1"/>
                     </StackPanel>
                   </Grid>
                 </Border>
@@ -504,11 +811,61 @@
                 </Border>
               </StackPanel>
             </Border>
+
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="电源计划映射" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
+                <TextBlock Text="选择 SmartGuard 三档策略分别对应的 Windows 电源计划" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="高性能" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                      <TextBlock Text="活跃状态下使用的电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <ComboBox x:Name="cmbActivePlan" Grid.Column="1" Width="240" MinWidth="180" Style="{StaticResource SettingsComboBox}"/>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="平衡" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                      <TextBlock Text="空闲一段时间后切换到的电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <ComboBox x:Name="cmbBalancedPlan" Grid.Column="1" Width="240" MinWidth="180" Style="{StaticResource SettingsComboBox}"/>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="节能" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                      <TextBlock Text="深度空闲或低电量时使用的电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <ComboBox x:Name="cmbPowerSaverPlan" Grid.Column="1" Width="240" MinWidth="180" Style="{StaticResource SettingsComboBox}"/>
+                  </Grid>
+                </Border>
+
+                <TextBlock x:Name="lblPlanMappingStatus" Text="" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
 
           <!-- Notifications Page -->
           <StackPanel x:Name="pageNotifications" Visibility="Collapsed" HorizontalAlignment="Stretch">
-            <TextBlock Text="通知设置" Style="{StaticResource SectionTitle}"/>
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
@@ -548,7 +905,6 @@
 
           <!-- About Page -->
           <StackPanel x:Name="pageAbout" Visibility="Collapsed" HorizontalAlignment="Stretch">
-            <TextBlock Text="关于" Style="{StaticResource SectionTitle}"/>
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
@@ -577,7 +933,7 @@
                     <StackPanel Grid.Column="0">
                       <TextBlock Text="仓库地址" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
                       <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0">
-                        <Hyperlink x:Name="lnkRepo" NavigateUri="https://github.com/rainiva/SmartGuard" Foreground="{DynamicResource TextAccent}">
+                        <Hyperlink x:Name="lnkRepo" NavigateUri="https://github.com/rainiva/SmartGuard">
                           https://github.com/rainiva/SmartGuard
                         </Hyperlink>
                       </TextBlock>
@@ -600,6 +956,27 @@
                 </Border>
               </StackPanel>
             </Border>
+
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="维护" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
+                <TextBlock Text="配置异常时可恢复默认策略" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+
+                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="恢复默认策略" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                      <TextBlock Text="重置阈值与计划映射；保留日志路径和 GitHub Token" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button x:Name="btnResetDefaults" Grid.Column="1" Content="恢复默认" Style="{StaticResource SecondaryButton}"/>
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </Border>
           </StackPanel>
 
 
@@ -607,18 +984,10 @@
       </ScrollViewer>
 
       <!-- Logs Page -->
-      <!-- Kept outside contentScrollViewer so the log area is the only scrollable region on this page.
-           The outer page ScrollViewer is hidden when logs are active, preventing dual scrollbars. -->
-      <Grid x:Name="pageLogs" Grid.Row="0" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="24,20,24,12">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <TextBlock Text="日志" Style="{StaticResource SectionTitle}" Grid.Row="0"/>
-
-        <Border Style="{StaticResource SettingsCard}" Grid.Row="1" Margin="0,0,0,0">
-          <Grid>
+      <!-- Kept outside contentScrollViewer so the log area is the only scrollable region on this page. -->
+      <Grid x:Name="pageLogs" Grid.Row="1" Visibility="Collapsed" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+        <Border Style="{StaticResource SettingsCard}" VerticalAlignment="Stretch">
+          <Grid VerticalAlignment="Stretch">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
@@ -638,65 +1007,97 @@
                     <ColumnDefinition Width="*"/>
                   </Grid.ColumnDefinitions>
                   <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                  <TextBox x:Name="txtLogSearch" Grid.Column="1" BorderThickness="0" Background="Transparent" Padding="0" FontSize="13" Foreground="{DynamicResource TextPrimary}" Text=""/>
+                  <TextBox x:Name="txtLogSearch" Grid.Column="1" Style="{StaticResource SettingsTextBoxBorderless}" Padding="0" FontSize="13" Text=""/>
                 </Grid>
               </Border>
 
-              <!-- Tag Filters -->
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="False" Foreground="{DynamicResource TextPrimary}"/>
-              </StackPanel>
+              <!-- Unified filter + action toolbar -->
+              <Border x:Name="logToolbarPanel"
+                      Background="{DynamicResource NumberBoxBackground}"
+                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                      BorderThickness="1"
+                      CornerRadius="4"
+                      Padding="12,10"
+                      Margin="0,0,0,12">
+                <StackPanel>
+                  <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,8">
+                    <TextBlock Text="级别" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                    <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,12,6"/>
+                    <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,12,6"/>
+                    <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,12,6"/>
+                    <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="False" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,0,6"/>
+                  </WrapPanel>
 
-              <!-- Time Range -->
-              <StackPanel Margin="0,0,0,12">
-                <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="时间" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                  <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,0">
-                    <ComboBoxItem Content="全部"/>
-                    <ComboBoxItem Content="今天"/>
-                    <ComboBoxItem Content="最近1小时"/>
-                    <ComboBoxItem Content="自定义"/>
-                  </ComboBox>
-                  <CheckBox x:Name="chkLogSearchCaseSensitive" Content="区分大小写" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}"/>
-                </StackPanel>
-                <StackPanel x:Name="panelLogCustomRange" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
-                  <TextBlock Text="起" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                  <TextBox x:Name="txtLogRangeStart" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
-                  <TextBlock Text="止" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,6,0"/>
-                  <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
-                </StackPanel>
-              </StackPanel>
+                  <WrapPanel x:Name="logFilterTimePanel">
+                    <TextBlock Text="时间" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                    <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,6" Style="{StaticResource SettingsComboBox}">
+                      <ComboBoxItem Content="全部"/>
+                      <ComboBoxItem Content="今天"/>
+                      <ComboBoxItem Content="最近1小时"/>
+                      <ComboBoxItem Content="自定义"/>
+                    </ComboBox>
+                    <CheckBox x:Name="chkLogSearchCaseSensitive" Content="区分大小写" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,0,6"/>
+                  </WrapPanel>
 
-              <!-- Toolbar -->
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                <Button x:Name="btnLogCopy" Content="复制可见" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="72" Margin="0,0,8,0"/>
-                <Button x:Name="btnLogExport" Content="导出" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56" Margin="0,0,8,0"/>
-                <Button x:Name="btnLogOpenFolder" Content="打开目录" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="72" Margin="0,0,8,0"/>
-                <Button x:Name="btnLogScrollTop" Content="顶部" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56" Margin="0,0,8,0"/>
-                <Button x:Name="btnLogScrollBottom" Content="底部" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56" Margin="0,0,8,0"/>
-                <CheckBox x:Name="chkLogFollowTail" Content="跟随最新" IsChecked="True" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0"/>
-                <Button x:Name="btnLogRefresh" Content="刷新" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56"/>
-              </StackPanel>
+                  <StackPanel x:Name="panelLogCustomRange" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
+                    <TextBlock Text="起" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox x:Name="txtLogRangeStart" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
+                    <TextBlock Text="止" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
+                  </StackPanel>
+
+                  <Border x:Name="logToolbarDivider" Height="1" Background="{DynamicResource DividerBrush}" Margin="0,10,0,10"/>
+
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <WrapPanel Grid.Column="0" Margin="0,0,8,0">
+                      <Button x:Name="btnLogCopy" Content="复制可见" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
+                      <Button x:Name="btnLogExport" Content="导出" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
+                      <Button x:Name="btnLogOpenFolder" Content="打开目录" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
+                      <Button x:Name="btnLogScrollTop" Content="顶部" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
+                      <Button x:Name="btnLogScrollBottom" Content="底部" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,0,6"/>
+                    </WrapPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                      <CheckBox x:Name="chkLogFollowTail" Content="跟随最新" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,10,0"/>
+                      <Button x:Name="btnLogRefresh" Content="刷新" Style="{StaticResource LogToolbarCompactButton}"/>
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+              </Border>
             </StackPanel>
 
             <!-- Scrollable Log Content -->
-            <ScrollViewer x:Name="logScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-              <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
+            <Border x:Name="logViewportBorder"
+                    Grid.Row="1"
+                    Background="{DynamicResource NumberBoxBackground}"
+                    BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    ClipToBounds="True"
+                    VerticalAlignment="Stretch">
+              <ScrollViewer x:Name="logScrollViewer"
+                            Style="{StaticResource SettingsScrollViewer}"
+                            local:ScrollBarAutoHide.IsEnabled="True"
+                            VerticalAlignment="Stretch"
+                            HorizontalScrollBarVisibility="Auto">
                 <RichTextBox x:Name="txtLogView"
                              IsReadOnly="True"
                              BorderThickness="0"
                              Background="Transparent"
+                             Padding="12"
                              FontFamily="Consolas, Microsoft YaHei Mono"
                              FontSize="12"
                              VerticalScrollBarVisibility="Disabled"
                              HorizontalScrollBarVisibility="Disabled">
                   <FlowDocument PageWidth="100000" PagePadding="0"/>
                 </RichTextBox>
-              </Border>
-            </ScrollViewer>
+              </ScrollViewer>
+            </Border>
 
             <!-- Status Bar (outside scrollable area, stays visible) -->
             <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0" Grid.Row="2"/>

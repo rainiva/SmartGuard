@@ -15,6 +15,8 @@ public static class GuardConfigValidator
       errors.Add("轮询间隔至少 5 秒");
     if (config.BrightnessRestoreMs < 0)
       errors.Add("亮度恢复延迟不能为负");
+    if (config.HeartbeatIntervalMin < 0)
+      errors.Add("心跳间隔不能为负");
     return errors;
   }
 }

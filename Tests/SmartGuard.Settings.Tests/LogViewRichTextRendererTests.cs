@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
@@ -39,6 +40,43 @@ public class LogViewRichTextRendererTests
 
             LogViewRichTextRenderer.SetLines(richTextBox, lines);
             LogViewRichTextRenderer.GetPlainText(richTextBox).Should().Be(string.Join(Environment.NewLine, lines));
+        });
+    }
+
+    [Fact]
+    public void SynchronizeViewport_enables_horizontal_scroll_for_long_log_lines()
+    {
+        RunOnSta(() =>
+        {
+            const double viewportWidth = 400;
+            var scrollViewer = new ScrollViewer
+            {
+                Width = viewportWidth,
+                Height = 200,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            };
+            var richTextBox = CreateRichTextBox();
+            scrollViewer.Content = richTextBox;
+
+            var host = new Window
+            {
+                Width = 500,
+                Height = 300,
+                Content = scrollViewer,
+            };
+            host.Show();
+
+            LogViewRichTextRenderer.SetLines(
+                richTextBox,
+                ["[INFO] 2026-06-21 10:00:00 " + new string('x', 200)]);
+            scrollViewer.UpdateLayout();
+            LogViewRichTextRenderer.SynchronizeViewport(richTextBox, scrollViewer.ViewportWidth);
+            scrollViewer.UpdateLayout();
+
+            richTextBox.Width.Should().BeGreaterThan(viewportWidth);
+            scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
+
+            host.Close();
         });
     }
 

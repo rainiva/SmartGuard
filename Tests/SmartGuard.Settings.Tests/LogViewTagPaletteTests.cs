@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using SmartGuard.LogViewer;
 
 namespace SmartGuard.Settings.Tests;
@@ -16,6 +17,22 @@ public class LogViewTagPaletteTests
         brush.Color.R.Should().Be(r);
         brush.Color.G.Should().Be(g);
         brush.Color.B.Should().Be(b);
+    }
+
+    [Fact]
+    public void GetBodyColor_light_mode_uses_dark_text()
+    {
+        LogViewTagPalette.ConfigureForDarkMode(false);
+
+        LogViewTagPalette.GetBodyColor().R.Should().BeLessThan(100);
+    }
+
+    [Fact]
+    public void GetBodyColor_dark_mode_uses_light_gray_text()
+    {
+        LogViewTagPalette.ConfigureForDarkMode(true);
+
+        LogViewTagPalette.GetBodyColor().Should().Be(Color.FromRgb(0xE8, 0xE8, 0xE8));
     }
 
     [Fact]

@@ -119,6 +119,50 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void User_opens_settings_window_survives_layout_measure()
+    {
+        RunOnSta(() =>
+        {
+            if (Application.Current is null)
+            {
+                try { _ = new Application(); }
+                catch (InvalidOperationException) { }
+            }
+
+            var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-measure-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(installRoot);
+            Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+
+            try
+            {
+                var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
+                File.WriteAllText(configPath, "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000}");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(installRoot);
+
+                var controller = SettingsWindowController.TryCreate(installRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller);
+                var act = () =>
+                {
+                    window.Width = 800;
+                    window.Height = 640;
+                    window.Measure(new Size(800, 640));
+                    window.Arrange(new Rect(0, 0, 800, 640));
+                };
+
+                act.Should().NotThrow(
+                    "StaticResource forward references in templates fail during Measure/Show, not during TryCreate.");
+            }
+            finally
+            {
+                try { Directory.Delete(installRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void Controller_finds_all_numberbox_controls()
     {
         RunOnSta(() =>
@@ -225,11 +269,10 @@ public class SettingsWindowControllerTests
 
             var btnThemeToggle = window.FindName("btnThemeToggle") as Button;
             var txtTheme = window.FindName("txtTheme") as TextBlock;
-            var iconTheme = window.FindName("iconTheme") as TextBlock;
 
             btnThemeToggle.Should().NotBeNull();
             txtTheme.Should().NotBeNull();
-            iconTheme.Should().NotBeNull();
+            window.FindName("imgAppIcon").Should().NotBeNull();
         });
     }
 

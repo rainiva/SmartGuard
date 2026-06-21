@@ -33,4 +33,21 @@ public class GuardConfigValidatorTests
     GuardConfigValidator.Validate(config)
       .Should().Contain("平衡阈值至少 60 秒");
   }
+
+  [Fact]
+  public void Validate_rejects_negative_heartbeat_interval()
+  {
+    var config = new GuardConfig
+    {
+      BalancedThresholdSec = 300,
+      PowerSaverThresholdSec = 900,
+      LowBatteryPercent = 30,
+      CheckIntervalSec = 15,
+      BrightnessRestoreMs = 300,
+      HeartbeatIntervalMin = -1,
+    };
+
+    GuardConfigValidator.Validate(config)
+      .Should().Contain("心跳间隔不能为负");
+  }
 }

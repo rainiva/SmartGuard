@@ -4,7 +4,6 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Markup;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
@@ -22,10 +21,19 @@ public sealed class SettingsWindowController
   private readonly NumberBox _sldBattery;
   private readonly NumberBox _sldPoll;
   private readonly NumberBox _sldBrightMs;
+  private readonly NumberBox _sldHeartbeat;
+  private readonly ComboBox _cmbActivePlan;
+  private readonly ComboBox _cmbBalancedPlan;
+  private readonly ComboBox _cmbPowerSaverPlan;
+  private readonly TextBlock? _lblPlanMappingStatus;
   private readonly CheckBox _tglPaused;
   private readonly CheckBox _tglNotify;
   private readonly CheckBox _tglAutoStart;
   private bool _isDarkTheme;
+
+  internal bool IsDarkThemeEnabled => _isDarkTheme;
+
+  private System.Windows.Threading.DispatcherTimer? _layoutStabilityTimer;
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private System.Windows.Threading.DispatcherTimer? _logSearchDebounceTimer;
@@ -50,6 +58,8 @@ public sealed class SettingsWindowController
   private DateTime _lastUpdateCheckTime = DateTime.MinValue;
   private bool _lastUpdateCheckNoUpdate;
   private CancellationTokenSource? _saveCts;
+  private IReadOnlyDictionary<Guid, string> _planCatalog = new Dictionary<Guid, string>();
+  private bool _suppressPlanComboEvents;
 
   private SettingsWindowController(
     string root,
@@ -62,6 +72,11 @@ public sealed class SettingsWindowController
     NumberBox sldBattery,
     NumberBox sldPoll,
     NumberBox sldBrightMs,
+    NumberBox sldHeartbeat,
+    ComboBox cmbActivePlan,
+    ComboBox cmbBalancedPlan,
+    ComboBox cmbPowerSaverPlan,
+    TextBlock? lblPlanMappingStatus,
     CheckBox tglPaused,
     CheckBox tglNotify,
     CheckBox tglAutoStart)
@@ -83,49 +98,76 @@ public sealed class SettingsWindowController
     _sldBattery = sldBattery;
     _sldPoll = sldPoll;
     _sldBrightMs = sldBrightMs;
+    _sldHeartbeat = sldHeartbeat;
+    _cmbActivePlan = cmbActivePlan;
+    _cmbBalancedPlan = cmbBalancedPlan;
+    _cmbPowerSaverPlan = cmbPowerSaverPlan;
+    _lblPlanMappingStatus = lblPlanMappingStatus;
     _tglPaused = tglPaused;
     _tglNotify = tglNotify;
     _tglAutoStart = tglAutoStart;
   }
 
   public static SettingsWindowController? TryCreate(string root, GuardConfigRepository repository, GuardConfig config)
-  {
-    // 1. Try embedded resource first (works for single-file publish)
-    Window? window = TryLoadEmbeddedWindow();
+    => TryCreate(root, repository, config, out _);
 
-    // 2. Fallback to file system (development / loose file mode)
-    if (window is null)
+  public static SettingsWindowController? TryCreate(
+    string root,
+    GuardConfigRepository repository,
+    GuardConfig config,
+    out string? loadError)
+  {
+    loadError = null;
+    Window? window = null;
+
+    try
     {
-      var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-      if (File.Exists(xamlPath))
+      window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var embeddedError);
+      if (window is null)
       {
-        try
+        var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
+        window = SettingsXamlLoader.TryLoadLooseWindowFromFile(xamlPath, out var fileError);
+        if (window is null)
         {
-          var xaml = File.ReadAllText(xamlPath);
-          window = (Window)XamlReader.Parse(xaml);
-        }
-        catch
-        {
-          // Parse failed, window remains null
+          loadError = fileError ?? embeddedError ?? "Unknown settings layout load failure.";
+          return null;
         }
       }
+
+      AppBrandIcon.ApplyTo(window, root);
+
+      return BuildController(root, repository, config, window);
     }
-
-    if (window is null)
+    catch (Exception ex)
+    {
+      loadError = ex.Message;
       return null;
+    }
+  }
 
-    ApplyWindowIcon(window, root);
+  private static SettingsWindowController BuildController(
+    string root,
+    GuardConfigRepository repository,
+    GuardConfig config,
+    Window window)
+  {
 
     var sldBalanced = Require<NumberBox>(window, "sldBalanced");
     var sldSaver = Require<NumberBox>(window, "sldSaver");
     var sldBattery = Require<NumberBox>(window, "sldBattery");
     var sldPoll = Require<NumberBox>(window, "sldPoll");
     var sldBrightMs = Require<NumberBox>(window, "sldBrightMs");
+    var sldHeartbeat = Require<NumberBox>(window, "sldHeartbeat");
     var lblBalanced = Require<TextBlock>(window, "lblBalanced");
     var lblSaver = Require<TextBlock>(window, "lblSaver");
     var lblBattery = Require<TextBlock>(window, "lblBattery");
     var lblPoll = Require<TextBlock>(window, "lblPoll");
     var lblBrightMs = Require<TextBlock>(window, "lblBrightMs");
+    var lblHeartbeat = Require<TextBlock>(window, "lblHeartbeat");
+    var cmbActivePlan = Require<ComboBox>(window, "cmbActivePlan");
+    var cmbBalancedPlan = Require<ComboBox>(window, "cmbBalancedPlan");
+    var cmbPowerSaverPlan = Require<ComboBox>(window, "cmbPowerSaverPlan");
+    var lblPlanMappingStatus = window.FindName("lblPlanMappingStatus") as TextBlock;
     var tglPaused = Require<CheckBox>(window, "tglPaused");
     var tglNotify = Require<CheckBox>(window, "tglNotify");
     var tglAutoStart = Require<CheckBox>(window, "tglAutoStart");
@@ -145,6 +187,11 @@ public sealed class SettingsWindowController
       sldBattery,
       sldPoll,
       sldBrightMs,
+      sldHeartbeat,
+      cmbActivePlan,
+      cmbBalancedPlan,
+      cmbPowerSaverPlan,
+      lblPlanMappingStatus,
       tglPaused,
       tglNotify,
       tglAutoStart);
@@ -155,9 +202,16 @@ public sealed class SettingsWindowController
     sldBattery.Value = config.LowBatteryPercent;
     sldPoll.Value = config.CheckIntervalSec;
     sldBrightMs.Value = config.BrightnessRestoreMs;
+    sldHeartbeat.Value = config.HeartbeatIntervalMin;
     tglPaused.IsChecked = config.Paused;
     tglNotify.IsChecked = config.NotifyOnPlanChange;
     tglAutoStart.IsChecked = config.AutoStartEnabled;
+
+    controller._planCatalog = PowerPlanCatalogProvider.TryLoad();
+    controller.PopulatePlanCombo(cmbActivePlan, config.ActivePlanGuid, "高性能");
+    controller.PopulatePlanCombo(cmbBalancedPlan, config.BalancedPlanGuid, "平衡");
+    controller.PopulatePlanCombo(cmbPowerSaverPlan, config.PowerSaverPlanGuid, "节能");
+    controller.UpdatePlanMappingStatus(config);
 
     // Sync displayed version with the actual assembly / installer version
     txtVersion.Text = GetDisplayVersion();
@@ -168,6 +222,7 @@ public sealed class SettingsWindowController
     RegisterNumberBoxLabel(sldBattery, lblBattery, "{0}%");
     RegisterNumberBoxLabel(sldPoll, lblPoll, "{0} 秒");
     RegisterNumberBoxLabel(sldBrightMs, lblBrightMs, "{0} 毫秒");
+    RegisterHeartbeatLabel(sldHeartbeat, lblHeartbeat);
 
     // Instant-apply: queue a save when any setting changes.
     void QueueSave() => controller.QueueSave();
@@ -176,6 +231,29 @@ public sealed class SettingsWindowController
     sldBattery.ValueChanged += (_, _) => QueueSave();
     sldPoll.ValueChanged += (_, _) => QueueSave();
     sldBrightMs.ValueChanged += (_, _) => QueueSave();
+    sldHeartbeat.ValueChanged += (_, _) => QueueSave();
+
+    void QueueSaveAndRefreshPlanStatus()
+    {
+      controller.UpdatePlanMappingStatus();
+      QueueSave();
+    }
+
+    cmbActivePlan.SelectionChanged += (_, _) =>
+    {
+      if (controller._suppressPlanComboEvents) return;
+      QueueSaveAndRefreshPlanStatus();
+    };
+    cmbBalancedPlan.SelectionChanged += (_, _) =>
+    {
+      if (controller._suppressPlanComboEvents) return;
+      QueueSaveAndRefreshPlanStatus();
+    };
+    cmbPowerSaverPlan.SelectionChanged += (_, _) =>
+    {
+      if (controller._suppressPlanComboEvents) return;
+      QueueSaveAndRefreshPlanStatus();
+    };
 
     tglPaused.Checked += (_, _) => QueueSave();
     tglPaused.Unchecked += (_, _) => QueueSave();
@@ -186,6 +264,13 @@ public sealed class SettingsWindowController
 
     // Navigation
     controller.SetupNavigation(navList, window);
+
+    SettingsWindowPresentation.RegisterShowHooks(window);
+    SettingsWindowLayoutStability.Attach(
+      window,
+      () => controller.IsDarkThemeEnabled,
+      controller.StabilizeLayout,
+      controller.QueueLayoutStabilization);
 
     // Theme toggle
     btnThemeToggle.Click += (_, _) => controller.ToggleTheme(window);
@@ -228,6 +313,10 @@ public sealed class SettingsWindowController
         btnCheckUpdate.IsEnabled = true;
       }
     };
+
+    var btnResetDefaults = window.FindName("btnResetDefaults") as Button;
+    if (btnResetDefaults is not null)
+      btnResetDefaults.Click += (_, _) => controller.ResetToDefaults();
 
     // Log view initialization
     var logPath = Path.Combine(root, "SmartGuard.log");
@@ -334,17 +423,20 @@ public sealed class SettingsWindowController
     return controller;
   }
 
+  private string? _initialPage;
+
+  public void SetInitialPage(string page) => _initialPage = page;
+
   public bool? ShowDialog()
   {
-    _window.Topmost = true;
-    try
+    if (!string.IsNullOrWhiteSpace(_initialPage))
     {
-      return _window.ShowDialog();
+      var page = _initialPage;
+      _initialPage = null;
+      _window.Loaded += (_, _) => NavigateTo(page);
     }
-    finally
-    {
-      _window.Topmost = false;
-    }
+
+    return _window.ShowDialog();
   }
 
   public void Activate()
@@ -354,10 +446,7 @@ public sealed class SettingsWindowController
       if (!_window.IsVisible)
         _window.Show();
       _window.WindowState = WindowState.Normal;
-      _window.Activate();
-      _window.Topmost = true;
-      _window.Topmost = false;
-      _window.Focus();
+      SettingsWindowPresentation.BringToForeground(_window);
     });
   }
 
@@ -393,11 +482,16 @@ public sealed class SettingsWindowController
         lowBatteryPercent: _sldBattery.Value,
         checkIntervalSec: _sldPoll.Value,
         brightnessRestoreMs: _sldBrightMs.Value,
+        heartbeatIntervalMin: _sldHeartbeat.Value,
+        activePlanGuid: ReadSelectedPlanGuid(_cmbActivePlan),
+        balancedPlanGuid: ReadSelectedPlanGuid(_cmbBalancedPlan),
+        powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
         paused: _tglPaused.IsChecked == true,
         notifyOnPlanChange: _tglNotify.IsChecked == true,
         autoStartEnabled: _tglAutoStart.IsChecked == true);
 
       var errors = GuardConfigValidator.Validate(newConfig);
+      errors = errors.Concat(PowerPlanMappingValidator.Validate(newConfig)).ToList();
       if (errors.Count > 0)
       {
         _toastService.Show("保存失败：" + string.Join("；", errors), isError: true);
@@ -415,6 +509,7 @@ public sealed class SettingsWindowController
         SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
       }, token);
       _originalConfig = newConfig;
+      UpdatePlanMappingStatus(newConfig);
       _toastService.Show("设置已保存", isError: false);
     }
     catch (OperationCanceledException)
@@ -455,6 +550,9 @@ public sealed class SettingsWindowController
       return;
 
     _logScrollViewer.UpdateLayout();
+    LogViewRichTextRenderer.SynchronizeViewport(_txtLogView, _logScrollViewer.ViewportWidth);
+    _logScrollViewer.UpdateLayout();
+    ScrollBarAutoHide.NotifyContentChanged(_logScrollViewer);
     if (scrollToTail)
       _logScrollViewer.ScrollToEnd();
     else if (!wasAtTail)
@@ -669,11 +767,38 @@ public sealed class SettingsWindowController
     }
   }
 
+  internal void StabilizeLayout()
+  {
+    SettingsWindowLayoutStability.StabilizeContentLayout(_window);
+  }
+
+  internal void QueueLayoutStabilization()
+  {
+    if (_layoutStabilityTimer is null)
+    {
+      _layoutStabilityTimer = new System.Windows.Threading.DispatcherTimer(
+        System.Windows.Threading.DispatcherPriority.Background,
+        _window.Dispatcher)
+      {
+        Interval = TimeSpan.FromMilliseconds(50),
+      };
+      _layoutStabilityTimer.Tick += (_, _) =>
+      {
+        _layoutStabilityTimer.Stop();
+        StabilizeLayout();
+      };
+    }
+
+    _layoutStabilityTimer.Stop();
+    _layoutStabilityTimer.Start();
+  }
+
   public void Dispose()
   {
     _saveDebounceTimer?.Stop();
     _logTimer?.Stop();
     _logSearchDebounceTimer?.Stop();
+    _layoutStabilityTimer?.Stop();
     _saveCts?.Cancel();
     _saveCts?.Dispose();
     _toastService?.Dispose();
@@ -708,12 +833,14 @@ public sealed class SettingsWindowController
     var pageLogs = window.FindName("pageLogs") as UIElement;
     var pageAbout = window.FindName("pageAbout") as StackPanel;
     var contentScrollViewer = window.FindName("contentScrollViewer") as UIElement;
+    var txtPageTitle = window.FindName("txtPageTitle") as TextBlock;
 
     navList.SelectionChanged += (_, e) =>
     {
       var selected = navList.SelectedIndex;
       var isLogsPage = selected == 3;
       this.SetLogPageActive(isLogsPage);
+      UpdatePageTitle(selected, txtPageTitle);
 
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
       if (pageAdvanced != null) pageAdvanced.Visibility = Visibility.Collapsed;
@@ -744,6 +871,25 @@ public sealed class SettingsWindowController
           if (pageAbout != null) pageAbout.Visibility = Visibility.Visible;
           break;
       }
+
+      if (isLogsPage)
+        StabilizeLayout();
+    };
+  }
+
+  private static void UpdatePageTitle(int selectedIndex, TextBlock? txtPageTitle)
+  {
+    if (txtPageTitle is null)
+      return;
+
+    txtPageTitle.Text = selectedIndex switch
+    {
+      0 => "常规设置",
+      1 => "高级设置",
+      2 => "通知设置",
+      3 => "日志",
+      4 => "关于",
+      _ => "常规设置",
     };
   }
 
@@ -826,12 +972,17 @@ public sealed class SettingsWindowController
       SetResource(resources, "DividerBrush", "#E5E5E5");
     }
 
-    var txtTheme = window.FindName("txtTheme") as TextBlock;
+    LogViewTagPalette.ConfigureForDarkMode(_isDarkTheme);
+    WindowTitleBarTheme.Apply(window, _isDarkTheme);
+    RefreshLogView(forceRedraw: true);
+
     var iconTheme = window.FindName("iconTheme") as TextBlock;
-    if (txtTheme != null)
-      txtTheme.Text = _isDarkTheme ? "浅色模式" : "深色模式";
     if (iconTheme != null)
       iconTheme.Text = _isDarkTheme ? "\uE706" : "\uE708";
+
+    var txtTheme = window.FindName("txtTheme") as TextBlock;
+    if (txtTheme != null)
+      txtTheme.Text = _isDarkTheme ? "浅色模式" : "深色模式";
   }
 
   private static string GetDisplayVersion()
@@ -863,31 +1014,15 @@ public sealed class SettingsWindowController
   }
 
   private static Window? TryLoadEmbeddedWindow()
-  {
-    try
-    {
-      return (Window)Application.LoadComponent(
-        new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
-    }
-    catch
-    {
-      return null;
-    }
-  }
+    => SettingsXamlLoader.TryLoadEmbeddedWindow(out _);
 
   private static void ApplyWindowIcon(Window window, string root)
-  {
-    var iconPath = Path.Combine(root, "lib", "SmartGuard.ico");
-    if (!File.Exists(iconPath)) return;
+    => AppBrandIcon.ApplyTo(window, root);
 
-    try
-    {
-      window.Icon = BitmapFrame.Create(new Uri(iconPath, UriKind.Absolute));
-    }
-    catch
-    {
-      // keep default icon
-    }
+  private static void ApplyAppHeaderIcon(Window window, string root)
+  {
+    // kept for tests that reflect on private helpers
+    AppBrandIcon.ApplyTo(window, root);
   }
 
   private static T Require<T>(Window window, string name) where T : class
@@ -903,6 +1038,110 @@ public sealed class SettingsWindowController
 
     numberBox.ValueChanged += Update;
     label.Text = string.Format(format, numberBox.Value);
+  }
+
+  private static void RegisterHeartbeatLabel(NumberBox numberBox, TextBlock label)
+  {
+    void Update(object? sender, RoutedPropertyChangedEventArgs<int> e)
+      => label.Text = numberBox.Value == 0 ? "关闭" : $"{numberBox.Value} 分钟";
+
+    numberBox.ValueChanged += Update;
+    label.Text = numberBox.Value == 0 ? "关闭" : $"{numberBox.Value} 分钟";
+  }
+
+  private void PopulatePlanCombo(ComboBox combo, Guid selectedGuid, string orphanRoleLabel)
+  {
+    _suppressPlanComboEvents = true;
+    try
+    {
+      combo.DisplayMemberPath = nameof(PowerPlanComboItem.DisplayName);
+      combo.SelectedValuePath = nameof(PowerPlanComboItem.PlanGuid);
+      combo.ItemsSource = PowerPlanComboItemsBuilder.Build(_planCatalog, selectedGuid, orphanRoleLabel);
+      combo.SelectedValue = selectedGuid;
+    }
+    finally
+    {
+      _suppressPlanComboEvents = false;
+    }
+  }
+
+  private static Guid ReadSelectedPlanGuid(ComboBox combo)
+  {
+    if (combo.SelectedItem is PowerPlanComboItem item)
+      return item.PlanGuid;
+    if (combo.SelectedValue is Guid guid)
+      return guid;
+    return Guid.Empty;
+  }
+
+  private GuardConfig ReadConfigFromUi()
+  {
+    return SettingsSnapshotMapper.ApplyTraySettings(
+      _originalConfig,
+      balancedThresholdMin: _sldBalanced.Value,
+      powerSaverThresholdMin: _sldSaver.Value,
+      lowBatteryPercent: _sldBattery.Value,
+      checkIntervalSec: _sldPoll.Value,
+      brightnessRestoreMs: _sldBrightMs.Value,
+      heartbeatIntervalMin: _sldHeartbeat.Value,
+      activePlanGuid: ReadSelectedPlanGuid(_cmbActivePlan),
+      balancedPlanGuid: ReadSelectedPlanGuid(_cmbBalancedPlan),
+      powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
+      paused: _tglPaused.IsChecked == true,
+      notifyOnPlanChange: _tglNotify.IsChecked == true,
+      autoStartEnabled: _tglAutoStart.IsChecked == true);
+  }
+
+  private void UpdatePlanMappingStatus(GuardConfig? config = null)
+  {
+    if (_lblPlanMappingStatus is null) return;
+
+    config ??= ReadConfigFromUi();
+    var messages = PowerPlanMappingValidator.Validate(config, _planCatalog);
+    _lblPlanMappingStatus.Text = messages.Count == 0
+      ? "三档计划映射正常"
+      : string.Join("；", messages);
+  }
+
+  private void ApplyConfigToUi(GuardConfig config)
+  {
+    _sldBalanced.Value = SettingsInitialValues.BalancedThresholdMinutes(config);
+    _sldSaver.Value = SettingsInitialValues.PowerSaverThresholdMinutes(config);
+    _sldBattery.Value = config.LowBatteryPercent;
+    _sldPoll.Value = config.CheckIntervalSec;
+    _sldBrightMs.Value = config.BrightnessRestoreMs;
+    _sldHeartbeat.Value = config.HeartbeatIntervalMin;
+    _tglPaused.IsChecked = config.Paused;
+    _tglNotify.IsChecked = config.NotifyOnPlanChange;
+    _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    PopulatePlanCombo(_cmbActivePlan, config.ActivePlanGuid, "高性能");
+    PopulatePlanCombo(_cmbBalancedPlan, config.BalancedPlanGuid, "平衡");
+    PopulatePlanCombo(_cmbPowerSaverPlan, config.PowerSaverPlanGuid, "节能");
+    UpdatePlanMappingStatus(config);
+  }
+
+  private void ResetToDefaults()
+  {
+    var result = MessageBox.Show(
+      "将把守护策略恢复为默认值。\n\n日志文件路径与 GitHub Token 会保留，手动高性能接管会被清除。",
+      "恢复默认策略？",
+      MessageBoxButton.YesNo,
+      MessageBoxImage.Warning);
+    if (result != MessageBoxResult.Yes)
+      return;
+
+    try
+    {
+      var resetConfig = GuardConfigResetService.CreateResetConfig(_originalConfig, _root);
+      SettingsSaveCoordinator.Save(resetConfig, _originalConfig, _root, _repository);
+      _originalConfig = resetConfig;
+      ApplyConfigToUi(resetConfig);
+      _toastService.Show("已恢复默认策略", isError: false);
+    }
+    catch (Exception ex)
+    {
+      _toastService.Show($"恢复失败：{ex.Message}", isError: true);
+    }
   }
 
   private static (Window Window, ProgressBar Bar, TextBlock Status, CancellationTokenSource Cts) CreateDownloadProgressWindow(Window owner)
