@@ -643,18 +643,58 @@
               </Border>
 
               <!-- Tag Filters -->
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                 <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
                 <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
                 <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,16,0"/>
-                <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
+                <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="False" Foreground="{DynamicResource TextPrimary}"/>
+              </StackPanel>
+
+              <!-- Time Range -->
+              <StackPanel Margin="0,0,0,12">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="时间" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                  <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,0">
+                    <ComboBoxItem Content="全部"/>
+                    <ComboBoxItem Content="今天"/>
+                    <ComboBoxItem Content="最近1小时"/>
+                    <ComboBoxItem Content="自定义"/>
+                  </ComboBox>
+                  <CheckBox x:Name="chkLogSearchCaseSensitive" Content="区分大小写" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}"/>
+                </StackPanel>
+                <StackPanel x:Name="panelLogCustomRange" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
+                  <TextBlock Text="起" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                  <TextBox x:Name="txtLogRangeStart" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
+                  <TextBlock Text="止" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                  <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
+                </StackPanel>
+              </StackPanel>
+
+              <!-- Toolbar -->
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                <Button x:Name="btnLogCopy" Content="复制可见" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="72" Margin="0,0,8,0"/>
+                <Button x:Name="btnLogExport" Content="导出" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56" Margin="0,0,8,0"/>
+                <Button x:Name="btnLogOpenFolder" Content="打开目录" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="72" Margin="0,0,8,0"/>
+                <Button x:Name="btnLogScrollTop" Content="顶部" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56" Margin="0,0,8,0"/>
+                <Button x:Name="btnLogScrollBottom" Content="底部" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56" Margin="0,0,8,0"/>
+                <CheckBox x:Name="chkLogFollowTail" Content="跟随最新" IsChecked="True" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0"/>
+                <Button x:Name="btnLogRefresh" Content="刷新" Style="{StaticResource SecondaryButton}" Padding="10,6" MinWidth="56"/>
               </StackPanel>
             </StackPanel>
 
             <!-- Scrollable Log Content -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer x:Name="logScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
               <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12">
-                <TextBox x:Name="txtLogView" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontFamily="Consolas, Microsoft YaHei Mono" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimary}" Text=""/>
+                <RichTextBox x:Name="txtLogView"
+                             IsReadOnly="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             FontFamily="Consolas, Microsoft YaHei Mono"
+                             FontSize="12"
+                             VerticalScrollBarVisibility="Disabled"
+                             HorizontalScrollBarVisibility="Disabled">
+                  <FlowDocument PageWidth="100000" PagePadding="0"/>
+                </RichTextBox>
               </Border>
             </ScrollViewer>
 
