@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
@@ -78,6 +79,58 @@ public class ScrollBarAutoHideTests
         });
     }
 
+    [Fact]
+    public void Horizontal_scrollbar_track_is_not_direction_reversed()
+    {
+        var xaml = ReadSettingsXaml();
+
+        xaml.Should().MatchRegex(
+            "x:Key=\"SettingsScrollBar\"[\\s\\S]{0,900}Orientation, RelativeSource=\\{RelativeSource TemplatedParent\\}\\}\" Value=\"Vertical\"[\\s\\S]{0,120}IsDirectionReversed\" Value=\"True\"",
+            "only vertical scrollbars should reverse direction");
+        xaml.Should().MatchRegex(
+            "x:Key=\"SettingsScrollBar\"[\\s\\S]{0,900}Setter Property=\"IsDirectionReversed\" Value=\"False\"",
+            "horizontal scrollbars should keep the default left-to-right mapping");
+    }
+
+    [Fact]
+    public void Horizontal_offset_zero_keeps_scrollbar_thumb_at_start()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var scrollViewer = CreateStyledScrollViewer();
+            scrollViewer.Content = new TextBlock
+            {
+                Text = "START-" + new string('x', 500) + "-END",
+                TextWrapping = TextWrapping.NoWrap,
+            };
+
+            var host = new Window
+            {
+                Width = 360,
+                Height = 280,
+                Content = scrollViewer,
+            };
+            host.Show();
+            scrollViewer.UpdateLayout();
+
+            scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
+            scrollViewer.ScrollToHorizontalOffset(0);
+            scrollViewer.UpdateLayout();
+
+            var horizontalScrollBar = FindHorizontalScrollBar(scrollViewer);
+            horizontalScrollBar.Should().NotBeNull();
+            horizontalScrollBar!.Value.Should().Be(horizontalScrollBar.Minimum);
+
+            scrollViewer.ScrollToHorizontalOffset(scrollViewer.ScrollableWidth);
+            scrollViewer.UpdateLayout();
+            horizontalScrollBar.Value.Should().Be(horizontalScrollBar.Maximum);
+
+            host.Close();
+        });
+    }
+
     private static string ReadSettingsXaml()
     {
         var assemblyLocation = typeof(SettingsWindowController).Assembly.Location;
@@ -120,6 +173,12 @@ public class ScrollBarAutoHideTests
         host.Close();
 
         return scrollViewer;
+    }
+
+    private static ScrollBar? FindHorizontalScrollBar(ScrollViewer scrollViewer)
+    {
+        scrollViewer.ApplyTemplate();
+        return scrollViewer.Template?.FindName("PART_HorizontalScrollBar", scrollViewer) as ScrollBar;
     }
 
     private static void EnsureApplication()

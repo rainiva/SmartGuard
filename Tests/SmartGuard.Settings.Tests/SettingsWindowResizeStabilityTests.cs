@@ -97,6 +97,13 @@ public class SettingsWindowResizeStabilityTests
                         () => { },
                         System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
+                    SettingsWindowLayoutStability.StabilizeContentLayout(window);
+                    window.UpdateLayout();
+
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
                     var txtPageTitle = window.FindName("txtPageTitle") as TextBlock;
                     txtPageTitle.Should().NotBeNull();
                     txtPageTitle!.Text.Should().Be("日志");
