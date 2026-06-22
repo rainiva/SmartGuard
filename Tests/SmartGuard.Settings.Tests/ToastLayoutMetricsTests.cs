@@ -3,6 +3,7 @@ using System.Windows.Controls;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class ToastLayoutMetricsTests
 {
     [Fact]
@@ -51,18 +52,5 @@ public class ToastLayoutMetricsTests
         return null;
     }
 
-    private static void RunOnSta(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { error = ex; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 }

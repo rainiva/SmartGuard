@@ -2,10 +2,12 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class ScrollBarAutoHideTests
 {
     [Fact]
@@ -31,51 +33,64 @@ public class ScrollBarAutoHideTests
     [Fact]
     public void User_scrolls_log_viewer_scrollbars_become_visible_then_hide()
     {
-        RunOnSta(() =>
+        WpfStaTestHost.Run(() =>
         {
-            EnsureApplication();
+            var host = new Window { ShowInTaskbar = false };
+            try
+            {
+                var scrollViewer = CreateStyledScrollViewer();
+                host.Content = scrollViewer;
+                WpfStaTestHost.ShowAndWait(host);
+                LayoutScrollViewer(scrollViewer);
 
-            var scrollViewer = CreateStyledScrollViewer();
-            ScrollBarAutoHide.Attach(scrollViewer);
-            ScrollBarAutoHide.NotifyScrollActivity(scrollViewer);
+                ScrollBarAutoHide.Attach(scrollViewer);
+                ScrollBarAutoHide.NotifyScrollActivity(scrollViewer);
 
-            ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: true).Should().BeTrue();
+                ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: true).Should().BeTrue();
 
-            ScrollBarAutoHide.HideNowForTesting(scrollViewer);
-            ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: true).Should().BeFalse();
+                ScrollBarAutoHide.HideNowForTesting(scrollViewer);
+                ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: true).Should().BeFalse();
+            }
+            finally
+            {
+                host.Close();
+            }
         });
     }
 
     [Fact]
     public void Horizontal_scrollbar_stays_visible_when_log_content_overflows()
     {
-        RunOnSta(() =>
+        WpfStaTestHost.Run(() =>
         {
-            EnsureApplication();
-
-            var scrollViewer = CreateStyledScrollViewer();
-            scrollViewer.Content = new TextBlock
-            {
-                Text = new string('x', 400),
-                TextWrapping = TextWrapping.NoWrap,
-            };
-
             var host = new Window
             {
                 Width = 360,
                 Height = 280,
-                Content = scrollViewer,
+                ShowInTaskbar = false,
             };
-            host.Show();
-            scrollViewer.UpdateLayout();
 
-            ScrollBarAutoHide.Attach(scrollViewer);
-            ScrollBarAutoHide.NotifyContentChanged(scrollViewer);
+            try
+            {
+                var scrollViewer = CreateStyledScrollViewer(new TextBlock
+                {
+                    Text = new string('x', 400),
+                    TextWrapping = TextWrapping.NoWrap,
+                });
+                host.Content = scrollViewer;
+                WpfStaTestHost.ShowAndWait(host);
+                LayoutScrollViewer(scrollViewer);
 
-            scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
-            ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: false).Should().BeTrue();
+                ScrollBarAutoHide.Attach(scrollViewer);
+                ScrollBarAutoHide.NotifyContentChanged(scrollViewer);
 
-            host.Close();
+                scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
+                ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: false).Should().BeTrue();
+            }
+            finally
+            {
+                host.Close();
+            }
         });
     }
 
@@ -95,39 +110,42 @@ public class ScrollBarAutoHideTests
     [Fact]
     public void Horizontal_offset_zero_keeps_scrollbar_thumb_at_start()
     {
-        RunOnSta(() =>
+        WpfStaTestHost.Run(() =>
         {
-            EnsureApplication();
-
-            var scrollViewer = CreateStyledScrollViewer();
-            scrollViewer.Content = new TextBlock
-            {
-                Text = "START-" + new string('x', 500) + "-END",
-                TextWrapping = TextWrapping.NoWrap,
-            };
-
             var host = new Window
             {
                 Width = 360,
                 Height = 280,
-                Content = scrollViewer,
+                ShowInTaskbar = false,
             };
-            host.Show();
-            scrollViewer.UpdateLayout();
 
-            scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
-            scrollViewer.ScrollToHorizontalOffset(0);
-            scrollViewer.UpdateLayout();
+            try
+            {
+                var scrollViewer = CreateStyledScrollViewer(new TextBlock
+                {
+                    Text = "START-" + new string('x', 500) + "-END",
+                    TextWrapping = TextWrapping.NoWrap,
+                });
+                host.Content = scrollViewer;
+                WpfStaTestHost.ShowAndWait(host);
+                LayoutScrollViewer(scrollViewer);
 
-            var horizontalScrollBar = FindHorizontalScrollBar(scrollViewer);
-            horizontalScrollBar.Should().NotBeNull();
-            horizontalScrollBar!.Value.Should().Be(horizontalScrollBar.Minimum);
+                scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
+                scrollViewer.ScrollToHorizontalOffset(0);
+                scrollViewer.UpdateLayout();
 
-            scrollViewer.ScrollToHorizontalOffset(scrollViewer.ScrollableWidth);
-            scrollViewer.UpdateLayout();
-            horizontalScrollBar.Value.Should().Be(horizontalScrollBar.Maximum);
+                var horizontalScrollBar = FindHorizontalScrollBar(scrollViewer);
+                horizontalScrollBar.Should().NotBeNull();
+                horizontalScrollBar!.Value.Should().Be(horizontalScrollBar.Minimum);
 
-            host.Close();
+                scrollViewer.ScrollToHorizontalOffset(scrollViewer.ScrollableWidth);
+                scrollViewer.UpdateLayout();
+                horizontalScrollBar.Value.Should().Be(horizontalScrollBar.Maximum);
+            }
+            finally
+            {
+                host.Close();
+            }
         });
     }
 
@@ -140,68 +158,53 @@ public class ScrollBarAutoHideTests
         return File.ReadAllText(Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml"));
     }
 
-    private static ScrollViewer CreateStyledScrollViewer()
+    private static Style LoadSettingsScrollViewerStyle()
     {
-        var window = (Window)Application.LoadComponent(
+        WpfStaTestHost.EnsureApplication();
+        var templateWindow = (Window)Application.LoadComponent(
             new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
-        var styled = window.FindName("contentScrollViewer") as ScrollViewer;
-        styled.Should().NotBeNull();
+        try
+        {
+            var styled = templateWindow.FindName("contentScrollViewer") as ScrollViewer;
+            styled.Should().NotBeNull();
+            return styled!.Style!;
+        }
+        finally
+        {
+            templateWindow.Close();
+        }
+    }
 
-        var scrollViewer = new ScrollViewer
+    private static ScrollViewer CreateStyledScrollViewer(UIElement? content = null)
+    {
+        return new ScrollViewer
         {
             Width = 320,
             Height = 240,
-            Style = styled!.Style,
+            Style = LoadSettingsScrollViewerStyle(),
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock
+            Content = content ?? new TextBlock
             {
                 Text = string.Join(Environment.NewLine, Enumerable.Repeat("log line", 80)),
                 TextWrapping = TextWrapping.NoWrap,
             },
         };
+    }
 
-        var host = new Window
-        {
-            Width = 360,
-            Height = 280,
-            Content = scrollViewer,
-        };
-        host.Show();
+    private static void LayoutScrollViewer(ScrollViewer scrollViewer)
+    {
         scrollViewer.ApplyTemplate();
         scrollViewer.UpdateLayout();
-        host.Close();
-
-        return scrollViewer;
+        scrollViewer.Measure(new Size(scrollViewer.Width, scrollViewer.Height));
+        scrollViewer.Arrange(new Rect(0, 0, scrollViewer.Width, scrollViewer.Height));
+        scrollViewer.UpdateLayout();
+        scrollViewer.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
     }
 
     private static ScrollBar? FindHorizontalScrollBar(ScrollViewer scrollViewer)
     {
         scrollViewer.ApplyTemplate();
         return scrollViewer.Template?.FindName("PART_HorizontalScrollBar", scrollViewer) as ScrollBar;
-    }
-
-    private static void EnsureApplication()
-    {
-        if (Application.Current is not null)
-            return;
-
-        try { _ = new Application(); }
-        catch (InvalidOperationException) { }
-    }
-
-    private static void RunOnSta(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { error = ex; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
     }
 }

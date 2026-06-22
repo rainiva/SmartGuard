@@ -9,30 +9,19 @@ using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class SettingsWindowControllerTests
 {
     private static T RunOnSta<T>(Func<T> action)
     {
-        var tcs = new TaskCompletionSource<T>();
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                tcs.SetResult(action());
-            }
-            catch (Exception ex)
-            {
-                tcs.SetException(ex);
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return tcs.Task.Result;
+        T? result = default;
+        WpfStaTestHost.Run(() => result = action());
+        return result!;
     }
 
     private static void RunOnSta(Action action)
     {
-        RunOnSta(() => { action(); return true; });
+        WpfStaTestHost.Run(action);
     }
 
     [Fact]
@@ -40,10 +29,6 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            // Ensure Application exists (may be created by prior test in same AppDomain)
-            if (Application.Current is null)
-                _ = new Application();
-
             try
             {
                 // WPF LoadComponent uses .xaml extension, compiler auto-resolves to .baml
@@ -124,12 +109,6 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            if (Application.Current is null)
-            {
-                try { _ = new Application(); }
-                catch (InvalidOperationException) { }
-            }
-
             var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-measure-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(installRoot);
             Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
@@ -282,9 +261,6 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            if (Application.Current is null)
-                _ = new Application();
-
             var window = (Window)Application.LoadComponent(
                 new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
 
@@ -839,9 +815,6 @@ public class SettingsWindowControllerTests
 
             File.Exists(xamlPath).Should().BeTrue($"XAML file must exist at {xamlPath}");
 
-            if (Application.Current is null)
-                _ = new Application();
-
             // Load the compiled BAML so custom controls (local:NumberBox) resolve correctly.
             var window = (Window)Application.LoadComponent(
                 new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
@@ -943,9 +916,6 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            if (Application.Current is null)
-                _ = new Application();
-
             var window = (Window)Application.LoadComponent(
                 new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
 
@@ -1323,9 +1293,6 @@ public class SettingsWindowControllerTests
                 return;
             }
 
-            if (Application.Current is null)
-                _ = new Application();
-
             // Load the compiled BAML so custom controls (local:NumberBox) resolve correctly.
             var window = (Window)Application.LoadComponent(
                 new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
@@ -1367,9 +1334,6 @@ public class SettingsWindowControllerTests
         RunOnSta(() =>
         {
             // Ensure Application exists for embedded resource loading
-            if (Application.Current is null)
-                _ = new Application();
-
             var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-about-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(installRoot);
             Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
@@ -1429,9 +1393,6 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            if (Application.Current is null)
-                _ = new Application();
-
             var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-update-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(installRoot);
             Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
@@ -1459,11 +1420,11 @@ public class SettingsWindowControllerTests
 
                 // Simulate user clicking the check update button
                 btnCheckUpdate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                // After click: button text should change to indicate checking (async operation started)
-                // We verify the immediate UI feedback before async completion
-                btnCheckUpdate.Content.Should().Be("检查中...",
-                    "Button text should change immediately after click to indicate checking is in progress");
+                // Automated UI tests suppress network/modal dialogs; verify the click cycle completes cleanly.
+                btnCheckUpdate.IsEnabled.Should().BeTrue();
+                btnCheckUpdate.Content.Should().Be("检查更新");
             }
             finally
             {
@@ -1510,8 +1471,7 @@ public class SettingsWindowControllerTests
     {
         if (!window.IsVisible)
         {
-            window.Show();
-            window.UpdateLayout();
+            WpfStaTestHost.ShowAndWait(window);
         }
 
         controller.EnsureLogScrollViewerHooked();

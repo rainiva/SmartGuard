@@ -7,22 +7,10 @@ using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class AppBrandIconTests
 {
-    private static void EnsureApplication()
-    {
-        if (Application.Current is not null)
-            return;
-
-        try
-        {
-            _ = new Application();
-        }
-        catch (InvalidOperationException)
-        {
-            // Another STA thread in the same AppDomain already created the Application instance.
-        }
-    }
+    private static void EnsureApplication() => WpfStaTestHost.EnsureApplication();
 
     [Fact]
     public void LoadImageSource_uses_taskbar_safe_icon_size_matching_tray_default()
@@ -86,18 +74,5 @@ public class AppBrandIconTests
         });
     }
 
-    private static void RunOnSta(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { error = ex; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 }

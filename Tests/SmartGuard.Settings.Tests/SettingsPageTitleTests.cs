@@ -6,6 +6,7 @@ using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class SettingsPageTitleTests
 {
     [Fact]
@@ -62,32 +63,12 @@ public class SettingsPageTitleTests
         return (Window)field!.GetValue(controller)!;
     }
 
-    private static void EnsureApplication()
-    {
-        if (Application.Current is not null)
-            return;
-
-        try { _ = new Application(); }
-        catch (InvalidOperationException) { }
-    }
+    private static void EnsureApplication() => WpfStaTestHost.EnsureApplication();
 
     private static void TryDelete(string path)
     {
         try { Directory.Delete(path, true); } catch { }
     }
 
-    private static void RunOnSta(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { error = ex; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 }

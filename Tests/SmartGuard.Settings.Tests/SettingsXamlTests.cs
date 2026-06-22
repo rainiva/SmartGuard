@@ -5,24 +5,14 @@ using System.Windows.Markup;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class SettingsXamlTests
 {
     [Fact]
     public void Committed_settings_xaml_parses_without_error()
     {
-        object? result = null;
-        var t = new Thread(() =>
+        WpfStaTestHost.Run(() =>
         {
-            try
-            {
-                if (Application.Current is null)
-                    _ = new Application();
-            }
-            catch (InvalidOperationException)
-            {
-                // Application already exists in this AppDomain.
-            }
-
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
             var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
@@ -36,12 +26,9 @@ public class SettingsXamlTests
             var xamlForParse = xaml.Replace(
                 "xmlns:local=\"clr-namespace:SmartGuard.Settings\"",
                 "xmlns:local=\"clr-namespace:SmartGuard.Settings;assembly=SmartGuard.Settings\"");
-            result = XamlReader.Parse(xamlForParse);
-        });
-        t.SetApartmentState(ApartmentState.STA);
-        t.Start();
-        t.Join();
+            var result = XamlReader.Parse(xamlForParse);
 
-        result.Should().BeOfType<Window>();
+            result.Should().BeOfType<Window>();
+        });
     }
 }

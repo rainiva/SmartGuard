@@ -1,5 +1,6 @@
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class LogSearchFilterBarTests
 {
     [Fact]
@@ -41,18 +42,5 @@ public class LogSearchFilterBarTests
         });
     }
 
-    private static void RunOnSta(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { error = ex; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 }

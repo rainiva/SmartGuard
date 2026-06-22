@@ -2,31 +2,17 @@ using System.Windows;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class ToastNotificationServiceTests
 {
     private static T RunOnSta<T>(Func<T> action)
     {
-        var tcs = new TaskCompletionSource<T>();
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                tcs.SetResult(action());
-            }
-            catch (Exception ex)
-            {
-                tcs.SetException(ex);
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return tcs.Task.Result;
+        T? result = default;
+        WpfStaTestHost.Run(() => result = action());
+        return result!;
     }
 
-    private static void RunOnSta(Action action)
-    {
-        RunOnSta(() => { action(); return true; });
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 
     private sealed class FakeToast : IToastWindow
     {

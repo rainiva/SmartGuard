@@ -6,6 +6,7 @@ using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class SettingsXamlLoaderTests
 {
     private static string RepoXamlPath()
@@ -16,20 +17,7 @@ public class SettingsXamlLoaderTests
         return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
     }
 
-    private static void EnsureApplication()
-    {
-        if (Application.Current is not null)
-            return;
-
-        try
-        {
-            _ = new Application();
-        }
-        catch (InvalidOperationException)
-        {
-            // Another STA thread in the same AppDomain already created the Application instance.
-        }
-    }
+    private static void EnsureApplication() => WpfStaTestHost.EnsureApplication();
 
     [Fact]
     public void PrepareLooseXamlForParse_qualifies_local_assembly()
@@ -79,18 +67,5 @@ public class SettingsXamlLoaderTests
         });
     }
 
-    private static void RunOnSta(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { error = ex; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            throw error;
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 }

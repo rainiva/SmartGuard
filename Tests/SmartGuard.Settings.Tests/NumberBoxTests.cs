@@ -3,31 +3,17 @@ using System.Windows.Threading;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class NumberBoxTests
 {
     private static T RunOnSta<T>(Func<T> action)
     {
-        var tcs = new TaskCompletionSource<T>();
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                tcs.SetResult(action());
-            }
-            catch (Exception ex)
-            {
-                tcs.SetException(ex);
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return tcs.Task.Result;
+        T? result = default;
+        WpfStaTestHost.Run(() => result = action());
+        return result!;
     }
 
-    private static void RunOnSta(Action action)
-    {
-        RunOnSta(() => { action(); return true; });
-    }
+    private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 
     [Fact]
     public void Initial_value_matches_default()
