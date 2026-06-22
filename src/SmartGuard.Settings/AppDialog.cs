@@ -134,7 +134,7 @@ public static class AppDialog
             Child = root,
         };
 
-        return new Window
+        var dialog = new Window
         {
             Title = string.Empty,
             WindowStyle = WindowStyle.None,
@@ -145,10 +145,45 @@ public static class AppDialog
             WindowStartupLocation = owner is null
                 ? WindowStartupLocation.CenterScreen
                 : WindowStartupLocation.CenterOwner,
-            Owner = owner,
             ShowInTaskbar = false,
             Content = surface,
         };
+
+        TryAssignOwner(dialog, owner);
+        return dialog;
+    }
+
+    private static void TryAssignOwner(Window dialog, Window? owner)
+    {
+        if (owner is null)
+            return;
+
+        if (owner.IsLoaded && owner.IsVisible)
+        {
+            dialog.Owner = owner;
+            return;
+        }
+
+        void OnOwnerReady(object? _, EventArgs __)
+        {
+            owner.Loaded -= OnOwnerReady;
+            owner.IsVisibleChanged -= OnOwnerVisibleChanged;
+            if (owner.IsVisible)
+                dialog.Owner = owner;
+        }
+
+        void OnOwnerVisibleChanged(object? _, DependencyPropertyChangedEventArgs __)
+        {
+            if (!owner.IsVisible)
+                return;
+
+            owner.IsVisibleChanged -= OnOwnerVisibleChanged;
+            owner.Loaded -= OnOwnerReady;
+            dialog.Owner = owner;
+        }
+
+        owner.Loaded += OnOwnerReady;
+        owner.IsVisibleChanged += OnOwnerVisibleChanged;
     }
 
     private static Button CreateTextButton(string label, Window? owner, bool isPrimary = false)
