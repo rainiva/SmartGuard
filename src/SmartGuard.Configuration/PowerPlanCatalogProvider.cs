@@ -28,22 +28,25 @@ public static class PowerPlanCatalogProvider
 
     try
     {
-      _sessionCache = LoadImplementationForTests?.Invoke() ?? LoadCore();
-      return _sessionCache;
+      var catalog = LoadImplementationForTests?.Invoke() ?? LoadCore();
+      if (catalog.Count > 0)
+        _sessionCache = catalog;
+      return catalog;
     }
     catch
     {
-      _sessionCache = new Dictionary<Guid, string>();
-      return _sessionCache;
+      return new Dictionary<Guid, string>();
     }
   }
 
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
     => Task.Run(TryLoad, cancellationToken);
 
+  public static void InvalidateSessionCache() => _sessionCache = null;
+
   internal static void ClearSessionCacheForTests()
   {
-    _sessionCache = null;
+    InvalidateSessionCache();
     LoadImplementationForTests = null;
   }
 

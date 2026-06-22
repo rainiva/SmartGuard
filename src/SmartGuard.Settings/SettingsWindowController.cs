@@ -816,7 +816,7 @@ public sealed class SettingsWindowController
   {
     try
     {
-      var catalog = await PowerPlanCatalogProvider.LoadAsync(token).ConfigureAwait(true);
+      var catalog = await LoadPlanCatalogWithRetryAsync(token).ConfigureAwait(true);
       if (token.IsCancellationRequested)
         return;
 
@@ -828,6 +828,20 @@ public sealed class SettingsWindowController
     {
       // ignore stale catalog loads
     }
+  }
+
+  private static async Task<IReadOnlyDictionary<Guid, string>> LoadPlanCatalogWithRetryAsync(CancellationToken token)
+  {
+    for (var attempt = 0; attempt < 2; attempt++)
+    {
+      var catalog = await PowerPlanCatalogProvider.LoadAsync(token).ConfigureAwait(true);
+      if (catalog.Count > 0 || token.IsCancellationRequested)
+        return catalog;
+
+      PowerPlanCatalogProvider.InvalidateSessionCache();
+    }
+
+    return new Dictionary<Guid, string>();
   }
 
   private void RepopulatePlanCombos()
