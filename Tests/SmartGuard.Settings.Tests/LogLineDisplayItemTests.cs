@@ -3,6 +3,7 @@ using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("LogViewDisplay")]
 public class LogLineDisplayItemTests
 {
     [Fact]
@@ -24,7 +25,10 @@ public class LogLineDisplayItemTests
             "[RAW] unstructured line",
         };
 
-        string.Join(Environment.NewLine, lines.Select(LogLineDisplayItem.Parse).Select(item => item.LineText))
+        var items = lines.Select(LogLineDisplayItem.Parse).ToList();
+        items.Select(item => item.LineText).Should().Equal(lines);
+
+        string.Join(Environment.NewLine, items.Select(item => item.LineText))
             .Should().Be(string.Join(Environment.NewLine, lines));
     }
 }

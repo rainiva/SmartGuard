@@ -3,6 +3,7 @@ using SmartGuard.LogViewer;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("LogViewDisplay")]
 public class LogViewTagPaletteTests
 {
     [Theory]
