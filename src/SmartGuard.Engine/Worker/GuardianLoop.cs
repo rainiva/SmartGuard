@@ -63,7 +63,7 @@ public sealed class GuardianLoop(
       }
 
       _lastKnownGuid = PowerCfgExecutor.GetCurrentPlanGuid();
-      WaitForNextIteration(Math.Max(5, config.CheckIntervalSec), cancellationToken);
+      WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(configPath), cancellationToken);
     }
   }
 

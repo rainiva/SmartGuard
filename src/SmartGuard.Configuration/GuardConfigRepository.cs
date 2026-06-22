@@ -107,6 +107,6 @@ public sealed class GuardConfigRepository(string configPath)
   {
     var dir = Path.GetDirectoryName(configPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    File.WriteAllText(configPath, content);
+    GuardConfigAtomicFileWriter.WriteAllText(configPath, content);
   }
 }

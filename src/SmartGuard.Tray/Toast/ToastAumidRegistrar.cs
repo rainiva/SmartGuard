@@ -6,6 +6,9 @@ namespace SmartGuard.Tray.Toast;
 
 public static class ToastAumidRegistrar
 {
+  internal static Func<string, bool>? StartMenuShortcutWriterForTests;
+  internal static int ShortcutWriteCountForTests { get; private set; }
+
   public static bool EnsureRegistered(string root)
   {
     try
@@ -18,6 +21,12 @@ public static class ToastAumidRegistrar
     {
       return false;
     }
+  }
+
+  internal static void ResetForTests()
+  {
+    StartMenuShortcutWriterForTests = null;
+    ShortcutWriteCountForTests = 0;
   }
 
   private static void RegisterAppUserModelId(string root)
@@ -34,14 +43,26 @@ public static class ToastAumidRegistrar
     }
   }
 
+  private static string GetShortcutMarkerPath(string root)
+    => Path.Combine(root, "lib", ".smartguard-toast-shortcut");
+
   private static void EnsureStartMenuShortcut(string root)
   {
+    if (File.Exists(GetShortcutMarkerPath(root)))
+      return;
+
     var programs = Path.Combine(
       Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
       "Microsoft", "Windows", "Start Menu", "Programs");
     if (!Directory.Exists(programs)) return;
 
     var shortcutPath = Path.Combine(programs, "SmartGuard.lnk");
+    if (StartMenuShortcutWriterForTests?.Invoke(shortcutPath) == true)
+    {
+      MarkShortcutRegistered(root);
+      return;
+    }
+
     var shortcutTarget = ToastShortcutResolver.Resolve(root);
 
     var shellType = Type.GetTypeFromProgID("WScript.Shell");
@@ -58,6 +79,17 @@ public static class ToastAumidRegistrar
     shortcut.Save();
 
     ShellLinkAppUserModelId.Apply(shortcutPath, SmartGuardToastAppId.AppId);
+    MarkShortcutRegistered(root);
+  }
+
+  private static void MarkShortcutRegistered(string root)
+  {
+    ShortcutWriteCountForTests++;
+    var markerPath = GetShortcutMarkerPath(root);
+    var markerDir = Path.GetDirectoryName(markerPath);
+    if (!string.IsNullOrEmpty(markerDir))
+      Directory.CreateDirectory(markerDir);
+    File.WriteAllText(markerPath, DateTime.UtcNow.ToString("o"));
   }
 }
 

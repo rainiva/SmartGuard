@@ -15,6 +15,7 @@ public sealed class TrayApplicationContext : ApplicationContext
   private readonly ToolStripMenuItem _pauseItem;
   private readonly System.Windows.Forms.Timer _timer;
   private readonly TrayNotificationPresenter _notificationPresenter;
+  private readonly TrayDisplaySettingsCache _displaySettingsCache;
   private readonly Control _invokeSink;
   private readonly StatusFileWatcher _statusWatcher;
   private string? _lastNotifiedEventId;
@@ -30,6 +31,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     _statusStore = new StatusStore(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
     _notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
+    _displaySettingsCache = new TrayDisplaySettingsCache(_configRepository, root);
 
     _notifyIcon = new NotifyIcon
     {
@@ -195,8 +197,7 @@ public sealed class TrayApplicationContext : ApplicationContext
       _missedStatusReads = 0;
     }
 
-    var config = _configRepository.LoadOrDefault(_root);
-    var notifyOnPlanChange = config.NotifyOnPlanChange;
+    var notifyOnPlanChange = _displaySettingsCache.NotifyOnPlanChange;
     _notifyIcon.Text = TrayStatusFormatter.FormatTooltip(status);
     _statusItem.Text = TrayStatusFormatter.FormatStatusLine(status);
     TryShowNotification(status, notifyOnPlanChange);
