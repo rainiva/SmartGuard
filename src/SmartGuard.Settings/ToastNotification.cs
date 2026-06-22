@@ -37,7 +37,7 @@ public sealed class InlineToastNotification : IToastWindow
         {
             Text = iconGlyph,
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 14,
+            FontSize = ToastLayoutMetrics.InlineIconFontSize,
             Foreground = iconForeground,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center
@@ -45,9 +45,9 @@ public sealed class InlineToastNotification : IToastWindow
 
         var iconCircle = new Border
         {
-            Width = 28,
-            Height = 28,
-            CornerRadius = new CornerRadius(14),
+            Width = ToastLayoutMetrics.InlineIconSize,
+            Height = ToastLayoutMetrics.InlineIconSize,
+            CornerRadius = new CornerRadius(ToastLayoutMetrics.InlineIconSize / 2),
             Background = iconBackground,
             Child = iconText,
             VerticalAlignment = VerticalAlignment.Center,
@@ -57,7 +57,7 @@ public sealed class InlineToastNotification : IToastWindow
         var text = new TextBlock
         {
             Text = message,
-            FontSize = 14,
+            FontSize = ToastLayoutMetrics.InlineFontSize,
             FontWeight = FontWeights.Medium,
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
             Foreground = textForeground,
@@ -82,9 +82,13 @@ public sealed class InlineToastNotification : IToastWindow
             Background = cardBackground,
             BorderBrush = cardBorder,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(14, 12, 18, 12),
-            Margin = new Thickness(8),
+            CornerRadius = new CornerRadius(ToastLayoutMetrics.InlineCornerRadius),
+            Padding = new Thickness(
+                ToastLayoutMetrics.InlinePaddingHorizontal,
+                ToastLayoutMetrics.InlinePaddingVertical,
+                ToastLayoutMetrics.InlinePaddingHorizontal + 4,
+                ToastLayoutMetrics.InlinePaddingVertical),
+            Margin = new Thickness(ToastLayoutMetrics.InlineOuterMargin),
             Child = content
         };
 
@@ -217,16 +221,16 @@ public sealed class ToastNotification : IToastWindow
         {
             Text = iconGlyph,
             FontFamily = new FontFamily("Segoe MDL2 Assets"),
-            FontSize = 16,
+            FontSize = ToastLayoutMetrics.FloatingIconFontSize,
             Foreground = foreground,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0)
+            Margin = new Thickness(0, 0, 8, 0)
         };
 
         var text = new TextBlock
         {
             Text = message,
-            FontSize = 13,
+            FontSize = ToastLayoutMetrics.FloatingFontSize,
             FontWeight = FontWeights.Medium,
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
             Foreground = foreground,
@@ -251,9 +255,13 @@ public sealed class ToastNotification : IToastWindow
             Background = background,
             BorderBrush = borderBrush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(16, 12, 16, 12),
-            Margin = new Thickness(10),
+            CornerRadius = new CornerRadius(ToastLayoutMetrics.FloatingCornerRadius),
+            Padding = new Thickness(
+                ToastLayoutMetrics.FloatingPaddingHorizontal,
+                ToastLayoutMetrics.FloatingPaddingVertical,
+                ToastLayoutMetrics.FloatingPaddingHorizontal,
+                ToastLayoutMetrics.FloatingPaddingVertical),
+            Margin = new Thickness(8),
             Effect = new DropShadowEffect
             {
                 Color = Colors.Black,

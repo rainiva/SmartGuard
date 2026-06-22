@@ -73,10 +73,8 @@ public class SettingsContentLayoutTests
         var xaml = File.ReadAllText(RepoXamlPath());
 
         xaml.Should().MatchRegex(
-            "x:Name=\"logViewportBorder\"[\\s\\S]{0,420}x:Name=\"logScrollViewer\"",
-            "log viewport border should wrap the scroll viewer so the frame stays fixed");
-        xaml.Should().NotMatchRegex(
-            "x:Name=\"logScrollViewer\"[\\s\\S]{0,420}Border[\\s\\S]{0,420}x:Name=\"txtLogView\"",
-            "log border must not scroll with log text");
+            "x:Name=\"logViewportBorder\"[\\s\\S]{0,420}x:Name=\"lstLogView\"",
+            "log viewport border should wrap the virtualized log list so the frame stays fixed");
+        xaml.Should().Contain("VirtualizingPanel.IsVirtualizing=\"True\"");
     }
 }

@@ -1009,7 +1009,7 @@
               <TextBlock Text="实时日志" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
               <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
 
-              <!-- Search Bar -->
+              <!-- Search Bar with tag filter chips -->
               <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
                 <Grid>
                   <Grid.ColumnDefinitions>
@@ -1017,7 +1017,7 @@
                     <ColumnDefinition Width="*"/>
                   </Grid.ColumnDefinitions>
                   <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                  <TextBox x:Name="txtLogSearch" Grid.Column="1" Style="{StaticResource SettingsTextBoxBorderless}" Padding="0" FontSize="13" Text=""/>
+                  <ContentControl x:Name="logSearchFilterHost" Grid.Column="1" VerticalAlignment="Center"/>
                 </Grid>
               </Border>
 
@@ -1031,11 +1031,8 @@
                       Margin="0,0,0,12">
                 <StackPanel>
                   <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,8">
-                    <TextBlock Text="级别" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
-                    <CheckBox x:Name="chkInfo" Content="INFO" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,12,6"/>
-                    <CheckBox x:Name="chkWarn" Content="WARN" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,12,6"/>
-                    <CheckBox x:Name="chkError" Content="ERROR" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,12,6"/>
-                    <CheckBox x:Name="chkHeart" Content="HEART" IsChecked="False" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,0,6"/>
+                    <TextBlock Text="标签" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                    <WrapPanel x:Name="logTagFilterLinksPanel"/>
                   </WrapPanel>
 
                   <WrapPanel x:Name="logFilterTimePanel">
@@ -1090,23 +1087,18 @@
                     CornerRadius="4"
                     ClipToBounds="True"
                     VerticalAlignment="Stretch">
-              <ScrollViewer x:Name="logScrollViewer"
-                            Style="{StaticResource SettingsScrollViewer}"
-                            local:ScrollBarAutoHide.IsEnabled="True"
-                            VerticalAlignment="Stretch"
-                            HorizontalScrollBarVisibility="Auto">
-                <RichTextBox x:Name="txtLogView"
-                             IsReadOnly="True"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Padding="12"
-                             FontFamily="Consolas, Microsoft YaHei Mono"
-                             FontSize="12"
-                             VerticalScrollBarVisibility="Disabled"
-                             HorizontalScrollBarVisibility="Disabled">
-                  <FlowDocument PageWidth="100000" PagePadding="0"/>
-                </RichTextBox>
-              </ScrollViewer>
+              <ListBox x:Name="lstLogView"
+                       VirtualizingPanel.IsVirtualizing="True"
+                       VirtualizingPanel.VirtualizationMode="Recycling"
+                       ScrollViewer.CanContentScroll="True"
+                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto"
+                       BorderThickness="0"
+                       Background="Transparent"
+                       Padding="12"
+                       FontFamily="Consolas, Microsoft YaHei Mono"
+                       FontSize="12"
+                       VerticalAlignment="Stretch"/>
             </Border>
 
             <!-- Status Bar (outside scrollable area, stays visible) -->

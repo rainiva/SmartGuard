@@ -46,13 +46,14 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
-    public void LogViewController_filters_by_tag()
+    public void LogViewController_filters_by_active_tag()
     {
         File.WriteAllText(_logPath, "2026-06-19 10:00:00 system started\n2026-06-19 10:01:00 ERROR: disk full\n2026-06-19 10:02:00 WARN: memory low\n2026-06-19 10:03:00 [监控中] monitoring\n");
 
-        var controller = new LogViewController(_logPath, _fallbackPath);
-        controller.ShowInfo = false;
-        controller.ShowHeart = false;
+        var controller = new LogViewController(_logPath, _fallbackPath)
+        {
+            ActiveTagFilters = ["ERROR", "WARN"],
+        };
         var lines = controller.GetFilteredLines();
 
         lines.Should().HaveCount(2);
@@ -95,6 +96,23 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
+    public void GetSnapshot_truncates_display_lines_for_large_result_sets()
+    {
+        var builder = new System.Text.StringBuilder();
+        for (var i = 0; i < 3000; i++)
+            builder.AppendLine($"[INFO] 2026-06-19 10:00:{i % 60:D2} line {i}");
+
+        File.WriteAllText(_logPath, builder.ToString());
+
+        var controller = new LogViewController(_logPath, _fallbackPath);
+        var snapshot = controller.GetSnapshot();
+
+        snapshot.FilteredLines.Count.Should().Be(LogViewDisplaySlice.DefaultMaxLines);
+        snapshot.IsDisplayTruncated.Should().BeTrue();
+        snapshot.MatchedLineCount.Should().Be(3000);
+    }
+
+    [Fact]
     public void RefreshFromDisk_marks_content_changed_only_when_file_grows()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 first line\n");
@@ -106,6 +124,52 @@ public class LogViewControllerTests : IDisposable
         File.AppendAllText(_logPath, "[INFO] 2026-06-19 10:01:00 second line\n");
         controller.RefreshFromDisk();
         controller.GetSnapshot().ContentChanged.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RefreshFromDisk_skips_read_when_file_length_unchanged()
+    {
+        File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 first line\n");
+
+        var controller = new LogViewController(_logPath, _fallbackPath);
+        controller.RefreshFromDisk();
+        LogTailReaderTestMetrics.Reset();
+
+        controller.RefreshFromDisk();
+
+        LogTailReaderTestMetrics.ReadFromOffsetCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Constructor_does_not_read_log_file_on_creation()
+    {
+        File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 first line\n");
+        LogTailReaderTestMetrics.Reset();
+
+        _ = new LogViewController(_logPath, _fallbackPath);
+
+        LogTailReaderTestMetrics.ReadFromOffsetCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void RefreshFromDisk_trims_cached_text_when_append_exceeds_limit()
+    {
+        File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 seed line\n");
+
+        var controller = new LogViewController(_logPath, _fallbackPath);
+        controller.GetFilteredLines();
+
+        for (var i = 0; i < 400; i++)
+        {
+            File.AppendAllText(
+                _logPath,
+                $"[INFO] 2026-06-19 10:{i % 60:D2}:{i % 60:D2} padded line {i} {new string('x', 900)}\n");
+            controller.RefreshFromDisk();
+        }
+
+        controller.CachedTextLengthForTests.Should().BeLessThanOrEqualTo(LogViewCachedTextTrimmer.DefaultMaxCachedBytes);
+        controller.GetFilteredLines().Should().Contain(line => line.Contains("padded line 399"));
+        controller.GetFilteredLines().Should().NotContain(line => line.Contains("seed line"));
     }
 
     [Fact]
@@ -139,17 +203,16 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
-    public void GetSnapshot_reports_empty_state_when_all_level_filters_are_off()
+    public void GetSnapshot_reports_empty_state_when_tag_filter_has_no_matches()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 ok\n");
 
-        var controller = new LogViewController(_logPath, _fallbackPath);
-        controller.ShowInfo = false;
-        controller.ShowWarn = false;
-        controller.ShowError = false;
-        controller.ShowHeart = false;
+        var controller = new LogViewController(_logPath, _fallbackPath)
+        {
+            ActiveTagFilters = ["ERROR"],
+        };
 
-        controller.GetSnapshot().EmptyStateMessage.Should().Be("请至少选择一种日志级别");
+        controller.GetSnapshot().EmptyStateMessage.Should().Be("无匹配结果");
     }
 
     [Fact]

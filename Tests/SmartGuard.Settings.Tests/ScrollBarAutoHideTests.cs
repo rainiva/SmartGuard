@@ -9,13 +9,13 @@ namespace SmartGuard.Settings.Tests;
 public class ScrollBarAutoHideTests
 {
     [Fact]
-    public void Log_scroll_viewer_enables_auto_hide_scrollbars_in_xaml()
+    public void Log_list_enables_virtualization_in_xaml()
     {
         var xaml = ReadSettingsXaml();
 
-        xaml.Should().MatchRegex(
-            "x:Name=\"logScrollViewer\"[\\s\\S]{0,260}ScrollBarAutoHide\\.IsEnabled=\"True\"",
-            "log viewer should hide scrollbars until the user scrolls");
+        xaml.Should().Contain("x:Name=\"lstLogView\"");
+        xaml.Should().Contain("VirtualizingPanel.IsVirtualizing=\"True\"");
+        xaml.Should().Contain("VirtualizingPanel.VirtualizationMode=\"Recycling\"");
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class ScrollBarAutoHideTests
     {
         var window = (Window)Application.LoadComponent(
             new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
-        var styled = window.FindName("logScrollViewer") as ScrollViewer;
+        var styled = window.FindName("contentScrollViewer") as ScrollViewer;
         styled.Should().NotBeNull();
 
         var scrollViewer = new ScrollViewer

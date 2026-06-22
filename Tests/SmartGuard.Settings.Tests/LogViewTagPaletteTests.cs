@@ -38,9 +38,46 @@ public class LogViewTagPaletteTests
     [Fact]
     public void GetTagBrush_RAW_uses_neutral_gray()
     {
+        LogViewTagPalette.ConfigureForDarkMode(false);
+
         var brush = LogViewTagPalette.GetTagBrush("RAW");
         brush.Color.R.Should().Be(120);
         brush.Color.G.Should().Be(120);
         brush.Color.B.Should().Be(120);
+    }
+
+    [Fact]
+    public void GetTagBrush_reuses_cached_instance_for_same_tag()
+    {
+        LogViewTagPalette.ConfigureForDarkMode(false);
+
+        var first = LogViewTagPalette.GetTagBrush("INFO");
+        var second = LogViewTagPalette.GetTagBrush("INFO");
+
+        ReferenceEquals(first, second).Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetBodyBrush_reuses_cached_instance()
+    {
+        LogViewTagPalette.ConfigureForDarkMode(false);
+
+        var first = LogViewTagPalette.GetBodyBrush();
+        var second = LogViewTagPalette.GetBodyBrush();
+
+        ReferenceEquals(first, second).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ConfigureForDarkMode_rebuilds_cached_brushes()
+    {
+        LogViewTagPalette.ConfigureForDarkMode(false);
+        var light = LogViewTagPalette.GetTagBrush("RAW");
+
+        LogViewTagPalette.ConfigureForDarkMode(true);
+        var dark = LogViewTagPalette.GetTagBrush("RAW");
+
+        ReferenceEquals(light, dark).Should().BeFalse();
+        dark.Color.R.Should().Be(0xA8);
     }
 }

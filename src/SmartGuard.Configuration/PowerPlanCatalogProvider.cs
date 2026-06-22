@@ -17,18 +17,34 @@ public static class PowerPlanCatalogProvider
     PowerSaverPlanGuid,
   ];
 
+  private static IReadOnlyDictionary<Guid, string>? _sessionCache;
+
+  internal static Func<IReadOnlyDictionary<Guid, string>>? LoadImplementationForTests;
+
   public static IReadOnlyDictionary<Guid, string> TryLoad()
   {
+    if (_sessionCache is not null)
+      return _sessionCache;
+
     try
     {
-      var catalog = PowerPlanCatalogParser.ParseList(RunPowerCfg("/list"));
-      EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
-      return catalog;
+      _sessionCache = LoadImplementationForTests?.Invoke() ?? LoadCore();
+      return _sessionCache;
     }
     catch
     {
-      return new Dictionary<Guid, string>();
+      _sessionCache = new Dictionary<Guid, string>();
+      return _sessionCache;
     }
+  }
+
+  public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
+    => Task.Run(TryLoad, cancellationToken);
+
+  internal static void ClearSessionCacheForTests()
+  {
+    _sessionCache = null;
+    LoadImplementationForTests = null;
   }
 
   public static void EnrichWithHiddenSchemes(
@@ -46,50 +62,29 @@ public static class PowerPlanCatalogProvider
     }
   }
 
+  private static IReadOnlyDictionary<Guid, string> LoadCore()
+  {
+    var catalog = PowerPlanCatalogParser.ParseList(RunPowerCfg("/list"));
+    EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
+    return catalog;
+  }
+
   private static string? TryQueryPlanName(Guid guid)
-  {
-    var output = RunPowerCfg($"/query {guid:D}");
-    if (!PowerPlanCatalogParser.TryParseQueryHeader(output, out var parsedGuid, out var name))
-      return null;
-
-    return parsedGuid == guid ? name : null;
-  }
-
-  private static string RunPowerCfg(string arguments)
-  {
-    var encoding = CreateConsoleEncoding();
-    var psi = new ProcessStartInfo("powercfg.exe", arguments)
-    {
-      RedirectStandardOutput = true,
-      RedirectStandardError = true,
-      StandardOutputEncoding = encoding,
-      StandardErrorEncoding = encoding,
-      UseShellExecute = false,
-      CreateNoWindow = true,
-    };
-
-    using var proc = Process.Start(psi);
-    if (proc is null) return string.Empty;
-
-    var output = proc.StandardOutput.ReadToEnd();
-    var error = proc.StandardError.ReadToEnd();
-    proc.WaitForExit(TimeSpan.FromSeconds(5));
-    return output + error;
-  }
-
-  private static Encoding CreateConsoleEncoding()
   {
     try
     {
-      Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-      var codePage = CultureInfo.CurrentCulture.TextInfo.OEMCodePage;
-      if (codePage > 0) return Encoding.GetEncoding(codePage);
-    }
-    catch
-    {
-      // fall back below
-    }
+      var output = RunPowerCfg($"/query {guid:D}");
+      if (!PowerPlanCatalogParser.TryParseQueryHeader(output, out var parsedGuid, out var name))
+        return null;
 
-    return Encoding.UTF8;
+      return parsedGuid == guid ? name : null;
+    }
+    catch (TimeoutException)
+    {
+      return null;
+    }
   }
+
+  private static string RunPowerCfg(string arguments)
+    => PowerCfgProcessRunner.RunPowerCfg(arguments);
 }

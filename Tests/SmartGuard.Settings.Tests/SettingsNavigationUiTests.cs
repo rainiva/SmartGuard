@@ -49,7 +49,7 @@ public class SettingsNavigationUiTests
     {
         var xaml = File.ReadAllText(RepoXamlPath());
         xaml.Should().MatchRegex(
-            "txtLogSearch[\\s\\S]{0,400}Segoe MDL2 Assets|Segoe MDL2 Assets[\\s\\S]{0,400}txtLogSearch",
+            "logSearchFilterHost[\\s\\S]{0,400}Segoe MDL2 Assets|Segoe MDL2 Assets[\\s\\S]{0,400}logSearchFilterHost",
             "log search should include a search glyph near the text box");
     }
 }

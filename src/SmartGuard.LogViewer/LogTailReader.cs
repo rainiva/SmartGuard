@@ -6,8 +6,25 @@ public sealed record LogFileSlice(long Length, string Text);
 
 public static class LogTailReader
 {
+  public static long GetFileLength(string path)
+  {
+    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+      return 0;
+
+    try
+    {
+      return new FileInfo(path).Length;
+    }
+    catch
+    {
+      return 0;
+    }
+  }
+
   public static LogFileSlice ReadFromOffset(string path, long startOffset)
   {
+    LogTailReaderTestMetrics.RecordReadFromOffset();
+
     if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
       return new LogFileSlice(0, string.Empty);
 

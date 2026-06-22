@@ -37,13 +37,13 @@ public sealed class SettingsWindowController
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private System.Windows.Threading.DispatcherTimer? _logSearchDebounceTimer;
+  private System.Windows.Threading.DispatcherTimer? _logCustomRangeDebounceTimer;
   private System.Windows.Threading.DispatcherTimer? _saveDebounceTimer;
-  private TextBox? _txtLogSearch;
-  private CheckBox? _chkInfo;
-  private CheckBox? _chkWarn;
-  private CheckBox? _chkError;
-  private CheckBox? _chkHeart;
-  private RichTextBox? _txtLogView;
+  private LogSearchFilterBar? _logSearchFilterBar;
+  private WrapPanel? _logTagFilterLinksPanel;
+  private ListBox? _lstLogView;
+  private LogViewListPresenter? _logListPresenter;
+  private IReadOnlyList<string> _lastDisplayedLines = Array.Empty<string>();
   private TextBlock? _lblLogStatus;
   private ScrollViewer? _logScrollViewer;
   private string? _logPath;
@@ -58,6 +58,7 @@ public sealed class SettingsWindowController
   private DateTime _lastUpdateCheckTime = DateTime.MinValue;
   private bool _lastUpdateCheckNoUpdate;
   private CancellationTokenSource? _saveCts;
+  private CancellationTokenSource? _planCatalogLoadCts;
   private IReadOnlyDictionary<Guid, string> _planCatalog = new Dictionary<Guid, string>();
   private bool _suppressPlanComboEvents;
 
@@ -207,11 +208,11 @@ public sealed class SettingsWindowController
     tglNotify.IsChecked = config.NotifyOnPlanChange;
     tglAutoStart.IsChecked = config.AutoStartEnabled;
 
-    controller._planCatalog = PowerPlanCatalogProvider.TryLoad();
     controller.PopulatePlanCombo(cmbActivePlan, config.ActivePlanGuid, "高性能");
     controller.PopulatePlanCombo(cmbBalancedPlan, config.BalancedPlanGuid, "平衡");
     controller.PopulatePlanCombo(cmbPowerSaverPlan, config.PowerSaverPlanGuid, "节能");
     controller.UpdatePlanMappingStatus(config);
+    controller.BeginLoadPlanCatalogAsync();
 
     // Sync displayed version with the actual assembly / installer version
     txtVersion.Text = GetDisplayVersion();
@@ -297,20 +298,20 @@ public sealed class SettingsWindowController
       btnCheckUpdate.IsEnabled = false;
       try
       {
-        await controller.CheckForUpdateAsync(window);
+        await controller.CheckForUpdateAsync(window).ConfigureAwait(true);
       }
       catch (Exception ex)
       {
-        MessageBox.Show(
-          $"检查更新时发生错误：{ex.Message}",
-          "检查更新",
-          MessageBoxButton.OK,
-          MessageBoxImage.Error);
+        window.Dispatcher.Invoke(() =>
+          AppDialog.ShowAlert(window, "检查更新", $"检查更新时发生错误：{ex.Message}", AppDialogSeverity.Error));
       }
       finally
       {
-        btnCheckUpdate.Content = "检查更新";
-        btnCheckUpdate.IsEnabled = true;
+        window.Dispatcher.Invoke(() =>
+        {
+          btnCheckUpdate.Content = "检查更新";
+          btnCheckUpdate.IsEnabled = true;
+        });
       }
     };
 
@@ -327,14 +328,20 @@ public sealed class SettingsWindowController
       controller._logPath = logPath;
       controller._fallbackLogPath = fallbackLogPath;
       controller._logController = logController;
-      controller._txtLogSearch = Require<TextBox>(window, "txtLogSearch");
-      controller._chkInfo = Require<CheckBox>(window, "chkInfo");
-      controller._chkWarn = Require<CheckBox>(window, "chkWarn");
-      controller._chkError = Require<CheckBox>(window, "chkError");
-      controller._chkHeart = Require<CheckBox>(window, "chkHeart");
-      controller._txtLogView = Require<RichTextBox>(window, "txtLogView");
+      controller._logSearchFilterBar = new LogSearchFilterBar();
+      var logSearchFilterHost = Require<ContentControl>(window, "logSearchFilterHost");
+      logSearchFilterHost.Content = controller._logSearchFilterBar;
+      controller._logTagFilterLinksPanel = Require<WrapPanel>(window, "logTagFilterLinksPanel");
+      foreach (var tag in LogTagFilterCatalog.SelectableTags)
+      {
+        controller._logTagFilterLinksPanel.Children.Add(
+          LogTagFilterLinkFactory.CreateClickableTag(tag, controller.AddLogTagFilter));
+      }
+      controller._lstLogView = Require<ListBox>(window, "lstLogView");
+      controller._logListPresenter = new LogViewListPresenter();
+      controller._logListPresenter.Attach(controller._lstLogView);
       controller._lblLogStatus = Require<TextBlock>(window, "lblLogStatus");
-      controller._logScrollViewer = window.FindName("logScrollViewer") as ScrollViewer;
+      controller._lstLogView.Loaded += (_, _) => controller.EnsureLogScrollViewerHooked();
       controller._chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
       controller._cmbLogTimeRange = window.FindName("cmbLogTimeRange") as ComboBox;
       controller._panelLogCustomRange = window.FindName("panelLogCustomRange") as UIElement;
@@ -363,28 +370,9 @@ public sealed class SettingsWindowController
         controller._chkLogFollowTail.Unchecked += (_, _) => controller.SetFollowTail(false);
       }
 
-      if (controller._logScrollViewer is not null)
-      {
-        controller._logScrollViewer.ScrollChanged += (_, _) =>
-        {
-          if (controller._logController is null || controller._logScrollViewer is null)
-            return;
-          if (controller._suppressFollowTailAutoSync)
-            return;
-          controller._logController.FollowTail = LogViewScrollState.IsAtTail(controller._logScrollViewer);
-          controller.SyncFollowTailToggle();
-        };
-      }
+      controller.EnsureLogScrollViewerHooked();
 
-      controller._txtLogSearch.TextChanged += (_, _) => controller.QueueLogSearchRefresh();
-      controller._chkInfo.Checked += (_, _) => controller.RefreshLogView();
-      controller._chkInfo.Unchecked += (_, _) => controller.RefreshLogView();
-      controller._chkWarn.Checked += (_, _) => controller.RefreshLogView();
-      controller._chkWarn.Unchecked += (_, _) => controller.RefreshLogView();
-      controller._chkError.Checked += (_, _) => controller.RefreshLogView();
-      controller._chkError.Unchecked += (_, _) => controller.RefreshLogView();
-      controller._chkHeart.Checked += (_, _) => controller.RefreshLogView();
-      controller._chkHeart.Unchecked += (_, _) => controller.RefreshLogView();
+      controller._logSearchFilterBar.FiltersChanged += (_, _) => controller.QueueLogSearchRefresh();
       if (controller._cmbLogTimeRange is not null)
         controller._cmbLogTimeRange.SelectionChanged += (_, _) =>
         {
@@ -392,9 +380,9 @@ public sealed class SettingsWindowController
           controller.RefreshLogView();
         };
       if (controller._txtLogRangeStart is not null)
-        controller._txtLogRangeStart.TextChanged += (_, _) => controller.RefreshLogView();
+        controller._txtLogRangeStart.TextChanged += (_, _) => controller.QueueLogCustomRangeRefresh();
       if (controller._txtLogRangeEnd is not null)
-        controller._txtLogRangeEnd.TextChanged += (_, _) => controller.RefreshLogView();
+        controller._txtLogRangeEnd.TextChanged += (_, _) => controller.QueueLogCustomRangeRefresh();
       if (controller._chkLogSearchCaseSensitive is not null)
       {
         controller._chkLogSearchCaseSensitive.Checked += (_, _) => controller.RefreshLogView();
@@ -524,50 +512,83 @@ public sealed class SettingsWindowController
 
   private void RefreshLogView(bool forceRedraw = false)
   {
-    if (_logController is null || _txtLogView is null || _lblLogStatus is null) return;
+    if (_logController is null || _logListPresenter is null || _lblLogStatus is null) return;
 
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
 
-    var displayText = string.Join(Environment.NewLine, snapshot.DisplayLines);
-    var currentText = LogViewRichTextRenderer.GetPlainText(_txtLogView);
     var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now);
+    var plan = LogViewUpdatePlanner.CreatePlan(_lastDisplayedLines, snapshot.DisplayLines, forceRedraw);
 
-    if (!forceRedraw && !snapshot.ContentChanged && displayText == currentText)
+    if (!forceRedraw && !snapshot.ContentChanged && plan.Mode == LogViewUpdateMode.NoChange)
     {
       _lblLogStatus.Text = statusText;
       return;
     }
 
-    var savedOffset = _logScrollViewer?.VerticalOffset ?? 0;
-    var wasAtTail = _logScrollViewer is null || LogViewScrollState.IsAtTail(_logScrollViewer);
+    var scrollViewer = ResolveLogScrollViewer();
+    var savedOffset = scrollViewer?.VerticalOffset ?? 0;
+    var wasAtTail = scrollViewer is null || LogViewScrollState.IsAtTail(scrollViewer);
     var scrollToTail = _logController.FollowTail && wasAtTail;
 
-    LogViewRichTextRenderer.SetLines(_txtLogView, snapshot.DisplayLines);
+    _logListPresenter.Apply(plan);
+    _lastDisplayedLines = snapshot.DisplayLines.ToArray();
     _lblLogStatus.Text = statusText;
 
+    if (scrollViewer is null)
+      return;
+
+    scrollViewer.UpdateLayout();
+    if (scrollToTail)
+      scrollViewer.ScrollToEnd();
+    else if (!wasAtTail)
+      scrollViewer.ScrollToVerticalOffset(savedOffset);
+  }
+
+  private bool _logScrollHooked;
+
+  internal void EnsureLogScrollViewerHooked()
+  {
+    if (_lstLogView is null || _logScrollHooked)
+      return;
+
+    _logListPresenter?.EnsureScrollViewerResolved();
+    _logScrollViewer = _logListPresenter?.ScrollViewer ?? LogViewListPresenter.FindScrollViewer(_lstLogView);
     if (_logScrollViewer is null)
       return;
 
-    _logScrollViewer.UpdateLayout();
-    LogViewRichTextRenderer.SynchronizeViewport(_txtLogView, _logScrollViewer.ViewportWidth);
-    _logScrollViewer.UpdateLayout();
-    ScrollBarAutoHide.NotifyContentChanged(_logScrollViewer);
-    if (scrollToTail)
-      _logScrollViewer.ScrollToEnd();
-    else if (!wasAtTail)
-      _logScrollViewer.ScrollToVerticalOffset(savedOffset);
+    ScrollBarAutoHide.Attach(_logScrollViewer);
+    _logScrollViewer.ScrollChanged += (_, _) =>
+    {
+      if (_logController is null || _logScrollViewer is null)
+        return;
+      if (_suppressFollowTailAutoSync)
+        return;
+      _logController.FollowTail = LogViewScrollState.IsAtTail(_logScrollViewer);
+      SyncFollowTailToggle();
+    };
+    _logScrollHooked = true;
+  }
+
+  private ScrollViewer? ResolveLogScrollViewer()
+  {
+    if (_logScrollViewer is not null)
+      return _logScrollViewer;
+
+    if (_lstLogView is null)
+      return null;
+
+    _logListPresenter?.EnsureScrollViewerResolved();
+    _logScrollViewer = _logListPresenter?.ScrollViewer ?? LogViewListPresenter.FindScrollViewer(_lstLogView);
+    return _logScrollViewer;
   }
 
   private LogViewSnapshot? BuildLogSnapshot()
   {
     if (_logController is null) return null;
 
-    _logController.SearchKeyword = _txtLogSearch?.Text ?? string.Empty;
-    _logController.ShowInfo = _chkInfo?.IsChecked == true;
-    _logController.ShowWarn = _chkWarn?.IsChecked == true;
-    _logController.ShowError = _chkError?.IsChecked == true;
-    _logController.ShowHeart = _chkHeart?.IsChecked == true;
+    _logController.SearchKeyword = _logSearchFilterBar?.Keyword ?? string.Empty;
+    _logController.ActiveTagFilters = _logSearchFilterBar?.ActiveTags ?? [];
     _logController.SearchCaseSensitive = _chkLogSearchCaseSensitive?.IsChecked == true;
     _logController.TimeRange = ReadTimeRange(_cmbLogTimeRange);
     _logController.CustomRangeStart = TryReadCustomRangeStart();
@@ -614,6 +635,7 @@ public sealed class SettingsWindowController
   internal void ForceRefreshLogView()
   {
     _logController?.ForceRefresh();
+    _lastDisplayedLines = Array.Empty<string>();
     RefreshLogView(forceRedraw: true);
   }
 
@@ -692,11 +714,11 @@ public sealed class SettingsWindowController
       if (_logController is not null)
         _logController.FollowTail = false;
       SyncFollowTailToggle();
-      _logScrollViewer?.ScrollToVerticalOffset(0);
+      ResolveLogScrollViewer()?.ScrollToVerticalOffset(0);
     }
     finally
     {
-      _suppressFollowTailAutoSync = false;
+      ReleaseFollowTailAutoSyncSuppression();
     }
   }
 
@@ -705,15 +727,22 @@ public sealed class SettingsWindowController
     _suppressFollowTailAutoSync = true;
     try
     {
-      _logScrollViewer?.ScrollToEnd();
+      ResolveLogScrollViewer()?.ScrollToEnd();
       if (_logController is not null && _chkLogFollowTail?.IsChecked != true)
         _logController.FollowTail = false;
       SyncFollowTailToggle();
     }
     finally
     {
-      _suppressFollowTailAutoSync = false;
+      ReleaseFollowTailAutoSyncSuppression();
     }
+  }
+
+  private void ReleaseFollowTailAutoSyncSuppression()
+  {
+    _window.Dispatcher.BeginInvoke(
+      () => _suppressFollowTailAutoSync = false,
+      System.Windows.Threading.DispatcherPriority.ApplicationIdle);
   }
 
   private void SetFollowTail(bool enabled)
@@ -751,6 +780,66 @@ public sealed class SettingsWindowController
 
     _logSearchDebounceTimer.Stop();
     _logSearchDebounceTimer.Start();
+  }
+
+  private void QueueLogCustomRangeRefresh()
+  {
+    if (_logCustomRangeDebounceTimer is null)
+    {
+      _logCustomRangeDebounceTimer = new System.Windows.Threading.DispatcherTimer(
+        System.Windows.Threading.DispatcherPriority.Background,
+        _window.Dispatcher)
+      {
+        Interval = TimeSpan.FromMilliseconds(300),
+      };
+      _logCustomRangeDebounceTimer.Tick += (_, _) =>
+      {
+        _logCustomRangeDebounceTimer.Stop();
+        RefreshLogView();
+      };
+    }
+
+    _logCustomRangeDebounceTimer.Stop();
+    _logCustomRangeDebounceTimer.Start();
+  }
+
+  internal void BeginLoadPlanCatalogAsync()
+  {
+    _planCatalogLoadCts?.Cancel();
+    _planCatalogLoadCts?.Dispose();
+    _planCatalogLoadCts = new CancellationTokenSource();
+    var token = _planCatalogLoadCts.Token;
+    _ = LoadPlanCatalogAsync(token);
+  }
+
+  private async Task LoadPlanCatalogAsync(CancellationToken token)
+  {
+    try
+    {
+      var catalog = await PowerPlanCatalogProvider.LoadAsync(token).ConfigureAwait(true);
+      if (token.IsCancellationRequested)
+        return;
+
+      _planCatalog = catalog;
+      RepopulatePlanCombos();
+      UpdatePlanMappingStatus(_originalConfig);
+    }
+    catch (OperationCanceledException)
+    {
+      // ignore stale catalog loads
+    }
+  }
+
+  private void RepopulatePlanCombos()
+  {
+    PopulatePlanCombo(_cmbActivePlan, ReadSelectedPlanGuid(_cmbActivePlan), "高性能");
+    PopulatePlanCombo(_cmbBalancedPlan, ReadSelectedPlanGuid(_cmbBalancedPlan), "平衡");
+    PopulatePlanCombo(_cmbPowerSaverPlan, ReadSelectedPlanGuid(_cmbPowerSaverPlan), "节能");
+  }
+
+  internal void AddLogTagFilter(string tag)
+  {
+    _logSearchFilterBar?.AddTagFilter(tag);
   }
 
   public void SetLogPageActive(bool active)
@@ -798,9 +887,12 @@ public sealed class SettingsWindowController
     _saveDebounceTimer?.Stop();
     _logTimer?.Stop();
     _logSearchDebounceTimer?.Stop();
+    _logCustomRangeDebounceTimer?.Stop();
     _layoutStabilityTimer?.Stop();
     _saveCts?.Cancel();
     _saveCts?.Dispose();
+    _planCatalogLoadCts?.Cancel();
+    _planCatalogLoadCts?.Dispose();
     _toastService?.Dispose();
   }
 
@@ -1122,12 +1214,11 @@ public sealed class SettingsWindowController
 
   private void ResetToDefaults()
   {
-    var result = MessageBox.Show(
-      "将把守护策略恢复为默认值。\n\n日志文件路径与 GitHub Token 会保留，手动高性能接管会被清除。",
-      "恢复默认策略？",
-      MessageBoxButton.YesNo,
-      MessageBoxImage.Warning);
-    if (result != MessageBoxResult.Yes)
+    if (!AppDialog.ShowConfirm(
+          _window,
+          "恢复默认策略？",
+          "将把守护策略恢复为默认值。\n\n日志文件路径与 GitHub Token 会保留，手动高性能接管会被清除。",
+          AppDialogSeverity.Warning))
       return;
 
     try
@@ -1148,41 +1239,49 @@ public sealed class SettingsWindowController
   {
     var cts = new CancellationTokenSource();
 
-    var grid = new Grid { Margin = new Thickness(20) };
-    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-    grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) });
-    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
     var statusText = new TextBlock
     {
       Text = "正在下载更新...",
-      FontSize = 13,
-      Foreground = new SolidColorBrush(System.Windows.Media.Colors.Black)
+      FontSize = 14,
+      Foreground = new SolidColorBrush(System.Windows.Media.Colors.Black),
+      Margin = new Thickness(0, 0, 0, 12),
     };
-    Grid.SetRow(statusText, 0);
 
     var progressBar = new ProgressBar
     {
       Minimum = 0,
       Maximum = 100,
-      Height = 18,
-      IsIndeterminate = false
+      Height = 6,
+      IsIndeterminate = false,
     };
-    Grid.SetRow(progressBar, 2);
 
-    grid.Children.Add(statusText);
-    grid.Children.Add(progressBar);
+    var content = new StackPanel();
+    content.Children.Add(statusText);
+    content.Children.Add(progressBar);
+
+    var surface = new Border
+    {
+      Background = new SolidColorBrush(System.Windows.Media.Colors.White),
+      BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE5, 0xE5, 0xE5)),
+      BorderThickness = new Thickness(1),
+      CornerRadius = new CornerRadius(20),
+      Padding = new Thickness(24, 20, 24, 20),
+      MinWidth = 320,
+      Child = content,
+    };
 
     var window = new Window
     {
-      Title = "下载更新",
-      Width = 360,
-      Height = 130,
+      Title = string.Empty,
+      WindowStyle = WindowStyle.None,
+      AllowsTransparency = true,
+      Background = Brushes.Transparent,
+      SizeToContent = SizeToContent.WidthAndHeight,
       WindowStartupLocation = WindowStartupLocation.CenterOwner,
       Owner = owner,
       ResizeMode = ResizeMode.NoResize,
-      Content = grid,
-      Background = new SolidColorBrush(System.Windows.Media.Colors.White)
+      ShowInTaskbar = false,
+      Content = surface,
     };
 
     window.Closing += (_, _) =>
@@ -1194,6 +1293,16 @@ public sealed class SettingsWindowController
     return (window, progressBar, statusText, cts);
   }
 
+  private static void ShowUpdateAlert(Window owner, string message, AppDialogSeverity severity)
+  {
+    owner.Dispatcher.Invoke(() => AppDialog.ShowAlert(owner, "检查更新", message, severity));
+  }
+
+  private static bool ShowUpdateConfirm(Window owner, string title, string message, AppDialogSeverity severity)
+  {
+    return owner.Dispatcher.Invoke(() => AppDialog.ShowConfirm(owner, title, message, severity));
+  }
+
   private async Task CheckForUpdateAsync(Window owner)
   {
     const string repoOwner = "rainiva";
@@ -1203,11 +1312,7 @@ public sealed class SettingsWindowController
     // Cache "no update" results for 5 minutes to avoid GitHub API rate limits.
     if (_lastUpdateCheckNoUpdate && DateTime.Now - _lastUpdateCheckTime < TimeSpan.FromMinutes(5))
     {
-      MessageBox.Show(
-        "当前已是最新版本。",
-        "检查更新",
-        MessageBoxButton.OK,
-        MessageBoxImage.Information);
+      ShowUpdateAlert(owner, "当前已是最新版本。", AppDialogSeverity.Information);
       return;
     }
 
@@ -1267,23 +1372,18 @@ public sealed class SettingsWindowController
       var latestVersionString = tagName.TrimStart('v', 'V');
       if (!Version.TryParse(latestVersionString, out var latestVersion))
       {
-        MessageBox.Show(
-          "无法解析最新版本号。",
-          "检查更新",
-          MessageBoxButton.OK,
-          MessageBoxImage.Warning);
+        ShowUpdateAlert(owner, "无法解析最新版本号。", AppDialogSeverity.Warning);
         return;
       }
 
       var comparison = currentVersion.CompareTo(latestVersion);
       if (comparison < 0)
       {
-        var result = MessageBox.Show(
-          $"发现新版本：{latestVersion}\n当前版本：{currentVersion}\n\n是否下载并安装更新？",
-          "发现新版本",
-          MessageBoxButton.YesNo,
-          MessageBoxImage.Information);
-        if (result == MessageBoxResult.Yes)
+        if (ShowUpdateConfirm(
+              owner,
+              "发现新版本",
+              $"发现新版本：{latestVersion}\n当前版本：{currentVersion}\n\n是否下载并安装更新？",
+              AppDialogSeverity.Information))
         {
           var asset = UpdateInstallerLauncher.ResolveAsset(doc.RootElement, latestVersion);
           if (string.IsNullOrEmpty(asset.AssetName) || string.IsNullOrEmpty(asset.DownloadUrl))
@@ -1343,21 +1443,13 @@ public sealed class SettingsWindowController
             progressWindow.Close();
             if (!downloadCompleted)
             {
-              MessageBox.Show(
-                "下载已取消。",
-                "检查更新",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+              ShowUpdateAlert(owner, "下载已取消。", AppDialogSeverity.Information);
             }
           }
           catch (Exception ex)
           {
             progressWindow.Close();
-            MessageBox.Show(
-              $"下载更新失败：{ex.Message}",
-              "检查更新",
-              MessageBoxButton.OK,
-              MessageBoxImage.Error);
+            ShowUpdateAlert(owner, $"下载更新失败：{ex.Message}", AppDialogSeverity.Error);
           }
         }
       }
@@ -1365,11 +1457,7 @@ public sealed class SettingsWindowController
       {
         _lastUpdateCheckNoUpdate = true;
         _lastUpdateCheckTime = DateTime.Now;
-        MessageBox.Show(
-          "当前已是最新版本。",
-          "检查更新",
-          MessageBoxButton.OK,
-          MessageBoxImage.Information);
+        ShowUpdateAlert(owner, "当前已是最新版本。", AppDialogSeverity.Information);
       }
     }
     catch (System.Net.Http.HttpRequestException ex)
@@ -1384,27 +1472,15 @@ public sealed class SettingsWindowController
         message = $"请求过于频繁，请稍后再试。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
       else
         message = $"网络连接失败，请检查网络后重试。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
-      MessageBox.Show(
-        message,
-        "检查更新",
-        MessageBoxButton.OK,
-        MessageBoxImage.Warning);
+      ShowUpdateAlert(owner, message, AppDialogSeverity.Warning);
     }
     catch (TaskCanceledException)
     {
-      MessageBox.Show(
-        "连接超时，请检查网络后重试。",
-        "检查更新",
-        MessageBoxButton.OK,
-        MessageBoxImage.Warning);
+      ShowUpdateAlert(owner, "连接超时，请检查网络后重试。", AppDialogSeverity.Warning);
     }
     catch (Exception ex)
     {
-      MessageBox.Show(
-        $"检查更新时发生错误：{ex.Message}",
-        "检查更新",
-        MessageBoxButton.OK,
-        MessageBoxImage.Error);
+      ShowUpdateAlert(owner, $"检查更新时发生错误：{ex.Message}", AppDialogSeverity.Error);
     }
   }
 }

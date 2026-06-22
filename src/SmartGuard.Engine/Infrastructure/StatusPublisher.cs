@@ -33,7 +33,6 @@ public sealed class StatusPublisher(string statusPath)
     return a.currentPlan == b.currentPlan
       && a.currentPlanGUID == b.currentPlanGUID
       && a.expectedPlan == b.expectedPlan
-      && a.idleSeconds == b.idleSeconds
       && a.isOnAC == b.isOnAC
       && a.batteryPercent == b.batteryPercent
       && a.brightness == b.brightness

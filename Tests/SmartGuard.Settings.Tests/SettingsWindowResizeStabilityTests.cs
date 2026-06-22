@@ -112,9 +112,9 @@ public class SettingsWindowResizeStabilityTests
                     pageLogs.Should().NotBeNull();
                     pageLogs!.Visibility.Should().Be(Visibility.Visible);
 
-                    var logScrollViewer = window.FindName("logScrollViewer") as ScrollViewer;
-                    logScrollViewer.Should().NotBeNull();
-                    logScrollViewer!.ActualHeight.Should().BeGreaterThan(100);
+                    var lstLogView = window.FindName("lstLogView") as ListBox;
+                    lstLogView.Should().NotBeNull();
+                    lstLogView!.ActualHeight.Should().BeGreaterThan(100);
 
                     SettingsWindowLayoutStability.StabilizeContentLayout(window);
                     SettingsWindowLayoutStability.HandleWindowStateChanged(window, isDarkTheme: false, WindowState.Maximized);
@@ -125,7 +125,7 @@ public class SettingsWindowResizeStabilityTests
                         () => { },
                         System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                    logScrollViewer.ActualHeight.Should().BeGreaterThan(100);
+                    lstLogView.ActualHeight.Should().BeGreaterThan(100);
                 }
                 finally
                 {

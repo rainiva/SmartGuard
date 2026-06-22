@@ -12,24 +12,29 @@ public sealed class LogViewController
     private string _cachedText = string.Empty;
     private bool _isTailTruncated;
     private bool _contentChanged;
+    private bool _isLoaded;
+    private IReadOnlyList<string> _activeTagFilters = [];
 
     public string SearchKeyword { get; set; } = string.Empty;
     public bool SearchCaseSensitive { get; set; }
-    public bool ShowInfo { get; set; } = true;
-    public bool ShowWarn { get; set; } = true;
-    public bool ShowError { get; set; } = true;
-    public bool ShowHeart { get; set; } = true;
+    public IReadOnlyList<string> ActiveTagFilters
+    {
+        get => _activeTagFilters;
+        set => _activeTagFilters = value?.Where(tag => !string.IsNullOrWhiteSpace(tag)).ToArray() ?? [];
+    }
+
     public bool FollowTail { get; set; } = true;
     public LogViewTimeRange TimeRange { get; set; } = LogViewTimeRange.All;
     public DateTime? CustomRangeStart { get; set; }
     public DateTime? CustomRangeEnd { get; set; }
     public Func<DateTime>? NowProvider { get; set; }
 
+    internal int CachedTextLengthForTests => _cachedText.Length;
+
     public LogViewController(string logPath, string? fallbackLogPath = null)
     {
         _logPath = logPath;
         _fallbackLogPath = fallbackLogPath;
-        ForceRefresh();
     }
 
     public void ForceRefresh()
@@ -39,14 +44,17 @@ public sealed class LogViewController
         _cachedText = LogLineDisplayFormatter.FormatText(result.Text);
         _isTailTruncated = _fileLength > DefaultMaxTailBytes;
         _contentChanged = true;
+        _isLoaded = true;
+        TrimCachedTextIfNeeded();
     }
 
     public void RefreshFromDisk()
     {
+        EnsureLoaded();
         _contentChanged = false;
 
-        var snapshot = LogTailReader.ReadFromOffset(_logPath, 0);
-        if (snapshot.Length <= 0 && string.IsNullOrEmpty(snapshot.Text))
+        var length = LogTailReader.GetFileLength(_logPath);
+        if (length <= 0)
         {
             if (!string.IsNullOrEmpty(_cachedText))
             {
@@ -63,62 +71,82 @@ public sealed class LogViewController
             return;
         }
 
-        if (_fileLength < 0 || snapshot.Length < _fileLength)
+        if (_fileLength >= 0 && length == _fileLength)
+            return;
+
+        if (_fileLength < 0 || length < _fileLength)
         {
             ForceRefresh();
             return;
         }
 
-        if (snapshot.Length > _fileLength)
+        if (length > _fileLength)
         {
             var delta = LogTailReader.ReadFromOffset(_logPath, _fileLength);
             var formattedDelta = LogLineDisplayFormatter.FormatText(
                 LogViewerDelta.PrepareForAppend(_cachedText, delta.Text));
             _cachedText += formattedDelta;
-            _fileLength = snapshot.Length;
+            _fileLength = length;
             _isTailTruncated = _fileLength > DefaultMaxTailBytes;
             _contentChanged = true;
+            TrimCachedTextIfNeeded();
         }
     }
 
     public LogViewSnapshot GetSnapshot()
     {
+        EnsureLoaded();
         var filtered = GetFilteredLines();
         var emptyStateMessage = ResolveEmptyStateMessage(filtered);
-        return new LogViewSnapshot(
+        var display = LogViewDisplaySlice.Select(
             filtered,
+            LogViewDisplaySlice.DefaultMaxLines,
+            preferTail: FollowTail);
+
+        return new LogViewSnapshot(
+            display.Lines,
             GetTotalLineCount(),
             _isTailTruncated,
             _logPath,
             _contentChanged,
             SearchKeyword,
             emptyStateMessage,
-            TimeRange);
+            TimeRange,
+            filtered.Count,
+            display.IsTruncated,
+            _activeTagFilters);
+    }
+
+    private void EnsureLoaded()
+    {
+        if (_isLoaded)
+            return;
+
+        ForceRefresh();
+    }
+
+    private void TrimCachedTextIfNeeded()
+    {
+        _cachedText = LogViewCachedTextTrimmer.TrimToMaxBytes(_cachedText);
     }
 
     private string? ResolveEmptyStateMessage(IReadOnlyList<string> filtered)
     {
-        if (!HasVisibleLevelFilter())
-            return "请至少选择一种日志级别";
-
-        if (filtered.Count == 0 && (HasActiveTimeFilter() || !string.IsNullOrWhiteSpace(SearchKeyword)))
+        if (filtered.Count == 0 && (HasActiveTimeFilter()
+                                    || !string.IsNullOrWhiteSpace(SearchKeyword)
+                                    || HasActiveTagFilter()))
             return "无匹配结果";
 
         return null;
     }
 
-    private bool HasVisibleLevelFilter()
-    {
-        return ShowInfo || ShowWarn || ShowError || ShowHeart;
-    }
+    private bool HasActiveTagFilter() => _activeTagFilters.Count > 0;
 
-    private bool HasActiveTimeFilter()
-    {
-        return TimeRange != LogViewTimeRange.All;
-    }
+    private bool HasActiveTimeFilter() => TimeRange != LogViewTimeRange.All;
 
     public IReadOnlyList<string> GetFilteredLines()
     {
+        EnsureLoaded();
         if (string.IsNullOrEmpty(_cachedText))
             return Array.Empty<string>();
 
@@ -129,12 +157,15 @@ public sealed class LogViewController
             ? StringComparison.Ordinal
             : StringComparison.OrdinalIgnoreCase;
         var now = NowProvider?.Invoke() ?? DateTime.Now;
+        var activeTags = _activeTagFilters
+            .Select(tag => tag.ToUpperInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var line in lines)
         {
             if (!LogLineTagParser.TryParse(line, out var tag, out _))
             {
-                if (HasActiveTimeFilter())
+                if (HasActiveTimeFilter() || HasActiveTagFilter())
                     continue;
 
                 var rawLine = $"[RAW] {line}";
@@ -146,7 +177,7 @@ public sealed class LogViewController
                 continue;
             }
 
-            if (!IsTagVisible(tag))
+            if (HasActiveTagFilter() && !MatchesTagFilter(tag, activeTags))
                 continue;
 
             if (!string.IsNullOrEmpty(SearchKeyword) &&
@@ -177,16 +208,12 @@ public sealed class LogViewController
         return _cachedText.Split(newline, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
-    private bool IsTagVisible(string tag)
+    private static bool MatchesTagFilter(string tag, IReadOnlySet<string> activeTags)
     {
-        return tag.ToUpperInvariant() switch
-        {
-            "INFO" => ShowInfo,
-            "WARN" => ShowWarn,
-            "ERROR" => ShowError,
-            "HEART" => ShowHeart,
-            "\u76D1\u63A7\u4E2D" => ShowHeart,
-            _ => true,
-        };
+        var normalized = tag.ToUpperInvariant();
+        if (activeTags.Contains(normalized))
+            return true;
+
+        return normalized == "\u76D1\u63A7\u4E2D" && activeTags.Contains("HEART");
     }
 }

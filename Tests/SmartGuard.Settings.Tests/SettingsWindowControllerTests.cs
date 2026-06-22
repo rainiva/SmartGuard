@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -332,21 +333,15 @@ public class SettingsWindowControllerTests
             var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
 
             var pageLogs = window.FindName("pageLogs") as Panel;
-            var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
-            var chkInfo = window.FindName("chkInfo") as CheckBox;
-            var chkWarn = window.FindName("chkWarn") as CheckBox;
-            var chkError = window.FindName("chkError") as CheckBox;
-            var chkHeart = window.FindName("chkHeart") as CheckBox;
-            var txtLogView = window.FindName("txtLogView") as RichTextBox;
+            var logSearchFilterHost = window.FindName("logSearchFilterHost") as ContentControl;
+            var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
+            var lstLogView = window.FindName("lstLogView") as ListBox;
             var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
 
             pageLogs.Should().NotBeNull();
-            txtLogSearch.Should().NotBeNull();
-            chkInfo.Should().NotBeNull();
-            chkWarn.Should().NotBeNull();
-            chkError.Should().NotBeNull();
-            chkHeart.Should().NotBeNull();
-            txtLogView.Should().NotBeNull();
+            logSearchFilterHost.Should().NotBeNull();
+            logTagFilterLinksPanel.Should().NotBeNull();
+            lstLogView.Should().NotBeNull();
             lblLogStatus.Should().NotBeNull();
             window.FindName("btnLogCopy").Should().NotBeNull();
             window.FindName("btnLogExport").Should().NotBeNull();
@@ -413,18 +408,15 @@ public class SettingsWindowControllerTests
             var xaml = File.ReadAllText(xamlPath);
             var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
 
-            var scrollViewer = window.FindName("logScrollViewer") as ScrollViewer;
-            var txtLogView = window.FindName("txtLogView") as RichTextBox;
+            var lstLogView = window.FindName("lstLogView") as ListBox;
 
-            scrollViewer.Should().NotBeNull();
-            scrollViewer!.HorizontalScrollBarVisibility.Should().Be(ScrollBarVisibility.Auto);
-            txtLogView.Should().NotBeNull();
-            txtLogView!.IsReadOnly.Should().BeTrue();
+            lstLogView.Should().NotBeNull();
+            VirtualizingPanel.GetIsVirtualizing(lstLogView!).Should().BeTrue();
         });
     }
 
     [Fact]
-    public void Log_page_heart_filter_defaults_to_off()
+    public void Log_page_exposes_clickable_tag_filter_links()
     {
         RunOnSta(() =>
         {
@@ -437,10 +429,11 @@ public class SettingsWindowControllerTests
 
             var xaml = File.ReadAllText(xamlPath);
             var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
-            var chkHeart = window.FindName("chkHeart") as CheckBox;
+            var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
 
-            chkHeart.Should().NotBeNull();
-            chkHeart!.IsChecked.Should().BeFalse();
+            logTagFilterLinksPanel.Should().NotBeNull();
+            xaml.Should().Contain("x:Name=\"logTagFilterLinksPanel\"");
+            xaml.Should().NotContain("x:Name=\"chkInfo\"");
         });
     }
 
@@ -468,14 +461,13 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
+                var filterBar = GetLogSearchFilterBar(controller!);
                 var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
 
-                txtLogSearch!.Text = "missing-term";
+                filterBar.SetKeyword("missing-term");
                 FlushLogSearchDebounce(controller!, window);
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("无匹配结果");
+                GetLogViewPlainText(controller!).Should().Contain("无匹配结果");
                 lblLogStatus!.Text.Should().Contain("匹配 0 条");
             }
             finally
@@ -486,14 +478,16 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_unchecks_all_levels_sees_prompt_message()
+    public void User_adding_tag_filter_narrows_visible_logs()
     {
         RunOnSta(() =>
         {
             var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogLevels_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempRoot);
             var logPath = Path.Combine(tempRoot, "SmartGuard.log");
-            File.WriteAllText(logPath, "[INFO] 2026-06-21 10:00:00 alpha\n");
+            File.WriteAllText(logPath,
+                "[INFO] 2026-06-21 10:00:00 alpha\n" +
+                "[ERROR] 2026-06-21 10:01:00 beta\n");
 
             try
             {
@@ -509,19 +503,16 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var chkInfo = window.FindName("chkInfo") as CheckBox;
-                var chkWarn = window.FindName("chkWarn") as CheckBox;
-                var chkError = window.FindName("chkError") as CheckBox;
-                var chkHeart = window.FindName("chkHeart") as CheckBox;
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
+                var filterBar = GetLogSearchFilterBar(controller!);
+                GetLogViewPlainText(controller!).Should().Contain("alpha");
+                GetLogViewPlainText(controller!).Should().Contain("beta");
 
-                chkInfo!.IsChecked = false;
-                chkWarn!.IsChecked = false;
-                chkError!.IsChecked = false;
-                chkHeart!.IsChecked = false;
+                filterBar.AddTagFilter("ERROR");
+                InvokeRefreshLogView(controller!);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("请至少选择一种日志级别");
+                GetLogViewPlainText(controller!).Should().Contain("beta");
+                GetLogViewPlainText(controller!).Should().NotContain("alpha");
             }
             finally
             {
@@ -554,14 +545,13 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
-                GetLogViewPlainText(txtLogView!).Should().Contain("initial entry");
+                GetLogViewPlainText(controller!).Should().Contain("initial entry");
 
                 File.WriteAllText(logPath, "[INFO] 2026-06-21 10:00:00 initial entry\n[INFO] 2026-06-21 10:01:00 refreshed entry\n");
                 ClickLogToolbarButton(window, "btnLogRefresh");
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("refreshed entry");
+                GetLogViewPlainText(controller!).Should().Contain("refreshed entry");
             }
             finally
             {
@@ -597,7 +587,7 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var scrollViewer = window.FindName("logScrollViewer") as ScrollViewer;
+                var scrollViewer = GetLogScrollViewer(window, controller!);
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
                 scrollViewer!.ScrollToVerticalOffset(0);
                 chkLogFollowTail!.IsChecked = false;
@@ -655,6 +645,105 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void TryCreate_returns_before_slow_plan_catalog_load_completes()
+    {
+        RunOnSta(() =>
+        {
+            PowerPlanCatalogProvider.ClearSessionCacheForTests();
+            PowerPlanCatalogProvider.LoadImplementationForTests = () =>
+            {
+                Thread.Sleep(500);
+                return new Dictionary<Guid, string>
+                {
+                    [Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e")] = "平衡",
+                };
+            };
+
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsPlanCatalog_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            SettingsWindowController? controller = null;
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var sw = Stopwatch.StartNew();
+                controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                sw.Stop();
+
+                controller.Should().NotBeNull();
+                sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1),
+                    "settings window should not block on synchronous powercfg catalog load");
+            }
+            finally
+            {
+                controller?.Dispose();
+                PowerPlanCatalogProvider.ClearSessionCacheForTests();
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_typing_custom_range_waits_for_debounce_before_updating_view()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogRangeDebounce_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            File.WriteAllText(
+                logPath,
+                "[INFO] 2026-06-21 10:00:00 alpha\n[INFO] 2026-06-21 11:00:00 beta\n");
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var combo = window.FindName("cmbLogTimeRange") as ComboBox;
+                combo!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var txtStart = window.FindName("txtLogRangeStart") as TextBox;
+                var txtEnd = window.FindName("txtLogRangeEnd") as TextBox;
+                txtStart!.Text = "2026-06-21 10:00:00";
+                txtEnd!.Text = "2026-06-21 11:00:00";
+                FlushLogCustomRangeDebounce(controller!, window);
+
+                GetLogViewPlainText(controller!).Should().Contain("alpha");
+                GetLogViewPlainText(controller!).Should().Contain("beta");
+
+                txtEnd.Text = "2026-06-21 10:30:00";
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                GetLogViewPlainText(controller!).Should().Contain("beta",
+                    "custom range filter should wait for debounce before refreshing");
+
+                FlushLogCustomRangeDebounce(controller!, window);
+
+                GetLogViewPlainText(controller!).Should().Contain("alpha");
+                GetLogViewPlainText(controller!).Should().NotContain("beta");
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void User_typing_search_waits_for_debounce_before_updating_view()
     {
         RunOnSta(() =>
@@ -678,21 +767,19 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
+                var filterBar = GetLogSearchFilterBar(controller!);
+                GetLogViewPlainText(controller!).Should().Contain("alpha");
+                GetLogViewPlainText(controller!).Should().Contain("beta");
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("alpha");
-                GetLogViewPlainText(txtLogView!).Should().Contain("beta");
-
-                txtLogSearch!.Text = "missing-term";
+                filterBar.SetKeyword("missing-term");
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("alpha");
-                GetLogViewPlainText(txtLogView!).Should().Contain("beta");
+                GetLogViewPlainText(controller!).Should().Contain("alpha");
+                GetLogViewPlainText(controller!).Should().Contain("beta");
 
                 FlushLogSearchDebounce(controller!, window);
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("无匹配结果");
+                GetLogViewPlainText(controller!).Should().Contain("无匹配结果");
             }
             finally
             {
@@ -923,14 +1010,11 @@ public class SettingsWindowControllerTests
                 pageLogs.Visibility.Should().Be(Visibility.Visible);
 
                 // Verify log controls are accessible
-                var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
-                var chkInfo = window.FindName("chkInfo") as CheckBox;
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
+                var filterBar = GetLogSearchFilterBar(controller);
                 var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
 
-                txtLogSearch.Should().NotBeNull();
-                chkInfo.Should().NotBeNull();
-                txtLogView.Should().NotBeNull();
+                filterBar.Should().NotBeNull();
+                window.FindName("lstLogView").Should().NotBeNull();
                 lblLogStatus.Should().NotBeNull();
             }
             finally
@@ -1037,14 +1121,13 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
-                GetLogViewPlainText(txtLogView!).Should().Contain("initial entry");
+                GetLogViewPlainText(controller!).Should().Contain("initial entry");
 
                 File.AppendAllText(logPath, "[INFO] 2026-06-21 10:01:00 appended entry\n");
                 InvokeRefreshLogView(controller!);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                GetLogViewPlainText(txtLogView!).Should().Contain("appended entry");
+                GetLogViewPlainText(controller!).Should().Contain("appended entry");
             }
             finally
             {
@@ -1080,7 +1163,7 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                var scrollViewer = window.FindName("logScrollViewer") as ScrollViewer;
+                var scrollViewer = GetLogScrollViewer(window, controller!);
                 scrollViewer.Should().NotBeNull();
                 scrollViewer!.ScrollToVerticalOffset(0);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
@@ -1142,16 +1225,13 @@ public class SettingsWindowControllerTests
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
 
-                var txtLogSearch = window.FindName("txtLogSearch") as TextBox;
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
-
-                // Simulate user typing in search box
-                txtLogSearch!.Text = "Battery";
+                var filterBar = GetLogSearchFilterBar(controller!);
+                filterBar.SetKeyword("Battery");
                 FlushLogSearchDebounce(controller!, window);
 
                 // Verify filtered results contain the search term
-                GetLogViewPlainText(txtLogView!).Should().Contain("Battery");
-                GetLogViewPlainText(txtLogView!).Should().NotContain("System idle");
+                GetLogViewPlainText(controller!).Should().Contain("Battery");
+                GetLogViewPlainText(controller!).Should().NotContain("System idle");
             }
             finally
             {
@@ -1164,7 +1244,7 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_toggles_log_filter_and_view_updates()
+    public void User_clicking_tag_link_adds_filter_chip_and_updates_view()
     {
         RunOnSta(() =>
         {
@@ -1204,18 +1284,16 @@ public class SettingsWindowControllerTests
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
 
-                var chkInfo = window.FindName("chkInfo") as CheckBox;
-                var txtLogView = window.FindName("txtLogView") as RichTextBox;
+                var filterBar = GetLogSearchFilterBar(controller);
+                GetLogViewPlainText(controller!).Should().Contain("INFO");
 
-                // Initially INFO is checked, so view should contain INFO lines
-                GetLogViewPlainText(txtLogView!).Should().Contain("INFO");
-
-                // Simulate user unchecking INFO filter
-                chkInfo!.IsChecked = false;
+                controller.AddLogTagFilter("WARN");
+                InvokeRefreshLogView(controller);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-                // After unchecking INFO, the INFO line should be filtered out
-                GetLogViewPlainText(txtLogView!).Should().NotContain("INFO");
+                filterBar.ActiveTags.Should().Contain("WARN");
+                GetLogViewPlainText(controller!).Should().Contain("WARN");
+                GetLogViewPlainText(controller!).Should().NotContain("System idle");
             }
             finally
             {
@@ -1257,14 +1335,12 @@ public class SettingsWindowControllerTests
 
             // The pageLogs should contain a Grid with a fixed header area
             // and a scrollable content area for the log display.
-            // We verify by walking the visual tree: the txtLogView must be inside a ScrollViewer
-            // that is a sibling of the header elements (search bar + filters).
-            var txtLogView = window.FindName("txtLogView") as RichTextBox;
-            txtLogView.Should().NotBeNull();
+            var lstLogView = window.FindName("lstLogView") as ListBox;
+            lstLogView.Should().NotBeNull();
 
-            var logScrollViewer = FindVisualParent<ScrollViewer>(txtLogView);
+            var logScrollViewer = LogViewListPresenter.FindScrollViewer(lstLogView!);
             logScrollViewer.Should().NotBeNull(
-                "txtLogView must be inside a ScrollViewer so log content can scroll independently. " +
+                "lstLogView must host an internal ScrollViewer so log content can scroll independently. " +
                 "The header (title, description, search bar, filters) should remain fixed.");
 
             // The logs page itself is no longer inside the outer page ScrollViewer;
@@ -1396,6 +1472,14 @@ public class SettingsWindowControllerTests
         });
     }
 
+    private static LogSearchFilterBar GetLogSearchFilterBar(SettingsWindowController controller)
+    {
+        var field = typeof(SettingsWindowController).GetField(
+            "_logSearchFilterBar",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return (LogSearchFilterBar)field!.GetValue(controller)!;
+    }
+
     private static Window GetWindowField(SettingsWindowController controller)
     {
         var field = typeof(SettingsWindowController).GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -1413,9 +1497,46 @@ public class SettingsWindowControllerTests
         method!.Invoke(controller, [forceRedraw]);
     }
 
-    private static string GetLogViewPlainText(RichTextBox richTextBox)
+    private static string GetLogViewPlainText(SettingsWindowController controller)
     {
-        return LogViewRichTextRenderer.GetPlainText(richTextBox);
+        var presenterField = typeof(SettingsWindowController).GetField(
+            "_logListPresenter",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var presenter = (LogViewListPresenter)presenterField!.GetValue(controller)!;
+        return presenter.GetPlainText();
+    }
+
+    private static ScrollViewer GetLogScrollViewer(Window window, SettingsWindowController controller)
+    {
+        if (!window.IsVisible)
+        {
+            window.Show();
+            window.UpdateLayout();
+        }
+
+        controller.EnsureLogScrollViewerHooked();
+        InvokeRefreshLogView(controller);
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+        var scrollViewerField = typeof(SettingsWindowController).GetField(
+            "_logScrollViewer",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var scrollViewer = scrollViewerField!.GetValue(controller) as ScrollViewer;
+        scrollViewer.Should().NotBeNull();
+        return scrollViewer!;
+    }
+
+    private static void FlushLogCustomRangeDebounce(SettingsWindowController controller, Window window)
+    {
+        var timerField = typeof(SettingsWindowController).GetField(
+            "_logCustomRangeDebounceTimer",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var timer = timerField!.GetValue(controller) as System.Windows.Threading.DispatcherTimer;
+        timer.Should().NotBeNull("custom range debounce timer should exist after editing range inputs");
+        timer!.IsEnabled.Should().BeTrue("custom range debounce timer should be running before flush");
+        timer.Stop();
+        InvokeRefreshLogView(controller);
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private static void FlushLogSearchDebounce(SettingsWindowController controller, Window window)

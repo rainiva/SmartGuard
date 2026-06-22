@@ -41,14 +41,14 @@ public static class SettingsWindowLayoutStability
         root.InvalidateArrange();
         root.UpdateLayout();
 
-        if (window.FindName("logScrollViewer") is ScrollViewer logScrollViewer
-            && window.FindName("txtLogView") is RichTextBox logView)
+        if (window.FindName("lstLogView") is ListBox listBox)
         {
-            LogViewRichTextRenderer.SynchronizeViewport(logView, logScrollViewer.ViewportWidth);
-            logScrollViewer.InvalidateMeasure();
-            logScrollViewer.InvalidateArrange();
-            logScrollViewer.UpdateLayout();
-            ScrollBarAutoHide.NotifyContentChanged(logScrollViewer);
+            var scrollViewer = LogViewListPresenter.FindScrollViewer(listBox);
+            scrollViewer?.InvalidateMeasure();
+            scrollViewer?.InvalidateArrange();
+            scrollViewer?.UpdateLayout();
+            if (scrollViewer is not null)
+                ScrollBarAutoHide.NotifyContentChanged(scrollViewer);
         }
     }
 }

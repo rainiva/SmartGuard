@@ -16,8 +16,8 @@ internal sealed class LogViewerSession
     if (!FollowTail && LogViewerScrollState.IsRichTextBoxAtTail(LogView))
       FollowTail = true;
 
-    var snapshot = LogTailReader.ReadFromOffset(LogPath, 0);
-    if (snapshot.Length <= 0 && string.IsNullOrEmpty(snapshot.Text))
+    var length = LogTailReader.GetFileLength(LogPath);
+    if (length <= 0)
     {
       if (LogView.TextLength > 0)
         LogViewerRichTextRenderer.SetText(LogView, string.Empty, scrollToTail: false);
@@ -27,26 +27,38 @@ internal sealed class LogViewerSession
       return;
     }
 
+    if (PrimaryFileLength >= 0 && length == PrimaryFileLength)
+    {
+      var statusNow = DateTime.Now;
+      if (LastStatusRefresh is null || (statusNow - LastStatusRefresh.Value).TotalSeconds >= 5)
+      {
+        LastStatusRefresh = statusNow;
+        StatusLabel.Text = $"刷新: {statusNow:HH:mm:ss} | {LineCount} 行 | {LogPath}";
+      }
+
+      return;
+    }
+
     var changed = false;
     var scrollTail = FollowTail;
 
-    if (PrimaryFileLength < 0 || snapshot.Length < PrimaryFileLength)
+    if (PrimaryFileLength < 0 || length < PrimaryFileLength)
     {
       var initial = LogTailReader.ReadInitialView(LogPath, FallbackLogPath);
       LogViewerRichTextRenderer.SetText(
         LogView,
         LogLineDisplayFormatter.FormatText(initial.Text),
         scrollTail);
-      PrimaryFileLength = snapshot.Length > 0 ? snapshot.Length : initial.FileLength;
+      PrimaryFileLength = length > 0 ? length : initial.FileLength;
       changed = true;
     }
-    else if (snapshot.Length > PrimaryFileLength)
+    else if (length > PrimaryFileLength)
     {
       var delta = LogTailReader.ReadFromOffset(LogPath, PrimaryFileLength);
       var formattedDelta = LogLineDisplayFormatter.FormatText(
         LogViewerDelta.PrepareForAppend(LogView.Text, delta.Text));
       LogViewerRichTextRenderer.AppendText(LogView, formattedDelta, scrollTail);
-      PrimaryFileLength = snapshot.Length;
+      PrimaryFileLength = length;
       changed = true;
     }
 

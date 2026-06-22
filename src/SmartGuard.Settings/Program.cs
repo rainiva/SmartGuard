@@ -18,11 +18,9 @@ internal static class Program
     {
       if (!SingleInstanceActivation.TryNotifyExisting("Settings", startPage))
       {
-        MessageBox.Show(
+        AppDialog.ShowAlert(null, "智能电源守护",
           "设置窗口已在运行但未能响应。请在任务管理器中结束 SmartGuard.Settings.exe 后重试。",
-          "智能电源守护",
-          MessageBoxButton.OK,
-          MessageBoxImage.Warning);
+          AppDialogSeverity.Warning);
       }
 
       return;
@@ -54,13 +52,11 @@ internal static class Program
     controller = SettingsWindowController.TryCreate(root, repository, config, out var loadError);
     if (controller is null)
     {
-      MessageBox.Show(
+      AppDialog.ShowAlert(null, "智能电源守护",
         string.IsNullOrWhiteSpace(loadError)
           ? "设置界面加载失败。"
           : $"设置界面加载失败：\n{loadError}",
-        "智能电源守护",
-        MessageBoxButton.OK,
-        MessageBoxImage.Error);
+        AppDialogSeverity.Error);
       activationCts.Cancel();
       return;
     }
@@ -74,11 +70,9 @@ internal static class Program
     }
     catch (Exception ex)
     {
-      MessageBox.Show(
+      AppDialog.ShowAlert(null, "智能电源守护",
         $"设置界面显示失败：\n{ex.Message}",
-        "智能电源守护",
-        MessageBoxButton.OK,
-        MessageBoxImage.Error);
+        AppDialogSeverity.Error);
     }
 
     activationCts.Cancel();

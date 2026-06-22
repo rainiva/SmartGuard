@@ -22,6 +22,20 @@ public class LogTailReaderTests
   }
 
   [Fact]
+  public void GetFileLength_returns_byte_length_without_reading_content()
+  {
+    var path = WriteTemp("length.log", "alpha\nbeta\n");
+
+    LogTailReader.GetFileLength(path).Should().Be(new FileInfo(path).Length);
+  }
+
+  [Fact]
+  public void GetFileLength_returns_zero_when_file_missing()
+  {
+    LogTailReader.GetFileLength(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".log")).Should().Be(0);
+  }
+
+  [Fact]
   public void ReadRecentTail_reads_only_end_of_large_file()
   {
     var path = WriteTemp("large.log", "HEAD_START\n" + new string('A', 500_000) + "TAIL_MARKER\n");

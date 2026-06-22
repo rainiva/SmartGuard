@@ -17,4 +17,9 @@
     <ProjectReference Include="..\SmartGuard.Contracts\SmartGuard.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartGuard.LogViewer.Tests" />
+    <InternalsVisibleTo Include="SmartGuard.Settings.Tests" />
+  </ItemGroup>
+
 </Project>
