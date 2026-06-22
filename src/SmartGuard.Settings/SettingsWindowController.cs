@@ -1295,16 +1295,25 @@ public sealed class SettingsWindowController
 
   private static void ShowUpdateAlert(Window owner, string message, AppDialogSeverity severity)
   {
+    if (SettingsUiTestMode.IsEnabled)
+      return;
+
     owner.Dispatcher.Invoke(() => AppDialog.ShowAlert(owner, "检查更新", message, severity));
   }
 
   private static bool ShowUpdateConfirm(Window owner, string title, string message, AppDialogSeverity severity)
   {
+    if (SettingsUiTestMode.IsEnabled)
+      return false;
+
     return owner.Dispatcher.Invoke(() => AppDialog.ShowConfirm(owner, title, message, severity));
   }
 
   private async Task CheckForUpdateAsync(Window owner)
   {
+    if (SettingsUiTestMode.IsEnabled)
+      return;
+
     const string repoOwner = "rainiva";
     const string repoName = "SmartGuard";
     var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
