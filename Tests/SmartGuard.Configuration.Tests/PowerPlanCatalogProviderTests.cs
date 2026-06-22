@@ -3,6 +3,7 @@ using SmartGuard.Configuration;
 
 namespace SmartGuard.Configuration.Tests;
 
+[Collection("PowerPlanCatalogProvider")]
 public class PowerPlanCatalogProviderTests
 {
     [Fact]
@@ -41,7 +42,9 @@ public class PowerPlanCatalogProviderTests
       callCount++;
       return new Dictionary<Guid, string>
       {
+        [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
         [Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e")] = "平衡",
+        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
       };
     };
 
@@ -102,6 +105,103 @@ public class PowerPlanCatalogProviderTests
       PowerPlanCatalogProvider.TryLoad().Should().BeEmpty();
       PowerPlanCatalogProvider.TryLoad().Should().BeEmpty();
 
+      callCount.Should().Be(2);
+    }
+    finally
+    {
+      PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    }
+  }
+
+  [Fact]
+  public void HasMissingKnownSchemes_is_true_when_hidden_power_saver_is_absent()
+  {
+    var catalog = new Dictionary<Guid, string>
+    {
+      [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
+      [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+    };
+
+    PowerPlanCatalogProvider.HasMissingKnownSchemes(catalog).Should().BeTrue();
+  }
+
+  [Fact]
+  public void HasMissingKnownSchemes_is_false_when_all_default_schemes_present()
+  {
+    var catalog = new Dictionary<Guid, string>
+    {
+      [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
+      [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+      [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
+    };
+
+    PowerPlanCatalogProvider.HasMissingKnownSchemes(catalog).Should().BeFalse();
+  }
+
+  [Fact]
+  public void TryLoad_does_not_cache_incomplete_catalog()
+  {
+    PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    var callCount = 0;
+    PowerPlanCatalogProvider.LoadImplementationForTests = () =>
+    {
+      callCount++;
+      if (callCount == 1)
+      {
+        return new Dictionary<Guid, string>
+        {
+          [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+        };
+      }
+
+      return new Dictionary<Guid, string>
+      {
+        [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
+        [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
+      };
+    };
+
+    try
+    {
+      PowerPlanCatalogProvider.TryLoad().Should().ContainKey(PowerPlanCatalogProvider.BalancedPlanGuid);
+      PowerPlanCatalogProvider.TryLoad().Should().ContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
+      callCount.Should().Be(2);
+    }
+    finally
+    {
+      PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    }
+  }
+
+  [Fact]
+  public void LoadWithRetry_returns_complete_catalog_from_loader()
+  {
+    PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    var callCount = 0;
+    PowerPlanCatalogProvider.LoadImplementationForTests = () =>
+    {
+      callCount++;
+      if (callCount == 1)
+      {
+        return new Dictionary<Guid, string>
+        {
+          [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+        };
+      }
+
+      return new Dictionary<Guid, string>
+      {
+        [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
+        [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
+      };
+    };
+
+    try
+    {
+      var catalog = PowerPlanCatalogProvider.LoadWithRetry(maxAttempts: 2);
+      catalog.Should().ContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
       callCount.Should().Be(2);
     }
     finally

@@ -3,6 +3,7 @@ using SmartGuard.Configuration;
 
 namespace SmartGuard.Configuration.Tests;
 
+[Collection("PowerPlanCatalogProvider")]
 public class LiveCatalogProbeTests
 {
   [Fact]
@@ -13,5 +14,7 @@ public class LiveCatalogProbeTests
     catalog.Should().NotBeEmpty();
     catalog.Should().ContainKey(PowerPlanCatalogProvider.HighPerformancePlanGuid);
     catalog.Should().ContainKey(PowerPlanCatalogProvider.BalancedPlanGuid);
+    catalog.Should().ContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
+    catalog[PowerPlanCatalogProvider.PowerSaverPlanGuid].Should().Be("节能");
   }
 }

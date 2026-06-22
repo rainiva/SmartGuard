@@ -15,6 +15,13 @@ internal sealed class TrayDisplaySettingsCache
   {
   }
 
+  public TrayDisplaySettingsCache(bool initialNotifyOnPlanChange, Func<bool> notifyLoader)
+  {
+    _notifyOnPlanChange = initialNotifyOnPlanChange;
+    _notifyLoader = notifyLoader;
+    _loadedAt = DateTime.UtcNow;
+  }
+
   internal TrayDisplaySettingsCache(Func<bool> notifyLoader)
   {
     _notifyLoader = notifyLoader;

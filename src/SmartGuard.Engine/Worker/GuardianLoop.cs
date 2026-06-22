@@ -38,7 +38,6 @@ public sealed class GuardianLoop(
     EnsureConfigExists();
     var config = GuardConfig.LoadFromFile(configPath);
     InitializeIfNeeded(config);
-    _planCatalog = PowerCfgExecutor.LoadPowerPlanCatalog();
     WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{config.LogFile}");
 
     using var powerListener = new PowerEventWakeListener(HandlePowerEvent);

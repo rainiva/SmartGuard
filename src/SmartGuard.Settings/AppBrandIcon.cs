@@ -9,8 +9,31 @@ namespace SmartGuard.Settings;
 public static class AppBrandIcon
 {
     private const string EmbeddedIconUri = "pack://application:,,,/Assets/SmartGuard.ico";
+    private static ImageSource? _cachedImageSource;
+    private static string? _cachedInstallRoot;
+
+    internal static void ClearCacheForTests()
+    {
+        _cachedImageSource = null;
+        _cachedInstallRoot = null;
+    }
 
     public static ImageSource? LoadImageSource(string installRoot)
+    {
+        if (_cachedImageSource is not null && _cachedInstallRoot == installRoot)
+            return _cachedImageSource;
+
+        var loaded = LoadImageSourceCore(installRoot);
+        if (loaded is not null)
+        {
+            _cachedImageSource = loaded;
+            _cachedInstallRoot = installRoot;
+        }
+
+        return loaded;
+    }
+
+    private static ImageSource? LoadImageSourceCore(string installRoot)
     {
         var filePath = Path.Combine(installRoot, "lib", "SmartGuard.ico");
         if (File.Exists(filePath))

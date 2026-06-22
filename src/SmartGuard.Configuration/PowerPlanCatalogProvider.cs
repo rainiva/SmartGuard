@@ -29,7 +29,7 @@ public static class PowerPlanCatalogProvider
     try
     {
       var catalog = LoadImplementationForTests?.Invoke() ?? LoadCore();
-      if (catalog.Count > 0)
+      if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
         _sessionCache = catalog;
       return catalog;
     }
@@ -40,9 +40,33 @@ public static class PowerPlanCatalogProvider
   }
 
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
-    => Task.Run(TryLoad, cancellationToken);
+    => Task.Run(() =>
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      return TryLoad();
+    });
+
+  public static IReadOnlyDictionary<Guid, string> LoadWithRetry(int maxAttempts = 3)
+  {
+    for (var attempt = 0; attempt < maxAttempts; attempt++)
+    {
+      InvalidateSessionCache();
+      var catalog = TryLoad();
+      if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
+        return catalog;
+
+      if (attempt < maxAttempts - 1)
+        Thread.Sleep(300);
+    }
+
+    InvalidateSessionCache();
+    return TryLoad();
+  }
 
   public static void InvalidateSessionCache() => _sessionCache = null;
+
+  public static bool HasMissingKnownSchemes(IReadOnlyDictionary<Guid, string> catalog)
+    => KnownSchemeGuids.Any(guid => !catalog.ContainsKey(guid));
 
   internal static void ClearSessionCacheForTests()
   {
@@ -67,27 +91,37 @@ public static class PowerPlanCatalogProvider
 
   private static IReadOnlyDictionary<Guid, string> LoadCore()
   {
-    var catalog = PowerPlanCatalogParser.ParseList(RunPowerCfg("/list"));
+    var catalog = PowerPlanCatalogParser.ParseList(
+      PowerCfgProcessRunner.RunPowerCfg("/list", TimeSpan.FromSeconds(15)));
     EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
+
+    if (HasMissingKnownSchemes(catalog))
+    {
+      Thread.Sleep(250);
+      EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
+    }
+
     return catalog;
   }
+
+  private static string RunPowerCfg(string arguments)
+    => PowerCfgProcessRunner.RunPowerCfg(arguments, TimeSpan.FromSeconds(15));
 
   private static string? TryQueryPlanName(Guid guid)
   {
     try
     {
-      var output = RunPowerCfg($"/query {guid:D}");
+      var output = PowerCfgProcessRunner.RunPowerCfg(
+        $"/query {guid:D}",
+        TimeSpan.FromSeconds(15));
       if (!PowerPlanCatalogParser.TryParseQueryHeader(output, out var parsedGuid, out var name))
         return null;
 
       return parsedGuid == guid ? name : null;
     }
-    catch (TimeoutException)
+    catch
     {
       return null;
     }
   }
-
-  private static string RunPowerCfg(string arguments)
-    => PowerCfgProcessRunner.RunPowerCfg(arguments);
 }

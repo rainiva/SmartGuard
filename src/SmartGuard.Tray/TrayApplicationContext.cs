@@ -31,7 +31,10 @@ public sealed class TrayApplicationContext : ApplicationContext
     _statusStore = new StatusStore(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
     _notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
-    _displaySettingsCache = new TrayDisplaySettingsCache(_configRepository, root);
+    var config = _configRepository.LoadOrDefault(_root);
+    _displaySettingsCache = new TrayDisplaySettingsCache(
+      config.NotifyOnPlanChange,
+      () => _configRepository.LoadOrDefault(_root).NotifyOnPlanChange);
 
     _notifyIcon = new NotifyIcon
     {
@@ -66,7 +69,6 @@ public sealed class TrayApplicationContext : ApplicationContext
     _notifyIcon.ContextMenuStrip = menu;
     _notifyIcon.DoubleClick += OnOpenSettings;
 
-    var config = _configRepository.LoadOrDefault(_root);
     _pauseItem.Text = config.Paused ? "恢复守护" : "暂停守护";
 
     _invokeSink = new Control();
@@ -82,6 +84,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     _timer.Start();
 
     UpdateDisplay();
+    _ = Task.Run(() => ToastAumidRegistrar.EnsureRegistered(_root));
   }
 
   protected override void Dispose(bool disposing)

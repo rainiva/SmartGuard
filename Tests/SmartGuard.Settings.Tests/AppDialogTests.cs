@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -83,7 +84,47 @@ public class AppDialogTests
     }
 
     [Fact]
-    public void Dialog_actions_use_text_button_style_without_filled_background()
+    public void Dialog_surface_has_no_drop_shadow()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var owner = CreateOwnerWindow();
+            try
+            {
+                var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Information, showCancel: false);
+                var surface = (Border)dialog.Content!;
+                surface.Effect.Should().BeNull();
+            }
+            finally
+            {
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Alert_primary_button_uses_rounded_filled_style()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var owner = CreateOwnerWindow();
+            try
+            {
+                var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Information, showCancel: false);
+                var primary = GetActionButtons(dialog).Single();
+                primary.Content.Should().Be("知道了");
+                IsFilledBackground(primary.Background).Should().BeTrue();
+                GetButtonCornerRadius(primary).Should().BeGreaterThanOrEqualTo(AppDialogLayout.PrimaryButtonCornerRadius);
+            }
+            finally
+            {
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Confirm_cancel_button_keeps_text_style()
     {
         WpfStaTestHost.Run(() =>
         {
@@ -92,8 +133,9 @@ public class AppDialogTests
             {
                 var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Warning, showCancel: true);
                 var buttons = GetActionButtons(dialog);
-                buttons.Should().NotBeEmpty();
-                buttons.Should().AllSatisfy(button => IsTransparentBackground(button.Background));
+                buttons.Should().HaveCount(2);
+                IsTransparentBackground(buttons[0].Background).Should().BeTrue();
+                IsFilledBackground(buttons[1].Background).Should().BeTrue();
             }
             finally
             {
@@ -108,6 +150,18 @@ public class AppDialogTests
             return true;
 
         return brush is SolidColorBrush { Color.A: 0 };
+    }
+
+    private static bool IsFilledBackground(Brush? brush)
+        => brush is SolidColorBrush { Color.A: > 0 };
+
+    private static double GetButtonCornerRadius(Button button)
+    {
+        button.ApplyTemplate();
+        if (button.Template?.FindName("bd", button) is Border border)
+            return border.CornerRadius.TopLeft;
+
+        return 0;
     }
 
     private static Window CreateOwnerWindow()

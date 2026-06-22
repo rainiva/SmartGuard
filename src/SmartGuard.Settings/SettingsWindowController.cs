@@ -44,6 +44,7 @@ public sealed class SettingsWindowController
   private ListBox? _lstLogView;
   private LogViewListPresenter? _logListPresenter;
   private IReadOnlyList<string> _lastDisplayedLines = Array.Empty<string>();
+  private int? _logIdleSeconds;
   private TextBlock? _lblLogStatus;
   private ScrollViewer? _logScrollViewer;
   private string? _logPath;
@@ -59,8 +60,13 @@ public sealed class SettingsWindowController
   private bool _lastUpdateCheckNoUpdate;
   private CancellationTokenSource? _saveCts;
   private CancellationTokenSource? _planCatalogLoadCts;
+  private int _planCatalogLoadGeneration;
   private IReadOnlyDictionary<Guid, string> _planCatalog = new Dictionary<Guid, string>();
   private bool _suppressPlanComboEvents;
+  private bool _logViewInitialized;
+  private bool _layoutHooksAttached;
+
+  internal bool IsLogViewInitializedForTests => _logViewInitialized;
 
   private SettingsWindowController(
     string root,
@@ -208,10 +214,8 @@ public sealed class SettingsWindowController
     tglNotify.IsChecked = config.NotifyOnPlanChange;
     tglAutoStart.IsChecked = config.AutoStartEnabled;
 
-    controller.PopulatePlanCombo(cmbActivePlan, config.ActivePlanGuid, "高性能");
-    controller.PopulatePlanCombo(cmbBalancedPlan, config.BalancedPlanGuid, "平衡");
-    controller.PopulatePlanCombo(cmbPowerSaverPlan, config.PowerSaverPlanGuid, "节能");
-    controller.UpdatePlanMappingStatus(config);
+    if (controller._lblPlanMappingStatus is not null)
+      controller._lblPlanMappingStatus.Text = "正在加载电源计划...";
     controller.BeginLoadPlanCatalogAsync();
 
     // Sync displayed version with the actual assembly / installer version
@@ -267,11 +271,18 @@ public sealed class SettingsWindowController
     controller.SetupNavigation(navList, window);
 
     SettingsWindowPresentation.RegisterShowHooks(window);
-    SettingsWindowLayoutStability.Attach(
-      window,
-      () => controller.IsDarkThemeEnabled,
-      controller.StabilizeLayout,
-      controller.QueueLayoutStabilization);
+    window.Loaded += (_, _) =>
+    {
+      if (controller._layoutHooksAttached)
+        return;
+
+      controller._layoutHooksAttached = true;
+      SettingsWindowLayoutStability.Attach(
+        window,
+        () => controller.IsDarkThemeEnabled,
+        controller.StabilizeLayout,
+        controller.QueueLayoutStabilization);
+    };
 
     // Theme toggle
     btnThemeToggle.Click += (_, _) => controller.ToggleTheme(window);
@@ -319,96 +330,102 @@ public sealed class SettingsWindowController
     if (btnResetDefaults is not null)
       btnResetDefaults.Click += (_, _) => controller.ResetToDefaults();
 
-    // Log view initialization
-    var logPath = Path.Combine(root, "SmartGuard.log");
-    var fallbackLogPath = Path.Combine(root, "SmartGuard.startup.log");
-    if (File.Exists(logPath) || File.Exists(fallbackLogPath))
+    // Defer log subsystem wiring until the user opens the logs page.
+    controller._logPath = Path.Combine(root, "SmartGuard.log");
+    controller._fallbackLogPath = Path.Combine(root, "SmartGuard.startup.log");
+
+    window.Closing += (_, _) => controller.Dispose();
+    window.StateChanged += (_, _) =>
     {
-      var logController = new LogViewController(logPath, fallbackLogPath);
-      controller._logPath = logPath;
-      controller._fallbackLogPath = fallbackLogPath;
-      controller._logController = logController;
-      controller._logSearchFilterBar = new LogSearchFilterBar();
-      var logSearchFilterHost = Require<ContentControl>(window, "logSearchFilterHost");
-      logSearchFilterHost.Content = controller._logSearchFilterBar;
-      controller._logTagFilterLinksPanel = Require<WrapPanel>(window, "logTagFilterLinksPanel");
-      foreach (var tag in LogTagFilterCatalog.SelectableTags)
+      if (window.WindowState == WindowState.Minimized)
+        controller.SetLogPageActive(false);
+      else
+        controller.SetLogPageActive(navList.SelectedIndex == 3);
+    };
+
+    return controller;
+  }
+
+  private void EnsureLogViewInitialized()
+  {
+    if (_logViewInitialized || _logPath is null)
+      return;
+
+    _logViewInitialized = true;
+    var fallbackLogPath = _fallbackLogPath;
+    var logController = new LogViewController(_logPath, fallbackLogPath);
+    _logController = logController;
+    _logSearchFilterBar = new LogSearchFilterBar();
+    var logSearchFilterHost = Require<ContentControl>(_window, "logSearchFilterHost");
+    logSearchFilterHost.Content = _logSearchFilterBar;
+    _logTagFilterLinksPanel = Require<WrapPanel>(_window, "logTagFilterLinksPanel");
+    foreach (var tag in LogTagFilterCatalog.SelectableTags)
+    {
+      _logTagFilterLinksPanel.Children.Add(
+        LogTagFilterLinkFactory.CreateClickableTag(tag, AddLogTagFilter));
+    }
+
+    _lstLogView = Require<ListBox>(_window, "lstLogView");
+    _logListPresenter = new LogViewListPresenter();
+    _logListPresenter.Attach(_lstLogView);
+    _lblLogStatus = Require<TextBlock>(_window, "lblLogStatus");
+    _lstLogView.Loaded += (_, _) => EnsureLogScrollViewerHooked();
+    _chkLogFollowTail = _window.FindName("chkLogFollowTail") as CheckBox;
+    _cmbLogTimeRange = _window.FindName("cmbLogTimeRange") as ComboBox;
+    _panelLogCustomRange = _window.FindName("panelLogCustomRange") as UIElement;
+    _txtLogRangeStart = _window.FindName("txtLogRangeStart") as TextBox;
+    _txtLogRangeEnd = _window.FindName("txtLogRangeEnd") as TextBox;
+    _chkLogSearchCaseSensitive = _window.FindName("chkLogSearchCaseSensitive") as CheckBox;
+
+    SyncCustomRangePanelVisibility();
+
+    var btnLogCopy = _window.FindName("btnLogCopy") as Button;
+    var btnLogExport = _window.FindName("btnLogExport") as Button;
+    var btnLogOpenFolder = _window.FindName("btnLogOpenFolder") as Button;
+    var btnLogScrollTop = _window.FindName("btnLogScrollTop") as Button;
+    var btnLogScrollBottom = _window.FindName("btnLogScrollBottom") as Button;
+    var btnLogRefresh = _window.FindName("btnLogRefresh") as Button;
+
+    if (btnLogCopy is not null) btnLogCopy.Click += (_, _) => CopyVisibleLog();
+    if (btnLogExport is not null) btnLogExport.Click += (_, _) => ExportVisibleLog();
+    if (btnLogOpenFolder is not null) btnLogOpenFolder.Click += (_, _) => OpenLogFolder();
+    if (btnLogScrollTop is not null) btnLogScrollTop.Click += (_, _) => ScrollLogToTop();
+    if (btnLogScrollBottom is not null) btnLogScrollBottom.Click += (_, _) => ScrollLogToBottom();
+    if (btnLogRefresh is not null) btnLogRefresh.Click += (_, _) => ForceRefreshLogView();
+    if (_chkLogFollowTail is not null)
+    {
+      _chkLogFollowTail.Checked += (_, _) => SetFollowTail(true);
+      _chkLogFollowTail.Unchecked += (_, _) => SetFollowTail(false);
+    }
+
+    _logSearchFilterBar.FiltersChanged += (_, _) => QueueLogSearchRefresh();
+    if (_cmbLogTimeRange is not null)
+    {
+      _cmbLogTimeRange.SelectionChanged += (_, _) =>
       {
-        controller._logTagFilterLinksPanel.Children.Add(
-          LogTagFilterLinkFactory.CreateClickableTag(tag, controller.AddLogTagFilter));
-      }
-      controller._lstLogView = Require<ListBox>(window, "lstLogView");
-      controller._logListPresenter = new LogViewListPresenter();
-      controller._logListPresenter.Attach(controller._lstLogView);
-      controller._lblLogStatus = Require<TextBlock>(window, "lblLogStatus");
-      controller._lstLogView.Loaded += (_, _) => controller.EnsureLogScrollViewerHooked();
-      controller._chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
-      controller._cmbLogTimeRange = window.FindName("cmbLogTimeRange") as ComboBox;
-      controller._panelLogCustomRange = window.FindName("panelLogCustomRange") as UIElement;
-      controller._txtLogRangeStart = window.FindName("txtLogRangeStart") as TextBox;
-      controller._txtLogRangeEnd = window.FindName("txtLogRangeEnd") as TextBox;
-      controller._chkLogSearchCaseSensitive = window.FindName("chkLogSearchCaseSensitive") as CheckBox;
-
-      controller.SyncCustomRangePanelVisibility();
-
-      var btnLogCopy = window.FindName("btnLogCopy") as Button;
-      var btnLogExport = window.FindName("btnLogExport") as Button;
-      var btnLogOpenFolder = window.FindName("btnLogOpenFolder") as Button;
-      var btnLogScrollTop = window.FindName("btnLogScrollTop") as Button;
-      var btnLogScrollBottom = window.FindName("btnLogScrollBottom") as Button;
-      var btnLogRefresh = window.FindName("btnLogRefresh") as Button;
-
-      if (btnLogCopy is not null) btnLogCopy.Click += (_, _) => controller.CopyVisibleLog();
-      if (btnLogExport is not null) btnLogExport.Click += (_, _) => controller.ExportVisibleLog();
-      if (btnLogOpenFolder is not null) btnLogOpenFolder.Click += (_, _) => controller.OpenLogFolder();
-      if (btnLogScrollTop is not null) btnLogScrollTop.Click += (_, _) => controller.ScrollLogToTop();
-      if (btnLogScrollBottom is not null) btnLogScrollBottom.Click += (_, _) => controller.ScrollLogToBottom();
-      if (btnLogRefresh is not null) btnLogRefresh.Click += (_, _) => controller.ForceRefreshLogView();
-      if (controller._chkLogFollowTail is not null)
-      {
-        controller._chkLogFollowTail.Checked += (_, _) => controller.SetFollowTail(true);
-        controller._chkLogFollowTail.Unchecked += (_, _) => controller.SetFollowTail(false);
-      }
-
-      controller.EnsureLogScrollViewerHooked();
-
-      controller._logSearchFilterBar.FiltersChanged += (_, _) => controller.QueueLogSearchRefresh();
-      if (controller._cmbLogTimeRange is not null)
-        controller._cmbLogTimeRange.SelectionChanged += (_, _) =>
-        {
-          controller.SyncCustomRangePanelVisibility();
-          controller.RefreshLogView();
-        };
-      if (controller._txtLogRangeStart is not null)
-        controller._txtLogRangeStart.TextChanged += (_, _) => controller.QueueLogCustomRangeRefresh();
-      if (controller._txtLogRangeEnd is not null)
-        controller._txtLogRangeEnd.TextChanged += (_, _) => controller.QueueLogCustomRangeRefresh();
-      if (controller._chkLogSearchCaseSensitive is not null)
-      {
-        controller._chkLogSearchCaseSensitive.Checked += (_, _) => controller.RefreshLogView();
-        controller._chkLogSearchCaseSensitive.Unchecked += (_, _) => controller.RefreshLogView();
-      }
-
-      var logTimer = new System.Windows.Threading.DispatcherTimer
-      {
-        Interval = TimeSpan.FromSeconds(2),
-      };
-      logTimer.Tick += (_, _) => controller.RefreshLogView();
-      // Log timer is started on demand when the logs page becomes active.
-
-      controller._logTimer = logTimer;
-
-      window.Closing += (_, _) => controller.Dispose();
-      window.StateChanged += (_, _) =>
-      {
-        if (window.WindowState == WindowState.Minimized)
-          controller.SetLogPageActive(false);
-        else
-          controller.SetLogPageActive(navList.SelectedIndex == 3);
+        SyncCustomRangePanelVisibility();
+        RefreshLogView();
       };
     }
 
-    return controller;
+    if (_txtLogRangeStart is not null)
+      _txtLogRangeStart.TextChanged += (_, _) => QueueLogCustomRangeRefresh();
+    if (_txtLogRangeEnd is not null)
+      _txtLogRangeEnd.TextChanged += (_, _) => QueueLogCustomRangeRefresh();
+    if (_chkLogSearchCaseSensitive is not null)
+    {
+      _chkLogSearchCaseSensitive.Checked += (_, _) => RefreshLogView();
+      _chkLogSearchCaseSensitive.Unchecked += (_, _) => RefreshLogView();
+    }
+
+    var logTimer = new System.Windows.Threading.DispatcherTimer(
+      System.Windows.Threading.DispatcherPriority.Background,
+      _window.Dispatcher)
+    {
+      Interval = TimeSpan.FromSeconds(2),
+    };
+    logTimer.Tick += (_, _) => RefreshLogView();
+    _logTimer = logTimer;
   }
 
   private string? _initialPage;
@@ -510,14 +527,17 @@ public sealed class SettingsWindowController
     }
   }
 
-  private void RefreshLogView(bool forceRedraw = false)
+  private void RefreshLogView(bool forceRedraw = false, bool refreshIdle = false)
   {
     if (_logController is null || _logListPresenter is null || _lblLogStatus is null) return;
+
+    if (refreshIdle)
+      _logIdleSeconds = LogViewIdleReader.TryReadSeconds(_root);
 
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
 
-    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now);
+    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, _logIdleSeconds);
     var plan = LogViewUpdatePlanner.CreatePlan(_lastDisplayedLines, snapshot.DisplayLines, forceRedraw);
 
     if (!forceRedraw && !snapshot.ContentChanged && plan.Mode == LogViewUpdateMode.NoChange)
@@ -636,7 +656,7 @@ public sealed class SettingsWindowController
   {
     _logController?.ForceRefresh();
     _lastDisplayedLines = Array.Empty<string>();
-    RefreshLogView(forceRedraw: true);
+    RefreshLogView(forceRedraw: true, refreshIdle: true);
   }
 
   private void CopyVisibleLog()
@@ -805,50 +825,46 @@ public sealed class SettingsWindowController
 
   internal void BeginLoadPlanCatalogAsync()
   {
+    var generation = Interlocked.Increment(ref _planCatalogLoadGeneration);
     _planCatalogLoadCts?.Cancel();
     _planCatalogLoadCts?.Dispose();
     _planCatalogLoadCts = new CancellationTokenSource();
-    var token = _planCatalogLoadCts.Token;
-    _ = LoadPlanCatalogAsync(token);
+
+    if (_lblPlanMappingStatus is not null)
+      _lblPlanMappingStatus.Text = "正在加载电源计划...";
+
+    _ = Task.Run(() => PowerPlanCatalogProvider.LoadWithRetry())
+      .ContinueWith(task =>
+      {
+        _window.Dispatcher.BeginInvoke(() =>
+        {
+          if (generation != Volatile.Read(ref _planCatalogLoadGeneration))
+            return;
+
+          if (task.IsFaulted)
+          {
+            if (_lblPlanMappingStatus is not null)
+              _lblPlanMappingStatus.Text = "无法读取电源计划，请关闭设置后重试";
+            return;
+          }
+
+          ApplyPlanCatalog(task.Result);
+        });
+      }, TaskScheduler.Default);
   }
 
-  private async Task LoadPlanCatalogAsync(CancellationToken token)
+  private void ApplyPlanCatalog(IReadOnlyDictionary<Guid, string> catalog)
   {
-    try
-    {
-      var catalog = await LoadPlanCatalogWithRetryAsync(token).ConfigureAwait(true);
-      if (token.IsCancellationRequested)
-        return;
-
-      _planCatalog = catalog;
-      RepopulatePlanCombos();
-      UpdatePlanMappingStatus(_originalConfig);
-    }
-    catch (OperationCanceledException)
-    {
-      // ignore stale catalog loads
-    }
-  }
-
-  private static async Task<IReadOnlyDictionary<Guid, string>> LoadPlanCatalogWithRetryAsync(CancellationToken token)
-  {
-    for (var attempt = 0; attempt < 2; attempt++)
-    {
-      var catalog = await PowerPlanCatalogProvider.LoadAsync(token).ConfigureAwait(true);
-      if (catalog.Count > 0 || token.IsCancellationRequested)
-        return catalog;
-
-      PowerPlanCatalogProvider.InvalidateSessionCache();
-    }
-
-    return new Dictionary<Guid, string>();
+    _planCatalog = catalog;
+    RepopulatePlanCombos();
+    UpdatePlanMappingStatus(_originalConfig);
   }
 
   private void RepopulatePlanCombos()
   {
-    PopulatePlanCombo(_cmbActivePlan, ReadSelectedPlanGuid(_cmbActivePlan), "高性能");
-    PopulatePlanCombo(_cmbBalancedPlan, ReadSelectedPlanGuid(_cmbBalancedPlan), "平衡");
-    PopulatePlanCombo(_cmbPowerSaverPlan, ReadSelectedPlanGuid(_cmbPowerSaverPlan), "节能");
+    PopulatePlanCombo(_cmbActivePlan, _originalConfig.ActivePlanGuid, "高性能");
+    PopulatePlanCombo(_cmbBalancedPlan, _originalConfig.BalancedPlanGuid, "平衡");
+    PopulatePlanCombo(_cmbPowerSaverPlan, _originalConfig.PowerSaverPlanGuid, "节能");
   }
 
   internal void AddLogTagFilter(string tag)
@@ -858,16 +874,19 @@ public sealed class SettingsWindowController
 
   public void SetLogPageActive(bool active)
   {
-    if (_logTimer is null) return;
-    if (active)
+    if (!active)
     {
-      _logTimer.Start();
-      RefreshLogView();
+      _logTimer?.Stop();
+      return;
     }
-    else
-    {
-      _logTimer.Stop();
-    }
+
+    EnsureLogViewInitialized();
+    if (_logTimer is null)
+      return;
+
+    _logTimer.Start();
+    RefreshLogView();
+    EnsureLogScrollViewerHooked();
   }
 
   internal void StabilizeLayout()
@@ -1162,8 +1181,11 @@ public sealed class SettingsWindowController
     {
       combo.DisplayMemberPath = nameof(PowerPlanComboItem.DisplayName);
       combo.SelectedValuePath = nameof(PowerPlanComboItem.PlanGuid);
-      combo.ItemsSource = PowerPlanComboItemsBuilder.Build(_planCatalog, selectedGuid, orphanRoleLabel);
-      combo.SelectedValue = selectedGuid;
+      var items = PowerPlanComboItemsBuilder.Build(_planCatalog, selectedGuid, orphanRoleLabel);
+      combo.ItemsSource = items;
+      combo.SelectedItem = PlanComboSelection.FindItem(items, selectedGuid);
+      if (combo.SelectedItem is null && selectedGuid != Guid.Empty)
+        combo.SelectedValue = selectedGuid;
     }
     finally
     {

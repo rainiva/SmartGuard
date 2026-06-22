@@ -21,6 +21,23 @@ public class ToastLayoutMetricsTests
     }
 
     [Fact]
+    public void Toast_container_right_margin_aligns_with_content_page()
+    {
+        ToastLayoutMetrics.ToastContainerRightMargin.Should().Be(
+            ToastLayoutMetrics.ContentPageRightMargin - ToastLayoutMetrics.InlineOuterMargin);
+    }
+
+    [Fact]
+    public void Settings_xaml_uses_toast_container_margin_resource()
+    {
+        var xaml = ReadSettingsXaml();
+        xaml.Should().Contain("x:Key=\"ToastContainerMargin\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"toastContainer\"[\\s\\S]{0,220}Margin=\"\\{StaticResource ToastContainerMargin\\}\"",
+            "toast overlay should align its right edge with the content cards below");
+    }
+
+    [Fact]
     public void Inline_toast_border_has_reduced_vertical_padding()
     {
         RunOnSta(() =>
@@ -53,4 +70,13 @@ public class ToastLayoutMetricsTests
     }
 
     private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
+
+    private static string ReadSettingsXaml()
+    {
+        var assemblyLocation = typeof(SettingsWindowController).Assembly.Location;
+        var repoRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(assemblyLocation)!,
+            "..", "..", "..", "..", ".."));
+        return System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml"));
+    }
 }

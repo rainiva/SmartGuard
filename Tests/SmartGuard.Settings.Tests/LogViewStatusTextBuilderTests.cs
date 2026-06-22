@@ -35,4 +35,36 @@ public class LogViewStatusTextBuilderTests
         LogViewStatusTextBuilder.Build(snapshot, new DateTime(2026, 6, 21, 10, 2, 24))
             .Should().NotContain("匹配");
     }
+
+    [Fact]
+    public void Build_includes_idle_seconds_when_provided()
+    {
+        var snapshot = new LogViewSnapshot(
+            ["[INFO] 2026-06-21 10:00:00 heartbeat"],
+            1,
+            false,
+            @"C:\SmartGuard\SmartGuard.log",
+            false,
+            "",
+            null);
+
+        LogViewStatusTextBuilder.Build(snapshot, new DateTime(2026, 6, 21, 10, 2, 24), idleSeconds: 480)
+            .Should().Contain("当前空闲 480 秒");
+    }
+
+    [Fact]
+    public void Build_omits_idle_seconds_when_not_provided()
+    {
+        var snapshot = new LogViewSnapshot(
+            ["[INFO] 2026-06-21 10:00:00 heartbeat"],
+            1,
+            false,
+            @"C:\SmartGuard\SmartGuard.log",
+            false,
+            "",
+            null);
+
+        LogViewStatusTextBuilder.Build(snapshot, new DateTime(2026, 6, 21, 10, 2, 24))
+            .Should().NotContain("当前空闲");
+    }
 }

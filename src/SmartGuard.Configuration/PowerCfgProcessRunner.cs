@@ -47,16 +47,15 @@ internal static class PowerCfgProcessRunner
     try
     {
       await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+      var output = await readOutTask.ConfigureAwait(false);
+      var error = await readErrTask.ConfigureAwait(false);
+      return output + error;
     }
     catch (OperationCanceledException)
     {
       try { proc.Kill(entireProcessTree: true); } catch { }
       throw new TimeoutException($"{fileName} {arguments} timed out after {timeout.TotalSeconds}s");
     }
-
-    var output = await readOutTask.ConfigureAwait(false);
-    var error = await readErrTask.ConfigureAwait(false);
-    return output + error;
   }
 
   private static Encoding CreateConsoleEncoding()

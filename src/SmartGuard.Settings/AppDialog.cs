@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 
 namespace SmartGuard.Settings;
 
@@ -47,9 +47,6 @@ public static class AppDialog
         bool showCancel,
         Action<bool>? onClose = null)
     {
-        var isDark = owner?.TryFindResource("WindowBackground") is SolidColorBrush background
-                     && background.Color.R <= 0x40;
-
         var titleBlock = new TextBlock
         {
             Text = title,
@@ -97,7 +94,7 @@ public static class AppDialog
         }
 
         var primaryLabel = showCancel ? "确定" : "知道了";
-        var primaryButton = CreateTextButton(primaryLabel, owner, isPrimary: true);
+        var primaryButton = CreatePrimaryButton(primaryLabel, owner);
         primaryButton.Click += (_, _) =>
         {
             onClose?.Invoke(true);
@@ -123,14 +120,6 @@ public static class AppDialog
             Padding = new Thickness(24, 20, 24, 16),
             MinWidth = 280,
             MaxWidth = 420,
-            Effect = new DropShadowEffect
-            {
-                Color = Colors.Black,
-                Direction = 270,
-                ShadowDepth = 2,
-                BlurRadius = 16,
-                Opacity = isDark ? 0.35 : 0.18,
-            },
             Child = root,
         };
 
@@ -184,6 +173,50 @@ public static class AppDialog
 
         owner.Loaded += OnOwnerReady;
         owner.IsVisibleChanged += OnOwnerVisibleChanged;
+    }
+
+    private static Button CreatePrimaryButton(string label, Window? owner)
+    {
+        var button = new Button
+        {
+            Content = label,
+            Background = owner is null
+                ? new SolidColorBrush(Color.FromRgb(0xD6, 0xEB, 0xFF))
+                : ResolveBrush(owner, "DialogPrimaryButtonBackground", Color.FromRgb(0xD6, 0xEB, 0xFF)),
+            Foreground = owner is null
+                ? new SolidColorBrush(Color.FromRgb(0x00, 0x5F, 0xB8))
+                : ResolveBrush(owner, "TextAccent", Color.FromRgb(0x00, 0x5F, 0xB8)),
+            BorderThickness = new Thickness(0),
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Padding = new Thickness(16, 8, 16, 8),
+            MinWidth = 72,
+            Cursor = System.Windows.Input.Cursors.Hand,
+        };
+        button.Template = CreatePrimaryButtonTemplate();
+        return button;
+    }
+
+    private static ControlTemplate CreatePrimaryButtonTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+        var borderFactory = new FrameworkElementFactory(typeof(Border), "bd");
+        borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(AppDialogLayout.PrimaryButtonCornerRadius));
+        borderFactory.SetBinding(Border.BackgroundProperty, new Binding(nameof(Button.Background))
+        {
+            RelativeSource = RelativeSource.TemplatedParent,
+        });
+        borderFactory.SetBinding(Border.PaddingProperty, new Binding(nameof(Button.Padding))
+        {
+            RelativeSource = RelativeSource.TemplatedParent,
+        });
+
+        var contentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+        contentFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        contentFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        borderFactory.AppendChild(contentFactory);
+        template.VisualTree = borderFactory;
+        return template;
     }
 
     private static Button CreateTextButton(string label, Window? owner, bool isPrimary = false)

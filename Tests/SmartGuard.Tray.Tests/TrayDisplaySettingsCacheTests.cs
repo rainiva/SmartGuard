@@ -26,6 +26,26 @@ public class TrayDisplaySettingsCacheTests
     }
 
     [Fact]
+    public void NotifyOnPlanChange_uses_seeded_value_without_immediate_reload()
+    {
+        TrayDisplaySettingsCache.ResetForTests();
+        TrayDisplaySettingsCache.CacheDuration = TimeSpan.FromSeconds(5);
+
+        var loadCount = 0;
+        var cache = new TrayDisplaySettingsCache(
+            initialNotifyOnPlanChange: true,
+            notifyLoader: () =>
+            {
+                loadCount++;
+                return false;
+            });
+
+        cache.NotifyOnPlanChange.Should().BeTrue();
+        cache.NotifyOnPlanChange.Should().BeTrue();
+        loadCount.Should().Be(0);
+    }
+
+    [Fact]
     public void NotifyOnPlanChange_reloads_after_cache_expires()
     {
         TrayDisplaySettingsCache.ResetForTests();

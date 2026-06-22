@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SmartGuard.Engine.Infrastructure;
+namespace SmartGuard.Configuration;
 
 public static class IdleDetector
 {

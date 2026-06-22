@@ -8,6 +8,7 @@ public static class ToastAumidRegistrar
 {
   internal static Func<string, bool>? StartMenuShortcutWriterForTests;
   internal static int ShortcutWriteCountForTests { get; private set; }
+  internal static int AppUserModelIdWriteCountForTests { get; private set; }
 
   public static bool EnsureRegistered(string root)
   {
@@ -27,10 +28,14 @@ public static class ToastAumidRegistrar
   {
     StartMenuShortcutWriterForTests = null;
     ShortcutWriteCountForTests = 0;
+    AppUserModelIdWriteCountForTests = 0;
   }
 
   private static void RegisterAppUserModelId(string root)
   {
+    if (File.Exists(GetAumidMarkerPath(root)))
+      return;
+
     var regPath = $@"Software\Classes\AppUserModelId\{SmartGuardToastAppId.AppId}";
     using var key = Registry.CurrentUser.CreateSubKey(regPath, true);
     if (key is null) return;
@@ -41,10 +46,16 @@ public static class ToastAumidRegistrar
       var iconUri = new Uri(iconPath).AbsoluteUri;
       key.SetValue("IconUri", iconUri, RegistryValueKind.String);
     }
+
+    AppUserModelIdWriteCountForTests++;
+    MarkAumidRegistered(root);
   }
 
   private static string GetShortcutMarkerPath(string root)
     => Path.Combine(root, "lib", ".smartguard-toast-shortcut");
+
+  private static string GetAumidMarkerPath(string root)
+    => Path.Combine(root, "lib", ".smartguard-toast-aumid");
 
   private static void EnsureStartMenuShortcut(string root)
   {
@@ -86,6 +97,15 @@ public static class ToastAumidRegistrar
   {
     ShortcutWriteCountForTests++;
     var markerPath = GetShortcutMarkerPath(root);
+    var markerDir = Path.GetDirectoryName(markerPath);
+    if (!string.IsNullOrEmpty(markerDir))
+      Directory.CreateDirectory(markerDir);
+    File.WriteAllText(markerPath, DateTime.UtcNow.ToString("o"));
+  }
+
+  private static void MarkAumidRegistered(string root)
+  {
+    var markerPath = GetAumidMarkerPath(root);
     var markerDir = Path.GetDirectoryName(markerPath);
     if (!string.IsNullOrEmpty(markerDir))
       Directory.CreateDirectory(markerDir);

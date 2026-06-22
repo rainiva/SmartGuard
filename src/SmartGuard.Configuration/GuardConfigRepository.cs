@@ -6,18 +6,42 @@ namespace SmartGuard.Configuration;
 public sealed class GuardConfigRepository(string configPath)
 {
   private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+  private GuardConfig? _readCache;
+  private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
+
+  internal int DiskReadCountForTests { get; private set; }
+
+  internal void ResetMetricsForTests() => DiskReadCountForTests = 0;
 
   public GuardConfig? TryLoad()
   {
-    if (!File.Exists(configPath)) return null;
+    if (!File.Exists(configPath))
+    {
+      InvalidateReadCache();
+      return null;
+    }
+
+    var writeTimeUtc = File.GetLastWriteTimeUtc(configPath);
+    if (_readCache is not null && _readCacheWriteTimeUtc == writeTimeUtc)
+      return _readCache;
+
+    DiskReadCountForTests++;
     try
     {
       var node = JsonNode.Parse(File.ReadAllText(configPath));
-      if (node is null) return null;
-      return node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
+      if (node is null)
+      {
+        InvalidateReadCache();
+        return null;
+      }
+
+      _readCache = node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
+      _readCacheWriteTimeUtc = writeTimeUtc;
+      return _readCache;
     }
     catch
     {
+      InvalidateReadCache();
       return null;
     }
   }
@@ -108,5 +132,12 @@ public sealed class GuardConfigRepository(string configPath)
     var dir = Path.GetDirectoryName(configPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
     GuardConfigAtomicFileWriter.WriteAllText(configPath, content);
+    InvalidateReadCache();
+  }
+
+  private void InvalidateReadCache()
+  {
+    _readCache = null;
+    _readCacheWriteTimeUtc = DateTime.MinValue;
   }
 }

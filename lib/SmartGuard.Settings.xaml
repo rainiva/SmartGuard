@@ -50,6 +50,7 @@
       <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#B3D7F7"/>
       <SolidColorBrush x:Key="DividerBrush" Color="#E5E5E5"/>
       <Thickness x:Key="SettingsContentPageMargin">24,24,24,12</Thickness>
+      <Thickness x:Key="ToastContainerMargin">0,0,18,0</Thickness>
 
       <!-- Navigation Item Style -->
       <Style x:Key="NavigationItemStyle" TargetType="ListBoxItem">
@@ -397,6 +398,30 @@
                            Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"
                            VerticalAlignment="Bottom"/>
               </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="SettingsLogListBox" TargetType="ListBox">
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ListBox">
+              <Border Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}">
+                <ScrollViewer Style="{StaticResource SettingsScrollViewer}"
+                              Focusable="False"
+                              CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                              HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                              VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                              Padding="{TemplateBinding Padding}">
+                  <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                </ScrollViewer>
+              </Border>
             </ControlTemplate>
           </Setter.Value>
         </Setter>
@@ -1088,11 +1113,9 @@
                     ClipToBounds="True"
                     VerticalAlignment="Stretch">
               <ListBox x:Name="lstLogView"
+                       Style="{StaticResource SettingsLogListBox}"
                        VirtualizingPanel.IsVirtualizing="True"
                        VirtualizingPanel.VirtualizationMode="Recycling"
-                       ScrollViewer.CanContentScroll="True"
-                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                        BorderThickness="0"
                        Background="Transparent"
                        Padding="12"
@@ -1115,7 +1138,7 @@
             Grid.ColumnSpan="2"
             HorizontalAlignment="Right"
             VerticalAlignment="Top"
-            Margin="0,0,24,0"
+            Margin="{StaticResource ToastContainerMargin}"
             Visibility="Collapsed"
             Background="Transparent"
             BorderThickness="0"

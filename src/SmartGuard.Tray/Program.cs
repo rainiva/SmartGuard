@@ -23,7 +23,6 @@ internal static class Program
       return;
     }
 
-    ToastAumidRegistrar.EnsureRegistered(root);
     Application.Run(new TrayApplicationContext(root));
   }
 }

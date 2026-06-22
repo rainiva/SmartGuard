@@ -350,6 +350,10 @@ public class SettingsWindowControllerTests
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
                 var combo = window.FindName("cmbLogTimeRange") as ComboBox;
                 var customPanel = window.FindName("panelLogCustomRange") as UIElement;
 
@@ -492,6 +496,56 @@ public class SettingsWindowControllerTests
             }
             finally
             {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_clicks_refresh_and_sees_idle_from_status_not_reset_by_click()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogIdle_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            File.WriteAllText(logPath, "[HEART] 2026-06-21 10:00:00 active\n");
+
+            var publishedAt = DateTime.Now.AddSeconds(-30);
+            var status = new SmartGuard.Contracts.StatusPayload
+            {
+                idleSeconds = 480,
+                timestamp = publishedAt.ToString("s"),
+            };
+            File.WriteAllText(
+                Path.Combine(tempRoot, "SmartGuard.status.json"),
+                System.Text.Json.JsonSerializer.Serialize(status));
+
+            LogViewIdleReader.ApiReadOverrideForTests = () => 0;
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                ClickLogToolbarButton(window, "btnLogRefresh");
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var statusLabel = window.FindName("lblLogStatus") as TextBlock;
+                statusLabel.Should().NotBeNull();
+                statusLabel!.Text.Should().MatchRegex(@"当前空闲 (5\d\d|510) 秒");
+            }
+            finally
+            {
+                LogViewIdleReader.ApiReadOverrideForTests = null;
                 try { Directory.Delete(tempRoot, true); } catch { }
             }
         });
@@ -1453,9 +1507,9 @@ public class SettingsWindowControllerTests
             "RefreshLogView",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
             binder: null,
-            types: [typeof(bool)],
+            types: [typeof(bool), typeof(bool)],
             modifiers: null);
-        method!.Invoke(controller, [forceRedraw]);
+        method!.Invoke(controller, [forceRedraw, false]);
     }
 
     private static string GetLogViewPlainText(SettingsWindowController controller)
