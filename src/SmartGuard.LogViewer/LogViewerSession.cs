@@ -63,7 +63,10 @@ internal sealed class LogViewerSession
     }
 
     if (changed)
+    {
+      TrimDisplayedTextIfNeeded();
       LineCount = LogView.Text.Split(['\r', '\n'], StringSplitOptions.None).Length;
+    }
 
     var now = DateTime.Now;
     if (changed || LastStatusRefresh is null || (now - LastStatusRefresh.Value).TotalSeconds >= 5)
@@ -71,5 +74,17 @@ internal sealed class LogViewerSession
       LastStatusRefresh = now;
       StatusLabel.Text = $"刷新: {now:HH:mm:ss} | {LineCount} 行 | {LogPath}";
     }
+  }
+
+  private void TrimDisplayedTextIfNeeded()
+  {
+    if (LogView.TextLength <= LogViewerTextTrimmer.DefaultMaxCachedBytes)
+      return;
+
+    var trimmed = LogViewerTextTrimmer.TrimToMaxBytes(LogView.Text);
+    LogViewerRichTextRenderer.SetText(
+      LogView,
+      LogLineDisplayFormatter.FormatText(trimmed),
+      FollowTail);
   }
 }
