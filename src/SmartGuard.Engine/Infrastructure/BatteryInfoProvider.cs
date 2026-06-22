@@ -8,6 +8,7 @@ public static class BatteryInfoProvider
   private static (int Percent, bool IsOnAc)? _cache;
   private static DateTime _cacheAt = DateTime.MinValue;
   private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(5);
+  internal static Func<(int Percent, bool IsOnAc)>? ReadCoreOverrideForTests;
 
   [StructLayout(LayoutKind.Sequential)]
   private struct SystemPowerStatus
@@ -24,10 +25,33 @@ public static class BatteryInfoProvider
   [return: MarshalAs(UnmanagedType.Bool)]
   private static extern bool GetSystemPowerStatus(ref SystemPowerStatus status);
 
-  public static (int Percent, bool IsOnAc) GetBatteryInfo()
+  public static (int Percent, bool IsOnAc) GetBatteryInfo(bool forceRefresh = false)
   {
-    if (_cache is { } cached && DateTime.UtcNow - _cacheAt < CacheTtl)
+    if (!forceRefresh && _cache is { } cached && DateTime.UtcNow - _cacheAt < CacheTtl)
       return cached;
+
+    var result = ReadCore();
+    _cache = result;
+    _cacheAt = DateTime.UtcNow;
+    return result;
+  }
+
+  internal static void InvalidateCache()
+  {
+    _cache = null;
+    _cacheAt = DateTime.MinValue;
+  }
+
+  internal static void SetCacheForTests(int percent, bool isOnAc)
+  {
+    _cache = (percent, isOnAc);
+    _cacheAt = DateTime.UtcNow;
+  }
+
+  private static (int Percent, bool IsOnAc) ReadCore()
+  {
+    if (ReadCoreOverrideForTests is { } readOverride)
+      return readOverride();
 
     try
     {
@@ -35,21 +59,15 @@ public static class BatteryInfoProvider
       var status = new SystemPowerStatus();
       if (!GetSystemPowerStatus(ref status))
       {
-        var fallback = wmi is { } f ? (f.Percent, f.IsOnAc ?? true) : (100, true);
-        _cache = fallback;
-        _cacheAt = DateTime.UtcNow;
-        return fallback;
+        return wmi is { } f ? (f.Percent, f.IsOnAc ?? true) : (100, true);
       }
 
-      var result = BatteryStatusInterpreter.Resolve(
+      return BatteryStatusInterpreter.Resolve(
         status.ACLineStatus,
         status.BatteryLifePercent,
         status.BatteryFlag,
         wmi?.Percent,
         wmi?.IsOnAc);
-      _cache = result;
-      _cacheAt = DateTime.UtcNow;
-      return result;
     }
     catch
     {

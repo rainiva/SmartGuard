@@ -20,4 +20,8 @@
     <ProjectReference Include="..\SmartGuard.Configuration\SmartGuard.Configuration.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartGuard.Engine.Tests" />
+  </ItemGroup>
+
 </Project>

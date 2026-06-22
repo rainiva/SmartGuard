@@ -5,6 +5,7 @@ public static class GuardianLogMessages
   public static string FormatHeartbeat(
     string label,
     string planName,
+    int idleSeconds,
     int batteryPercent,
     bool isOnAc,
     bool paused,
@@ -13,7 +14,7 @@ public static class GuardianLogMessages
     var pwr = isOnAc ? "插电" : "电池";
     var brightPart = brightness >= 0 ? $"亮度{brightness}%" : "亮度N/A";
     var pause = paused ? " | 已暂停" : string.Empty;
-    return $"{label} | 计划正常 | {planName} | 电量{batteryPercent}% {pwr} | {brightPart}{pause}";
+    return $"{label} (空闲{idleSeconds}秒) | 计划正常 | {planName} | 电量{batteryPercent}% {pwr} | {brightPart}{pause}";
   }
 
   public static string FormatStatusLabelChange(

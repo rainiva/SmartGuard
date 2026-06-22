@@ -14,8 +14,9 @@ public sealed class PowerEventWakeListener : IDisposable
 
   private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
   {
-    var isOnAc = PowerEventInterpreter.InterpretPowerMode(e.Mode)
-      ?? BatteryInfoProvider.GetBatteryInfo().IsOnAc;
+    var isOnAc = PowerEventStateResolver.Resolve(
+      e.Mode,
+      readBatteryInfo: () => BatteryInfoProvider.GetBatteryInfo(forceRefresh: true));
     _onPowerChanged(isOnAc);
   }
 

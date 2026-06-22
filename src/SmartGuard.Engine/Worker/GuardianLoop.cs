@@ -12,6 +12,7 @@ public sealed class GuardianLoop(
   string initMarkerPath,
   string fallbackLogPath)
 {
+  private readonly IdleTracker _idleTracker = new();
   private readonly BrightnessService _brightness = new();
   private readonly HashSet<string> _tickLogFingerprints = new(StringComparer.OrdinalIgnoreCase);
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
@@ -93,7 +94,7 @@ public sealed class GuardianLoop(
   {
     var config = GuardConfig.LoadFromFile(configPath);
     var planCatalog = _planCatalog ?? PowerCfgExecutor.LoadPowerPlanCatalog();
-    var idle = (int)IdleDetector.GetIdleSeconds();
+    var idle = (int)_idleTracker.Sample(IdleDetector.GetIdleSeconds, DateTime.UtcNow);
     var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
     var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
     var current = activePlanInfo?.Guid;
@@ -147,7 +148,7 @@ public sealed class GuardianLoop(
     {
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       WriteLog(config, LogLevel.Heart,
-        GuardianLogMessages.FormatHeartbeat(label, planName, batteryPercent, isOnAc, config.Paused, bright));
+        GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright));
       _lastHeartbeat = DateTime.Now;
     }
 

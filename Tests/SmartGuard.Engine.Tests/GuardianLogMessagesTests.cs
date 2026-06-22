@@ -8,15 +8,15 @@ public class GuardianLogMessagesTests
   [Fact]
   public void FormatHeartbeat_includes_brightness_when_supported()
   {
-    GuardianLogMessages.FormatHeartbeat("活跃", "高性能", 90, isOnAc: true, paused: false, brightness: 56)
-      .Should().Be("活跃 | 计划正常 | 高性能 | 电量90% 插电 | 亮度56%");
+    GuardianLogMessages.FormatHeartbeat("活跃", "高性能", idleSeconds: 12, batteryPercent: 90, isOnAc: true, paused: false, brightness: 56)
+      .Should().Be("活跃 (空闲12秒) | 计划正常 | 高性能 | 电量90% 插电 | 亮度56%");
   }
 
   [Fact]
   public void FormatHeartbeat_shows_na_when_brightness_unsupported()
   {
-    GuardianLogMessages.FormatHeartbeat("活跃", "平衡", 50, isOnAc: false, paused: true, brightness: -1)
-      .Should().Be("活跃 | 计划正常 | 平衡 | 电量50% 电池 | 亮度N/A | 已暂停");
+    GuardianLogMessages.FormatHeartbeat("活跃", "平衡", idleSeconds: 900, batteryPercent: 50, isOnAc: false, paused: true, brightness: -1)
+      .Should().Be("活跃 (空闲900秒) | 计划正常 | 平衡 | 电量50% 电池 | 亮度N/A | 已暂停");
   }
 
   [Fact]
