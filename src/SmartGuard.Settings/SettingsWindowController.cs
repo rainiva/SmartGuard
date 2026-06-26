@@ -45,6 +45,7 @@ public sealed class SettingsWindowController
   private LogViewListPresenter? _logListPresenter;
   private IReadOnlyList<string> _lastDisplayedLines = Array.Empty<string>();
   private int? _logIdleSeconds;
+  private bool _logStatusMayBeStale;
   private TextBlock? _lblLogStatus;
   private ScrollViewer? _logScrollViewer;
   private string? _logPath;
@@ -527,17 +528,19 @@ public sealed class SettingsWindowController
     }
   }
 
-  private void RefreshLogView(bool forceRedraw = false, bool refreshIdle = false)
+  private void RefreshLogView(bool forceRedraw = false)
   {
     if (_logController is null || _logListPresenter is null || _lblLogStatus is null) return;
 
-    if (refreshIdle)
-      _logIdleSeconds = LogViewIdleReader.TryReadSeconds(_root);
+    var idleRead = LogViewIdleReader.TryRead(_root);
+    if (idleRead.Seconds is not null)
+      _logIdleSeconds = idleRead.Seconds;
+    _logStatusMayBeStale = idleRead.StatusMayBeStale;
 
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
 
-    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, _logIdleSeconds);
+    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, _logIdleSeconds, _logStatusMayBeStale);
     var plan = LogViewUpdatePlanner.CreatePlan(_lastDisplayedLines, snapshot.DisplayLines, forceRedraw);
 
     if (!forceRedraw && !snapshot.ContentChanged && plan.Mode == LogViewUpdateMode.NoChange)
@@ -560,7 +563,7 @@ public sealed class SettingsWindowController
 
     scrollViewer.UpdateLayout();
     if (scrollToTail)
-      scrollViewer.ScrollToEnd();
+      ScrollLogViewToTail(deferred: true);
     else if (!wasAtTail)
       scrollViewer.ScrollToVerticalOffset(savedOffset);
   }
@@ -656,7 +659,7 @@ public sealed class SettingsWindowController
   {
     _logController?.ForceRefresh();
     _lastDisplayedLines = Array.Empty<string>();
-    RefreshLogView(forceRedraw: true, refreshIdle: true);
+    RefreshLogView(forceRedraw: true);
   }
 
   private void CopyVisibleLog()
@@ -747,7 +750,7 @@ public sealed class SettingsWindowController
     _suppressFollowTailAutoSync = true;
     try
     {
-      ResolveLogScrollViewer()?.ScrollToEnd();
+      ScrollLogViewToTail();
       if (_logController is not null && _chkLogFollowTail?.IsChecked != true)
         _logController.FollowTail = false;
       SyncFollowTailToggle();
@@ -756,6 +759,32 @@ public sealed class SettingsWindowController
     {
       ReleaseFollowTailAutoSyncSuppression();
     }
+  }
+
+  private void ScrollLogViewToTail(bool deferred = false)
+  {
+    void ScrollNow()
+    {
+      var scrollViewer = ResolveLogScrollViewer();
+      if (scrollViewer is null)
+        return;
+
+      scrollViewer.UpdateLayout();
+
+      if (_lstLogView is not null && _lstLogView.Items.Count > 0)
+        _lstLogView.ScrollIntoView(_lstLogView.Items[_lstLogView.Items.Count - 1]);
+
+      scrollViewer.UpdateLayout();
+      scrollViewer.ScrollToEnd();
+    }
+
+    ScrollNow();
+    if (!deferred)
+      return;
+
+    _window.Dispatcher.BeginInvoke(
+      ScrollNow,
+      System.Windows.Threading.DispatcherPriority.Loaded);
   }
 
   private void ReleaseFollowTailAutoSyncSuppression()
@@ -771,7 +800,18 @@ public sealed class SettingsWindowController
 
     _logController.FollowTail = enabled;
     if (enabled)
+    {
       RefreshLogView(forceRedraw: true);
+      _suppressFollowTailAutoSync = true;
+      try
+      {
+        ScrollLogViewToTail(deferred: true);
+      }
+      finally
+      {
+        ReleaseFollowTailAutoSyncSuppression();
+      }
+    }
   }
 
   private void SyncFollowTailToggle()

@@ -53,6 +53,26 @@ public class LogViewStatusTextBuilderTests
     }
 
     [Fact]
+    public void Build_includes_stale_hint_when_status_may_be_stale()
+    {
+        var snapshot = new LogViewSnapshot(
+            ["[INFO] 2026-06-21 10:00:00 heartbeat"],
+            1,
+            false,
+            @"C:\SmartGuard\SmartGuard.log",
+            false,
+            "",
+            null);
+
+        LogViewStatusTextBuilder.Build(
+                snapshot,
+                new DateTime(2026, 6, 21, 10, 2, 24),
+                idleSeconds: 12,
+                statusMayBeStale: true)
+            .Should().Contain("状态可能过期");
+    }
+
+    [Fact]
     public void Build_omits_idle_seconds_when_not_provided()
     {
         var snapshot = new LogViewSnapshot(

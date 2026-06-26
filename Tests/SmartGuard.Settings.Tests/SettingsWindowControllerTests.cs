@@ -502,6 +502,146 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void User_on_logs_page_sees_idle_without_clicking_refresh()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogIdleOpen_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            File.WriteAllText(logPath, "[HEART] 2026-06-21 10:00:00 active\n");
+
+            var publishedAt = DateTime.Now.AddSeconds(-30);
+            var status = new SmartGuard.Contracts.StatusPayload
+            {
+                idleSeconds = 480,
+                timestamp = publishedAt.ToString("s"),
+            };
+            File.WriteAllText(
+                Path.Combine(tempRoot, "SmartGuard.status.json"),
+                System.Text.Json.JsonSerializer.Serialize(status));
+
+            LogViewIdleReader.ApiReadOverrideForTests = () => 505;
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var statusLabel = window.FindName("lblLogStatus") as TextBlock;
+                statusLabel.Should().NotBeNull();
+                statusLabel!.Text.Should().MatchRegex(@"当前空闲 (5\d\d|510) 秒");
+            }
+            finally
+            {
+                LogViewIdleReader.ApiReadOverrideForTests = null;
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_sees_lower_idle_after_local_activity_while_status_stale()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogIdleActiveUi_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            File.WriteAllText(logPath, "[HEART] 2026-06-21 10:00:00 active\n");
+
+            var publishedAt = DateTime.Now.AddSeconds(-30);
+            var status = new SmartGuard.Contracts.StatusPayload
+            {
+                idleSeconds = 500,
+                timestamp = publishedAt.ToString("s"),
+            };
+            File.WriteAllText(
+                Path.Combine(tempRoot, "SmartGuard.status.json"),
+                System.Text.Json.JsonSerializer.Serialize(status));
+
+            LogViewIdleReader.ApiReadOverrideForTests = () => 8;
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var statusLabel = window.FindName("lblLogStatus") as TextBlock;
+                statusLabel!.Text.Should().Contain("当前空闲 8 秒");
+            }
+            finally
+            {
+                LogViewIdleReader.ApiReadOverrideForTests = null;
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_automatic_log_refresh_updates_idle_seconds_without_manual_refresh()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogIdleTimer_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            File.WriteAllText(logPath, "[HEART] 2026-06-21 10:00:00 active\n");
+
+            var readCount = 0;
+            LogViewIdleReader.ReadOverrideForTests = () =>
+            {
+                readCount++;
+                return readCount == 1 ? 100u : 200u;
+            };
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var statusLabel = window.FindName("lblLogStatus") as TextBlock;
+                statusLabel!.Text.Should().Contain("当前空闲 100 秒");
+
+                InvokeRefreshLogView(controller!);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                statusLabel.Text.Should().Contain("当前空闲 200 秒");
+            }
+            finally
+            {
+                LogViewIdleReader.ReadOverrideForTests = null;
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void User_clicks_refresh_and_sees_idle_from_status_not_reset_by_click()
     {
         RunOnSta(() =>
@@ -521,7 +661,7 @@ public class SettingsWindowControllerTests
                 Path.Combine(tempRoot, "SmartGuard.status.json"),
                 System.Text.Json.JsonSerializer.Serialize(status));
 
-            LogViewIdleReader.ApiReadOverrideForTests = () => 0;
+            LogViewIdleReader.ApiReadOverrideForTests = () => 505;
             try
             {
                 var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
@@ -1207,6 +1347,100 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void User_enabling_follow_tail_scrolls_to_latest_log()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogFollow_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            var builder = new System.Text.StringBuilder();
+            for (var i = 0; i < 200; i++)
+                builder.AppendLine($"[INFO] 2026-06-21 09:{i % 60:D2}:{i % 60:D2} scroll line {i}");
+            File.WriteAllText(logPath, builder.ToString());
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var scrollViewer = GetLogScrollViewer(window, controller!);
+                scrollViewer.ScrollToVerticalOffset(0);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                scrollViewer.VerticalOffset.Should().Be(0);
+
+                var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
+                chkLogFollowTail!.IsChecked = true;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
+                GetLogViewPlainText(controller!).Should().Contain("scroll line 199");
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_at_tail_with_follow_tail_stays_at_tail_when_new_log_lines_append()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogFollowAppend_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            var builder = new System.Text.StringBuilder();
+            for (var i = 0; i < 200; i++)
+                builder.AppendLine($"[INFO] 2026-06-21 09:{i % 60:D2}:{i % 60:D2} scroll line {i}");
+            File.WriteAllText(logPath, builder.ToString());
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var scrollViewer = GetLogScrollViewer(window, controller!);
+                var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
+                chkLogFollowTail!.IsChecked = true;
+                ClickLogToolbarButton(window, "btnLogScrollBottom");
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
+
+                File.AppendAllText(logPath, "[INFO] 2026-06-21 10:01:00 appended while following tail\n");
+                InvokeRefreshLogView(controller!);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
+                GetLogViewPlainText(controller!).Should().Contain("appended while following tail");
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void User_searches_logs_and_results_update()
     {
         RunOnSta(() =>
@@ -1507,9 +1741,9 @@ public class SettingsWindowControllerTests
             "RefreshLogView",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
             binder: null,
-            types: [typeof(bool), typeof(bool)],
+            types: [typeof(bool)],
             modifiers: null);
-        method!.Invoke(controller, [forceRedraw, false]);
+        method!.Invoke(controller, [forceRedraw]);
     }
 
     private static string GetLogViewPlainText(SettingsWindowController controller)

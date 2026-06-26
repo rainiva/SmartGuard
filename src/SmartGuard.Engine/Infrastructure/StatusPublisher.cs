@@ -16,9 +16,16 @@ public sealed class StatusPublisher(string statusPath)
 
   public void Publish(StatusPayload payload)
   {
-    if (_lastPayload is not null && StatusPayloadEquals(_lastPayload, payload))
+    if (_lastPayload is not null
+        && StatusPayloadEquals(_lastPayload, payload)
+        && !IdleDroppedSignificantly(_lastPayload, payload))
       return;
 
+    WritePayload(payload);
+  }
+
+  private void WritePayload(StatusPayload payload)
+  {
     var dir = Path.GetDirectoryName(statusPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
     var temp = statusPath + ".tmp";
@@ -27,6 +34,9 @@ public sealed class StatusPublisher(string statusPath)
     File.Move(temp, statusPath);
     _lastPayload = payload;
   }
+
+  private static bool IdleDroppedSignificantly(StatusPayload previous, StatusPayload current)
+    => current.idleSeconds + 5 < previous.idleSeconds;
 
   private static bool StatusPayloadEquals(StatusPayload a, StatusPayload b)
   {

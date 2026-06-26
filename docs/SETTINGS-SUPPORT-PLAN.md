@@ -148,6 +148,30 @@
 
 ---
 
+## 日志状态栏空闲时间（2026-06-26）
+
+### 数据来源优先级
+
+1. **`SmartGuard.status.json`**（引擎写入）：读取 `idleSeconds` + `timestamp`，按当前时间外推。
+2. **活动校正**：若本地 `GetLastInputInfo` 明显低于外推值（用户刚有操作），显示本地空闲秒数。
+3. **无 status 文件**：直接使用本地 `GetLastInputInfo`。
+4. **status 超过 300 秒未更新**：视为引擎可能未运行，改用本地 API，并标记「状态可能过期」。
+5. **status 超过 90 秒未更新**（仍在外推窗口内）：继续外推，状态栏追加「状态可能过期」提示。
+
+### 刷新节奏
+
+- 日志页激活时，每 **2 秒** 与日志内容一并刷新状态栏（含空闲秒数）。
+- 引擎按 `CheckIntervalSec`（默认 30s）更新 status；仅 `idleSeconds` 缓增时不写盘，靠外推；空闲显著下降时强制写盘。
+
+### 验收标准
+
+- [ ] 打开日志页即可见「当前空闲 N 秒」，无需点刷新。
+- [ ] 静置后 N 递增；晃动鼠标后 2–4 秒内降至个位数。
+- [ ] 引擎停止 5 分钟后，空闲跟随本地输入，不再无限外推。
+- [ ] `LogViewIdleReaderTests`、`StatusPublisherTests`、`SettingsWindowControllerTests` 全绿。
+
+---
+
 ## 软件图标（已完成）
 
 ### 验收标准

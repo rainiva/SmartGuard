@@ -29,7 +29,7 @@ public class StatusPublisherTests : IDisposable
     }
 
     [Fact]
-    public void Publish_skips_write_when_only_idle_seconds_changed()
+    public void Publish_skips_write_when_only_idle_seconds_increases()
     {
         var publisher = new StatusPublisher(_statusPath);
         var planGuid = Guid.NewGuid().ToString();
@@ -38,6 +38,35 @@ public class StatusPublisherTests : IDisposable
         var firstJson = File.ReadAllText(_statusPath);
 
         publisher.Publish(CreatePayload(idleSeconds: 25, batteryPercent: 80, planGuid));
+
+        File.ReadAllText(_statusPath).Should().Be(firstJson);
+    }
+
+    [Fact]
+    public void Publish_writes_when_idle_seconds_drops_significantly()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var planGuid = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(idleSeconds: 500, batteryPercent: 80, planGuid));
+
+        var firstJson = File.ReadAllText(_statusPath);
+
+        publisher.Publish(CreatePayload(idleSeconds: 10, batteryPercent: 80, planGuid));
+
+        File.ReadAllText(_statusPath).Should().NotBe(firstJson);
+        File.ReadAllText(_statusPath).Should().Contain("\"idleSeconds\": 10");
+    }
+
+    [Fact]
+    public void Publish_skips_write_when_idle_seconds_increase_is_small()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var planGuid = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(idleSeconds: 100, batteryPercent: 80, planGuid));
+
+        var firstJson = File.ReadAllText(_statusPath);
+
+        publisher.Publish(CreatePayload(idleSeconds: 115, batteryPercent: 80, planGuid));
 
         File.ReadAllText(_statusPath).Should().Be(firstJson);
     }
