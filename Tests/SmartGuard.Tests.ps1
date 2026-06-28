@@ -36,6 +36,16 @@
             $metrics.alpha32 | Should -BeLessOrEqual 4
         }
 
+        It 'bundled SmartGuard.ico keeps a compact 32px lightning silhouette for Explorer lists' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); lime=[(x,y) for y in range(img32.height) for x in range(img32.width) if (lambda p: p[3] > 32 and p[0] > 180 and p[1] > 210 and p[2] < 140)(img32.getpixel((x, y)))]; xs=[p[0] for p in lime]; ys=[p[1] for p in lime]; print(json.dumps({'width': max(xs) - min(xs) + 1, 'height': max(ys) - min(ys) + 1}))" $icon
+            $metrics = $metricsJson | ConvertFrom-Json
+
+            $metrics.width | Should -BeGreaterOrEqual 5
+            $metrics.height | Should -BeLessOrEqual 8
+        }
+
         It 'does not ship Create-TrayIcon.ps1 and packaging project exists' {
             $root = Split-Path -Parent $PSScriptRoot
             Test-Path -LiteralPath (Join-Path $root 'lib\Create-TrayIcon.ps1') | Should -Be $false
