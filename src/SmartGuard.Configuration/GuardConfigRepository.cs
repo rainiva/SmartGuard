@@ -37,7 +37,10 @@ public sealed class GuardConfigRepository(string configPath)
 
       _readCache = node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
       if (_readCache is not null && node is JsonObject obj)
+      {
         ApplyNotificationMigration(_readCache, obj);
+        ApplyThemeMigration(_readCache, obj);
+      }
       _readCacheWriteTimeUtc = writeTimeUtc;
       return _readCache;
     }
@@ -58,6 +61,14 @@ public sealed class GuardConfigRepository(string configPath)
   {
     if (!node.ContainsKey("NotifyOnExternalChange"))
       config.NotifyOnExternalChange = config.NotifyOnPlanChange;
+  }
+
+  internal static void ApplyThemeMigration(GuardConfig config, JsonObject node)
+  {
+    if (!node.ContainsKey("ThemeFollowSystem"))
+      config.ThemeFollowSystem = true;
+    if (!node.ContainsKey("ThemeIsDark"))
+      config.ThemeIsDark = false;
   }
 
   public void Save(GuardConfig config)
@@ -130,6 +141,8 @@ public sealed class GuardConfigRepository(string configPath)
     node["NotifyOnExternalChange"] = config.NotifyOnExternalChange;
     node["HeartbeatIntervalMin"] = config.HeartbeatIntervalMin;
     node["AutoStartEnabled"] = config.AutoStartEnabled;
+    node["ThemeFollowSystem"] = config.ThemeFollowSystem;
+    node["ThemeIsDark"] = config.ThemeIsDark;
     node["GitHubToken"] = config.GitHubToken;
     if (config.ManualHighPerformanceUntil is { } until)
       node["ManualHighPerformanceUntil"] = until.ToString("o");

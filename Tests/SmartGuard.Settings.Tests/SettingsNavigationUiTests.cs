@@ -1,6 +1,5 @@
 using System.IO;
 using System.Reflection;
-using System.Text.RegularExpressions;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -19,6 +18,7 @@ public class SettingsNavigationUiTests
     [InlineData("navAdvanced", "高级")]
     [InlineData("navNotifications", "通知")]
     [InlineData("navLogs", "日志")]
+    [InlineData("navDisplay", "显示")]
     [InlineData("navAbout", "关于")]
     public void Navigation_item_includes_mdl2_icon_before_label(string navName, string label)
     {
@@ -35,31 +35,14 @@ public class SettingsNavigationUiTests
     }
 
     [Fact]
-    public void Theme_toggle_button_template_includes_pressed_trigger()
+    public void Display_page_includes_theme_follow_system_controls()
     {
         var xaml = File.ReadAllText(RepoXamlPath());
-        var styleStart = xaml.IndexOf("x:Key=\"ThemeToggleButton\"", StringComparison.Ordinal);
-        styleStart.Should().BeGreaterThan(0);
-
-        var styleEnd = xaml.IndexOf("</Style>", styleStart, StringComparison.Ordinal);
-        styleEnd.Should().BeGreaterThan(styleStart);
-
-        var styleXaml = xaml[styleStart..styleEnd];
-        styleXaml.Should().Contain("Property=\"IsMouseOver\"");
-        styleXaml.Should().MatchRegex(
-            new Regex("Property=\"IsPressed\"", RegexOptions.None, TimeSpan.FromSeconds(1)),
-            "theme toggle should provide pressed feedback");
-    }
-
-    [Fact]
-    public void Theme_toggle_includes_mdl2_icon_before_label()
-    {
-        var xaml = File.ReadAllText(RepoXamlPath());
-        xaml.Should().Contain("x:Name=\"iconTheme\"");
-        xaml.Should().Contain("x:Name=\"txtTheme\"");
-        xaml.Should().MatchRegex(
-            "btnThemeToggle[\\s\\S]*iconTheme[\\s\\S]*Segoe MDL2 Assets[\\s\\S]*txtTheme",
-            "theme toggle should show glyph before text");
+        xaml.Should().Contain("x:Name=\"pageDisplay\"");
+        xaml.Should().Contain("x:Name=\"tglThemeFollowSystem\"");
+        xaml.Should().Contain("x:Name=\"tglThemeDark\"");
+        xaml.Should().Contain("x:Name=\"rowThemeDark\"");
+        xaml.Should().NotContain("x:Name=\"btnThemeToggle\"");
     }
 
     [Fact]

@@ -88,13 +88,17 @@ public sealed class InlineToastNotification : IToastWindow
                 ToastLayoutMetrics.InlinePaddingVertical,
                 ToastLayoutMetrics.InlinePaddingHorizontal + 4,
                 ToastLayoutMetrics.InlinePaddingVertical),
-            Margin = new Thickness(ToastLayoutMetrics.InlineOuterMargin),
+            Margin = new Thickness(
+                ToastLayoutMetrics.InlineOuterMargin,
+                ToastLayoutMetrics.InlineOuterMargin,
+                0,
+                ToastLayoutMetrics.InlineOuterMargin),
             Child = content
         };
 
         _root = new Grid
         {
-            RenderTransform = new TranslateTransform(30, 0),
+            RenderTransform = new TranslateTransform(-16, 0),
             Opacity = 0
         };
         _root.Children.Add(_border);
@@ -173,7 +177,7 @@ public sealed class InlineToastNotification : IToastWindow
         var storyboard = new Storyboard();
         var transform = (TranslateTransform)_root.RenderTransform;
 
-        var slide = new DoubleAnimation(30, 0, TimeSpan.FromMilliseconds(250))
+        var slide = new DoubleAnimation(-16, 0, TimeSpan.FromMilliseconds(250))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };

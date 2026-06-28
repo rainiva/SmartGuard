@@ -37,6 +37,8 @@ public static class SettingsSnapshotMapper
       NotifyOnExternalChange = notifyOnExternalChange,
       HeartbeatIntervalMin = heartbeatIntervalMin,
       AutoStartEnabled = autoStartEnabled,
+      ThemeFollowSystem = current.ThemeFollowSystem,
+      ThemeIsDark = current.ThemeIsDark,
       GitHubToken = current.GitHubToken,
       ManualHighPerformanceUntil = current.ManualHighPerformanceUntil,
     };

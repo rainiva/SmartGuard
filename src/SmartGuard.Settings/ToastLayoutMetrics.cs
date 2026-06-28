@@ -3,6 +3,7 @@ namespace SmartGuard.Settings;
 public static class ToastLayoutMetrics
 {
     public const double ContentPageRightMargin = 24;
+    public const double ContentPageTopMargin = 24;
 
     public const double InlinePaddingVertical = 8;
     public const double InlinePaddingHorizontal = 12;
@@ -12,7 +13,9 @@ public static class ToastLayoutMetrics
     public const double InlineCornerRadius = 8;
     public const double InlineOuterMargin = 6;
 
-    public static double ToastContainerRightMargin => ContentPageRightMargin - InlineOuterMargin;
+    public static double ToastContainerRightMargin => ContentPageRightMargin;
+
+    public static double ToastContainerTopMargin => ContentPageTopMargin;
 
     public const double FloatingPaddingVertical = 8;
     public const double FloatingPaddingHorizontal = 12;

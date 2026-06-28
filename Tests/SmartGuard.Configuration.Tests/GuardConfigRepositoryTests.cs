@@ -92,6 +92,59 @@ public class GuardConfigRepositoryTests
   }
 
   [Fact]
+  public void LoadOrDefault_defaults_theme_follow_system_when_missing()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+    File.WriteAllText(path, """
+      {
+        "BalancedThresholdSec": 300
+      }
+      """);
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var loaded = repo.LoadOrDefault(dir);
+
+      loaded.ThemeFollowSystem.Should().BeTrue();
+      loaded.ThemeIsDark.Should().BeFalse();
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
+
+  [Fact]
+  public void Save_persists_theme_preferences()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.ThemeFollowSystem = false;
+      config.ThemeIsDark = true;
+      repo.Save(config);
+
+      var reloaded = repo.LoadOrDefault(dir);
+      reloaded.ThemeFollowSystem.Should().BeFalse();
+      reloaded.ThemeIsDark.Should().BeTrue();
+      File.ReadAllText(path).Should().Contain("\"ThemeFollowSystem\": false");
+      File.ReadAllText(path).Should().Contain("\"ThemeIsDark\": true");
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
+
+  [Fact]
   public void Save_persists_notify_on_external_change()
   {
     var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));

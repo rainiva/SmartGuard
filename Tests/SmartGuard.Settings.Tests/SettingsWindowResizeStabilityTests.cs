@@ -155,9 +155,9 @@ public class SettingsWindowResizeStabilityTests
                 controller.Should().NotBeNull();
 
                 var window = GetWindow(controller);
-                var btnThemeToggle = window.FindName("btnThemeToggle") as Button;
-                btnThemeToggle.Should().NotBeNull();
-                btnThemeToggle!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var tglThemeDark = window.FindName("tglThemeDark") as CheckBox;
+                tglThemeDark.Should().NotBeNull();
+                tglThemeDark!.IsChecked = true;
 
                 SettingsWindowLayoutStability.HandleWindowStateChanged(window, isDarkTheme: true, WindowState.Maximized);
                 WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeTrue();
@@ -182,7 +182,7 @@ public class SettingsWindowResizeStabilityTests
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
         File.WriteAllText(
             configPath,
-            "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000}");
+            "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000,\"ThemeFollowSystem\":false,\"ThemeIsDark\":false}");
         var repository = new GuardConfigRepository(configPath);
         var config = repository.LoadOrDefault(installRoot);
         return SettingsWindowController.TryCreate(installRoot, repository, config);

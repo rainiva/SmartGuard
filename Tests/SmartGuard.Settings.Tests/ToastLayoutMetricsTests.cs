@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -24,7 +25,34 @@ public class ToastLayoutMetricsTests
     public void Toast_container_right_margin_aligns_with_content_page()
     {
         ToastLayoutMetrics.ToastContainerRightMargin.Should().Be(
-            ToastLayoutMetrics.ContentPageRightMargin - ToastLayoutMetrics.InlineOuterMargin);
+            ToastLayoutMetrics.ContentPageRightMargin);
+    }
+
+    [Fact]
+    public void Toast_container_lives_in_content_column_not_full_window()
+    {
+        var xaml = ReadSettingsXaml();
+        xaml.Should().MatchRegex(
+            "x:Name=\"toastContainer\"[\\s\\S]{0,160}Grid\\.Column=\"1\"",
+            "toast overlay should align against the content column, not the full window width");
+        xaml.Should().NotMatchRegex(
+            "x:Name=\"toastContainer\"[\\s\\S]{0,160}Grid\\.ColumnSpan=\"2\"",
+            "toast overlay should not span the navigation column");
+    }
+
+    [Fact]
+    public void Inline_toast_border_does_not_add_extra_right_inset()
+    {
+        RunOnSta(() =>
+        {
+            var container = new Border();
+            var toast = new InlineToastNotification("saved", isError: false, isDarkMode: false, container);
+            toast.Show();
+
+            var border = FindToastCardBorder(container);
+            border.Should().NotBeNull();
+            border!.Margin.Right.Should().Be(0);
+        });
     }
 
     [Fact]
@@ -51,6 +79,18 @@ public class ToastLayoutMetricsTests
             border!.Padding.Top.Should().BeLessThanOrEqualTo(8);
             border.Padding.Bottom.Should().BeLessThanOrEqualTo(8);
         });
+    }
+
+    private static Border? FindToastCardBorder(Border container)
+    {
+        var root = container.Child as FrameworkElement;
+        if (root?.RenderTransform is TranslateTransform)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<Border>())
+                return child;
+        }
+
+        return FindChild<Border>(container);
     }
 
     private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject

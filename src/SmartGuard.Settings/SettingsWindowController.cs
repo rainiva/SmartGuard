@@ -30,7 +30,14 @@ public sealed class SettingsWindowController
   private readonly CheckBox _tglNotify;
   private readonly CheckBox _tglNotifyExternal;
   private readonly CheckBox _tglAutoStart;
+  private readonly CheckBox _tglThemeFollowSystem;
+  private readonly CheckBox _tglThemeDark;
+  private readonly Border _rowThemeDark;
   private bool _isDarkTheme;
+  private bool _themeFollowSystem;
+  private bool _themeIsDark;
+  private bool _suppressThemeEvents;
+  private SystemThemeWatcher? _systemThemeWatcher;
 
   internal bool IsDarkThemeEnabled => _isDarkTheme;
 
@@ -90,11 +97,16 @@ public sealed class SettingsWindowController
     CheckBox tglPaused,
     CheckBox tglNotify,
     CheckBox tglNotifyExternal,
-    CheckBox tglAutoStart)
+    CheckBox tglAutoStart,
+    CheckBox tglThemeFollowSystem,
+    CheckBox tglThemeDark,
+    Border rowThemeDark)
   {
     _root = root;
     _repository = repository;
     _originalConfig = originalConfig;
+    _themeFollowSystem = originalConfig.ThemeFollowSystem;
+    _themeIsDark = originalConfig.ThemeIsDark;
     _window = window;
     _toastContainer = toastContainer;
     _toastService = new ToastNotificationService(
@@ -118,6 +130,9 @@ public sealed class SettingsWindowController
     _tglNotify = tglNotify;
     _tglNotifyExternal = tglNotifyExternal;
     _tglAutoStart = tglAutoStart;
+    _tglThemeFollowSystem = tglThemeFollowSystem;
+    _tglThemeDark = tglThemeDark;
+    _rowThemeDark = rowThemeDark;
   }
 
   public static SettingsWindowController? TryCreate(string root, GuardConfigRepository repository, GuardConfig config)
@@ -186,7 +201,9 @@ public sealed class SettingsWindowController
     var tglAutoStart = Require<CheckBox>(window, "tglAutoStart");
     var txtVersion = Require<TextBlock>(window, "txtVersion");
     var navList = Require<ListBox>(window, "navList");
-    var btnThemeToggle = Require<Button>(window, "btnThemeToggle");
+    var tglThemeFollowSystem = Require<CheckBox>(window, "tglThemeFollowSystem");
+    var tglThemeDark = Require<CheckBox>(window, "tglThemeDark");
+    var rowThemeDark = Require<Border>(window, "rowThemeDark");
     var toastContainer = Require<Border>(window, "toastContainer");
 
     var controller = new SettingsWindowController(
@@ -208,7 +225,10 @@ public sealed class SettingsWindowController
       tglPaused,
       tglNotify,
       tglNotifyExternal,
-      tglAutoStart);
+      tglAutoStart,
+      tglThemeFollowSystem,
+      tglThemeDark,
+      rowThemeDark);
 
     // Initialize values
     sldBalanced.Value = SettingsInitialValues.BalancedThresholdMinutes(config);
@@ -277,6 +297,12 @@ public sealed class SettingsWindowController
     tglAutoStart.Checked += (_, _) => QueueSave();
     tglAutoStart.Unchecked += (_, _) => QueueSave();
 
+    tglThemeFollowSystem.Checked += (_, _) => controller.OnThemeFollowSystemChanged(true);
+    tglThemeFollowSystem.Unchecked += (_, _) => controller.OnThemeFollowSystemChanged(false);
+    tglThemeDark.Checked += (_, _) => controller.OnThemeDarkChanged(true);
+    tglThemeDark.Unchecked += (_, _) => controller.OnThemeDarkChanged(false);
+    controller.InitializeTheme(window);
+
     // Navigation
     controller.SetupNavigation(navList, window);
 
@@ -293,9 +319,6 @@ public sealed class SettingsWindowController
         controller.StabilizeLayout,
         controller.QueueLayoutStabilization);
     };
-
-    // Theme toggle
-    btnThemeToggle.Click += (_, _) => controller.ToggleTheme(window);
 
     // Repository link
     var lnkRepo = window.FindName("lnkRepo") as Hyperlink;
@@ -1023,6 +1046,7 @@ public sealed class SettingsWindowController
     _saveCts?.Dispose();
     _planCatalogLoadCts?.Cancel();
     _planCatalogLoadCts?.Dispose();
+    _systemThemeWatcher?.Dispose();
     _toastService?.Dispose();
   }
 
@@ -1039,7 +1063,8 @@ public sealed class SettingsWindowController
         "advanced" or "高级" => 1,
         "notifications" or "通知" => 2,
         "logs" or "日志" => 3,
-        "about" or "关于" => 4,
+        "display" or "显示" => 4,
+        "about" or "关于" => 5,
         _ => 0,
       };
 
@@ -1052,6 +1077,7 @@ public sealed class SettingsWindowController
     var pageGeneral = window.FindName("pageGeneral") as StackPanel;
     var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
     var pageNotifications = window.FindName("pageNotifications") as StackPanel;
+    var pageDisplay = window.FindName("pageDisplay") as StackPanel;
     var pageLogs = window.FindName("pageLogs") as UIElement;
     var pageAbout = window.FindName("pageAbout") as StackPanel;
     var contentScrollViewer = window.FindName("contentScrollViewer") as UIElement;
@@ -1066,6 +1092,7 @@ public sealed class SettingsWindowController
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
       if (pageAdvanced != null) pageAdvanced.Visibility = Visibility.Collapsed;
       if (pageNotifications != null) pageNotifications.Visibility = Visibility.Collapsed;
+      if (pageDisplay != null) pageDisplay.Visibility = Visibility.Collapsed;
       if (pageLogs != null) pageLogs.Visibility = Visibility.Collapsed;
       if (pageAbout != null) pageAbout.Visibility = Visibility.Collapsed;
 
@@ -1089,6 +1116,9 @@ public sealed class SettingsWindowController
           if (pageLogs != null) pageLogs.Visibility = Visibility.Visible;
           break;
         case 4:
+          if (pageDisplay != null) pageDisplay.Visibility = Visibility.Visible;
+          break;
+        case 5:
           if (pageAbout != null) pageAbout.Visibility = Visibility.Visible;
           break;
       }
@@ -1111,18 +1141,86 @@ public sealed class SettingsWindowController
       1 => "高级设置",
       2 => "通知设置",
       3 => "日志",
-      4 => "关于",
+      4 => "显示设置",
+      5 => "关于",
       _ => "常规设置",
     };
   }
 
-  private void ToggleTheme(Window window)
+  internal void InitializeTheme(Window window)
   {
-    _isDarkTheme = !_isDarkTheme;
-    _toastService.IsDarkMode = _isDarkTheme;
+    _suppressThemeEvents = true;
+    _tglThemeFollowSystem.IsChecked = _themeFollowSystem;
+    _tglThemeDark.IsChecked = _themeIsDark;
+    UpdateThemeControlsVisibility();
+    _suppressThemeEvents = false;
+
+    RefreshThemeFromSource(window);
+
+    _systemThemeWatcher?.Dispose();
+    _systemThemeWatcher = new SystemThemeWatcher();
+    _systemThemeWatcher.SystemThemeChanged += (_, _) =>
+    {
+      window.Dispatcher.Invoke(() =>
+      {
+        if (_themeFollowSystem)
+          RefreshThemeFromSource(window);
+      });
+    };
+  }
+
+  internal void OnThemeFollowSystemChanged(bool enabled)
+  {
+    if (_suppressThemeEvents)
+      return;
+
+    _themeFollowSystem = enabled;
+    UpdateThemeControlsVisibility();
+    RefreshThemeFromSource(_window);
+    SaveThemePreferences();
+  }
+
+  internal void OnThemeDarkChanged(bool enabled)
+  {
+    if (_suppressThemeEvents || _themeFollowSystem)
+      return;
+
+    _themeIsDark = enabled;
+    ApplyTheme(_window, enabled);
+    SaveThemePreferences();
+  }
+
+  private void RefreshThemeFromSource(Window window)
+  {
+    var isDark = _themeFollowSystem ? SystemThemeWatcher.IsSystemDarkMode() : _themeIsDark;
+    ApplyTheme(window, isDark);
+  }
+
+  private void UpdateThemeControlsVisibility()
+  {
+    _rowThemeDark.Visibility = _themeFollowSystem ? Visibility.Collapsed : Visibility.Visible;
+    if (_themeFollowSystem)
+      return;
+
+    _suppressThemeEvents = true;
+    _tglThemeDark.IsChecked = _themeIsDark;
+    _suppressThemeEvents = false;
+  }
+
+  private void SaveThemePreferences()
+  {
+    _originalConfig.ThemeFollowSystem = _themeFollowSystem;
+    _originalConfig.ThemeIsDark = _themeIsDark;
+    _repository.Save(_originalConfig);
+  }
+
+  private void ApplyTheme(Window window, bool isDark)
+  {
+    _isDarkTheme = isDark;
+    _toastService.IsDarkMode = isDark;
     var resources = window.Resources;
 
-    if (_isDarkTheme)
+    if (isDark)
     {
       SetResource(resources, "WindowBackground", "#202020");
       SetResource(resources, "WindowForeground", "#FFFFFF");
@@ -1195,17 +1293,9 @@ public sealed class SettingsWindowController
       SetResource(resources, "DividerBrush", "#E5E5E5");
     }
 
-    LogViewTagPalette.ConfigureForDarkMode(_isDarkTheme);
-    WindowTitleBarTheme.Apply(window, _isDarkTheme);
+    LogViewTagPalette.ConfigureForDarkMode(isDark);
+    WindowTitleBarTheme.Apply(window, isDark);
     RefreshLogView(forceRedraw: true);
-
-    var iconTheme = window.FindName("iconTheme") as TextBlock;
-    if (iconTheme != null)
-      iconTheme.Text = _isDarkTheme ? "\uE706" : "\uE708";
-
-    var txtTheme = window.FindName("txtTheme") as TextBlock;
-    if (txtTheme != null)
-      txtTheme.Text = _isDarkTheme ? "浅色模式" : "深色模式";
   }
 
   private static string GetDisplayVersion()

@@ -51,7 +51,7 @@
       <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#B3D7F7"/>
       <SolidColorBrush x:Key="DividerBrush" Color="#E5E5E5"/>
       <Thickness x:Key="SettingsContentPageMargin">24,24,24,12</Thickness>
-      <Thickness x:Key="ToastContainerMargin">0,0,18,0</Thickness>
+      <Thickness x:Key="ToastContainerMargin">0,24,24,0</Thickness>
 
       <!-- Navigation Item Style -->
       <Style x:Key="NavigationItemStyle" TargetType="ListBoxItem">
@@ -622,31 +622,6 @@
         <Setter Property="Visibility" Value="Collapsed"/>
       </Style>
 
-      <!-- Theme Toggle Button -->
-      <Style x:Key="ThemeToggleButton" TargetType="Button">
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Padding" Value="8"/>
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="Button">
-              <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-              </Border>
-              <ControlTemplate.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                  <Setter TargetName="bd" Property="Background" Value="{DynamicResource NavigationItemHoverBackground}"/>
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                  <Setter TargetName="bd" Property="Background" Value="{DynamicResource NavigationItemSelectedBackground}"/>
-                </Trigger>
-              </ControlTemplate.Triggers>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Style>
-
       <!-- Default Fluent styles for common controls (explicit styles remain on toggles/buttons) -->
       <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource SettingsTextBox}"/>
       <Style TargetType="{x:Type ComboBox}" BasedOn="{StaticResource SettingsComboBox}"/>
@@ -666,7 +641,6 @@
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="*"/>
-          <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- App Header -->
@@ -704,6 +678,12 @@
               <TextBlock Text="日志" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
+          <ListBoxItem x:Name="navDisplay">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE793;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="显示" VerticalAlignment="Center"/>
+            </StackPanel>
+          </ListBoxItem>
           <ListBoxItem x:Name="navAbout">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
@@ -711,16 +691,6 @@
             </StackPanel>
           </ListBoxItem>
         </ListBox>
-
-        <!-- Theme Toggle -->
-        <Button Grid.Row="2" x:Name="btnThemeToggle" Style="{StaticResource ThemeToggleButton}" Margin="16,8,16,16"
-                HorizontalAlignment="Left">
-          <StackPanel Orientation="Horizontal">
-            <TextBlock x:Name="iconTheme" Text="&#xE708;" FontFamily="Segoe MDL2 Assets" FontSize="16"
-                       Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0"/>
-            <TextBlock x:Name="txtTheme" Text="深色模式" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
-          </StackPanel>
-        </Button>
       </Grid>
     </Border>
 
@@ -995,6 +965,45 @@
             </Border>
           </StackPanel>
 
+          <!-- Display Page -->
+          <StackPanel x:Name="pageDisplay" Visibility="Collapsed" HorizontalAlignment="Stretch">
+
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="外观" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="选择界面配色方案" Style="{StaticResource SettingsCardDescription}"/>
+
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="跟随系统" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="自动匹配 Windows 浅色或深色模式" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglThemeFollowSystem" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
+                  </Grid>
+                </Border>
+
+                <Border x:Name="rowThemeDark" Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="深色模式" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="关闭跟随系统后可手动切换界面配色" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglThemeDark" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
           <!-- About Page -->
           <StackPanel x:Name="pageAbout" Visibility="Collapsed" HorizontalAlignment="Stretch">
 
@@ -1192,13 +1201,14 @@
 
     <!-- Inline toast overlay -->
     <Border x:Name="toastContainer"
-            Grid.ColumnSpan="2"
+            Grid.Column="1"
             HorizontalAlignment="Right"
             VerticalAlignment="Top"
             Margin="{StaticResource ToastContainerMargin}"
             Visibility="Collapsed"
             Background="Transparent"
             BorderThickness="0"
+            ClipToBounds="False"
             Panel.ZIndex="100"/>
   </Grid>
 </Window>

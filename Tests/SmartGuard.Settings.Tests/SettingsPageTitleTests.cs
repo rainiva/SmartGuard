@@ -31,8 +31,11 @@ public class SettingsPageTitleTests
                 navList.Should().NotBeNull();
                 txtPageTitle.Should().NotBeNull();
 
-                navList!.SelectedIndex = 2;
-                txtPageTitle!.Text.Should().Be("通知设置");
+                navList!.SelectedIndex = 4;
+                txtPageTitle!.Text.Should().Be("显示设置");
+
+                navList.SelectedIndex = 5;
+                txtPageTitle.Text.Should().Be("关于");
 
                 navList.SelectedIndex = 0;
                 txtPageTitle.Text.Should().Be("常规设置");

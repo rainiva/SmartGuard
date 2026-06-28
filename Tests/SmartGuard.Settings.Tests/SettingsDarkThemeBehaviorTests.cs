@@ -11,21 +11,21 @@ namespace SmartGuard.Settings.Tests;
 public class SettingsDarkThemeBehaviorTests
 {
     [Fact]
-    public void User_clicks_dark_theme_log_body_color_becomes_readable_on_dark_background()
+    public void User_enables_manual_dark_mode_log_body_color_becomes_readable_on_dark_background()
     {
         RunOnSta(() =>
         {
             EnsureApplication();
             LogViewTagPalette.ConfigureForDarkMode(false);
 
-            var installRoot = CreateInstallRoot();
+            var installRoot = CreateInstallRoot(themeFollowSystem: false);
             try
             {
                 var controller = CreateController(installRoot);
                 controller.Should().NotBeNull();
 
                 var window = GetWindow(controller);
-                ClickThemeToggle(window);
+                SetManualDarkMode(window, enabled: true);
 
                 LogViewTagPalette.GetBodyColor().Should().Be(Color.FromRgb(0xE8, 0xE8, 0xE8));
             }
@@ -38,42 +38,13 @@ public class SettingsDarkThemeBehaviorTests
     }
 
     [Fact]
-    public void User_clicks_dark_theme_theme_toggle_icon_switches_to_light_mode_glyph()
+    public void User_enables_manual_dark_mode_requests_dark_title_bar()
     {
         RunOnSta(() =>
         {
             EnsureApplication();
 
-            var installRoot = CreateInstallRoot();
-            try
-            {
-                var controller = CreateController(installRoot);
-                controller.Should().NotBeNull();
-
-                var window = GetWindow(controller);
-                var iconTheme = window.FindName("iconTheme") as TextBlock;
-                iconTheme.Should().NotBeNull();
-                iconTheme!.Text.Should().Be("\uE708");
-
-                ClickThemeToggle(window);
-
-                iconTheme.Text.Should().Be("\uE706");
-            }
-            finally
-            {
-                TryDelete(installRoot);
-            }
-        });
-    }
-
-    [Fact]
-    public void User_clicks_dark_theme_requests_dark_title_bar()
-    {
-        RunOnSta(() =>
-        {
-            EnsureApplication();
-
-            var installRoot = CreateInstallRoot();
+            var installRoot = CreateInstallRoot(themeFollowSystem: false);
             try
             {
                 var controller = CreateController(installRoot);
@@ -86,7 +57,7 @@ public class SettingsDarkThemeBehaviorTests
                     WpfStaTestHost.ShowAndWait(window);
                     WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeFalse();
 
-                    ClickThemeToggle(window);
+                    SetManualDarkMode(window, enabled: true);
 
                     WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeTrue();
                 }
@@ -106,27 +77,39 @@ public class SettingsDarkThemeBehaviorTests
     private static SettingsWindowController? CreateController(string installRoot)
     {
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
-        File.WriteAllText(
-            configPath,
-            "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000}");
         var repository = new GuardConfigRepository(configPath);
         var config = repository.LoadOrDefault(installRoot);
+        config.ThemeFollowSystem = false;
+        config.ThemeIsDark = false;
         return SettingsWindowController.TryCreate(installRoot, repository, config);
     }
 
-    private static string CreateInstallRoot()
+    private static string CreateInstallRoot(bool themeFollowSystem)
     {
         var installRoot = Path.Combine(Path.GetTempPath(), "sg-dark-theme-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(installRoot);
         Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+        File.WriteAllText(
+            Path.Combine(installRoot, "SmartGuard.config.json"),
+            $$"""
+            {
+              "BalancedThresholdSec":300,
+              "PowerSaverThresholdSec":900,
+              "LowBatteryPercent":25,
+              "CheckIntervalSec":30,
+              "BrightnessRestoreMs":1000,
+              "ThemeFollowSystem":{{themeFollowSystem.ToString().ToLowerInvariant()}},
+              "ThemeIsDark":false
+            }
+            """);
         return installRoot;
     }
 
-    private static void ClickThemeToggle(Window window)
+    private static void SetManualDarkMode(Window window, bool enabled)
     {
-        var btnThemeToggle = window.FindName("btnThemeToggle") as Button;
-        btnThemeToggle.Should().NotBeNull();
-        btnThemeToggle!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var tglThemeDark = window.FindName("tglThemeDark") as CheckBox;
+        tglThemeDark.Should().NotBeNull();
+        tglThemeDark!.IsChecked = enabled;
     }
 
     private static Window GetWindow(SettingsWindowController? controller)

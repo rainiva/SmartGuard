@@ -28,6 +28,8 @@ public sealed class GuardConfig
   public bool NotifyOnExternalChange { get; set; } = true;
   public int HeartbeatIntervalMin { get; set; } = 10;
   public bool AutoStartEnabled { get; set; } = true;
+  public bool ThemeFollowSystem { get; set; } = true;
+  public bool ThemeIsDark { get; set; }
   public string GitHubToken { get; set; } = string.Empty;
 
   [JsonPropertyName("ManualHighPerformanceUntil")]

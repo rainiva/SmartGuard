@@ -228,12 +228,12 @@ public class SettingsWindowControllerTests
             pageAdvanced.Should().NotBeNull();
             pageNotifications.Should().NotBeNull();
             navList.Should().NotBeNull();
-            navList.Items.Count.Should().Be(3);
+            navList.Items.Count.Should().Be(6);
         });
     }
 
     [Fact]
-    public void Theme_toggle_button_exists()
+    public void Display_page_theme_controls_exist()
     {
         RunOnSta(() =>
         {
@@ -247,11 +247,10 @@ public class SettingsWindowControllerTests
             var xaml = File.ReadAllText(xamlPath);
             var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
 
-            var btnThemeToggle = window.FindName("btnThemeToggle") as Button;
-            var txtTheme = window.FindName("txtTheme") as TextBlock;
-
-            btnThemeToggle.Should().NotBeNull();
-            txtTheme.Should().NotBeNull();
+            window.FindName("tglThemeFollowSystem").Should().NotBeNull();
+            window.FindName("tglThemeDark").Should().NotBeNull();
+            window.FindName("rowThemeDark").Should().NotBeNull();
+            window.FindName("btnThemeToggle").Should().BeNull();
             window.FindName("imgAppIcon").Should().NotBeNull();
         });
     }
@@ -1731,8 +1730,8 @@ public class SettingsWindowControllerTests
                 var navList = window.FindName("navList") as ListBox;
                 navList.Should().NotBeNull();
 
-                // Simulate user clicking "关于" in navigation (index 4)
-                navList.SelectedIndex = 4;
+                // Simulate user clicking "关于" in navigation (index 5)
+                navList.SelectedIndex = 5;
 
                 var pageAbout = window.FindName("pageAbout") as StackPanel;
                 pageAbout.Should().NotBeNull();
@@ -1788,7 +1787,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller);
                 var navList = window.FindName("navList") as ListBox;
                 navList.Should().NotBeNull();
-                navList!.SelectedIndex = 4;
+                navList!.SelectedIndex = 5;
 
                 var btnCheckUpdate = window.FindName("btnCheckUpdate") as Button;
                 btnCheckUpdate.Should().NotBeNull();
