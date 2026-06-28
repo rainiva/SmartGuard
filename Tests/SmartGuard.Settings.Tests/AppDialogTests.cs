@@ -124,6 +124,54 @@ public class AppDialogTests
     }
 
     [Fact]
+    public void Alert_primary_button_template_includes_hover_and_pressed_triggers()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var owner = CreateOwnerWindow();
+            try
+            {
+                var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Information, showCancel: false);
+                var primary = GetActionButtons(dialog).Single();
+                primary.ApplyTemplate();
+
+                var triggers = primary.Template!.Triggers.OfType<Trigger>().ToList();
+                triggers.Should().Contain(t => t.Property == UIElement.IsMouseOverProperty);
+                triggers.Should().Contain(t => t.Property == Button.IsPressedProperty);
+            }
+            finally
+            {
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Confirm_cancel_button_template_includes_hover_and_pressed_triggers()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var owner = CreateOwnerWindow();
+            try
+            {
+                var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Warning, showCancel: true);
+                var cancel = GetActionButtons(dialog)[0];
+                cancel.ApplyTemplate();
+
+                cancel.Template!.FindName("bd", cancel).Should().BeOfType<Border>(
+                    "cancel button should use AppDialog text button template");
+                var triggers = cancel.Template.Triggers.OfType<Trigger>().ToList();
+                triggers.Should().Contain(t => t.Property == UIElement.IsMouseOverProperty);
+                triggers.Should().Contain(t => t.Property == Button.IsPressedProperty);
+            }
+            finally
+            {
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void Confirm_cancel_button_keeps_text_style()
     {
         WpfStaTestHost.Run(() =>

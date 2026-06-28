@@ -28,6 +28,7 @@ public sealed class SettingsWindowController
   private readonly TextBlock? _lblPlanMappingStatus;
   private readonly CheckBox _tglPaused;
   private readonly CheckBox _tglNotify;
+  private readonly CheckBox _tglNotifyExternal;
   private readonly CheckBox _tglAutoStart;
   private bool _isDarkTheme;
 
@@ -52,6 +53,7 @@ public sealed class SettingsWindowController
   private string? _fallbackLogPath;
   private CheckBox? _chkLogFollowTail;
   private bool _suppressFollowTailAutoSync;
+  private bool _pendingFollowTailInitialScroll;
   private ComboBox? _cmbLogTimeRange;
   private UIElement? _panelLogCustomRange;
   private TextBox? _txtLogRangeStart;
@@ -87,6 +89,7 @@ public sealed class SettingsWindowController
     TextBlock? lblPlanMappingStatus,
     CheckBox tglPaused,
     CheckBox tglNotify,
+    CheckBox tglNotifyExternal,
     CheckBox tglAutoStart)
   {
     _root = root;
@@ -113,6 +116,7 @@ public sealed class SettingsWindowController
     _lblPlanMappingStatus = lblPlanMappingStatus;
     _tglPaused = tglPaused;
     _tglNotify = tglNotify;
+    _tglNotifyExternal = tglNotifyExternal;
     _tglAutoStart = tglAutoStart;
   }
 
@@ -178,6 +182,7 @@ public sealed class SettingsWindowController
     var lblPlanMappingStatus = window.FindName("lblPlanMappingStatus") as TextBlock;
     var tglPaused = Require<CheckBox>(window, "tglPaused");
     var tglNotify = Require<CheckBox>(window, "tglNotify");
+    var tglNotifyExternal = Require<CheckBox>(window, "tglNotifyExternal");
     var tglAutoStart = Require<CheckBox>(window, "tglAutoStart");
     var txtVersion = Require<TextBlock>(window, "txtVersion");
     var navList = Require<ListBox>(window, "navList");
@@ -202,6 +207,7 @@ public sealed class SettingsWindowController
       lblPlanMappingStatus,
       tglPaused,
       tglNotify,
+      tglNotifyExternal,
       tglAutoStart);
 
     // Initialize values
@@ -213,6 +219,7 @@ public sealed class SettingsWindowController
     sldHeartbeat.Value = config.HeartbeatIntervalMin;
     tglPaused.IsChecked = config.Paused;
     tglNotify.IsChecked = config.NotifyOnPlanChange;
+    tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     tglAutoStart.IsChecked = config.AutoStartEnabled;
 
     if (controller._lblPlanMappingStatus is not null)
@@ -265,6 +272,8 @@ public sealed class SettingsWindowController
     tglPaused.Unchecked += (_, _) => QueueSave();
     tglNotify.Checked += (_, _) => QueueSave();
     tglNotify.Unchecked += (_, _) => QueueSave();
+    tglNotifyExternal.Checked += (_, _) => QueueSave();
+    tglNotifyExternal.Unchecked += (_, _) => QueueSave();
     tglAutoStart.Checked += (_, _) => QueueSave();
     tglAutoStart.Unchecked += (_, _) => QueueSave();
 
@@ -370,7 +379,11 @@ public sealed class SettingsWindowController
     _logListPresenter = new LogViewListPresenter();
     _logListPresenter.Attach(_lstLogView);
     _lblLogStatus = Require<TextBlock>(_window, "lblLogStatus");
-    _lstLogView.Loaded += (_, _) => EnsureLogScrollViewerHooked();
+    _lstLogView.Loaded += (_, _) =>
+    {
+      EnsureLogScrollViewerHooked();
+      ApplyFollowTailScrollIfEnabled();
+    };
     _chkLogFollowTail = _window.FindName("chkLogFollowTail") as CheckBox;
     _cmbLogTimeRange = _window.FindName("cmbLogTimeRange") as ComboBox;
     _panelLogCustomRange = _window.FindName("panelLogCustomRange") as UIElement;
@@ -418,6 +431,8 @@ public sealed class SettingsWindowController
       _chkLogSearchCaseSensitive.Checked += (_, _) => RefreshLogView();
       _chkLogSearchCaseSensitive.Unchecked += (_, _) => RefreshLogView();
     }
+
+    SyncFollowTailFromUi();
 
     var logTimer = new System.Windows.Threading.DispatcherTimer(
       System.Windows.Threading.DispatcherPriority.Background,
@@ -494,6 +509,7 @@ public sealed class SettingsWindowController
         powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
         paused: _tglPaused.IsChecked == true,
         notifyOnPlanChange: _tglNotify.IsChecked == true,
+        notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
         autoStartEnabled: _tglAutoStart.IsChecked == true);
 
       var errors = GuardConfigValidator.Validate(newConfig);
@@ -558,13 +574,17 @@ public sealed class SettingsWindowController
     _lastDisplayedLines = snapshot.DisplayLines.ToArray();
     _lblLogStatus.Text = statusText;
 
+    if (scrollToTail)
+    {
+      ApplyFollowTailScrollIfEnabled();
+      return;
+    }
+
     if (scrollViewer is null)
       return;
 
     scrollViewer.UpdateLayout();
-    if (scrollToTail)
-      ScrollLogViewToTail(deferred: true);
-    else if (!wasAtTail)
+    if (!wasAtTail)
       scrollViewer.ScrollToVerticalOffset(savedOffset);
   }
 
@@ -585,7 +605,7 @@ public sealed class SettingsWindowController
     {
       if (_logController is null || _logScrollViewer is null)
         return;
-      if (_suppressFollowTailAutoSync)
+      if (_suppressFollowTailAutoSync || _pendingFollowTailInitialScroll)
         return;
       _logController.FollowTail = LogViewScrollState.IsAtTail(_logScrollViewer);
       SyncFollowTailToggle();
@@ -802,15 +822,7 @@ public sealed class SettingsWindowController
     if (enabled)
     {
       RefreshLogView(forceRedraw: true);
-      _suppressFollowTailAutoSync = true;
-      try
-      {
-        ScrollLogViewToTail(deferred: true);
-      }
-      finally
-      {
-        ReleaseFollowTailAutoSyncSuppression();
-      }
+      ApplyFollowTailScrollIfEnabled();
     }
   }
 
@@ -819,6 +831,47 @@ public sealed class SettingsWindowController
     if (_logController is null || _chkLogFollowTail is null) return;
 
     _chkLogFollowTail.IsChecked = _logController.FollowTail;
+  }
+
+  private void SyncFollowTailFromUi()
+  {
+    if (_logController is null || _chkLogFollowTail is null)
+      return;
+
+    _logController.FollowTail = _chkLogFollowTail.IsChecked == true;
+  }
+
+  private void ApplyFollowTailScrollIfEnabled()
+  {
+    SyncFollowTailFromUi();
+    if (_logController is null || !_logController.FollowTail)
+    {
+      _pendingFollowTailInitialScroll = false;
+      return;
+    }
+
+    _pendingFollowTailInitialScroll = true;
+    _suppressFollowTailAutoSync = true;
+    ScrollLogViewToTail(deferred: true);
+    _window.Dispatcher.BeginInvoke(
+      () =>
+      {
+        ScrollLogViewToTail();
+        _window.Dispatcher.BeginInvoke(
+          () =>
+          {
+            if (_logScrollViewer is not null && LogViewScrollState.IsAtTail(_logScrollViewer))
+              _pendingFollowTailInitialScroll = false;
+
+            if (_logController is not null && _chkLogFollowTail?.IsChecked == true)
+              _logController.FollowTail = true;
+
+            SyncFollowTailToggle();
+            ReleaseFollowTailAutoSyncSuppression();
+          },
+          System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+      },
+      System.Windows.Threading.DispatcherPriority.Loaded);
   }
 
   private void QueueLogSearchRefresh()
@@ -917,6 +970,7 @@ public sealed class SettingsWindowController
     if (!active)
     {
       _logTimer?.Stop();
+      _pendingFollowTailInitialScroll = false;
       return;
     }
 
@@ -924,9 +978,12 @@ public sealed class SettingsWindowController
     if (_logTimer is null)
       return;
 
+    SyncFollowTailFromUi();
+    _pendingFollowTailInitialScroll = _logController?.FollowTail == true;
     _logTimer.Start();
-    RefreshLogView();
     EnsureLogScrollViewerHooked();
+    RefreshLogView(forceRedraw: true);
+    ApplyFollowTailScrollIfEnabled();
   }
 
   internal void StabilizeLayout()
@@ -1004,7 +1061,6 @@ public sealed class SettingsWindowController
     {
       var selected = navList.SelectedIndex;
       var isLogsPage = selected == 3;
-      this.SetLogPageActive(isLogsPage);
       UpdatePageTitle(selected, txtPageTitle);
 
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
@@ -1039,6 +1095,8 @@ public sealed class SettingsWindowController
 
       if (isLogsPage)
         StabilizeLayout();
+
+      this.SetLogPageActive(isLogsPage);
     };
   }
 
@@ -1114,7 +1172,7 @@ public sealed class SettingsWindowController
       SetResource(resources, "CardBorderBrush", "#E5E5E5");
       SetResource(resources, "CardShadowColor", "#20000000");
       SetResource(resources, "TextPrimary", "#1A1A1A");
-      SetResource(resources, "TextSecondary", "#5C5C5C");
+      SetResource(resources, "TextSecondary", "#616161");
       SetResource(resources, "TextTertiary", "#8A8A8A");
       SetResource(resources, "TextAccent", "#005FB8");
       SetResource(resources, "PrimaryButtonBackground", "#005FB8");
@@ -1257,6 +1315,7 @@ public sealed class SettingsWindowController
       powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
       paused: _tglPaused.IsChecked == true,
       notifyOnPlanChange: _tglNotify.IsChecked == true,
+      notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
       autoStartEnabled: _tglAutoStart.IsChecked == true);
   }
 
@@ -1281,6 +1340,7 @@ public sealed class SettingsWindowController
     _sldHeartbeat.Value = config.HeartbeatIntervalMin;
     _tglPaused.IsChecked = config.Paused;
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
+    _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = config.AutoStartEnabled;
     PopulatePlanCombo(_cmbActivePlan, config.ActivePlanGuid, "高性能");
     PopulatePlanCombo(_cmbBalancedPlan, config.BalancedPlanGuid, "平衡");

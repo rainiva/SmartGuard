@@ -19,6 +19,7 @@ public class SettingsSnapshotMapperTests
       powerSaverPlanGuid: current.PowerSaverPlanGuid,
       paused: false,
       notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
       autoStartEnabled: true);
 
     updated.BalancedThresholdSec.Should().Be(300);
@@ -45,6 +46,7 @@ public class SettingsSnapshotMapperTests
       powerSaverPlanGuid: current.PowerSaverPlanGuid,
       paused: false,
       notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
       autoStartEnabled: true);
 
     updated.ManualHighPerformanceUntil.Should().Be(current.ManualHighPerformanceUntil);
@@ -71,11 +73,37 @@ public class SettingsSnapshotMapperTests
       powerSaverPlanGuid: saver,
       paused: false,
       notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
       autoStartEnabled: true);
 
     updated.HeartbeatIntervalMin.Should().Be(20);
     updated.ActivePlanGuid.Should().Be(highPerf);
     updated.BalancedPlanGuid.Should().Be(balanced);
     updated.PowerSaverPlanGuid.Should().Be(saver);
+  }
+
+  [Fact]
+  public void ApplyTraySettings_maps_notification_switches_independently()
+  {
+    var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+
+    var updated = SettingsSnapshotMapper.ApplyTraySettings(
+      current,
+      balancedThresholdMin: 5,
+      powerSaverThresholdMin: 15,
+      lowBatteryPercent: 30,
+      checkIntervalSec: 15,
+      brightnessRestoreMs: 300,
+      heartbeatIntervalMin: current.HeartbeatIntervalMin,
+      activePlanGuid: current.ActivePlanGuid,
+      balancedPlanGuid: current.BalancedPlanGuid,
+      powerSaverPlanGuid: current.PowerSaverPlanGuid,
+      paused: false,
+      notifyOnPlanChange: true,
+      notifyOnExternalChange: false,
+      autoStartEnabled: true);
+
+    updated.NotifyOnPlanChange.Should().BeTrue();
+    updated.NotifyOnExternalChange.Should().BeFalse();
   }
 }

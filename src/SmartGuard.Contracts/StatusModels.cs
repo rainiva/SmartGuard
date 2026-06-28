@@ -23,3 +23,9 @@ public sealed class NotificationEvent
   public string body { get; set; } = string.Empty;
   public string at { get; set; } = DateTime.Now.ToString("s");
 }
+
+public static class NotificationKinds
+{
+  public const string PlanSwitch = "plan_switch";
+  public const string ExternalChange = "external_change";
+}

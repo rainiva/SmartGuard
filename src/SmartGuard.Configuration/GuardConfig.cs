@@ -25,6 +25,7 @@ public sealed class GuardConfig
   public int BrightnessRetryCount { get; set; } = 3;
   public int BrightnessRetryDelayMs { get; set; } = 100;
   public bool NotifyOnPlanChange { get; set; } = true;
+  public bool NotifyOnExternalChange { get; set; } = true;
   public int HeartbeatIntervalMin { get; set; } = 10;
   public bool AutoStartEnabled { get; set; } = true;
   public string GitHubToken { get; set; } = string.Empty;
@@ -63,6 +64,7 @@ public sealed class GuardConfig
       BrightnessRetryCount = 3,
       BrightnessRetryDelayMs = 100,
       NotifyOnPlanChange = true,
+      NotifyOnExternalChange = true,
       HeartbeatIntervalMin = 10,
       AutoStartEnabled = true,
     };

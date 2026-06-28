@@ -64,4 +64,56 @@ public class GuardConfigRepositoryTests
       Directory.Delete(dir, recursive: true);
     }
   }
+
+  [Fact]
+  public void LoadOrDefault_migrates_missing_notify_on_external_change_from_plan_change()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+    File.WriteAllText(path, """
+      {
+        "NotifyOnPlanChange": false
+      }
+      """);
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var loaded = repo.LoadOrDefault(dir);
+
+      loaded.NotifyOnPlanChange.Should().BeFalse();
+      loaded.NotifyOnExternalChange.Should().BeFalse();
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
+
+  [Fact]
+  public void Save_persists_notify_on_external_change()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.NotifyOnPlanChange = true;
+      config.NotifyOnExternalChange = false;
+      repo.Save(config);
+
+      var reloaded = repo.LoadOrDefault(dir);
+      reloaded.NotifyOnPlanChange.Should().BeTrue();
+      reloaded.NotifyOnExternalChange.Should().BeFalse();
+      File.ReadAllText(path).Should().Contain("\"NotifyOnExternalChange\": false");
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
 }

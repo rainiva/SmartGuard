@@ -42,4 +42,12 @@ public class ConfigTests
         var cfg = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
         cfg.LogFile.Should().Be(Path.Combine(@"D:\Project\SmartGuard", "SmartGuard.log"));
     }
+
+    [Fact]
+    public void CreateDefault_enables_both_notification_switches()
+    {
+        var cfg = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+        cfg.NotifyOnPlanChange.Should().BeTrue();
+        cfg.NotifyOnExternalChange.Should().BeTrue();
+    }
 }

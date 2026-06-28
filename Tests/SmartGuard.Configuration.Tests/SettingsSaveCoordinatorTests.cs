@@ -17,7 +17,7 @@ public class SettingsSaveCoordinatorTests
       var updated = SettingsSnapshotMapper.ApplyTraySettings(
         previous, 5, 15, 30, 15, 300, previous.HeartbeatIntervalMin,
         previous.ActivePlanGuid, previous.BalancedPlanGuid, previous.PowerSaverPlanGuid,
-        false, true, true);
+        false, true, true, true);
 
       SettingsSaveCoordinator.Save(updated, previous, dir, repo);
 

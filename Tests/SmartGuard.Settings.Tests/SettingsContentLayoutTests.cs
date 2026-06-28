@@ -49,6 +49,18 @@ public class SettingsContentLayoutTests
     }
 
     [Fact]
+    public void Sidebar_brand_uses_single_title_without_settings_subtitle()
+    {
+        var xaml = File.ReadAllText(RepoXamlPath());
+
+        xaml.Should().Contain("x:Name=\"imgAppIcon\"");
+        xaml.Should().Contain("Text=\"智能电源守护\"");
+        xaml.Should().NotMatchRegex(
+            "x:Name=\"imgAppIcon\"[\\s\\S]{0,400}Text=\"设置\"",
+            "sidebar brand should not repeat the window title with a separate 设置 subtitle");
+    }
+
+    [Fact]
     public void Settings_scroll_viewer_template_honors_padding()
     {
         var xaml = File.ReadAllText(RepoXamlPath());

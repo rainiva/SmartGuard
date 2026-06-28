@@ -6,41 +6,49 @@ internal sealed class TrayDisplaySettingsCache
 {
   internal static TimeSpan CacheDuration { get; set; } = TimeSpan.FromSeconds(5);
 
-  private readonly Func<bool> _notifyLoader;
+  private readonly Func<TrayNotificationPreferences> _preferencesLoader;
   private DateTime _loadedAt = DateTime.MinValue;
-  private bool _notifyOnPlanChange;
+  private TrayNotificationPreferences _preferences;
 
   public TrayDisplaySettingsCache(GuardConfigRepository repository, string root)
-    : this(() => repository.LoadOrDefault(root).NotifyOnPlanChange)
+    : this(() =>
+    {
+      var config = repository.LoadOrDefault(root);
+      return new TrayNotificationPreferences(config.NotifyOnPlanChange, config.NotifyOnExternalChange);
+    })
   {
   }
 
-  public TrayDisplaySettingsCache(bool initialNotifyOnPlanChange, Func<bool> notifyLoader)
+  public TrayDisplaySettingsCache(
+    TrayNotificationPreferences initialPreferences,
+    Func<TrayNotificationPreferences> preferencesLoader)
   {
-    _notifyOnPlanChange = initialNotifyOnPlanChange;
-    _notifyLoader = notifyLoader;
+    _preferences = initialPreferences;
+    _preferencesLoader = preferencesLoader;
     _loadedAt = DateTime.UtcNow;
   }
 
-  internal TrayDisplaySettingsCache(Func<bool> notifyLoader)
+  internal TrayDisplaySettingsCache(Func<TrayNotificationPreferences> preferencesLoader)
   {
-    _notifyLoader = notifyLoader;
+    _preferencesLoader = preferencesLoader;
   }
 
-  public bool NotifyOnPlanChange => LoadIfNeeded();
+  public bool NotifyOnPlanChange => LoadIfNeeded().NotifyOnPlanChange;
+
+  public bool NotifyOnExternalChange => LoadIfNeeded().NotifyOnExternalChange;
 
   internal static void ResetForTests()
   {
     CacheDuration = TimeSpan.FromSeconds(5);
   }
 
-  private bool LoadIfNeeded()
+  private TrayNotificationPreferences LoadIfNeeded()
   {
     if (DateTime.UtcNow - _loadedAt < CacheDuration)
-      return _notifyOnPlanChange;
+      return _preferences;
 
-    _notifyOnPlanChange = _notifyLoader();
+    _preferences = _preferencesLoader();
     _loadedAt = DateTime.UtcNow;
-    return _notifyOnPlanChange;
+    return _preferences;
   }
 }

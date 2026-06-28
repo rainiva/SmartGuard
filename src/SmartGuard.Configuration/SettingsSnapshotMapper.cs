@@ -15,6 +15,7 @@ public static class SettingsSnapshotMapper
     Guid powerSaverPlanGuid,
     bool paused,
     bool notifyOnPlanChange,
+    bool notifyOnExternalChange,
     bool autoStartEnabled)
   {
     return new GuardConfig
@@ -33,6 +34,7 @@ public static class SettingsSnapshotMapper
       BrightnessRetryCount = current.BrightnessRetryCount,
       BrightnessRetryDelayMs = current.BrightnessRetryDelayMs,
       NotifyOnPlanChange = notifyOnPlanChange,
+      NotifyOnExternalChange = notifyOnExternalChange,
       HeartbeatIntervalMin = heartbeatIntervalMin,
       AutoStartEnabled = autoStartEnabled,
       GitHubToken = current.GitHubToken,

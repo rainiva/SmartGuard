@@ -8,18 +8,15 @@ namespace SmartGuard.Tray;
 public sealed class TrayApplicationContext : ApplicationContext
 {
   private readonly string _root;
-  private readonly StatusStore _statusStore;
   private readonly GuardConfigRepository _configRepository;
   private readonly NotifyIcon _notifyIcon;
   private readonly ToolStripMenuItem _statusItem;
   private readonly ToolStripMenuItem _pauseItem;
   private readonly System.Windows.Forms.Timer _timer;
-  private readonly TrayNotificationPresenter _notificationPresenter;
-  private readonly TrayDisplaySettingsCache _displaySettingsCache;
+  private readonly TrayDisplayState _displayState = new();
   private readonly Control _invokeSink;
   private readonly StatusFileWatcher _statusWatcher;
-  private string? _lastNotifiedEventId;
-  private string? _lastLegacyPlan;
+  private readonly TrayRefreshScheduler _refreshScheduler;
   private int _missedStatusReads;
   private bool _guardianRecoveryAttempted;
 
@@ -28,13 +25,17 @@ public sealed class TrayApplicationContext : ApplicationContext
     _root = root;
     var configPath = Path.Combine(root, "SmartGuard.config.json");
     var statusPath = Path.Combine(root, "SmartGuard.status.json");
-    _statusStore = new StatusStore(statusPath);
+    var statusStore = new StatusStore(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
-    _notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
+    var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
     var config = _configRepository.LoadOrDefault(_root);
-    _displaySettingsCache = new TrayDisplaySettingsCache(
-      config.NotifyOnPlanChange,
-      () => _configRepository.LoadOrDefault(_root).NotifyOnPlanChange);
+    var displaySettingsCache = new TrayDisplaySettingsCache(
+      new TrayNotificationPreferences(config.NotifyOnPlanChange, config.NotifyOnExternalChange),
+      () =>
+      {
+        var loaded = _configRepository.LoadOrDefault(_root);
+        return new TrayNotificationPreferences(loaded.NotifyOnPlanChange, loaded.NotifyOnExternalChange);
+      });
 
     _notifyIcon = new NotifyIcon
     {
@@ -68,22 +69,38 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     _notifyIcon.ContextMenuStrip = menu;
     _notifyIcon.DoubleClick += OnOpenSettings;
+    TrayContextMenuPrewarmer.WarmUp(menu);
 
     _pauseItem.Text = config.Paused ? "恢复守护" : "暂停守护";
 
     _invokeSink = new Control();
     _invokeSink.CreateControl();
+    _refreshScheduler = new TrayRefreshScheduler(
+      root,
+      statusStore,
+      displaySettingsCache,
+      notificationPresenter,
+      _invokeSink,
+      ApplyRefreshUi);
+
+    menu.Opening += (_, _) =>
+    {
+      _refreshScheduler.ContextMenuOpen = true;
+      _statusItem.Text = _displayState.StatusLine;
+    };
+    menu.Closed += (_, _) => _refreshScheduler.OnMenuClosed();
+
     _statusWatcher = new StatusFileWatcher(statusPath, () =>
     {
       if (_invokeSink.IsHandleCreated)
-        _invokeSink.BeginInvoke(UpdateDisplay);
+        _invokeSink.BeginInvoke(ScheduleRefresh);
     });
 
     _timer = new System.Windows.Forms.Timer { Interval = 5000 };
-    _timer.Tick += (_, _) => UpdateDisplay();
+    _timer.Tick += (_, _) => ScheduleRefresh();
     _timer.Start();
 
-    UpdateDisplay();
+    ScheduleRefresh();
     _ = Task.Run(() => ToastAumidRegistrar.EnsureRegistered(_root));
   }
 
@@ -100,6 +117,39 @@ public sealed class TrayApplicationContext : ApplicationContext
     }
 
     base.Dispose(disposing);
+  }
+
+  private void ScheduleRefresh() => _refreshScheduler.ScheduleRefresh();
+
+  private void ApplyRefreshUi(TrayRefreshUiUpdate update)
+  {
+    if (update.StatusWasMissing)
+    {
+      _missedStatusReads++;
+      if (!_guardianRecoveryAttempted && GuardianRecovery.ShouldAttemptStart(_missedStatusReads))
+      {
+        _guardianRecoveryAttempted = true;
+        _ = Task.Run(() => GuardianRecovery.TryStartGuardian(_root));
+      }
+    }
+    else
+    {
+      _missedStatusReads = 0;
+    }
+
+    if (_displayState.Apply(update.Status))
+    {
+      _notifyIcon.Text = _displayState.Tooltip;
+      if (!_refreshScheduler.ContextMenuOpen)
+        _statusItem.Text = _displayState.StatusLine;
+    }
+
+    if (update.Notification is not { UseBalloonFallback: true } notification)
+      return;
+
+    var icon = string.IsNullOrEmpty(notification.Tag) ? ToolTipIcon.Warning : ToolTipIcon.Info;
+    var timeout = string.IsNullOrEmpty(notification.Tag) ? 5000 : 8000;
+    _notifyIcon.ShowBalloonTip(timeout, notification.Title, notification.Body, icon);
   }
 
   private async void OnPauseClick(object? sender, EventArgs e)
@@ -122,7 +172,7 @@ public sealed class TrayApplicationContext : ApplicationContext
       });
 
       _pauseItem.Text = next ? "恢复守护" : "暂停守护";
-      UpdateDisplay();
+      ScheduleRefresh();
     }
     catch (Exception ex)
     {
@@ -141,7 +191,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     try
     {
       await Task.Run(() => HighPerformanceBoost.Apply(_configRepository, _root, new PowerPlanActivator()));
-      UpdateDisplay();
+      ScheduleRefresh();
     }
     catch (Exception ex)
     {
@@ -181,55 +231,6 @@ public sealed class TrayApplicationContext : ApplicationContext
   {
     _notifyIcon.Visible = false;
     ExitThread();
-  }
-
-  private void UpdateDisplay()
-  {
-    var status = _statusStore.Read();
-    if (status is null)
-    {
-      _missedStatusReads++;
-      if (!_guardianRecoveryAttempted && GuardianRecovery.ShouldAttemptStart(_missedStatusReads))
-      {
-        _guardianRecoveryAttempted = true;
-        GuardianRecovery.TryStartGuardian(_root);
-      }
-    }
-    else
-    {
-      _missedStatusReads = 0;
-    }
-
-    var notifyOnPlanChange = _displaySettingsCache.NotifyOnPlanChange;
-    _notifyIcon.Text = TrayStatusFormatter.FormatTooltip(status);
-    _statusItem.Text = TrayStatusFormatter.FormatStatusLine(status);
-    TryShowNotification(status, notifyOnPlanChange);
-  }
-
-  private void TryShowNotification(StatusPayload? status, bool notifyOnPlanChange)
-  {
-    if (!notifyOnPlanChange || status is null) return;
-
-    var evt = status.notificationEvent;
-    if (evt is null || string.IsNullOrEmpty(evt.id))
-    {
-      if (TrayNotificationHelper.PlanChangedForNotification(_lastLegacyPlan, status.currentPlan))
-      {
-        var body = TrayNotificationHelper.FormatPlanChangeBalloon(status.currentPlan, status.brightness);
-        _notifyIcon.ShowBalloonTip(5000, "智能电源守护", body, ToolTipIcon.Warning);
-        _lastLegacyPlan = status.currentPlan;
-      }
-
-      return;
-    }
-
-    if (!NotificationDeduper.ShouldShow(_lastNotifiedEventId, evt)) return;
-    var title = string.IsNullOrEmpty(evt.title) ? "智能电源守护" : evt.title;
-    var text = string.IsNullOrEmpty(evt.body) ? status.currentPlan : evt.body;
-    _notificationPresenter.Show(title, text, evt.id, (t, b) =>
-      _notifyIcon.ShowBalloonTip(8000, t, b, ToolTipIcon.Info));
-    _lastNotifiedEventId = evt.id;
-    _lastLegacyPlan = status.currentPlan;
   }
 }
 

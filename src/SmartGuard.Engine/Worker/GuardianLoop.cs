@@ -267,7 +267,7 @@ public sealed class GuardianLoop(
       : $"已切换至 [{planName}] (亮度 {brightness}%)";
     return new NotificationEvent
     {
-      kind = "plan_switch",
+      kind = NotificationKinds.PlanSwitch,
       title = "电源计划已切换",
       body = body
     };
@@ -277,7 +277,7 @@ public sealed class GuardianLoop(
   {
     return new NotificationEvent
     {
-      kind = "external_change",
+      kind = NotificationKinds.ExternalChange,
       title = "检测到外部计划变更",
       body = $"计划被外部改为 [{planName}]，守护将在下轮轮询时纠偏"
     };

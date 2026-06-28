@@ -20,7 +20,7 @@
 
   <!-- Text -->
   <SolidColorBrush x:Key="TextPrimary" Color="#1A1A1A"/>
-  <SolidColorBrush x:Key="TextSecondary" Color="#5C5C5C"/>
+  <SolidColorBrush x:Key="TextSecondary" Color="#616161"/>
   <SolidColorBrush x:Key="TextTertiary" Color="#8A8A8A"/>
   <SolidColorBrush x:Key="TextAccent" Color="#005FB8"/>
 

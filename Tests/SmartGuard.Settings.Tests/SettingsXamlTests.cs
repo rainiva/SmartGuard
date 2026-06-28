@@ -21,6 +21,7 @@ public class SettingsXamlTests
             File.Exists(xamlPath).Should().BeTrue();
             var xaml = File.ReadAllText(xamlPath);
             xaml.Should().Contain("x:Name=\"tglPaused\"");
+            xaml.Should().Contain("x:Name=\"tglNotifyExternal\"");
             xaml.Should().Contain("x:Name=\"tglAutoStart\"");
 
             var xamlForParse = xaml.Replace(

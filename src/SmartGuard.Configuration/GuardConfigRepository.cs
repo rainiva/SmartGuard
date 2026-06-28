@@ -36,6 +36,8 @@ public sealed class GuardConfigRepository(string configPath)
       }
 
       _readCache = node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
+      if (_readCache is not null && node is JsonObject obj)
+        ApplyNotificationMigration(_readCache, obj);
       _readCacheWriteTimeUtc = writeTimeUtc;
       return _readCache;
     }
@@ -47,7 +49,16 @@ public sealed class GuardConfigRepository(string configPath)
   }
 
   public GuardConfig LoadOrDefault(string root)
-    => TryLoad() ?? GuardConfig.CreateDefault(root);
+  {
+    var loaded = TryLoad();
+    return loaded ?? GuardConfig.CreateDefault(root);
+  }
+
+  internal static void ApplyNotificationMigration(GuardConfig config, JsonObject node)
+  {
+    if (!node.ContainsKey("NotifyOnExternalChange"))
+      config.NotifyOnExternalChange = config.NotifyOnPlanChange;
+  }
 
   public void Save(GuardConfig config)
   {
@@ -116,6 +127,7 @@ public sealed class GuardConfigRepository(string configPath)
     node["BrightnessRetryCount"] = config.BrightnessRetryCount;
     node["BrightnessRetryDelayMs"] = config.BrightnessRetryDelayMs;
     node["NotifyOnPlanChange"] = config.NotifyOnPlanChange;
+    node["NotifyOnExternalChange"] = config.NotifyOnExternalChange;
     node["HeartbeatIntervalMin"] = config.HeartbeatIntervalMin;
     node["AutoStartEnabled"] = config.AutoStartEnabled;
     node["GitHubToken"] = config.GitHubToken;

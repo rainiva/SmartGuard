@@ -1,5 +1,8 @@
 namespace SmartGuard.Settings.Tests;
 
+using System.Windows;
+using System.Windows.Controls;
+
 [Collection("WpfUiTests")]
 public class LogSearchFilterBarTests
 {
@@ -40,6 +43,33 @@ public class LogSearchFilterBarTests
 
             bar.ActiveTags.Should().ContainSingle("ERROR");
         });
+    }
+
+    [Fact]
+    public void Chip_remove_button_template_includes_hover_and_pressed_triggers()
+    {
+        RunOnSta(() =>
+        {
+            var bar = new LogSearchFilterBar();
+            bar.AddTagFilter("INFO");
+
+            var removeButton = GetChipRemoveButton(bar);
+            removeButton.ApplyTemplate();
+
+            removeButton.Template!.FindName("bd", removeButton).Should().BeOfType<Border>(
+                "chip remove button should use interactive template");
+            var triggers = removeButton.Template.Triggers.OfType<Trigger>().ToList();
+            triggers.Should().Contain(t => t.Property == UIElement.IsMouseOverProperty);
+            triggers.Should().Contain(t => t.Property == Button.IsPressedProperty);
+        });
+    }
+
+    private static Button GetChipRemoveButton(LogSearchFilterBar bar)
+    {
+        var chipPanel = bar.Children.OfType<WrapPanel>().Single();
+        var chip = chipPanel.Children.OfType<Border>().Single();
+        var content = (StackPanel)chip.Child!;
+        return content.Children.OfType<Button>().Single();
     }
 
     private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);

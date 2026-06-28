@@ -1101,7 +1101,52 @@ public class SettingsWindowControllerTests
 
             window.FindName("tglPaused").Should().NotBeNull();
             window.FindName("tglNotify").Should().NotBeNull();
+            window.FindName("tglNotifyExternal").Should().NotBeNull();
             window.FindName("tglAutoStart").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public void Notification_toggles_reflect_config_and_save_independently()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsNotify_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = GuardConfig.CreateDefault(tempRoot);
+                config.NotifyOnPlanChange = true;
+                config.NotifyOnExternalChange = false;
+                repository.Save(config);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var tglNotify = window.FindName("tglNotify") as CheckBox;
+                var tglNotifyExternal = window.FindName("tglNotifyExternal") as CheckBox;
+
+                tglNotify!.IsChecked.Should().BeTrue();
+                tglNotifyExternal!.IsChecked.Should().BeFalse();
+
+                tglNotifyExternal.IsChecked = true;
+
+                var readConfig = typeof(SettingsWindowController).GetMethod(
+                    "ReadConfigFromUi",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var uiConfig = (GuardConfig)readConfig!.Invoke(controller, null)!;
+
+                uiConfig.NotifyOnPlanChange.Should().BeTrue();
+                uiConfig.NotifyOnExternalChange.Should().BeTrue();
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
         });
     }
 
@@ -1338,6 +1383,51 @@ public class SettingsWindowControllerTests
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
                 scrollViewer.VerticalOffset.Should().Be(0);
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_opening_logs_page_with_follow_tail_enabled_starts_at_latest_log()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogFollowOpen_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            var builder = new System.Text.StringBuilder();
+            for (var i = 0; i < 200; i++)
+                builder.AppendLine($"[INFO] 2026-06-21 09:{i % 60:D2}:{i % 60:D2} scroll line {i}");
+            File.WriteAllText(logPath, builder.ToString());
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                if (!window.IsVisible)
+                    WpfStaTestHost.ShowAndWait(window);
+
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
+                chkLogFollowTail!.IsChecked.Should().BeTrue();
+
+                var scrollViewer = GetLogScrollViewerWithoutExtraRefresh(window, controller!);
+                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
+                GetLogViewPlainText(controller!).Should().Contain("scroll line 199");
             }
             finally
             {
@@ -1764,6 +1854,19 @@ public class SettingsWindowControllerTests
 
         controller.EnsureLogScrollViewerHooked();
         InvokeRefreshLogView(controller);
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+        var scrollViewerField = typeof(SettingsWindowController).GetField(
+            "_logScrollViewer",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var scrollViewer = scrollViewerField!.GetValue(controller) as ScrollViewer;
+        scrollViewer.Should().NotBeNull();
+        return scrollViewer!;
+    }
+
+    private static ScrollViewer GetLogScrollViewerWithoutExtraRefresh(Window window, SettingsWindowController controller)
+    {
+        controller.EnsureLogScrollViewerHooked();
         window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
         var scrollViewerField = typeof(SettingsWindowController).GetField(

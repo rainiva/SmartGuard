@@ -7,9 +7,10 @@
         ResizeMode="CanResize"
         MinHeight="500" MinWidth="600"
         Background="{DynamicResource WindowBackground}"
-        FontFamily="Segoe UI, Microsoft YaHei UI"
+        FontFamily="Microsoft YaHei UI, Segoe UI Variable, Segoe UI"
         FontSize="13"
         TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         x:Name="RootWindow">
@@ -28,7 +29,7 @@
       <SolidColorBrush x:Key="CardBorderBrush" Color="#E5E5E5"/>
       <Color x:Key="CardShadowColor">#20000000</Color>
       <SolidColorBrush x:Key="TextPrimary" Color="#1A1A1A"/>
-      <SolidColorBrush x:Key="TextSecondary" Color="#5C5C5C"/>
+      <SolidColorBrush x:Key="TextSecondary" Color="#616161"/>
       <SolidColorBrush x:Key="TextTertiary" Color="#8A8A8A"/>
       <SolidColorBrush x:Key="TextAccent" Color="#005FB8"/>
       <SolidColorBrush x:Key="PrimaryButtonBackground" Color="#005FB8"/>
@@ -95,6 +96,46 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="Margin" Value="0,0,0,16"/>
+      </Style>
+
+      <!-- Card group title (within settings cards) -->
+      <Style x:Key="SettingsGroupTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Margin" Value="0,0,0,4"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+      </Style>
+
+      <!-- Card group description -->
+      <Style x:Key="SettingsCardDescription" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="LineHeight" Value="20"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+        <Setter Property="Margin" Value="0,0,0,12"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+      </Style>
+
+      <!-- Setting item primary label -->
+      <Style x:Key="SettingsItemTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+      </Style>
+
+      <!-- Setting item hint text below label -->
+      <Style x:Key="SettingsItemHint" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="LineHeight" Value="18"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+        <Setter Property="Margin" Value="0,2,0,0"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
       </Style>
 
       <!-- Settings Item Row -->
@@ -590,12 +631,15 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="Button">
-              <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                  <Setter Property="Background" Value="{DynamicResource NavigationItemHoverBackground}"/>
+                  <Setter TargetName="bd" Property="Background" Value="{DynamicResource NavigationItemHoverBackground}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="bd" Property="Background" Value="{DynamicResource NavigationItemSelectedBackground}"/>
                 </Trigger>
               </ControlTemplate.Triggers>
             </ControlTemplate>
@@ -627,11 +671,9 @@
 
         <!-- App Header -->
         <StackPanel Grid.Row="0" Margin="20,24,20,16" Orientation="Horizontal">
-          <Image x:Name="imgAppIcon" Width="24" Height="24" Margin="0,0,10,0" VerticalAlignment="Top"/>
-          <StackPanel>
-            <TextBlock Text="智能电源守护" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
-            <TextBlock Text="设置" FontSize="12" Foreground="{DynamicResource TextTertiary}" Margin="0,2,0,0"/>
-          </StackPanel>
+          <Image x:Name="imgAppIcon" Width="24" Height="24" Margin="0,0,10,0" VerticalAlignment="Center"/>
+          <TextBlock Text="智能电源守护" FontSize="18" FontWeight="SemiBold"
+                     VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}"/>
         </StackPanel>
 
         <!-- Navigation Items -->
@@ -701,8 +743,8 @@
             <!-- System Card -->
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="系统" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="管理开机启动和基本系统行为" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="系统" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="管理开机启动和基本系统行为" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
@@ -711,8 +753,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="开机自启动" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="启动 Core 和托盘程序" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="开机自启动" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="启动 Core 和托盘程序" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <CheckBox x:Name="tglAutoStart" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
                   </Grid>
@@ -723,8 +765,8 @@
             <!-- Idle & Battery Card -->
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="空闲与电池" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="自动切换电源计划的空闲时间和电池阈值" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="空闲与电池" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="自动切换电源计划的空闲时间和电池阈值" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
@@ -733,8 +775,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="空闲后切换平衡" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="空闲多久后切换到平衡计划（分钟）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="空闲后切换平衡" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="空闲多久后切换到平衡计划（分钟）" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <TextBlock x:Name="lblBalanced" Text="5 分钟" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
@@ -751,8 +793,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="空闲后切换节能" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="空闲多久后切换到节能计划（分钟）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="空闲后切换节能" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="空闲多久后切换到节能计划（分钟）" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <TextBlock x:Name="lblSaver" Text="15 分钟" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
@@ -769,8 +811,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="低电量阈值" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="低于此百分比时触发保护（%）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="低电量阈值" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="低于此百分比时触发保护（%）" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <TextBlock x:Name="lblBattery" Text="30%" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
@@ -788,8 +830,8 @@
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="运行参数" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="调整引擎轮询频率、心跳日志和亮度恢复延迟" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="运行参数" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="调整引擎轮询频率、心跳日志和亮度恢复延迟" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
@@ -798,8 +840,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="轮询间隔" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="引擎检查系统状态的频率（秒）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="轮询间隔" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="引擎检查系统状态的频率（秒）" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <TextBlock x:Name="lblPoll" Text="15 秒" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
@@ -815,9 +857,10 @@
                       <ColumnDefinition Width="*"/>
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                      <TextBlock Text="心跳日志间隔" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="无事件时，每隔多久写入一条 HEART 状态日志（分钟；0 表示关闭）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                      <TextBlock Text="心跳日志间隔" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="无事件时，每隔多久写入一条 HEART 状态日志" Style="{StaticResource SettingsItemHint}"/>
+                      <TextBlock Text="（分钟；0 表示关闭）" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <TextBlock x:Name="lblHeartbeat" Text="10 分钟" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
@@ -834,8 +877,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="亮度恢复延迟" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="从节能恢复后延迟恢复亮度（毫秒）" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="亮度恢复延迟" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="从节能恢复后延迟恢复亮度（毫秒）" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <TextBlock x:Name="lblBrightMs" Text="500 毫秒" Foreground="{DynamicResource TextAccent}" FontWeight="SemiBold"
@@ -849,8 +892,8 @@
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="电源计划映射" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="选择 SmartGuard 三档策略分别对应的 Windows 电源计划" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="电源计划映射" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="选择 SmartGuard 三档策略分别对应的 Windows 电源计划" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
@@ -859,8 +902,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="高性能" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="活跃状态下使用的电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="高性能" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="活跃状态下使用的电源计划" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <ComboBox x:Name="cmbActivePlan" Grid.Column="1" Width="240" MinWidth="180" Style="{StaticResource SettingsComboBox}"/>
                   </Grid>
@@ -873,8 +916,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="平衡" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="空闲一段时间后切换到的电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="平衡" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="空闲一段时间后切换到的电源计划" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <ComboBox x:Name="cmbBalancedPlan" Grid.Column="1" Width="240" MinWidth="180" Style="{StaticResource SettingsComboBox}"/>
                   </Grid>
@@ -887,14 +930,14 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="节能" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="深度空闲或低电量时使用的电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="节能" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="深度空闲或低电量时使用的电源计划" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <ComboBox x:Name="cmbPowerSaverPlan" Grid.Column="1" Width="240" MinWidth="180" Style="{StaticResource SettingsComboBox}"/>
                   </Grid>
                 </Border>
 
-                <TextBlock x:Name="lblPlanMappingStatus" Text="" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                <TextBlock x:Name="lblPlanMappingStatus" Text="" Style="{StaticResource SettingsItemHint}" Margin="0,8,0,0"/>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -904,8 +947,8 @@
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="通知与守护" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="控制通知行为和守护模式" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="通知与守护" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="控制通知行为和守护模式" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
@@ -914,10 +957,24 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="暂停守护" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="仅监控状态，不自动切换电源计划" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="暂停守护" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="仅监控状态，不自动切换电源计划" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <CheckBox x:Name="tglPaused" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="自动切换通知" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="SmartGuard 切换电源计划时弹出系统通知" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglNotify" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
                   </Grid>
                 </Border>
 
@@ -928,10 +985,10 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="计划变更通知" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="切换电源计划时弹出系统通知" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="外部变更通知" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="检测到计划被外部修改时弹出系统通知" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
-                    <CheckBox x:Name="tglNotify" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
+                    <CheckBox x:Name="tglNotifyExternal" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
                   </Grid>
                 </Border>
               </StackPanel>
@@ -943,8 +1000,8 @@
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="SmartGuard" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="智能电源守护" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="SmartGuard" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="智能电源守护" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
@@ -953,8 +1010,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="版本" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock x:Name="txtVersion" Text="1.0.0" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="版本" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock x:Name="txtVersion" Text="1.0.0" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                   </Grid>
                 </Border>
@@ -966,8 +1023,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="仓库地址" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0">
+                      <TextBlock Text="仓库地址" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Style="{StaticResource SettingsItemHint}">
                         <Hyperlink x:Name="lnkRepo" NavigateUri="https://github.com/rainiva/SmartGuard">
                           https://github.com/rainiva/SmartGuard
                         </Hyperlink>
@@ -983,8 +1040,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="更新" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="检查是否有新版本可用" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                      <TextBlock Text="更新" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="检查是否有新版本可用" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <Button x:Name="btnCheckUpdate" Grid.Column="1" Content="检查更新" Style="{StaticResource PrimaryButton}"/>
                   </Grid>
@@ -994,8 +1051,8 @@
 
             <Border Style="{StaticResource SettingsCard}">
               <StackPanel>
-                <TextBlock Text="维护" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-                <TextBlock Text="配置异常时可恢复默认策略" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+                <TextBlock Text="维护" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="配置异常时可恢复默认策略" Style="{StaticResource SettingsCardDescription}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
@@ -1004,8 +1061,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="恢复默认策略" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="重置阈值与计划映射；保留日志路径和 GitHub Token" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                      <TextBlock Text="恢复默认策略" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="重置阈值与计划映射；保留日志路径和 GitHub Token" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap"/>
                     </StackPanel>
                     <Button x:Name="btnResetDefaults" Grid.Column="1" Content="恢复默认" Style="{StaticResource SecondaryButton}"/>
                   </Grid>
@@ -1031,8 +1088,8 @@
 
             <!-- Fixed Header: Title, Description, Search, Filters -->
             <StackPanel Grid.Row="0">
-              <TextBlock Text="实时日志" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4"/>
-              <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,12"/>
+              <TextBlock Text="实时日志" Style="{StaticResource SettingsGroupTitle}"/>
+              <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" Style="{StaticResource SettingsCardDescription}"/>
 
               <!-- Search Bar with tag filter chips -->
               <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">

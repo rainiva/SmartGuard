@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -131,18 +132,7 @@ public sealed class LogSearchFilterBar : Panel
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        var removeButton = new Button
-        {
-            Content = "×",
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Foreground = brush,
-            FontSize = 14,
-            Padding = new Thickness(4, 0, 0, 0),
-            Cursor = Cursors.Hand,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        removeButton.Click += (_, _) => RemoveTagFilter(tag);
+        var removeButton = CreateChipRemoveButton(tag, brush);
 
         var content = new StackPanel
         {
@@ -162,6 +152,72 @@ public sealed class LogSearchFilterBar : Panel
             Margin = new Thickness(0, 0, 6, 0),
             Child = content,
         };
+    }
+
+    private Button CreateChipRemoveButton(string tag, SolidColorBrush accentBrush)
+    {
+        var hoverBackground = CreateChipRemoveHoverBackground(accentBrush.Color);
+        var button = new Button
+        {
+            Content = "×",
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = accentBrush,
+            FontSize = 14,
+            Padding = new Thickness(2, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Template = CreateChipRemoveButtonTemplate(hoverBackground),
+        };
+        button.Click += (_, _) => RemoveTagFilter(tag);
+        return button;
+    }
+
+    private static SolidColorBrush CreateChipRemoveHoverBackground(Color accent)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(38, accent.R, accent.G, accent.B));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static ControlTemplate CreateChipRemoveButtonTemplate(Brush hoverBackground)
+    {
+        var template = new ControlTemplate(typeof(Button));
+        var borderFactory = new FrameworkElementFactory(typeof(Border), "bd");
+        borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        borderFactory.SetValue(Border.RenderTransformOriginProperty, new Point(0.5, 0.5));
+        borderFactory.SetBinding(Border.BackgroundProperty, new Binding(nameof(Button.Background))
+        {
+            RelativeSource = RelativeSource.TemplatedParent,
+        });
+        borderFactory.SetBinding(Border.PaddingProperty, new Binding(nameof(Button.Padding))
+        {
+            RelativeSource = RelativeSource.TemplatedParent,
+        });
+
+        var contentFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+        contentFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        contentFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        borderFactory.AppendChild(contentFactory);
+        template.VisualTree = borderFactory;
+
+        var hoverTrigger = new Trigger
+        {
+            Property = UIElement.IsMouseOverProperty,
+            Value = true,
+        };
+        hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, hoverBackground) { TargetName = "bd" });
+        template.Triggers.Add(hoverTrigger);
+
+        var pressedTrigger = new Trigger
+        {
+            Property = Button.IsPressedProperty,
+            Value = true,
+        };
+        pressedTrigger.Setters.Add(new Setter(Border.OpacityProperty, 0.85) { TargetName = "bd" });
+        template.Triggers.Add(pressedTrigger);
+
+        return template;
     }
 }
 

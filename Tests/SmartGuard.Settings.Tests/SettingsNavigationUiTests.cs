@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -31,6 +32,23 @@ public class SettingsNavigationUiTests
         var itemXaml = xaml[start..end];
         itemXaml.Should().Contain("FontFamily=\"Segoe MDL2 Assets\"");
         itemXaml.Should().Contain($"Text=\"{label}\"");
+    }
+
+    [Fact]
+    public void Theme_toggle_button_template_includes_pressed_trigger()
+    {
+        var xaml = File.ReadAllText(RepoXamlPath());
+        var styleStart = xaml.IndexOf("x:Key=\"ThemeToggleButton\"", StringComparison.Ordinal);
+        styleStart.Should().BeGreaterThan(0);
+
+        var styleEnd = xaml.IndexOf("</Style>", styleStart, StringComparison.Ordinal);
+        styleEnd.Should().BeGreaterThan(styleStart);
+
+        var styleXaml = xaml[styleStart..styleEnd];
+        styleXaml.Should().Contain("Property=\"IsMouseOver\"");
+        styleXaml.Should().MatchRegex(
+            new Regex("Property=\"IsPressed\"", RegexOptions.None, TimeSpan.FromSeconds(1)),
+            "theme toggle should provide pressed feedback");
     }
 
     [Fact]
