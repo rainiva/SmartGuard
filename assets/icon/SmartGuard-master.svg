@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">SmartGuard App Icon</title>
+  <desc id="desc">Shield outline containing a battery and lightning mark.</desc>
+  <defs>
+    <linearGradient id="shieldOuter" x1="128" y1="8" x2="128" y2="248" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#71D9EF"/>
+      <stop offset="1" stop-color="#58BFDA"/>
+    </linearGradient>
+    <linearGradient id="shieldInner" x1="128" y1="20" x2="128" y2="239" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12375D"/>
+      <stop offset="1" stop-color="#0B2B4D"/>
+    </linearGradient>
+    <linearGradient id="batteryShell" x1="128" y1="49" x2="128" y2="214" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F4FCFF"/>
+      <stop offset="1" stop-color="#D3EDF7"/>
+    </linearGradient>
+    <linearGradient id="batteryFill" x1="128" y1="77" x2="128" y2="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4396BE"/>
+      <stop offset="1" stop-color="#2B80AB"/>
+    </linearGradient>
+    <linearGradient id="boltFill" x1="130" y1="101" x2="130" y2="187" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F1FF8D"/>
+      <stop offset="1" stop-color="#D3FF57"/>
+    </linearGradient>
+  </defs>
+
+  <path
+    fill="url(#shieldOuter)"
+    d="M128 8
+       C145 16 160 26 178 29
+       C198 33 214 39 222 55
+       C226 64 224 74 224 86
+       V156
+       C224 187 214 218 128 251
+       C42 218 32 187 32 156
+       V86
+       C32 74 30 64 34 55
+       C42 39 58 33 78 29
+       C96 26 111 16 128 8
+       Z"/>
+
+  <path
+    fill="url(#shieldInner)"
+    stroke="#0A2F54"
+    stroke-width="1.6"
+    d="M128 20
+       C143 27 156 35 173 38
+       C190 41 203 47 210 59
+       C214 66 213 74 213 83
+       V153
+       C213 181 203 205 128 239
+       C53 205 43 181 43 153
+       V83
+       C43 74 42 66 46 59
+       C53 47 66 41 83 38
+       C100 35 113 27 128 20
+       Z"/>
+
+  <path
+    fill="url(#batteryShell)"
+    d="M112 49
+       H144
+       Q148 49 148 54
+       V64
+       H147
+       Q166 64 166 83
+       V192
+       Q166 211 147 211
+       H109
+       Q90 211 90 192
+       V83
+       Q90 64 109 64
+       H108
+       V54
+       Q108 49 112 49
+       Z"/>
+
+  <rect x="101" y="79" width="52" height="106" rx="11" fill="url(#batteryFill)"/>
+
+  <path
+    fill="url(#boltFill)"
+    d="M136 101
+       L122 143
+       H132
+       L125 177
+       L142 140
+       H133
+       L136 101
+       Z"/>
+</svg>
