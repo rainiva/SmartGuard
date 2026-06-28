@@ -248,7 +248,9 @@ public class SettingsWindowControllerTests
             var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
 
             window.FindName("tglThemeFollowSystem").Should().NotBeNull();
+            window.FindName("tglThemeLight").Should().NotBeNull();
             window.FindName("tglThemeDark").Should().NotBeNull();
+            window.FindName("rowThemeLight").Should().NotBeNull();
             window.FindName("rowThemeDark").Should().NotBeNull();
             window.FindName("btnThemeToggle").Should().BeNull();
             window.FindName("imgAppIcon").Should().NotBeNull();

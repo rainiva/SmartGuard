@@ -39,9 +39,16 @@ public class SettingsNavigationUiTests
     {
         var xaml = File.ReadAllText(RepoXamlPath());
         xaml.Should().Contain("x:Name=\"pageDisplay\"");
+        xaml.Should().Contain("x:Name=\"rowThemeFollowSystem\"");
         xaml.Should().Contain("x:Name=\"tglThemeFollowSystem\"");
+        xaml.Should().Contain("x:Name=\"rowThemeLight\"");
+        xaml.Should().Contain("x:Name=\"tglThemeLight\"");
         xaml.Should().Contain("x:Name=\"tglThemeDark\"");
         xaml.Should().Contain("x:Name=\"rowThemeDark\"");
+        xaml.Should().Contain("Text=\"浅色模式\"");
+        xaml.Should().Contain("Text=\"使用浅色界面配色\"");
+        xaml.Should().Contain("Text=\"使用深色界面配色\"");
+        xaml.Should().NotContain("关闭跟随系统后可手动切换界面配色");
         xaml.Should().NotContain("x:Name=\"btnThemeToggle\"");
     }
 

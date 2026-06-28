@@ -973,7 +973,7 @@
                 <TextBlock Text="外观" Style="{StaticResource SettingsGroupTitle}"/>
                 <TextBlock Text="选择界面配色方案" Style="{StaticResource SettingsCardDescription}"/>
 
-                <Border Style="{StaticResource SettingsItemRow}">
+                <Border x:Name="rowThemeFollowSystem" Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*"/>
@@ -987,7 +987,21 @@
                   </Grid>
                 </Border>
 
-                <Border x:Name="rowThemeDark" Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                <Border x:Name="rowThemeLight" Style="{StaticResource SettingsItemRow}" Visibility="Collapsed">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="浅色模式" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="使用浅色界面配色" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglThemeLight" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
+                  </Grid>
+                </Border>
+
+                <Border x:Name="rowThemeDark" Style="{StaticResource SettingsItemRow}" BorderThickness="0" Visibility="Collapsed">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*"/>
@@ -995,7 +1009,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
                       <TextBlock Text="深色模式" Style="{StaticResource SettingsItemTitle}"/>
-                      <TextBlock Text="关闭跟随系统后可手动切换界面配色" Style="{StaticResource SettingsItemHint}"/>
+                      <TextBlock Text="使用深色界面配色" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <CheckBox x:Name="tglThemeDark" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
                   </Grid>

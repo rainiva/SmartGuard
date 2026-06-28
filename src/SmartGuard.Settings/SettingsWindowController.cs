@@ -31,7 +31,10 @@ public sealed class SettingsWindowController
   private readonly CheckBox _tglNotifyExternal;
   private readonly CheckBox _tglAutoStart;
   private readonly CheckBox _tglThemeFollowSystem;
+  private readonly CheckBox _tglThemeLight;
   private readonly CheckBox _tglThemeDark;
+  private readonly Border _rowThemeFollowSystem;
+  private readonly Border _rowThemeLight;
   private readonly Border _rowThemeDark;
   private bool _isDarkTheme;
   private bool _themeFollowSystem;
@@ -99,7 +102,10 @@ public sealed class SettingsWindowController
     CheckBox tglNotifyExternal,
     CheckBox tglAutoStart,
     CheckBox tglThemeFollowSystem,
+    CheckBox tglThemeLight,
     CheckBox tglThemeDark,
+    Border rowThemeFollowSystem,
+    Border rowThemeLight,
     Border rowThemeDark)
   {
     _root = root;
@@ -131,7 +137,10 @@ public sealed class SettingsWindowController
     _tglNotifyExternal = tglNotifyExternal;
     _tglAutoStart = tglAutoStart;
     _tglThemeFollowSystem = tglThemeFollowSystem;
+    _tglThemeLight = tglThemeLight;
     _tglThemeDark = tglThemeDark;
+    _rowThemeFollowSystem = rowThemeFollowSystem;
+    _rowThemeLight = rowThemeLight;
     _rowThemeDark = rowThemeDark;
   }
 
@@ -202,7 +211,10 @@ public sealed class SettingsWindowController
     var txtVersion = Require<TextBlock>(window, "txtVersion");
     var navList = Require<ListBox>(window, "navList");
     var tglThemeFollowSystem = Require<CheckBox>(window, "tglThemeFollowSystem");
+    var tglThemeLight = Require<CheckBox>(window, "tglThemeLight");
     var tglThemeDark = Require<CheckBox>(window, "tglThemeDark");
+    var rowThemeFollowSystem = Require<Border>(window, "rowThemeFollowSystem");
+    var rowThemeLight = Require<Border>(window, "rowThemeLight");
     var rowThemeDark = Require<Border>(window, "rowThemeDark");
     var toastContainer = Require<Border>(window, "toastContainer");
 
@@ -227,7 +239,10 @@ public sealed class SettingsWindowController
       tglNotifyExternal,
       tglAutoStart,
       tglThemeFollowSystem,
+      tglThemeLight,
       tglThemeDark,
+      rowThemeFollowSystem,
+      rowThemeLight,
       rowThemeDark);
 
     // Initialize values
@@ -299,6 +314,8 @@ public sealed class SettingsWindowController
 
     tglThemeFollowSystem.Checked += (_, _) => controller.OnThemeFollowSystemChanged(true);
     tglThemeFollowSystem.Unchecked += (_, _) => controller.OnThemeFollowSystemChanged(false);
+    tglThemeLight.Checked += (_, _) => controller.OnThemeLightChanged(true);
+    tglThemeLight.Unchecked += (_, _) => controller.OnThemeLightChanged(false);
     tglThemeDark.Checked += (_, _) => controller.OnThemeDarkChanged(true);
     tglThemeDark.Unchecked += (_, _) => controller.OnThemeDarkChanged(false);
     controller.InitializeTheme(window);
@@ -1151,7 +1168,6 @@ public sealed class SettingsWindowController
   {
     _suppressThemeEvents = true;
     _tglThemeFollowSystem.IsChecked = _themeFollowSystem;
-    _tglThemeDark.IsChecked = _themeIsDark;
     UpdateThemeControlsVisibility();
     _suppressThemeEvents = false;
 
@@ -1180,13 +1196,30 @@ public sealed class SettingsWindowController
     SaveThemePreferences();
   }
 
+  internal void OnThemeLightChanged(bool enabled)
+  {
+    if (_suppressThemeEvents || _themeFollowSystem)
+      return;
+
+    SetManualTheme(isDark: !enabled);
+  }
+
   internal void OnThemeDarkChanged(bool enabled)
   {
     if (_suppressThemeEvents || _themeFollowSystem)
       return;
 
-    _themeIsDark = enabled;
-    ApplyTheme(_window, enabled);
+    SetManualTheme(isDark: enabled);
+  }
+
+  private void SetManualTheme(bool isDark)
+  {
+    _themeIsDark = isDark;
+    ApplyTheme(_window, isDark);
+    _suppressThemeEvents = true;
+    _tglThemeLight.IsChecked = !isDark;
+    _tglThemeDark.IsChecked = isDark;
+    _suppressThemeEvents = false;
     SaveThemePreferences();
   }
 
@@ -1198,11 +1231,18 @@ public sealed class SettingsWindowController
 
   private void UpdateThemeControlsVisibility()
   {
-    _rowThemeDark.Visibility = _themeFollowSystem ? Visibility.Collapsed : Visibility.Visible;
+    var manualVisible = _themeFollowSystem ? Visibility.Collapsed : Visibility.Visible;
+    _rowThemeLight.Visibility = manualVisible;
+    _rowThemeDark.Visibility = manualVisible;
+    _rowThemeFollowSystem.BorderThickness = _themeFollowSystem
+      ? new Thickness(0)
+      : new Thickness(0, 0, 0, 1);
+
     if (_themeFollowSystem)
       return;
 
     _suppressThemeEvents = true;
+    _tglThemeLight.IsChecked = !_themeIsDark;
     _tglThemeDark.IsChecked = _themeIsDark;
     _suppressThemeEvents = false;
   }

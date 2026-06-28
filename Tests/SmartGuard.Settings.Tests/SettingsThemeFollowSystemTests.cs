@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
+using Thickness = System.Windows.Thickness;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -11,7 +12,7 @@ namespace SmartGuard.Settings.Tests;
 public class SettingsThemeFollowSystemTests
 {
     [Fact]
-    public void Theme_follow_system_on_hides_manual_dark_mode_row()
+    public void Theme_follow_system_on_hides_manual_theme_rows_and_follow_system_divider()
     {
         RunOnSta(() =>
         {
@@ -20,8 +21,14 @@ public class SettingsThemeFollowSystemTests
             {
                 var controller = CreateController(installRoot);
                 var window = GetWindow(controller!);
+                var rowThemeFollowSystem = window.FindName("rowThemeFollowSystem") as Border;
+                var rowThemeLight = window.FindName("rowThemeLight") as Border;
                 var rowThemeDark = window.FindName("rowThemeDark") as Border;
 
+                rowThemeFollowSystem.Should().NotBeNull();
+                rowThemeFollowSystem!.BorderThickness.Should().Be(new Thickness(0));
+                rowThemeLight.Should().NotBeNull();
+                rowThemeLight!.Visibility.Should().Be(Visibility.Collapsed);
                 rowThemeDark.Should().NotBeNull();
                 rowThemeDark!.Visibility.Should().Be(Visibility.Collapsed);
             }
@@ -33,7 +40,7 @@ public class SettingsThemeFollowSystemTests
     }
 
     [Fact]
-    public void Theme_follow_system_off_shows_manual_dark_mode_row()
+    public void Theme_follow_system_off_shows_manual_theme_rows_and_follow_system_divider()
     {
         RunOnSta(() =>
         {
@@ -42,8 +49,14 @@ public class SettingsThemeFollowSystemTests
             {
                 var controller = CreateController(installRoot);
                 var window = GetWindow(controller!);
+                var rowThemeFollowSystem = window.FindName("rowThemeFollowSystem") as Border;
+                var rowThemeLight = window.FindName("rowThemeLight") as Border;
                 var rowThemeDark = window.FindName("rowThemeDark") as Border;
 
+                rowThemeFollowSystem.Should().NotBeNull();
+                rowThemeFollowSystem!.BorderThickness.Should().Be(new Thickness(0, 0, 0, 1));
+                rowThemeLight.Should().NotBeNull();
+                rowThemeLight!.Visibility.Should().Be(Visibility.Visible);
                 rowThemeDark.Should().NotBeNull();
                 rowThemeDark!.Visibility.Should().Be(Visibility.Visible);
             }
@@ -67,12 +80,45 @@ public class SettingsThemeFollowSystemTests
                 controller!.IsDarkThemeEnabled.Should().BeFalse();
 
                 var window = GetWindow(controller);
+                var tglThemeLight = window.FindName("tglThemeLight") as CheckBox;
                 var tglThemeDark = window.FindName("tglThemeDark") as CheckBox;
+                tglThemeLight.Should().NotBeNull();
                 tglThemeDark.Should().NotBeNull();
                 tglThemeDark!.IsChecked = true;
 
                 controller.IsDarkThemeEnabled.Should().BeTrue();
+                tglThemeLight!.IsChecked.Should().BeFalse();
                 LogViewTagPalette.GetBodyColor().Should().Be(Color.FromRgb(0xE8, 0xE8, 0xE8));
+            }
+            finally
+            {
+                LogViewTagPalette.ConfigureForDarkMode(false);
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void User_toggles_manual_light_mode_applies_theme()
+    {
+        RunOnSta(() =>
+        {
+            LogViewTagPalette.ConfigureForDarkMode(false);
+            var installRoot = CreateInstallRoot(themeFollowSystem: false, themeIsDark: true);
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller!.IsDarkThemeEnabled.Should().BeTrue();
+
+                var window = GetWindow(controller);
+                var tglThemeLight = window.FindName("tglThemeLight") as CheckBox;
+                var tglThemeDark = window.FindName("tglThemeDark") as CheckBox;
+                tglThemeLight.Should().NotBeNull();
+                tglThemeDark.Should().NotBeNull();
+                tglThemeLight!.IsChecked = true;
+
+                controller.IsDarkThemeEnabled.Should().BeFalse();
+                tglThemeDark!.IsChecked.Should().BeFalse();
             }
             finally
             {
