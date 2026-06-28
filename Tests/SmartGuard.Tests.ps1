@@ -7,6 +7,35 @@
             (Get-Item -LiteralPath $icon).Length | Should -BeGreaterThan 1000
         }
 
+        It 'bundled SmartGuard.ico keeps enough 16px tray footprint' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $fill = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((16,16)).convert('RGBA'); pixels=sum(1 for p in img.getdata() if p[3] > 8); print(f'{pixels / 256 * 100:.1f}')" $icon
+
+            [double]$fill | Should -BeGreaterOrEqual 47.0
+        }
+
+        It 'bundled SmartGuard.ico keeps the 24px lightning accent and a simplified 16px tray palette' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img24=ico.ico.getimage((24,24)).convert('RGBA'); img16=ico.ico.getimage((16,16)).convert('RGBA'); lime24=sum(1 for r,g,b,a in img24.getdata() if a > 32 and r > 180 and g > 210 and b < 140); opaque16={(r,g,b) for r,g,b,a in img16.getdata() if a > 200}; print(json.dumps({'lime24': lime24, 'opaque16': len(opaque16)}))" $icon
+            $metrics = $metricsJson | ConvertFrom-Json
+
+            $metrics.lime24 | Should -BeGreaterThan 6
+            $metrics.opaque16 | Should -BeLessOrEqual 8
+        }
+
+        It 'bundled SmartGuard.ico keeps a crisp 32px frame for taskbar and Explorer' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); lime32=sum(1 for r,g,b,a in img32.getdata() if a > 32 and r > 180 and g > 210 and b < 140); opaque32={(r,g,b) for r,g,b,a in img32.getdata() if a > 200}; alpha32={a for _,_,_,a in img32.getdata() if a > 0}; print(json.dumps({'lime32': lime32, 'opaque32': len(opaque32), 'alpha32': len(alpha32)}))" $icon
+            $metrics = $metricsJson | ConvertFrom-Json
+
+            $metrics.lime32 | Should -BeGreaterThan 8
+            $metrics.opaque32 | Should -BeLessOrEqual 12
+            $metrics.alpha32 | Should -BeLessOrEqual 4
+        }
+
         It 'does not ship Create-TrayIcon.ps1 and packaging project exists' {
             $root = Split-Path -Parent $PSScriptRoot
             Test-Path -LiteralPath (Join-Path $root 'lib\Create-TrayIcon.ps1') | Should -Be $false
