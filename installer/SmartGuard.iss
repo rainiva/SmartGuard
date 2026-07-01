@@ -59,7 +59,7 @@ Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestNa
 [Icons]
 Name: "{group}\{#MyAppName} 托盘"; Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""
 Name: "{group}\{#MyAppName} 设置"; Filename: "{app}\bin\SmartGuard.Settings.exe"; Parameters: "--root ""{app}"""
-Name: "{group}\{#MyAppName} 日志"; Filename: "{app}\bin\SmartGuard.LogViewer.exe"; Parameters: "--root ""{app}"""
+Name: "{group}\{#MyAppName} 日志"; Filename: "{app}\bin\SmartGuard.Settings.exe"; Parameters: "--root ""{app}"" --page logs"
 Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Tasks: desktopicon
 

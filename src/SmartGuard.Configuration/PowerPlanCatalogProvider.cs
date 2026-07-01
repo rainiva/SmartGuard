@@ -10,6 +10,22 @@ public static class PowerPlanCatalogProvider
   public static readonly Guid BalancedPlanGuid = Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e");
   public static readonly Guid PowerSaverPlanGuid = Guid.Parse("a1841308-3541-4fab-bc81-f71556f20b4a");
 
+  public const string HighPerformanceDisplayName = "高性能";
+  public const string BalancedDisplayName = "平衡";
+  public const string PowerSaverDisplayName = "节能";
+
+  public static string GetConfigTierDisplayName(
+    Guid planGuid,
+    Guid activePlanGuid,
+    Guid balancedPlanGuid,
+    Guid powerSaverPlanGuid)
+  {
+    if (planGuid == activePlanGuid) return HighPerformanceDisplayName;
+    if (planGuid == balancedPlanGuid) return BalancedDisplayName;
+    if (planGuid == powerSaverPlanGuid) return PowerSaverDisplayName;
+    return planGuid.ToString();
+  }
+
   private static readonly Guid[] KnownSchemeGuids =
   [
     HighPerformancePlanGuid,

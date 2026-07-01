@@ -50,9 +50,9 @@ public static class PolicyEngine
         && systemPlans.TryGetValue(planGuid.Value, out var name)
         && !string.IsNullOrWhiteSpace(name))
       return name;
-    if (planGuid == config.ActivePlanGuid) return "高性能";
-    if (planGuid == config.BalancedPlanGuid) return "平衡";
-    if (planGuid == config.PowerSaverPlanGuid) return "节能";
+    if (planGuid == config.ActivePlanGuid) return PowerPlanCatalogProvider.HighPerformanceDisplayName;
+    if (planGuid == config.BalancedPlanGuid) return PowerPlanCatalogProvider.BalancedDisplayName;
+    if (planGuid == config.PowerSaverPlanGuid) return PowerPlanCatalogProvider.PowerSaverDisplayName;
     return planGuid.Value.ToString();
   }
 

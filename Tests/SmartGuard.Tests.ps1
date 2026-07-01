@@ -464,5 +464,22 @@
             $workflow | Should -Match 'Run-Tests\.ps1'
             $workflow | Should -Match 'windows-latest'
         }
+
+        It 'installer log shortcut opens Settings logs page not LogViewer' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match 'SmartGuard\.Settings\.exe.*--page logs'
+            $iss | Should -Not -Match '\{group\}.*日志.*SmartGuard\.LogViewer\.exe'
+        }
+
+        It 'Status.cmd and Inno use SmartGuard Guardian and SmartGuard Tray task names' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $status = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $status | Should -Match 'SmartGuard Guardian'
+            $status | Should -Match 'SmartGuard Tray'
+            $iss | Should -Match 'SmartGuard Guardian'
+            $iss | Should -Match 'SmartGuard Tray'
+        }
     }
 }

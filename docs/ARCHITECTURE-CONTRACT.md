@@ -32,7 +32,7 @@
 | 停止 Engine（卸载） | `EngineLifecycle.Stop` | CLI、Inno、集成测试共用 |
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings 保存均经此 API |
 | 打开设置 | `ExternalToolLauncher.OpenSettings` | 命名管道激活或 spawn |
-| 打开日志 | `ExternalToolLauncher.OpenLogViewer` → Settings `--page logs` | LogViewer 为遗留快捷方式，非主入口 |
+| 打开日志 | `ExternalToolLauncher.OpenLogViewer` → Settings `--page logs` | 安装器开始菜单同入口；`LogViewer.exe` 仅作共享库 |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
 ---

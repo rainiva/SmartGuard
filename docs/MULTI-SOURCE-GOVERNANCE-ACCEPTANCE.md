@@ -12,7 +12,9 @@
 | M-02 | 1/1 | Tray 暂停菜单随 status 刷新 |
 | M-05 | 1/1 | `StatusJsonReader` 共享 |
 | M-09 | 1/1 | `GuardianRecovery` 仅 schtasks |
-| M-12 | 部分 | `GuardianRecovery` 用 Registrar 常量；Inno 仍字面量（文档登记遗留） |
+| M-12 | 1/1 | Pester + Architecture.Tests 校验 Inno/Status.cmd 任务名与 Registrar 一致 |
+| M-03 | 1/1 | `PowerPlanCatalogProvider` 为计划档位显示名唯一源 |
+| M-10 | 1/1 | 安装器日志快捷方式改为 Settings `--page logs` |
 | M-13 | 1/1 | `Directory.Build.props` 同步 version.txt |
 | 其余 M/L | 登记 | 见 ARCHITECTURE-CONTRACT；非用户可见回归项 |
 
@@ -29,4 +31,4 @@
 
 ## 结论
 
-**验收通过** — 核心多入口/多真源项已闭环；Inno 任务名字面量等为已登记遗留，由 Phase 8 门禁防止 C# 侧复发。
+**验收通过** — 核心多入口/多真源项与三项登记遗留均已闭环；C# / Inno / cmd 由 Phase 8 与 Architecture.Tests 持续约束。
