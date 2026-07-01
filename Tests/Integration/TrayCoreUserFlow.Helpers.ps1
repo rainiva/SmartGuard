@@ -38,9 +38,5 @@ function Wait-StatusFile {
 
 function Stop-EngineTree {
     param([int]$ProcessId)
-    if ($ProcessId -gt 0) {
-        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-    }
-    Get-Process -Name 'SmartGuard.Engine' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+    Stop-SmartGuardForIntegrationTest
 }
