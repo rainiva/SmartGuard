@@ -24,8 +24,7 @@ public static class LegacyTaskCleaner
     {
         try
         {
-            const string pathPattern = @"C:\\Tools\\lib\\SmartPowerPlan";
-            var query = $@"SELECT ProcessId, CommandLine FROM Win32_Process WHERE CommandLine LIKE '%{pathPattern}%'";
+            var query = $@"SELECT ProcessId, CommandLine FROM Win32_Process WHERE CommandLine LIKE '%{LegacyPaths.CommandLinePattern}%'";
             using var searcher = new ManagementObjectSearcher(query);
             foreach (ManagementObject obj in searcher.Get())
             {
