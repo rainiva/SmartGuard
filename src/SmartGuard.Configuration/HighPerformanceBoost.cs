@@ -12,7 +12,8 @@ public static class HighPerformanceBoost
   {
     var config = repository.LoadOrDefault(root);
     var until = DateTime.Now.Add(duration ?? DefaultDuration);
-    repository.SetManualHighPerformanceUntil(until);
+    var mutations = new ConfigMutationService(repository);
+    mutations.SetManualHighPerformanceUntil(until);
     activator.SetActivePlan(config.ActivePlanGuid);
     repository.AppendInfoLog(
       ManualHighPerformanceMessages.FormatApplied(until),
