@@ -14,11 +14,6 @@ public static class SettingsWindowLayoutStability
         window.StateChanged += (_, _) =>
         {
             HandleWindowStateChanged(window, isDarkTheme(), window.WindowState);
-
-            if (window.WindowState == WindowState.Minimized)
-                return;
-
-            stabilizeLayout();
         };
 
         window.SizeChanged += (_, _) => queueLayoutStabilization();

@@ -83,6 +83,10 @@ public sealed class SettingsWindowController
 
   internal bool IsLogViewInitializedForTests => _logViewInitialized;
 
+  internal static int ForceRefreshLogViewCountForTests { get; private set; }
+
+  internal static void ResetTestMetricsForTests() => ForceRefreshLogViewCountForTests = 0;
+
   private SettingsWindowController(
     string root,
     GuardConfigRepository repository,
@@ -392,7 +396,9 @@ public sealed class SettingsWindowController
       if (window.WindowState == WindowState.Minimized)
         controller.SetLogPageActive(false);
       else
-        controller.SetLogPageActive(navList.SelectedIndex == 3);
+        controller.SetLogPageActive(
+          navList.SelectedIndex == 3,
+          LogPageActivationReason.WindowRestored);
     };
 
     return controller;
@@ -590,6 +596,9 @@ public sealed class SettingsWindowController
   private void RefreshLogView(bool forceRedraw = false)
   {
     if (_logController is null || _logListPresenter is null || _lblLogStatus is null) return;
+
+    if (forceRedraw)
+      ForceRefreshLogViewCountForTests++;
 
     var idleRead = LogViewIdleReader.TryRead(_root);
     if (idleRead.Seconds is not null)
@@ -998,9 +1007,9 @@ public sealed class SettingsWindowController
 
   private void RepopulatePlanCombos()
   {
-    PopulatePlanCombo(_cmbActivePlan, _originalConfig.ActivePlanGuid, "高性能");
-    PopulatePlanCombo(_cmbBalancedPlan, _originalConfig.BalancedPlanGuid, "平衡");
-    PopulatePlanCombo(_cmbPowerSaverPlan, _originalConfig.PowerSaverPlanGuid, "节能");
+    PopulatePlanCombo(_cmbActivePlan, _originalConfig.ActivePlanGuid, PowerPlanCatalogProvider.HighPerformanceDisplayName);
+    PopulatePlanCombo(_cmbBalancedPlan, _originalConfig.BalancedPlanGuid, PowerPlanCatalogProvider.BalancedDisplayName);
+    PopulatePlanCombo(_cmbPowerSaverPlan, _originalConfig.PowerSaverPlanGuid, PowerPlanCatalogProvider.PowerSaverDisplayName);
   }
 
   internal void AddLogTagFilter(string tag)
@@ -1008,7 +1017,7 @@ public sealed class SettingsWindowController
     _logSearchFilterBar?.AddTagFilter(tag);
   }
 
-  public void SetLogPageActive(bool active)
+  public void SetLogPageActive(bool active, LogPageActivationReason reason = LogPageActivationReason.Navigation)
   {
     if (!active)
     {
@@ -1025,6 +1034,13 @@ public sealed class SettingsWindowController
     _pendingFollowTailInitialScroll = _logController?.FollowTail == true;
     _logTimer.Start();
     EnsureLogScrollViewerHooked();
+
+    if (reason == LogPageActivationReason.WindowRestored && _lastDisplayedLines.Count > 0)
+    {
+      ApplyFollowTailScrollIfEnabled();
+      return;
+    }
+
     RefreshLogView(forceRedraw: true);
     ApplyFollowTailScrollIfEnabled();
   }
@@ -1404,9 +1420,9 @@ public sealed class SettingsWindowController
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
-    PopulatePlanCombo(_cmbActivePlan, config.ActivePlanGuid, "高性能");
-    PopulatePlanCombo(_cmbBalancedPlan, config.BalancedPlanGuid, "平衡");
-    PopulatePlanCombo(_cmbPowerSaverPlan, config.PowerSaverPlanGuid, "节能");
+    PopulatePlanCombo(_cmbActivePlan, config.ActivePlanGuid, PowerPlanCatalogProvider.HighPerformanceDisplayName);
+    PopulatePlanCombo(_cmbBalancedPlan, config.BalancedPlanGuid, PowerPlanCatalogProvider.BalancedDisplayName);
+    PopulatePlanCombo(_cmbPowerSaverPlan, config.PowerSaverPlanGuid, PowerPlanCatalogProvider.PowerSaverDisplayName);
     UpdatePlanMappingStatus(config);
   }
 
