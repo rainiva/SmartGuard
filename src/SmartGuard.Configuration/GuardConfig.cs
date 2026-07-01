@@ -52,15 +52,15 @@ public sealed class GuardConfig
   {
     return new GuardConfig
     {
-      ActivePlanGuid = Guid.Parse("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"),
-      BalancedPlanGuid = Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e"),
-      PowerSaverPlanGuid = Guid.Parse("a1841308-3541-4fab-bc81-f71556f20b4a"),
+      ActivePlanGuid = PowerPlanCatalogProvider.HighPerformancePlanGuid,
+      BalancedPlanGuid = PowerPlanCatalogProvider.BalancedPlanGuid,
+      PowerSaverPlanGuid = PowerPlanCatalogProvider.PowerSaverPlanGuid,
       BalancedThresholdSec = 300,
       PowerSaverThresholdSec = 900,
       LowBatteryPercent = 30,
       CheckIntervalSec = 15,
       BrightnessRestoreMs = 300,
-      LogFile = Path.Combine(root, "SmartGuard.log"),
+      LogFile = SmartGuardPaths.DefaultLogFile(root),
       Paused = false,
       LogMaxBytes = 1_048_576,
       BrightnessRetryCount = 3,
