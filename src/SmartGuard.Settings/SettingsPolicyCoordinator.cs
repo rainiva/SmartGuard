@@ -31,7 +31,6 @@ internal sealed class SettingsPolicyCoordinator
   private CancellationTokenSource? _saveCts;
   private CancellationTokenSource? _planCatalogLoadCts;
   private int _planCatalogLoadGeneration;
-  private IReadOnlyDictionary<Guid, string> _planCatalog = new Dictionary<Guid, string>();
   private bool _suppressPlanComboEvents;
 
   internal SettingsPolicyCoordinator(
@@ -88,7 +87,7 @@ internal sealed class SettingsPolicyCoordinator
     _tglPaused.IsChecked = config.Paused;
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
-    _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
   }
 
   internal void WireInstantApply()
@@ -277,7 +276,7 @@ internal sealed class SettingsPolicyCoordinator
 
   private void ApplyPlanCatalog(IReadOnlyDictionary<Guid, string> catalog)
   {
-    _planCatalog = catalog;
+    _ = catalog;
     RepopulatePlanCombos();
     UpdatePlanMappingStatus(_originalConfig);
   }
@@ -296,7 +295,7 @@ internal sealed class SettingsPolicyCoordinator
     {
       combo.DisplayMemberPath = nameof(PowerPlanComboItem.DisplayName);
       combo.SelectedValuePath = nameof(PowerPlanComboItem.PlanGuid);
-      var items = PowerPlanComboItemsBuilder.Build(_planCatalog, selectedGuid, orphanRoleLabel);
+      var items = PowerPlanComboItemsBuilder.Build(PowerPlanCatalogProvider.TryLoad(), selectedGuid, orphanRoleLabel);
       combo.ItemsSource = items;
       combo.SelectedItem = PlanComboSelection.FindItem(items, selectedGuid);
       if (combo.SelectedItem is null && selectedGuid != Guid.Empty)
@@ -322,7 +321,7 @@ internal sealed class SettingsPolicyCoordinator
     if (_lblPlanMappingStatus is null) return;
 
     config ??= ReadConfigFromUi();
-    var messages = PowerPlanMappingValidator.Validate(config, _planCatalog);
+    var messages = PowerPlanMappingValidator.Validate(config, PowerPlanCatalogProvider.TryLoad());
     _lblPlanMappingStatus.Text = messages.Count == 0
       ? "三档计划映射正常"
       : string.Join("；", messages);
