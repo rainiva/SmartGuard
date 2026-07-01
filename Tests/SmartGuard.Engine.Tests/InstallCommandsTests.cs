@@ -23,58 +23,24 @@ public class InstallCommandsTests
   [Fact]
   public void Uninstall_code_kills_processes_before_deleting_tasks()
   {
-    // Verify that RunUninstall stops processes BEFORE deleting scheduled tasks.
-    // This is verified by inspecting the source code of InstallCommands.cs:
-    // TryKillProcess must be called before TryDeleteScheduledTask.
-    //
-    // Root cause of uninstall residue:
-    // If scheduled tasks are deleted first while processes are still running,
-    // the task's RestartOnFailure setting (1-minute retry, 999 count) may
-    // revive the process before file deletion completes, causing:
-    // 1. Process still running after uninstall
-    // 2. Files locked and cannot be deleted
-    // 3. "Some content could not be removed" message
-
     var root = Path.GetFullPath(AppContext.BaseDirectory);
-    // AppContext.BaseDirectory = Tests\SmartGuard.Engine.Tests\bin\Debug\net8.0\
-    // Need to go up 4 levels to reach project root
     var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-    var sourcePath = Path.Combine(projectRoot, "src", "SmartGuard.Engine", "Cli", "InstallCommands.cs");
-    if (!File.Exists(sourcePath))
+    var lifecyclePath = Path.Combine(projectRoot, "src", "SmartGuard.Configuration", "EngineLifecycle.cs");
+    if (!File.Exists(lifecyclePath))
     {
-      // Fallback: try 3 levels up (if running from different output path)
-      projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-      sourcePath = Path.Combine(projectRoot, "src", "SmartGuard.Engine", "Cli", "InstallCommands.cs");
-    }
-    if (!File.Exists(sourcePath))
-    {
-      // Final fallback: try 5 levels up
       projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
-      sourcePath = Path.Combine(projectRoot, "src", "SmartGuard.Engine", "Cli", "InstallCommands.cs");
+      lifecyclePath = Path.Combine(projectRoot, "src", "SmartGuard.Configuration", "EngineLifecycle.cs");
     }
 
-    File.Exists(sourcePath).Should().BeTrue($"Source file must exist at {sourcePath}");
+    File.Exists(lifecyclePath).Should().BeTrue($"Source file must exist at {lifecyclePath}");
 
-    var source = File.ReadAllText(sourcePath);
+    var source = File.ReadAllText(lifecyclePath);
+    var killProcessIndex = source.IndexOf("StopProcesses", StringComparison.Ordinal);
+    var deleteTaskIndex = source.IndexOf("DeleteScheduledTasks", StringComparison.Ordinal);
 
-    // Find positions of key method calls in RunUninstall
-    var killProcessIndex = source.IndexOf("TryKillProcess", StringComparison.Ordinal);
-    var deleteTaskIndex = source.IndexOf("TryDeleteScheduledTask", StringComparison.Ordinal);
-
-    // Both methods must exist in the source
-    killProcessIndex.Should().BeGreaterThan(-1,
-      "RunUninstall must call TryKillProcess to stop running processes. " +
-      "Without killing processes first, RestartOnFailure may revive them.");
-
-    deleteTaskIndex.Should().BeGreaterThan(-1,
-      "RunUninstall must call TryDeleteScheduledTask to remove scheduled tasks.");
-
-    // TryKillProcess must appear BEFORE TryDeleteScheduledTask in the source code
-    killProcessIndex.Should().BeLessThan(deleteTaskIndex,
-      "TryKillProcess must be called BEFORE TryDeleteScheduledTask in RunUninstall. " +
-      "If tasks are deleted first while processes are running, RestartOnFailure " +
-      "(Interval=PT1M, Count=999) will restart the process before file deletion, " +
-      "causing process residue and file lock.");
+    killProcessIndex.Should().BeGreaterThan(-1);
+    deleteTaskIndex.Should().BeGreaterThan(-1);
+    killProcessIndex.Should().BeLessThan(deleteTaskIndex);
   }
 
   [Fact]

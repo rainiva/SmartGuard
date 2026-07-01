@@ -1,23 +1,9 @@
-namespace SmartGuard.Engine.Cli;
+namespace SmartGuard.Configuration;
 
-public static class RootResolver
+public static class InstallRootResolver
 {
   public static string Resolve(string? explicitRoot, string[] args)
-  {
-    if (!string.IsNullOrWhiteSpace(explicitRoot))
-      return Path.GetFullPath(explicitRoot);
-
-    for (var i = 0; i < args.Length - 1; i++)
-    {
-      if (args[i] is "--root" or "-r")
-        return Path.GetFullPath(args[i + 1]);
-    }
-
-    var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
-    if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
-
-    return ResolveFromBaseDirectory(AppContext.BaseDirectory, explicitRoot, args);
-  }
+    => ResolveFromBaseDirectory(AppContext.BaseDirectory, explicitRoot, args);
 
   public static string ResolveFromBaseDirectory(string baseDirectory, string? explicitRoot, string[] args)
   {
@@ -31,9 +17,11 @@ public static class RootResolver
     }
 
     var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
-    if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
+    if (!string.IsNullOrWhiteSpace(env))
+      return Path.GetFullPath(env);
 
-    var dir = Path.GetFullPath(baseDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    var dir = Path.GetFullPath(baseDirectory)
+      .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     if (string.Equals(Path.GetFileName(dir), "bin", StringComparison.OrdinalIgnoreCase))
     {
       var installRoot = Directory.GetParent(dir)?.FullName;
@@ -44,7 +32,7 @@ public static class RootResolver
     dir = Path.GetFullPath(baseDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     for (var depth = 0; depth < 6; depth++)
     {
-      if (File.Exists(Path.Combine(dir, "SmartGuard.config.json")))
+      if (File.Exists(Path.Combine(dir, SmartGuardPaths.ConfigFileName)))
         return dir;
       var parent = Directory.GetParent(dir);
       if (parent is null) break;

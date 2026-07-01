@@ -16,6 +16,6 @@ public static class HighPerformanceBoost
     activator.SetActivePlan(config.ActivePlanGuid);
     repository.AppendInfoLog(
       ManualHighPerformanceMessages.FormatApplied(until),
-      Path.Combine(root, "SmartGuard.startup.log"));
+      SmartGuardPaths.StartupLogFile(root));
   }
 }

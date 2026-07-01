@@ -97,24 +97,8 @@ public static class InstallCommands
     {
       LegacyTaskCleaner.CleanLegacyTasks();
 
-      // Step 1: Kill running processes FIRST (we have admin privileges)
-      // This must happen before deleting scheduled tasks to prevent
-      // RestartOnFailure from reviving processes before file deletion.
-      WriteStartupLog(startupLog, "Uninstall: stopping running processes...");
-      TryKillProcess("SmartGuard.Tray.exe");
-      TryKillProcess("SmartGuard.Engine.exe");
-      TryKillProcess("SmartGuard.LogViewer.exe");
-      TryKillProcess("SmartGuard.Settings.exe");
-
-      // Wait for processes to actually terminate
-      Thread.Sleep(2000);
-
-      // Step 2: Remove scheduled tasks after processes are stopped
-      foreach (var taskName in InstallPaths.ScheduledTaskNames)
-      {
-        WriteStartupLog(startupLog, $"Uninstall: removing task {taskName}...");
-        TryDeleteScheduledTask(taskName);
-      }
+      WriteStartupLog(startupLog, "Uninstall: stopping running processes and removing tasks...");
+      EngineLifecycle.StopForUninstall();
 
       WriteStartupLog(startupLog, "Uninstall: completed successfully.");
       Console.WriteLine("SmartGuard scheduled tasks removed.");
@@ -124,24 +108,6 @@ public static class InstallCommands
     {
       return Fail(startupLog, $"Uninstall failed: {ex.Message}");
     }
-  }
-
-  private static void TryKillProcess(string processName)
-  {
-    try
-    {
-      var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName));
-      foreach (var process in processes)
-      {
-        try
-        {
-          process.Kill();
-          process.WaitForExit(5000);
-        }
-        catch { /* ignore individual process kill failures */ }
-      }
-    }
-    catch { /* ignore */ }
   }
 
   private static int RerunElevated(string root, string command, string? extraArg, string startupLog)
@@ -171,18 +137,6 @@ public static class InstallCommands
     proc.WaitForExit();
     WriteStartupLog(startupLog, $"Elevated process exit code: {proc.ExitCode}");
     return proc.ExitCode;
-  }
-
-  private static void TryDeleteScheduledTask(string taskName)
-  {
-    try
-    {
-      RunProcess("schtasks.exe", $"/Delete /TN \"{taskName}\" /F");
-    }
-    catch
-    {
-      // task may already be absent
-    }
   }
 
   private static int RunProcess(string fileName, string arguments)

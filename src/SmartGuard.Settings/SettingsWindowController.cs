@@ -42,6 +42,8 @@ public sealed class SettingsWindowController
   private bool _suppressThemeEvents;
   private SystemThemeWatcher? _systemThemeWatcher;
 
+  private bool _themeInitialized;
+
   internal bool IsDarkThemeEnabled => _isDarkTheme;
 
   private System.Windows.Threading.DispatcherTimer? _layoutStabilityTimer;
@@ -381,8 +383,8 @@ public sealed class SettingsWindowController
       btnResetDefaults.Click += (_, _) => controller.ResetToDefaults();
 
     // Defer log subsystem wiring until the user opens the logs page.
-    controller._logPath = Path.Combine(root, "SmartGuard.log");
-    controller._fallbackLogPath = Path.Combine(root, "SmartGuard.startup.log");
+    controller._logPath = SmartGuardPaths.ResolveLogFile(config, root);
+    controller._fallbackLogPath = SmartGuardPaths.StartupLogFile(root);
 
     window.Closing += (_, _) => controller.Dispose();
     window.StateChanged += (_, _) =>
@@ -504,6 +506,7 @@ public sealed class SettingsWindowController
   {
     _window.Dispatcher.Invoke(() =>
     {
+      AppBrandIcon.ApplyTo(_window, _root);
       if (!_window.IsVisible)
         _window.Show();
       _window.WindowState = WindowState.Normal;
@@ -1249,9 +1252,11 @@ public sealed class SettingsWindowController
 
   private void SaveThemePreferences()
   {
-    _originalConfig.ThemeFollowSystem = _themeFollowSystem;
-    _originalConfig.ThemeIsDark = _themeIsDark;
-    _repository.Save(_originalConfig);
+    var merged = ReadConfigFromUi();
+    merged.ThemeFollowSystem = _themeFollowSystem;
+    merged.ThemeIsDark = _themeIsDark;
+    SettingsSaveCoordinator.Save(merged, _originalConfig, _root, _repository);
+    _originalConfig = merged;
   }
 
   private void ApplyTheme(Window window, bool isDark)
@@ -1260,82 +1265,27 @@ public sealed class SettingsWindowController
     _toastService.IsDarkMode = isDark;
     var resources = window.Resources;
 
-    if (isDark)
+    void FinishThemeApply()
     {
-      SetResource(resources, "WindowBackground", "#202020");
-      SetResource(resources, "WindowForeground", "#FFFFFF");
-      SetResource(resources, "NavigationBackground", "#1C1C1C");
-      SetResource(resources, "NavigationItemForeground", "#FFFFFF");
-      SetResource(resources, "NavigationItemSelectedBackground", "#2D2D2D");
-      SetResource(resources, "NavigationItemSelectedForeground", "#4CC2FF");
-      SetResource(resources, "NavigationItemHoverBackground", "#2A2A2A");
-      SetResource(resources, "NavigationBorderBrush", "#3A3A3A");
-      SetResource(resources, "CardBackground", "#2D2D2D");
-      SetResource(resources, "CardBorderBrush", "#3A3A3A");
-      SetResource(resources, "CardShadowColor", "#40000000");
-      SetResource(resources, "TextPrimary", "#FFFFFF");
-      SetResource(resources, "TextSecondary", "#B0B0B0");
-      SetResource(resources, "TextTertiary", "#8A8A8A");
-      SetResource(resources, "TextAccent", "#4CC2FF");
-      SetResource(resources, "PrimaryButtonBackground", "#4CC2FF");
-      SetResource(resources, "PrimaryButtonForeground", "#1A1A1A");
-      SetResource(resources, "PrimaryButtonHoverBackground", "#3AA8E0");
-      SetResource(resources, "SecondaryButtonBackground", "#2D2D2D");
-      SetResource(resources, "SecondaryButtonForeground", "#FFFFFF");
-      SetResource(resources, "SecondaryButtonBorderBrush", "#5A5A5A");
-      SetResource(resources, "SecondaryButtonHoverBackground", "#3A3A3A");
-      SetResource(resources, "ToggleTrackOff", "#5A5A5A");
-      SetResource(resources, "ToggleTrackOn", "#4CC2FF");
-      SetResource(resources, "ToggleThumb", "#FFFFFF");
-      SetResource(resources, "NumberBoxBackground", "#2D2D2D");
-      SetResource(resources, "NumberBoxBorderBrush", "#5A5A5A");
-      SetResource(resources, "NumberBoxButtonBackground", "#3A3A3A");
-      SetResource(resources, "NumberBoxButtonHoverBackground", "#4A4A4A");
-      SetResource(resources, "InfoBarBackground", "#1A3A5C");
-      SetResource(resources, "InfoBarForeground", "#4CC2FF");
-      SetResource(resources, "InfoBarBorderBrush", "#2A5A8A");
-      SetResource(resources, "DividerBrush", "#3A3A3A");
-    }
-    else
-    {
-      SetResource(resources, "WindowBackground", "#F3F3F3");
-      SetResource(resources, "WindowForeground", "#1A1A1A");
-      SetResource(resources, "NavigationBackground", "#F9F9F9");
-      SetResource(resources, "NavigationItemForeground", "#1A1A1A");
-      SetResource(resources, "NavigationItemSelectedBackground", "#E5E5E5");
-      SetResource(resources, "NavigationItemSelectedForeground", "#005FB8");
-      SetResource(resources, "NavigationItemHoverBackground", "#EEEEEE");
-      SetResource(resources, "NavigationBorderBrush", "#E0E0E0");
-      SetResource(resources, "CardBackground", "#FFFFFF");
-      SetResource(resources, "CardBorderBrush", "#E5E5E5");
-      SetResource(resources, "CardShadowColor", "#20000000");
-      SetResource(resources, "TextPrimary", "#1A1A1A");
-      SetResource(resources, "TextSecondary", "#616161");
-      SetResource(resources, "TextTertiary", "#8A8A8A");
-      SetResource(resources, "TextAccent", "#005FB8");
-      SetResource(resources, "PrimaryButtonBackground", "#005FB8");
-      SetResource(resources, "PrimaryButtonForeground", "#FFFFFF");
-      SetResource(resources, "PrimaryButtonHoverBackground", "#004578");
-      SetResource(resources, "SecondaryButtonBackground", "#FFFFFF");
-      SetResource(resources, "SecondaryButtonForeground", "#1A1A1A");
-      SetResource(resources, "SecondaryButtonBorderBrush", "#D1D1D1");
-      SetResource(resources, "SecondaryButtonHoverBackground", "#F0F0F0");
-      SetResource(resources, "ToggleTrackOff", "#C4C4C4");
-      SetResource(resources, "ToggleTrackOn", "#005FB8");
-      SetResource(resources, "ToggleThumb", "#FFFFFF");
-      SetResource(resources, "NumberBoxBackground", "#FFFFFF");
-      SetResource(resources, "NumberBoxBorderBrush", "#D1D1D1");
-      SetResource(resources, "NumberBoxButtonBackground", "#F0F0F0");
-      SetResource(resources, "NumberBoxButtonHoverBackground", "#E5E5E5");
-      SetResource(resources, "InfoBarBackground", "#E8F3FF");
-      SetResource(resources, "InfoBarForeground", "#005FB8");
-      SetResource(resources, "InfoBarBorderBrush", "#B3D7F7");
-      SetResource(resources, "DividerBrush", "#E5E5E5");
+      LogViewTagPalette.ConfigureForDarkMode(isDark);
+      RefreshLogView(forceRedraw: true);
     }
 
-    LogViewTagPalette.ConfigureForDarkMode(isDark);
-    WindowTitleBarTheme.Apply(window, isDark);
-    RefreshLogView(forceRedraw: true);
+    if (!_themeInitialized || SettingsUiTestMode.IsEnabled)
+    {
+      WindowTitleBarTheme.Apply(window, isDark);
+      ThemeTransitionAnimator.ApplyImmediate(resources, isDark);
+      _themeInitialized = true;
+      FinishThemeApply();
+      return;
+    }
+
+    ThemeTransitionAnimator.AnimateTransition(
+      window,
+      resources,
+      isDark,
+      FinishThemeApply,
+      onMidpoint: () => WindowTitleBarTheme.Apply(window, isDark));
   }
 
   private static string GetDisplayVersion()
@@ -1346,24 +1296,6 @@ public sealed class SettingsWindowController
     if (version.Build > 0)
       return $"{version.Major}.{version.Minor}.{version.Build}";
     return $"{version.Major}.{version.Minor}";
-  }
-
-  private static void SetResource(ResourceDictionary resources, string key, string colorHex)
-  {
-    if (resources.Contains(key))
-    {
-      var existing = resources[key];
-      var newColor = (Color)ColorConverter.ConvertFromString(colorHex);
-      if (existing is SolidColorBrush)
-      {
-        // Brushes loaded from XAML BAML are frozen; replace the entire instance
-        resources[key] = new SolidColorBrush(newColor);
-      }
-      else if (existing is Color)
-      {
-        resources[key] = newColor;
-      }
-    }
   }
 
   private static Window? TryLoadEmbeddedWindow()
@@ -1471,7 +1403,7 @@ public sealed class SettingsWindowController
     _tglPaused.IsChecked = config.Paused;
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
-    _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
     PopulatePlanCombo(_cmbActivePlan, config.ActivePlanGuid, "高性能");
     PopulatePlanCombo(_cmbBalancedPlan, config.BalancedPlanGuid, "平衡");
     PopulatePlanCombo(_cmbPowerSaverPlan, config.PowerSaverPlanGuid, "节能");

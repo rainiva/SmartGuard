@@ -1,3 +1,4 @@
+using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 using SmartGuard.Tray.Toast;
 
@@ -11,7 +12,7 @@ internal static class Program
     ApplicationConfiguration.Initialize();
     Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
-    var root = RootResolver.Resolve(args);
+    var root = InstallRootResolver.Resolve(null, args);
     using var guard = SingleInstanceGuard.TryAcquire("Tray");
     if (!guard.IsOwner)
     {

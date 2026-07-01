@@ -18,6 +18,7 @@ public sealed class GuardianLoop(
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
   private readonly Dictionary<string, int> _exceptionCounts = new();
   private readonly StatusPublisher _publisher = new(statusPath);
+  private readonly GuardConfigRepository _configRepository = new(configPath);
   private IReadOnlyDictionary<Guid, string>? _planCatalog;
   private Guid? _lastKnownGuid;
   private DateTime _exceptionWindowStart = DateTime.MinValue;
@@ -36,7 +37,7 @@ public sealed class GuardianLoop(
   public async Task RunAsync(CancellationToken cancellationToken = default)
   {
     EnsureConfigExists();
-    var config = GuardConfig.LoadFromFile(configPath);
+    var config = LoadConfig();
     InitializeIfNeeded(config);
     WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{config.LogFile}");
 
@@ -53,7 +54,7 @@ public sealed class GuardianLoop(
       {
         try
         {
-          var cfg = GuardConfig.LoadFromFile(configPath);
+          var cfg = LoadConfig();
           TrackAndLogException(ex, cfg);
         }
         catch
@@ -63,7 +64,7 @@ public sealed class GuardianLoop(
       }
 
       _lastKnownGuid = PowerCfgExecutor.GetCurrentPlanGuid();
-      WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(configPath), cancellationToken);
+      WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(_configRepository, rootPath), cancellationToken);
     }
   }
 
@@ -71,7 +72,7 @@ public sealed class GuardianLoop(
   {
     try
     {
-      var cfg = GuardConfig.LoadFromFile(configPath);
+      var cfg = LoadConfig();
       WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc));
     }
     catch
@@ -91,7 +92,7 @@ public sealed class GuardianLoop(
 
   private async Task ProcessIterationAsync(CancellationToken cancellationToken)
   {
-    var config = GuardConfig.LoadFromFile(configPath);
+    var config = LoadConfig();
     var planCatalog = _planCatalog ?? PowerCfgExecutor.LoadPowerPlanCatalog();
     var idle = (int)_idleTracker.Sample(IdleDetector.GetIdleSeconds, DateTime.UtcNow);
     var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
@@ -238,12 +239,13 @@ public sealed class GuardianLoop(
     WriteLog(config, LogLevel.Info, "INIT: 首次初始化完成");
   }
 
+  private GuardConfig LoadConfig() => _configRepository.LoadOrDefault(rootPath);
+
   private void EnsureConfigExists()
   {
     if (!Directory.Exists(rootPath)) Directory.CreateDirectory(rootPath);
     if (File.Exists(configPath)) return;
-    var cfg = GuardConfig.CreateDefault(rootPath);
-    File.WriteAllText(configPath, System.Text.Json.JsonSerializer.Serialize(cfg, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    _configRepository.Save(GuardConfig.CreateDefault(rootPath));
   }
 
   private void WriteLog(GuardConfig config, LogLevel level, string message)

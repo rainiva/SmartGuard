@@ -1,15 +1,10 @@
-using System.Text.Json;
+using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 
 namespace SmartGuard.Tray;
 
 public sealed class StatusStore(string statusPath)
 {
-  private static readonly JsonSerializerOptions JsonOptions = new()
-  {
-    PropertyNameCaseInsensitive = true,
-  };
-
   private StatusPayload? _cached;
   private DateTime _cachedWriteTimeUtc = DateTime.MinValue;
 
@@ -36,18 +31,8 @@ public sealed class StatusStore(string statusPath)
       return _cached;
 
     DiskReadCountForTests++;
-    try
-    {
-      var json = File.ReadAllText(statusPath);
-      _cached = JsonSerializer.Deserialize<StatusPayload>(json, JsonOptions);
-      _cachedWriteTimeUtc = writeTimeUtc;
-      return _cached;
-    }
-    catch
-    {
-      _cached = null;
-      _cachedWriteTimeUtc = DateTime.MinValue;
-      return null;
-    }
+    _cached = StatusJsonReader.TryRead(statusPath);
+    _cachedWriteTimeUtc = _cached is null ? DateTime.MinValue : writeTimeUtc;
+    return _cached;
   }
 }

@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  run-tests:
+    runs-on: windows-latest
+    env:
+      SMARTGUARD_SKIP_INSTALLER_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Run SmartGuard test suite
+        shell: pwsh
+        run: |
+          chcp 65001 | Out-Null
+          ./Run-Tests.ps1

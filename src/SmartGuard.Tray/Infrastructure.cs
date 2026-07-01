@@ -1,33 +1,8 @@
 using System.Diagnostics;
+using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 
 namespace SmartGuard.Tray;
-
-public static class RootResolver
-{
-  public static string Resolve(string[] args)
-  {
-    for (var i = 0; i < args.Length - 1; i++)
-    {
-      if (string.Equals(args[i], "--root", StringComparison.OrdinalIgnoreCase))
-        return Path.GetFullPath(args[i + 1]);
-    }
-
-    var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
-    if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
-
-    var dir = Path.GetFullPath(AppContext.BaseDirectory)
-      .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-    if (string.Equals(Path.GetFileName(dir), "bin", StringComparison.OrdinalIgnoreCase))
-    {
-      var installRoot = Directory.GetParent(dir)?.FullName;
-      if (!string.IsNullOrWhiteSpace(installRoot))
-        return installRoot;
-    }
-
-    return dir;
-  }
-}
 
 public static class ExternalToolLauncher
 {
@@ -36,7 +11,7 @@ public static class ExternalToolLauncher
     if (SingleInstanceActivation.TryNotifyExisting("Settings"))
       return;
 
-    var exe = Path.Combine(root, "bin", "SmartGuard.Settings.exe");
+    var exe = SmartGuardPaths.SettingsExe(root);
     if (!File.Exists(exe))
       throw new FileNotFoundException("SmartGuard.Settings.exe not found. Reinstall SmartGuard.", exe);
 
@@ -55,7 +30,7 @@ public static class ExternalToolLauncher
     if (SingleInstanceActivation.TryNotifyExisting("Settings", "logs"))
       return;
 
-    var exe = Path.Combine(root, "bin", "SmartGuard.Settings.exe");
+    var exe = SmartGuardPaths.SettingsExe(root);
     if (!File.Exists(exe))
       throw new FileNotFoundException("SmartGuard.Settings.exe not found. Reinstall SmartGuard.", exe);
 
@@ -86,7 +61,7 @@ public static class TrayIconLoader
 
   public static Icon Load(string root)
   {
-    var iconPath = Path.Combine(root, "lib", "SmartGuard.ico");
+    var iconPath = SmartGuardPaths.BrandIcon(root);
     if (_cachedIcon is not null && string.Equals(_cachedIconPath, iconPath, StringComparison.OrdinalIgnoreCase))
       return (Icon)_cachedIcon.Clone();
 

@@ -12,6 +12,19 @@ public static class AutoStartService
     return enabled != previousEnabled.Value;
   }
 
+  public static bool SyncFromTasks()
+  {
+    foreach (var name in ScheduledTaskNames)
+    {
+      if (!TryGetTaskState(name, out var state))
+        return false;
+      if (string.Equals(state, "Disabled", StringComparison.OrdinalIgnoreCase))
+        return false;
+    }
+
+    return true;
+  }
+
   public static void SetEnabled(bool enabled, string root)
   {
     foreach (var name in ScheduledTaskNames)

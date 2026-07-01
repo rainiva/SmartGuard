@@ -4,25 +4,21 @@ namespace SmartGuard.Configuration;
 
 public static class GuardianRecovery
 {
-  public const string GuardianTaskName = "SmartGuard Guardian";
   public const int MissedStatusThreshold = 3;
 
   public static bool ShouldAttemptStart(int consecutiveMissedReads)
     => consecutiveMissedReads >= MissedStatusThreshold;
 
   public static string GetEngineExecutablePath(string root)
-    => Path.Combine(root, "bin", "SmartGuard.Engine.exe");
+    => SmartGuardPaths.EngineExe(root);
 
   public static string BuildSchTasksRunArguments()
-    => $"/Run /TN \"{GuardianTaskName}\"";
+    => $"/Run /TN \"{ScheduledTaskRegistrar.GuardianTaskName}\"";
 
   public static void TryStartGuardian(string root)
-  {
-    if (TryRunScheduledTask()) return;
-    TryLaunchEngine(root);
-  }
+    => TryRunScheduledTask();
 
-  private static bool TryRunScheduledTask()
+  private static void TryRunScheduledTask()
   {
     try
     {
@@ -33,31 +29,7 @@ public static class GuardianRecovery
         UseShellExecute = false,
         CreateNoWindow = true,
       });
-      if (process is null) return false;
-      process.WaitForExit();
-      return process.ExitCode == 0;
-    }
-    catch
-    {
-      return false;
-    }
-  }
-
-  private static void TryLaunchEngine(string root)
-  {
-    var engineExe = GetEngineExecutablePath(root);
-    if (!File.Exists(engineExe)) return;
-
-    try
-    {
-      Process.Start(new ProcessStartInfo
-      {
-        FileName = engineExe,
-        Arguments = $"--root \"{root}\"",
-        WorkingDirectory = root,
-        UseShellExecute = false,
-        CreateNoWindow = true,
-      });
+      process?.WaitForExit();
     }
     catch
     {

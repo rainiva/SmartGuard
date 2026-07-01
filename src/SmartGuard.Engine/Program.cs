@@ -1,4 +1,5 @@
-﻿using SmartGuard.Contracts;
+﻿using SmartGuard.Configuration;
+using SmartGuard.Contracts;
 using SmartGuard.Engine.Cli;
 using SmartGuard.Engine.Worker;
 
@@ -9,11 +10,11 @@ public static class Program
   public static int Main(string[] args)
   {
     var parsed = CommandLineParser.Parse(args);
-    var root = RootResolver.Resolve(parsed.Root, args);
-    var configPath = Path.Combine(root, "SmartGuard.config.json");
-    var statusPath = Path.Combine(root, "SmartGuard.status.json");
+    var root = InstallRootResolver.Resolve(parsed.Root, args);
+    var configPath = SmartGuardPaths.ConfigFile(root);
+    var statusPath = SmartGuardPaths.StatusFile(root);
     var initMarker = Path.Combine(root, ".SmartGuard.initialized");
-    var fallbackLog = Path.Combine(root, "SmartGuard.startup.log");
+    var fallbackLog = SmartGuardPaths.StartupLogFile(root);
 
     return parsed.Mode switch
     {

@@ -36,6 +36,7 @@ if (-not (Test-Path -LiteralPath $testPath)) {
 $r = Invoke-Pester -Path $testPath -PassThru
 $engineTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Engine.Tests\SmartGuard.Engine.Tests.csproj'
 $configTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Configuration.Tests\SmartGuard.Configuration.Tests.csproj'
+$archTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Architecture.Tests\SmartGuard.Architecture.Tests.csproj'
 $trayTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Tray.Tests\SmartGuard.Tray.Tests.csproj'
 $logViewerTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.LogViewer.Tests\SmartGuard.LogViewer.Tests.csproj'
 $settingsTests = Join-Path $PSScriptRoot 'Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj'
@@ -49,6 +50,12 @@ $dotnetConfig = dotnet test $configTests --nologo -v q 2>&1
 $dotnetConfig | Write-Host
 if ($LASTEXITCODE -ne 0) {
     Write-Host 'dotnet test (Configuration) FAILED' -ForegroundColor Red
+    exit 1
+}
+$dotnetArch = dotnet test $archTests --nologo -v q 2>&1
+$dotnetArch | Write-Host
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'dotnet test (Architecture) FAILED' -ForegroundColor Red
     exit 1
 }
 $dotnetTray = dotnet test $trayTests --nologo -v q 2>&1

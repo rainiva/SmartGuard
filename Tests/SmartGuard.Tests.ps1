@@ -15,35 +15,49 @@
             [double]$fill | Should -BeGreaterOrEqual 47.0
         }
 
-        It 'bundled SmartGuard.ico keeps the 24px lightning accent and a simplified 16px tray palette' {
+        It 'bundled SmartGuard.ico keeps the 24px white lightning accent and a simplified 16px tray palette' {
             $root = Split-Path -Parent $PSScriptRoot
             $icon = Join-Path $root 'lib\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img24=ico.ico.getimage((24,24)).convert('RGBA'); img16=ico.ico.getimage((16,16)).convert('RGBA'); lime24=sum(1 for r,g,b,a in img24.getdata() if a > 32 and r > 180 and g > 210 and b < 140); opaque16={(r,g,b) for r,g,b,a in img16.getdata() if a > 200}; print(json.dumps({'lime24': lime24, 'opaque16': len(opaque16)}))" $icon
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img24=ico.ico.getimage((24,24)).convert('RGBA'); img16=ico.ico.getimage((16,16)).convert('RGBA'); white24=sum(1 for r,g,b,a in img24.getdata() if a > 200 and r > 230 and g > 235 and b > 235); bright16=sum(1 for r,g,b,a in img16.getdata() if a > 32 and r >= 90 and g >= 170 and b >= 220); blue16=sum(1 for r,g,b,a in img16.getdata() if a > 32 and 60 <= r <= 170 and 120 <= g <= 220 and 170 <= b <= 255); white16=sum(1 for r,g,b,a in img16.getdata() if a > 200 and r > 230 and g > 235 and b > 235); print(json.dumps({'white24': white24, 'bright16': bright16, 'blue16': blue16, 'white16': white16}))" $icon
             $metrics = $metricsJson | ConvertFrom-Json
 
-            $metrics.lime24 | Should -BeGreaterThan 6
-            $metrics.opaque16 | Should -BeLessOrEqual 8
+            $metrics.white24 | Should -BeGreaterThan 6
+            $metrics.bright16 | Should -BeGreaterThan 55
+            $metrics.blue16 | Should -BeGreaterThan 120
+            $metrics.white16 | Should -BeLessOrEqual 4
         }
 
         It 'bundled SmartGuard.ico keeps a crisp 32px frame for taskbar and Explorer' {
             $root = Split-Path -Parent $PSScriptRoot
             $icon = Join-Path $root 'lib\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); lime32=sum(1 for r,g,b,a in img32.getdata() if a > 32 and r > 180 and g > 210 and b < 140); opaque32={(r,g,b) for r,g,b,a in img32.getdata() if a > 200}; alpha32={a for _,_,_,a in img32.getdata() if a > 0}; print(json.dumps({'lime32': lime32, 'opaque32': len(opaque32), 'alpha32': len(alpha32)}))" $icon
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); white32=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 230 and g > 235 and b > 235); bright32=sum(1 for r,g,b,a in img32.getdata() if a > 32 and r >= 90 and g >= 170 and b >= 220); alpha32={a for _,_,_,a in img32.getdata() if a > 0}; print(json.dumps({'white32': white32, 'bright32': bright32, 'alpha32': len(alpha32)}))" $icon
             $metrics = $metricsJson | ConvertFrom-Json
 
-            $metrics.lime32 | Should -BeGreaterThan 8
-            $metrics.opaque32 | Should -BeLessOrEqual 12
-            $metrics.alpha32 | Should -BeLessOrEqual 4
+            $metrics.white32 | Should -BeGreaterThan 15
+            $metrics.bright32 | Should -BeGreaterThan 150
+            $metrics.alpha32 | Should -BeLessOrEqual 90
         }
 
         It 'bundled SmartGuard.ico keeps a compact 32px lightning silhouette for Explorer lists' {
             $root = Split-Path -Parent $PSScriptRoot
             $icon = Join-Path $root 'lib\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); lime=[(x,y) for y in range(img32.height) for x in range(img32.width) if (lambda p: p[3] > 32 and p[0] > 180 and p[1] > 210 and p[2] < 140)(img32.getpixel((x, y)))]; xs=[p[0] for p in lime]; ys=[p[1] for p in lime]; print(json.dumps({'width': max(xs) - min(xs) + 1, 'height': max(ys) - min(ys) + 1}))" $icon
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); white=[(x,y) for y in range(img32.height) for x in range(img32.width) if (lambda p: p[3] > 200 and p[0] > 230 and p[1] > 235 and p[2] > 235)(img32.getpixel((x, y)))]; xs=[p[0] for p in white]; ys=[p[1] for p in white]; print(json.dumps({'width': max(xs) - min(xs) + 1, 'height': max(ys) - min(ys) + 1}))" $icon
             $metrics = $metricsJson | ConvertFrom-Json
 
             $metrics.width | Should -BeGreaterOrEqual 5
-            $metrics.height | Should -BeLessOrEqual 8
+            $metrics.width | Should -BeLessOrEqual 8
+            $metrics.height | Should -BeGreaterOrEqual 9
+            $metrics.height | Should -BeLessOrEqual 12
+        }
+
+        It 'bundled SmartGuard.ico keeps a tighter 32px battery shell for Explorer lists' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); shell=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 200 and g > 220 and b > 230); fill=sum(1 for r,g,b,a in img32.getdata() if a > 200 and 60 < r < 130 and 120 < g < 190 and 150 < b < 230); print(json.dumps({'shell': shell, 'fill': fill}))" $icon
+            $metrics = $metricsJson | ConvertFrom-Json
+
+            $metrics.shell | Should -BeLessOrEqual 140
+            $metrics.fill | Should -BeGreaterOrEqual 120
         }
 
         It 'does not ship Create-TrayIcon.ps1 and packaging project exists' {
@@ -416,6 +430,39 @@
             Test-Path -LiteralPath (Join-Path $root 'installer\InstallVersion.ps1') | Should -Be $false
             Test-Path -LiteralPath (Join-Path $root 'installer\InstallStaging.ps1') | Should -Be $false
             Test-Path -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\SmartGuard.Packaging.csproj') | Should -Be $true
+        }
+    }
+
+    Describe 'Phase 8 architecture single source of truth' {
+        It 'ARCHITECTURE-CONTRACT.md exists with governance sections' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $contract = Join-Path $root 'docs\ARCHITECTURE-CONTRACT.md'
+            Test-Path -LiteralPath $contract | Should -Be $true
+            $content = Get-Content -LiteralPath $contract -Raw -Encoding UTF8
+            $content | Should -Match '真源注册表'
+            $content | Should -Match 'InstallRootResolver'
+            $content | Should -Match 'GuardConfigRepository'
+        }
+
+        It 'AGENTS.md documents architecture and multi-source TDD rules' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $agents = Get-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Raw -Encoding UTF8
+            $agents | Should -Match '### 8\. 架构真源'
+            $agents | Should -Match '### 11\. 多真源治理专项 TDD'
+        }
+
+        It 'SmartGuard.Architecture.Tests project is wired in Run-Tests.ps1' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Match 'SmartGuard\.Architecture\.Tests'
+            Test-Path -LiteralPath (Join-Path $root 'Tests\SmartGuard.Architecture.Tests\SmartGuard.Architecture.Tests.csproj') | Should -Be $true
+        }
+
+        It 'GitHub Actions workflow runs Run-Tests.ps1' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $workflow = Get-Content -LiteralPath (Join-Path $root '.github\workflows\test.yml') -Raw -Encoding UTF8
+            $workflow | Should -Match 'Run-Tests\.ps1'
+            $workflow | Should -Match 'windows-latest'
         }
     }
 }

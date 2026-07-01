@@ -6,5 +6,5 @@ public static class InstallPaths
     SmartGuard.Configuration.ScheduledTaskRegistrar.TaskNames;
 
   public static string GetEngineExe(string root) =>
-    Path.Combine(root, "bin", "SmartGuard.Engine.exe");
+    SmartGuard.Configuration.SmartGuardPaths.EngineExe(root);
 }

@@ -1,13 +1,13 @@
-using SmartGuard.Engine.Cli;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Tests;
 
-public class RootResolverTests
+public class InstallRootResolverTests
 {
   [Fact]
   public void Resolve_prefers_explicit_root_argument()
   {
-    RootResolver.ResolveFromBaseDirectory(@"C:\Apps\SmartGuard\bin", @"D:\Custom", [])
+    InstallRootResolver.ResolveFromBaseDirectory(@"C:\Apps\SmartGuard\bin", @"D:\Custom", [])
       .Should().Be(@"D:\Custom");
   }
 
@@ -20,7 +20,7 @@ public class RootResolverTests
 
     try
     {
-      RootResolver.ResolveFromBaseDirectory(binDir, null, [])
+      InstallRootResolver.ResolveFromBaseDirectory(binDir, null, [])
         .Should().Be(Path.GetFullPath(installRoot));
     }
     finally
@@ -38,7 +38,7 @@ public class RootResolverTests
 
     try
     {
-      var resolved = RootResolver.ResolveFromBaseDirectory(binDir, null, []);
+      var resolved = InstallRootResolver.ResolveFromBaseDirectory(binDir, null, []);
       resolved.Should().NotBe(@"D:\Project\SmartGuard");
       resolved.Should().Be(Path.GetFullPath(installRoot));
     }

@@ -54,6 +54,33 @@
 | 声称完成但未贴测试通过输出 | 违规，运行测试并贴输出 |
 | 核心用户流程只有单元测试，无集成覆盖 | 建议补充集成/端到端测试 |
 
+### 8. 架构真源（阻断项）
+
+| 行为 | 判定 |
+|------|------|
+| 新增第二套 RootResolver / 路径解析 | 违规，扩展现有 `InstallRootResolver` |
+| Engine 或任意进程绕过 Repository 读 config | 违规 |
+| 新增 config 字段的多写入 API 且无 [ARCHITECTURE-CONTRACT.md](docs/ARCHITECTURE-CONTRACT.md) 登记 | 违规 |
+| 在 Inno/cmd/测试再写一份 Engine 停止逻辑 | 违规，用 `EngineLifecycle` |
+| 硬编码计划任务名 / 核心文件名 | 违规，用 `ScheduledTaskRegistrar` / `SmartGuardPaths` |
+| 改共享基础设施却不更新 ARCHITECTURE-CONTRACT + 门禁 | 违规 |
+| 声称完成但架构门禁或 Run-Tests 未绿 | 违规（与 §5 并列） |
+
+### 11. 多真源治理专项 TDD（阻断项，与 §1–4 叠加）
+
+| 行为 | 判定 |
+|------|------|
+| 跨 H/M 切片批量改 `src/` 且无对应 RED | 违规 |
+| 未贴 RED 失败输出就写生产代码 | 违规 |
+| 只跑单测不跑 `Run-Tests.ps1` 即声称 Slice 完成 | 违规 |
+| GREEN 范围超出「让当前 RED 通过」的最小 diff | 违规（留到 REFACTOR） |
+| REFACTOR 时测试非全绿 | 违规，回滚 |
+| 架构门禁从红变绿靠删断言/Skip 而非修真源 | 违规 |
+| Phase 8 Pester 与 Architecture.Tests 未接入 Run-Tests 即合并 | 违规 |
+| Slice 全绿后未 `git commit` 即开始下一切片 | 违规 |
+| 全部 Slice 完成但未做文档终验即宣告完成 | 违规 |
+| 终验发现缺口未开新 Slice 继续推进 | 违规 |
+
 ## Git 提交规范
 
 ### 提交时机

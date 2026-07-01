@@ -19,12 +19,11 @@ internal static class Program
       return;
     }
 
-    var root = RootResolver.Resolve(args);
-    var config = new GuardConfigRepository(Path.Combine(root, "SmartGuard.config.json")).LoadOrDefault(root);
-    var logPath = string.IsNullOrWhiteSpace(config.LogFile)
-      ? Path.Combine(root, "SmartGuard.log")
-      : config.LogFile;
-    var fallback = Path.Combine(root, "SmartGuard.startup.log");
+    var root = InstallRootResolver.Resolve(null, args);
+    var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(root));
+    var config = repository.LoadOrDefault(root);
+    var logPath = SmartGuardPaths.ResolveLogFile(config, root);
+    var fallback = SmartGuardPaths.StartupLogFile(root);
 
     using var activationCts = new CancellationTokenSource();
     var form = new LogViewerForm(root, logPath, fallback);
@@ -46,21 +45,5 @@ internal static class Program
 
     activationCts.Cancel();
     activationThread.Join(TimeSpan.FromSeconds(1));
-  }
-}
-
-internal static class RootResolver
-{
-  public static string Resolve(string[] args)
-  {
-    for (var i = 0; i < args.Length - 1; i++)
-    {
-      if (string.Equals(args[i], "--root", StringComparison.OrdinalIgnoreCase))
-        return Path.GetFullPath(args[i + 1]);
-    }
-
-    var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
-    if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
-    return Path.GetFullPath(AppContext.BaseDirectory);
   }
 }

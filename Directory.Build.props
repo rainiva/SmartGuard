@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
     <SelfContained>false</SelfContained>
+    <InstallerVersionFile>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'installer\version.txt'))</InstallerVersionFile>
+    <Version Condition="Exists('$(InstallerVersionFile)')">$([System.IO.File]::ReadAllText('$(InstallerVersionFile)').Trim())</Version>
   </PropertyGroup>
 </Project>

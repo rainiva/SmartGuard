@@ -9,6 +9,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 {
   private readonly string _root;
   private readonly GuardConfigRepository _configRepository;
+  private readonly ConfigMutationService _configMutations;
   private readonly NotifyIcon _notifyIcon;
   private readonly ToolStripMenuItem _statusItem;
   private readonly ToolStripMenuItem _pauseItem;
@@ -23,10 +24,11 @@ public sealed class TrayApplicationContext : ApplicationContext
   public TrayApplicationContext(string root)
   {
     _root = root;
-    var configPath = Path.Combine(root, "SmartGuard.config.json");
-    var statusPath = Path.Combine(root, "SmartGuard.status.json");
+    var configPath = SmartGuardPaths.ConfigFile(root);
+    var statusPath = SmartGuardPaths.StatusFile(root);
     var statusStore = new StatusStore(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
+    _configMutations = new ConfigMutationService(_configRepository);
     var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
     var config = _configRepository.LoadOrDefault(_root);
     var displaySettingsCache = new TrayDisplaySettingsCache(
@@ -144,6 +146,9 @@ public sealed class TrayApplicationContext : ApplicationContext
         _statusItem.Text = _displayState.StatusLine;
     }
 
+    if (update.Status is not null)
+      _pauseItem.Text = update.Status.paused ? "恢复守护" : "暂停守护";
+
     if (update.Notification is not { UseBalloonFallback: true } notification)
       return;
 
@@ -159,15 +164,9 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
       var next = await Task.Run(() =>
       {
-        var previous = _configRepository.TryLoad()?.Paused;
-        var value = !(previous ?? false);
-        _configRepository.UpdatePaused(value);
-        var msg = PauseGuardMessages.GetLogMessage(previous, value);
-        if (msg is not null)
-        {
-          var fallback = Path.Combine(_root, "SmartGuard.startup.log");
-          _configRepository.AppendInfoLog(msg, fallback);
-        }
+        var previous = _configRepository.TryLoad()?.Paused ?? false;
+        var value = !previous;
+        _configMutations.SetPaused(value, _root, SmartGuardPaths.StartupLogFile(_root));
         return value;
       });
 

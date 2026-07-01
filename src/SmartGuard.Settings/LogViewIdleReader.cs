@@ -1,5 +1,3 @@
-using System.IO;
-using System.Text.Json;
 using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 
@@ -9,11 +7,6 @@ internal static class LogViewIdleReader
 {
   public const int MaxStatusAgeSeconds = 300;
   public const int StaleHintAgeSeconds = 90;
-
-  private static readonly JsonSerializerOptions StatusJsonOptions = new()
-  {
-    PropertyNameCaseInsensitive = true,
-  };
 
   internal static Func<uint>? ReadOverrideForTests;
   internal static Func<uint>? ApiReadOverrideForTests;
@@ -30,7 +23,7 @@ internal static class LogViewIdleReader
 
       var nowLocal = now ?? DateTime.Now;
       var apiIdle = ReadApiIdleSeconds();
-      var status = TryReadStatus(Path.Combine(installRoot, "SmartGuard.status.json"));
+      var status = StatusJsonReader.TryRead(SmartGuardPaths.StatusFile(installRoot));
       if (status is null)
         return new LogViewIdleReadResult(apiIdle, StatusMayBeStale: false);
 
@@ -60,20 +53,4 @@ internal static class LogViewIdleReader
 
   private static bool TryGetPublishedAt(StatusPayload status, out DateTime publishedAt)
     => DateTime.TryParse(status.timestamp, out publishedAt);
-
-  private static StatusPayload? TryReadStatus(string statusPath)
-  {
-    if (!File.Exists(statusPath))
-      return null;
-
-    try
-    {
-      var json = File.ReadAllText(statusPath);
-      return JsonSerializer.Deserialize<StatusPayload>(json, StatusJsonOptions);
-    }
-    catch
-    {
-      return null;
-    }
-  }
 }

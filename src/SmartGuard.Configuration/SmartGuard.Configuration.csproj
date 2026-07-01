@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SmartGuard.Contracts\SmartGuard.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="SmartGuard.Configuration.Tests" />
     <InternalsVisibleTo Include="SmartGuard.Settings.Tests" />
   </ItemGroup>

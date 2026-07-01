@@ -7,7 +7,7 @@ public static class SettingsSaveCoordinator
     var pauseMsg = PauseGuardMessages.GetLogMessage(previous.Paused, newConfig.Paused);
     if (pauseMsg is not null)
     {
-      var fallback = Path.Combine(root, "SmartGuard.startup.log");
+      var fallback = SmartGuardPaths.StartupLogFile(root);
       repository.AppendInfoLog(pauseMsg, fallback);
     }
 

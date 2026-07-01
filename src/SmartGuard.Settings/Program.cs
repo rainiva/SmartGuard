@@ -44,8 +44,8 @@ internal static class Program
     };
     activationThread.Start();
 
-    var root = RootResolver.Resolve(args);
-    var configPath = Path.Combine(root, "SmartGuard.config.json");
+    var root = InstallRootResolver.Resolve(null, args);
+    var configPath = SmartGuardPaths.ConfigFile(root);
     var repository = new GuardConfigRepository(configPath);
     var config = repository.LoadOrDefault(root);
 
@@ -87,21 +87,5 @@ internal static class Program
         return args[i + 1];
     }
     return string.Empty;
-  }
-}
-
-internal static class RootResolver
-{
-  public static string Resolve(string[] args)
-  {
-    for (var i = 0; i < args.Length - 1; i++)
-    {
-      if (string.Equals(args[i], "--root", StringComparison.OrdinalIgnoreCase))
-        return Path.GetFullPath(args[i + 1]);
-    }
-
-    var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
-    if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
-    return Path.GetFullPath(AppContext.BaseDirectory);
   }
 }
