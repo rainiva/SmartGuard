@@ -19,7 +19,7 @@
 | 开机自启 UI | `config.AutoStartEnabled` + `AutoStartService.SyncFromTasks` | Settings | `SettingsSaveCoordinator` + `AutoStartService` | 仅写 config 不读 schtasks |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与状态行） | Tray | `ConfigMutationService.SetPaused` | Tray 菜单仅启动时读 config |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
-| Engine 停止 | `EngineLifecycle.Stop` | CLI uninstall、Inno、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
+| Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
 
 ---
 
@@ -72,6 +72,27 @@
 
 ---
 
+## 7. 登记延期项（非阻断）
+
+以下项已在审计中识别，**不阻塞当前发布**；新增改动不得扩大发散，下轮治理须先更新本文档再 TDD。
+
+| ID | 状态 | 说明 |
+|----|------|------|
+| M-04 | 延期 | 运行时 powercfg vs config 映射 vs Settings 目录缓存 |
+| M-06 | 延期 | Tray 通知偏好 5s 缓存 |
+| M-07 | 延期 | 主题 registry + config + 内存三源 |
+| M-08 | 延期 | 空闲秒数 status 外推 vs Win32 API |
+| M-11 | 延期 | Settings/LogViewer Program 启动引导重复 |
+| M-14 | 延期 | 健康状态无 PID，多信号推断 |
+| M-15 | 延期 | `TryKillProcess` 按镜像名全局杀进程 |
+| M-16 | 延期 | 图标加载三处实现 |
+| L-01 | 延期 | 默认阈值 `GuardConfig` vs `SettingsInitialValues` |
+| L-02 | 延期 | `GuardConfigRepository` 读缓存无跨进程失效 |
+| L-03 | 延期 | 遗留路径 `C:\Tools\lib\SmartPowerPlan` |
+| L-04 | 延期 | PHASE-3 / INNO / MIGRATION 历史文档漂移（运行时以 Contract 为准） |
+
+---
+
 ## 6. 门禁索引
 
 | 门禁 | 位置 |
@@ -80,5 +101,7 @@
 | 单 RootResolver | `SingleRootResolverArchitectureTests` |
 | 无 Engine LoadFromFile | `ConfigLoadStackArchitectureTests` |
 | 任务名单源 | `TaskNameSingleSourceArchitectureTests` |
+| Inno 停止委托 Engine | `InnoStopDelegationArchitectureTests` |
+| 计划档位显示名 | `PolicyEngineDisplayNameArchitectureTests`、`SettingsDisplayNameArchitectureTests` |
 | SmartGuardPaths | `SmartGuardPathsArchitectureTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |

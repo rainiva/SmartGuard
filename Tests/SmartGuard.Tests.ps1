@@ -369,14 +369,9 @@
             $iss | Should -Match 'EnsureSmartGuardStopped'
             $iss | Should -Match 'restartreplace'
             $iss | Should -Match 'function PrepareToInstall'
-            $iss | Should -Match 'StopSmartGuardProcesses'
+            $iss | Should -Match 'procedure StopSmartGuardProcesses'
             $iss | Should -Match 'CurPageID = wpReady'
             $iss | Should -Match 'if not SmartGuardProcessesStillRunning\(\) then'
-            $iss | Should -Match 'SmartGuard Guardian'
-            $iss | Should -Match 'schtasks.*/Delete'
-            $iss | Should -Match 'schtasks.*/End'
-            $iss | Should -Match 'schtasks.*/Change.*/Disable'
-            $iss | Should -Match 'taskkill\.exe'
             $iss | Should -Match 'tasklist /NH'
             $iss | Should -Match "Pos\('SmartGuard\.Tray\.exe'"
             $iss | Should -Not -Match 'Get-Process -Name SmartGuard\*'
@@ -384,6 +379,9 @@
             $iss | Should -Not -Match 'CurStepChanged'
             $iss | Should -Match 'CurUninstallStepChanged'
             $iss | Should -Match 'SolidCompression=no'
+            $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
+            $stopBlock | Should -Not -Match 'schtasks /End'
+            $stopBlock | Should -Not -Match 'taskkill\.exe'
         }
 
         It 'uninstall user-data choice prompts in InitializeUninstall with a Yes/No message box' {
@@ -458,6 +456,14 @@
             Test-Path -LiteralPath (Join-Path $root 'Tests\SmartGuard.Architecture.Tests\SmartGuard.Architecture.Tests.csproj') | Should -Be $true
         }
 
+        It 'installer integration helper builds via SmartGuard.Packaging not Build-Installer.ps1' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $helper = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Helpers.ps1') -Raw -Encoding UTF8
+            $helper | Should -Match 'SmartGuard\.Packaging'
+            $helper | Should -Match 'installer'
+            $helper | Should -Not -Match 'Build-Installer\.ps1'
+        }
+
         It 'GitHub Actions workflow runs Run-Tests.ps1' {
             $root = Split-Path -Parent $PSScriptRoot
             $workflow = Get-Content -LiteralPath (Join-Path $root '.github\workflows\test.yml') -Raw -Encoding UTF8
@@ -472,14 +478,16 @@
             $iss | Should -Not -Match '\{group\}.*日志.*SmartGuard\.LogViewer\.exe'
         }
 
-        It 'Status.cmd and Inno use SmartGuard Guardian and SmartGuard Tray task names' {
+        It 'Status.cmd and Inno use registrar task names' {
             $root = Split-Path -Parent $PSScriptRoot
             $status = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
             $status | Should -Match 'SmartGuard Guardian'
             $status | Should -Match 'SmartGuard Tray'
             $iss | Should -Match 'SmartGuard Guardian'
-            $iss | Should -Match 'SmartGuard Tray'
+            $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
+            $stopBlock | Should -Match 'SmartGuard\.Engine\.exe'
+            $stopBlock | Should -Match '--uninstall'
         }
     }
 }

@@ -4,12 +4,27 @@ namespace SmartGuard.Configuration;
 
 public static class EngineLifecycle
 {
+  private static readonly string[] ProcessImageNames =
+  [
+    "SmartGuard.Tray.exe",
+    "SmartGuard.Engine.exe",
+    "SmartGuard.LogViewer.exe",
+    "SmartGuard.Settings.exe",
+  ];
+
+  public static void EndAndDisableScheduledTasks()
+  {
+    foreach (var taskName in ScheduledTaskRegistrar.TaskNames)
+    {
+      TryRunSchtasks($"/End /TN \"{taskName}\" /F");
+      TryRunSchtasks($"/Change /TN \"{taskName}\" /Disable");
+    }
+  }
+
   public static void StopProcesses()
   {
-    TryKillProcess("SmartGuard.Tray.exe");
-    TryKillProcess("SmartGuard.Engine.exe");
-    TryKillProcess("SmartGuard.LogViewer.exe");
-    TryKillProcess("SmartGuard.Settings.exe");
+    foreach (var processName in ProcessImageNames)
+      TryKillProcess(processName);
   }
 
   public static void DeleteScheduledTasks()
@@ -20,9 +35,39 @@ public static class EngineLifecycle
 
   public static void StopForUninstall()
   {
+    EndAndDisableScheduledTasks();
     StopProcesses();
-    Thread.Sleep(2000);
+    WaitForProcessesToExit(TimeSpan.FromSeconds(3));
     DeleteScheduledTasks();
+  }
+
+  public static bool AnySmartGuardProcessRunning()
+  {
+    foreach (var processName in ProcessImageNames)
+    {
+      try
+      {
+        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName)).Length > 0)
+          return true;
+      }
+      catch
+      {
+        // ignore probe failures
+      }
+    }
+
+    return false;
+  }
+
+  private static void WaitForProcessesToExit(TimeSpan timeout)
+  {
+    var deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
+    while (Environment.TickCount64 < deadline)
+    {
+      if (!AnySmartGuardProcessRunning())
+        return;
+      Thread.Sleep(50);
+    }
   }
 
   private static void TryKillProcess(string processName)
@@ -50,13 +95,16 @@ public static class EngineLifecycle
   }
 
   private static void TryDeleteScheduledTask(string taskName)
+    => TryRunSchtasks($"/Delete /TN \"{taskName}\" /F");
+
+  private static void TryRunSchtasks(string arguments)
   {
     try
     {
       using var proc = Process.Start(new ProcessStartInfo
       {
         FileName = "schtasks.exe",
-        Arguments = $"/Delete /TN \"{taskName}\" /F",
+        Arguments = arguments,
         UseShellExecute = false,
         CreateNoWindow = true,
       });

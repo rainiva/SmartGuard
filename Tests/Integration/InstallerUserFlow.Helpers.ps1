@@ -39,12 +39,17 @@ function Ensure-InstallerBuilt {
         if (-not (Test-Path -LiteralPath $global:SG_UI_IsccPath)) {
             throw "ISCC not found: $($global:SG_UI_IsccPath)"
         }
-        $build = Join-Path $global:SG_UI_RepoRoot 'installer\Build-Installer.ps1'
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $build `
-            -SkipVersionBump `
-            -IsccPath $global:SG_UI_IsccPath | Out-Host
+        $build = Join-Path $global:SG_UI_RepoRoot 'src\SmartGuard.Packaging\SmartGuard.Packaging.csproj'
+        if (-not (Test-Path -LiteralPath $build)) {
+            throw "Missing packaging project: $build"
+        }
+        & dotnet run --project $build --no-launch-profile -- installer `
+            --root $global:SG_UI_RepoRoot `
+            --configuration Release `
+            --skip-version-bump `
+            --iscc $global:SG_UI_IsccPath | Out-Host
         if ($LASTEXITCODE -ne 0) {
-            throw "Build-Installer.ps1 failed with exit code $LASTEXITCODE"
+            throw "SmartGuard.Packaging installer failed with exit code $LASTEXITCODE"
         }
     }
 

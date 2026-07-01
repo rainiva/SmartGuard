@@ -117,39 +117,22 @@ end;
 procedure StopSmartGuardProcesses();
 var
   ResultCode: Integer;
-  WaitAttempts: Integer;
+  RootPath: String;
+  EngineExe: String;
 begin
-  { Step 0: Stop and disable scheduled tasks FIRST in a single shell call.
-    If the engine is running under the task scheduler (e.g. as SYSTEM),
-    taskkill alone may fail or the task may immediately restart it via
-    RestartOnFailure. Ending and disabling the tasks prevents revival. }
-  { End/disable tasks without waiting: taskkill and task deletion below are the
-    real synchronization points. This avoids hangs when the Task Scheduler
-    service is slow to respond. }
-  Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /End /TN "SmartGuard Guardian" /F >nul 2>&1 & ' +
-    'schtasks /End /TN "SmartGuard Tray" /F >nul 2>&1 & ' +
-    'schtasks /Change /TN "SmartGuard Guardian" /Disable >nul 2>&1 & ' +
-    'schtasks /Change /TN "SmartGuard Tray" /Disable >nul 2>&1',
-    '', SW_HIDE, ewNoWait, ResultCode);
+  { Single stop implementation: delegate to EngineLifecycle via CLI. }
+  RootPath := RemoveBackslash(ExpandConstant('{app}'));
+  if RootPath = '' then
+    RootPath := GetExistingSmartGuardInstallPath();
+  if RootPath = '' then
+    Exit;
 
-  { Step 1: Kill all SmartGuard processes in one taskkill call. }
-  Exec(ExpandConstant('{sys}\taskkill.exe'),
-    '/F /IM SmartGuard.Tray.exe /IM SmartGuard.Engine.exe /IM SmartGuard.LogViewer.exe /IM SmartGuard.Settings.exe /T',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  EngineExe := RootPath + '\bin\SmartGuard.Engine.exe';
+  if not FileExists(EngineExe) then
+    Exit;
 
-  { Step 2: Wait for processes to actually exit (max 3s) with fast polling. }
-  for WaitAttempts := 1 to 60 do
-  begin
-    if not SmartGuardProcessesStillRunning() then
-      break;
-    Sleep(50);
-  end;
-
-  { Step 3: Delete scheduled tasks after processes are stopped (single shell call). }
-  Exec(ExpandConstant('{cmd}'),
-    '/C schtasks /Delete /TN "SmartGuard Guardian" /F >nul 2>&1 & ' +
-    'schtasks /Delete /TN "SmartGuard Tray" /F >nul 2>&1',
+  Exec(EngineExe,
+    '--root "' + RootPath + '" --uninstall',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
