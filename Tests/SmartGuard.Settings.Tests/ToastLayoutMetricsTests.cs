@@ -56,6 +56,23 @@ public class ToastLayoutMetricsTests
     }
 
     [Fact]
+    public void Toast_container_top_margin_clears_section_title_block()
+    {
+        ToastLayoutMetrics.ToastContainerTopMargin.Should().BeGreaterThanOrEqualTo(
+            ToastLayoutMetrics.ContentPageTopMargin + ToastLayoutMetrics.SectionTitleBlockHeight,
+            "toast should sit below the page title, not overlap the first card");
+    }
+
+    [Fact]
+    public void Settings_xaml_toast_container_top_margin_matches_metrics()
+    {
+        var xaml = ReadSettingsXaml();
+        xaml.Should().MatchRegex(
+            "x:Key=\"ToastContainerMargin\">0," + ToastLayoutMetrics.ToastContainerTopMargin.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "XAML toast top margin should stay in sync with ToastLayoutMetrics");
+    }
+
+    [Fact]
     public void Settings_xaml_uses_toast_container_margin_resource()
     {
         var xaml = ReadSettingsXaml();
