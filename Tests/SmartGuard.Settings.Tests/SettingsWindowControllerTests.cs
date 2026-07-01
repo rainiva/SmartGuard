@@ -1812,12 +1812,26 @@ public class SettingsWindowControllerTests
         });
     }
 
-    private static LogSearchFilterBar GetLogSearchFilterBar(SettingsWindowController controller)
+    private static object GetLogPageHost(SettingsWindowController controller)
     {
         var field = typeof(SettingsWindowController).GetField(
-            "_logSearchFilterBar",
+            "_logPageHost",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        return (LogSearchFilterBar)field!.GetValue(controller)!;
+        return field!.GetValue(controller)!;
+    }
+
+    private static T? GetLogHostField<T>(SettingsWindowController controller, string fieldName)
+    {
+        var host = GetLogPageHost(controller);
+        var field = host.GetType().GetField(
+            fieldName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return (T?)field?.GetValue(host);
+    }
+
+    private static LogSearchFilterBar GetLogSearchFilterBar(SettingsWindowController controller)
+    {
+        return GetLogHostField<LogSearchFilterBar>(controller, "_logSearchFilterBar")!;
     }
 
     private static Window GetWindowField(SettingsWindowController controller)
@@ -1828,21 +1842,19 @@ public class SettingsWindowControllerTests
 
     private static void InvokeRefreshLogView(SettingsWindowController controller, bool forceRedraw = false)
     {
-        var method = typeof(SettingsWindowController).GetMethod(
+        var host = GetLogPageHost(controller);
+        var method = host.GetType().GetMethod(
             "RefreshLogView",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
             binder: null,
             types: [typeof(bool)],
             modifiers: null);
-        method!.Invoke(controller, [forceRedraw]);
+        method!.Invoke(host, [forceRedraw]);
     }
 
     private static string GetLogViewPlainText(SettingsWindowController controller)
     {
-        var presenterField = typeof(SettingsWindowController).GetField(
-            "_logListPresenter",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var presenter = (LogViewListPresenter)presenterField!.GetValue(controller)!;
+        var presenter = GetLogHostField<LogViewListPresenter>(controller, "_logListPresenter")!;
         return presenter.GetPlainText();
     }
 
@@ -1857,10 +1869,10 @@ public class SettingsWindowControllerTests
         InvokeRefreshLogView(controller);
         window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-        var scrollViewerField = typeof(SettingsWindowController).GetField(
+        var scrollViewerField = GetLogPageHost(controller).GetType().GetField(
             "_logScrollViewer",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var scrollViewer = scrollViewerField!.GetValue(controller) as ScrollViewer;
+        var scrollViewer = scrollViewerField!.GetValue(GetLogPageHost(controller)) as ScrollViewer;
         scrollViewer.Should().NotBeNull();
         return scrollViewer!;
     }
@@ -1870,20 +1882,17 @@ public class SettingsWindowControllerTests
         controller.EnsureLogScrollViewerHooked();
         window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-        var scrollViewerField = typeof(SettingsWindowController).GetField(
+        var scrollViewerField = GetLogPageHost(controller).GetType().GetField(
             "_logScrollViewer",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var scrollViewer = scrollViewerField!.GetValue(controller) as ScrollViewer;
+        var scrollViewer = scrollViewerField!.GetValue(GetLogPageHost(controller)) as ScrollViewer;
         scrollViewer.Should().NotBeNull();
         return scrollViewer!;
     }
 
     private static void FlushLogCustomRangeDebounce(SettingsWindowController controller, Window window)
     {
-        var timerField = typeof(SettingsWindowController).GetField(
-            "_logCustomRangeDebounceTimer",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var timer = timerField!.GetValue(controller) as System.Windows.Threading.DispatcherTimer;
+        var timer = GetLogHostField<System.Windows.Threading.DispatcherTimer>(controller, "_logCustomRangeDebounceTimer");
         timer.Should().NotBeNull("custom range debounce timer should exist after editing range inputs");
         timer!.IsEnabled.Should().BeTrue("custom range debounce timer should be running before flush");
         timer.Stop();
@@ -1893,10 +1902,7 @@ public class SettingsWindowControllerTests
 
     private static void FlushLogSearchDebounce(SettingsWindowController controller, Window window)
     {
-        var timerField = typeof(SettingsWindowController).GetField(
-            "_logSearchDebounceTimer",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var timer = timerField!.GetValue(controller) as System.Windows.Threading.DispatcherTimer;
+        var timer = GetLogHostField<System.Windows.Threading.DispatcherTimer>(controller, "_logSearchDebounceTimer");
         timer.Should().NotBeNull("search debounce timer should exist after typing in search box");
         timer!.IsEnabled.Should().BeTrue("debounce timer should be running before flush");
         timer.Stop();
@@ -1913,10 +1919,11 @@ public class SettingsWindowControllerTests
 
     private static void InvokeLogExport(SettingsWindowController controller, string destinationPath)
     {
-        var method = typeof(SettingsWindowController).GetMethod(
+        var host = GetLogPageHost(controller);
+        var method = host.GetType().GetMethod(
             "ExportVisibleLogToPath",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         method.Should().NotBeNull();
-        method!.Invoke(controller, [destinationPath]);
+        method!.Invoke(host, [destinationPath]);
     }
 }
