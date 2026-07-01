@@ -164,7 +164,34 @@
               <ControlTemplate.Triggers>
                 <Trigger Property="IsChecked" Value="True">
                   <Setter TargetName="Track" Property="Background" Value="{DynamicResource ToggleTrackOn}"/>
-                  <Setter TargetName="Thumb" Property="Margin" Value="22,0,0,0"/>
+                  <Trigger.EnterActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <ThicknessAnimation Storyboard.TargetName="Thumb"
+                                            Storyboard.TargetProperty="Margin"
+                                            To="22,0,0,0"
+                                            Duration="0:0:0.32">
+                          <ThicknessAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut"/>
+                          </ThicknessAnimation.EasingFunction>
+                        </ThicknessAnimation>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </Trigger.EnterActions>
+                  <Trigger.ExitActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <ThicknessAnimation Storyboard.TargetName="Thumb"
+                                            Storyboard.TargetProperty="Margin"
+                                            To="2,0,0,0"
+                                            Duration="0:0:0.32">
+                          <ThicknessAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut"/>
+                          </ThicknessAnimation.EasingFunction>
+                        </ThicknessAnimation>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </Trigger.ExitActions>
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                   <Setter TargetName="Track" Property="Opacity" Value="0.5"/>
@@ -1224,5 +1251,12 @@
             BorderThickness="0"
             ClipToBounds="False"
             Panel.ZIndex="100"/>
+
+    <Border x:Name="themeTransitionOverlay"
+            Grid.ColumnSpan="2"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Background="Transparent"
+            Panel.ZIndex="90"/>
   </Grid>
 </Window>
