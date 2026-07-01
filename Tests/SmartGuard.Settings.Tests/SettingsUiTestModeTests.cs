@@ -32,12 +32,17 @@ public class SettingsUiTestModeTests
                     .GetValue(controller) as Window;
                 window.Should().NotBeNull();
 
-                var method = typeof(SettingsWindowController).GetMethod(
+                var aboutCoordinator = typeof(SettingsWindowController)
+                    .GetField("_aboutCoordinator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                    .GetValue(controller);
+                aboutCoordinator.Should().NotBeNull();
+
+                var method = typeof(SettingsAboutCoordinator).GetMethod(
                     "CheckForUpdateAsync",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 method.Should().NotBeNull();
 
-                var task = (Task)method!.Invoke(controller, [window!])!;
+                var task = (Task)method!.Invoke(aboutCoordinator, [window!, (Func<string?>)(() => null)])!;
                 task.GetAwaiter().GetResult();
 
                 Application.Current!.Windows.OfType<Window>().Should().ContainSingle();
