@@ -168,6 +168,7 @@ public sealed class GuardianLoop(
       batteryPercent = batteryPercent,
       brightness = bright,
       paused = config.Paused,
+      enginePid = Environment.ProcessId,
       lastExternalChange = null,
       notificationEvent = _notificationRetention.Event
     });

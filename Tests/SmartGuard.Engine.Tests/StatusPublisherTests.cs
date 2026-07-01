@@ -29,6 +29,18 @@ public class StatusPublisherTests : IDisposable
     }
 
     [Fact]
+    public void Publish_writes_engine_pid_to_status_json()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var payload = CreatePayload(idleSeconds: 10, batteryPercent: 80, Guid.NewGuid().ToString());
+        payload.enginePid = Environment.ProcessId;
+
+        publisher.Publish(payload);
+
+        File.ReadAllText(_statusPath).Should().Contain($"\"enginePid\": {Environment.ProcessId}");
+    }
+
+    [Fact]
     public void Publish_skips_write_when_only_idle_seconds_increases()
     {
         var publisher = new StatusPublisher(_statusPath);

@@ -47,6 +47,7 @@ public sealed class StatusPublisher(string statusPath)
       && a.batteryPercent == b.batteryPercent
       && a.brightness == b.brightness
       && a.paused == b.paused
+      && a.enginePid == b.enginePid
       && a.notificationEvent?.id == b.notificationEvent?.id;
   }
 }

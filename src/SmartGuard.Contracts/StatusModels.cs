@@ -11,6 +11,7 @@ public sealed class StatusPayload
   public int batteryPercent { get; set; }
   public int brightness { get; set; }
   public bool paused { get; set; }
+  public int enginePid { get; set; }
   public object? lastExternalChange { get; set; }
   public NotificationEvent? notificationEvent { get; set; }
 }
