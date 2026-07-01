@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal EnableExtensions
 cd /d "%~dp0"
-title SmartGuard Guardian
+title SmartGuard Engine (dev foreground)
 
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -26,20 +26,13 @@ if not exist "%ENGINE%" (
 )
 
 echo.
-echo [SmartGuard] Starting Guardian scheduled task...
+echo [SmartGuard] Starting engine in foreground (dev only)...
+echo Production start: use Start-Core.cmd (schtasks /Run Guardian task).
 echo.
-schtasks /Run /TN "SmartGuard Guardian"
+"%ENGINE%" --root "%~dp0"
 set ERR=%ERRORLEVEL%
-if %ERR% neq 0 (
-    echo.
-    echo ERROR: Failed to start Guardian task. Register tasks first via Register-AllTasks.cmd
-    echo For foreground debugging, use Debug-Engine.cmd
-    echo.
-    pause
-    exit /b %ERR%
-)
-
-echo Guardian task started.
+echo.
+echo [SmartGuard] Engine exited with code %ERR%
 echo.
 pause
-exit /b 0
+exit /b %ERR%

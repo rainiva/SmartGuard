@@ -198,12 +198,22 @@
     }
 
     Describe 'Phase 6.2 exe-only launchers' {
-        It 'Start-Core.cmd launches engine exe without PowerShell' {
+        It 'Start-Core.cmd triggers Guardian scheduled task without PowerShell' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Start-Core.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Engine\.exe'
+            $content | Should -Match 'schtasks'
+            $content | Should -Match 'SmartGuard Guardian'
+            $content | Should -Not -Match 'SmartGuard\.Engine\.exe[\s\S]*--root'
             $content | Should -Not -Match 'powershell\.exe'
             $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
+        }
+
+        It 'Debug-Engine.cmd launches engine exe in foreground for dev' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $content = Get-Content -LiteralPath (Join-Path $root 'Debug-Engine.cmd') -Raw -Encoding UTF8
+            $content | Should -Match 'SmartGuard\.Engine\.exe'
+            $content | Should -Match '--root'
+            $content | Should -Not -Match 'powershell\.exe'
         }
 
         It 'Start-Tray.cmd launches tray exe without PowerShell fallback' {
