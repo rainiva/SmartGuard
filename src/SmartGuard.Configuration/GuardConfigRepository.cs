@@ -84,13 +84,6 @@ public sealed class GuardConfigRepository(string configPath)
     WriteNode(content);
   }
 
-  public void UpdatePaused(bool paused)
-  {
-    var node = LoadOrCreateNode();
-    node["Paused"] = paused;
-    WriteNode(node);
-  }
-
   public void SetManualHighPerformanceUntil(DateTime until)
   {
     var node = LoadOrCreateNode();
