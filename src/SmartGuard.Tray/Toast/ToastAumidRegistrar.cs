@@ -40,7 +40,7 @@ public static class ToastAumidRegistrar
     using var key = Registry.CurrentUser.CreateSubKey(regPath, true);
     if (key is null) return;
     key.SetValue("DisplayName", SmartGuardToastAppId.DisplayName, RegistryValueKind.String);
-    var iconPath = Path.Combine(root, "lib", "SmartGuard.ico");
+    var iconPath = SmartGuardPaths.BrandIcon(root);
     if (File.Exists(iconPath))
     {
       var iconUri = new Uri(iconPath).AbsoluteUri;
@@ -84,7 +84,7 @@ public static class ToastAumidRegistrar
     shortcut.Arguments = shortcutTarget.Arguments;
     shortcut.WorkingDirectory = shortcutTarget.WorkingDirectory;
     shortcut.Description = SmartGuardToastAppId.DisplayName;
-    var iconPath = Path.Combine(root, "lib", "SmartGuard.ico");
+    var iconPath = SmartGuardPaths.BrandIcon(root);
     if (File.Exists(iconPath))
       shortcut.IconLocation = $"{iconPath},0";
     shortcut.Save();

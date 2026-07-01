@@ -1,3 +1,5 @@
+using SmartGuard.Configuration;
+
 namespace SmartGuard.LogViewer;
 
 public sealed class LogViewerForm : Form
@@ -14,11 +16,7 @@ public sealed class LogViewerForm : Form
     ShowInTaskbar = true;
     AutoScaleMode = AutoScaleMode.Dpi;
 
-    var iconPath = Path.Combine(root, "lib", "SmartGuard.ico");
-    if (File.Exists(iconPath))
-    {
-      try { Icon = new Icon(iconPath); } catch { /* use default */ }
-    }
+    Icon = BrandIconLoader.LoadWinFormsIcon(root, SystemIcons.Application);
 
     var statusStrip = new StatusStrip { Dock = DockStyle.Bottom };
     var statusLabel = new ToolStripStatusLabel

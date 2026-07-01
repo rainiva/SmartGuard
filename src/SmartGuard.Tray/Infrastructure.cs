@@ -46,39 +46,10 @@ public static class ExternalToolLauncher
 
 public static class TrayIconLoader
 {
-  private static string? _cachedIconPath;
-  private static Icon? _cachedIcon;
+  internal static int LoadCountForTests => BrandIconLoader.WinFormsLoadCountForTests;
 
-  internal static int LoadCountForTests { get; private set; }
-
-  internal static void ResetCacheForTests()
-  {
-    _cachedIcon?.Dispose();
-    _cachedIcon = null;
-    _cachedIconPath = null;
-    LoadCountForTests = 0;
-  }
+  internal static void ResetCacheForTests() => BrandIconLoader.ResetCacheForTests();
 
   public static Icon Load(string root)
-  {
-    var iconPath = SmartGuardPaths.BrandIcon(root);
-    if (_cachedIcon is not null && string.Equals(_cachedIconPath, iconPath, StringComparison.OrdinalIgnoreCase))
-      return (Icon)_cachedIcon.Clone();
-
-    LoadCountForTests++;
-    if (File.Exists(iconPath))
-    {
-      try
-      {
-        var icon = new Icon(iconPath);
-        _cachedIcon?.Dispose();
-        _cachedIcon = icon;
-        _cachedIconPath = iconPath;
-        return (Icon)icon.Clone();
-      }
-      catch { /* fall through */ }
-    }
-
-    return (Icon)SystemIcons.Shield.Clone();
-  }
+    => BrandIconLoader.LoadWinFormsIcon(root, SystemIcons.Shield);
 }
