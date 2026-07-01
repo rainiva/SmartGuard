@@ -1,7 +1,7 @@
 # 多真源治理终验报告
 
 **日期：** 2026-07-01（补洞 Slice 后）  
-**Run-Tests.ps1：** 见下方验证输出（CI 同 `SMARTGUARD_SKIP_INSTALLER_TESTS=1` 可绿；本地全量含 Installer 集成需 ISCC + 已 publish 的 `bin\`）
+**Run-Tests.ps1：** PASS（`SMARTGUARD_SKIP_INSTALLER_TESTS=1`：Pester **51** + Tray 集成 **2** + dotnet 全绿；`PASSED=53 FAILED=0`）
 
 ## §2 问题关闭状态
 
@@ -21,7 +21,7 @@
 
 ## §9 验证清单
 
-- [x] Phase 8 Pester（**51** 项）+ Architecture.Tests（**19** 项）全绿
+- [x] Phase 8 Pester（**51** 项）+ Architecture.Tests（**20** 项）全绿
 - [x] 四端 `InstallRootResolver` parity 测试
 - [x] Engine 无 `LoadFromFile`
 - [x] Settings 日志页 `SmartGuardPaths.ResolveLogFile`
