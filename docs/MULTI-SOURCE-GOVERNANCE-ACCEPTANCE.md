@@ -1,40 +1,38 @@
 # 多真源治理终验报告
 
-**日期：** 2026-07-01（深挖治理全量修复后）  
-**Run-Tests.ps1（`SMARTGUARD_SKIP_INSTALLER_TESTS=1`）：** `PASSED=54 FAILED=0 TOTAL=54`  
+**日期：** 2026-07-01（第二轮治理全量修复后）  
+**Run-Tests.ps1（`SMARTGUARD_SKIP_INSTALLER_TESTS=1`）：** `PASSED=55 FAILED=0 TOTAL=55`
+
+## 第一轮（深挖治理）
+
+**Run-Tests.ps1：** `PASSED=54 FAILED=0 TOTAL=54`  
 （Pester **52** + Architecture **39** + dotnet 全绿 + Tray 集成 **2**）
 
-## §2 问题关闭状态
+## 第二轮关闭项
 
-| 级别 | 状态 | 说明 |
-|------|------|------|
-| H-01～H-08 | **8/8** | 核心单真源/单入口 |
-| M-01～M-05, M-09～M-13 | **已关闭** | 见上一轮验收 |
-| M-04, M-06～08, M-11, M-14, M-16 | **已关闭** | 深挖治理 23 Slice |
-| M-15 | **折中** | `SmartGuardPaths` 进程名 + Architecture 禁止新增裸 `taskkill` |
-| L-01 | **延期** | 默认阈值双处常量（低优先级） |
-| L-02, L-03, L-04 | **已关闭** | Repository watcher、`LegacyPaths`、Contract 同步 |
+| 类别 | ID | 状态 |
+|------|-----|------|
+| 多源 | S-01～S-08 | **已关闭** |
+| 多入口 | E-01, E-02, E-04～E-07 | **已关闭** |
+| 多入口 | E-03, E-08 | **登记/折中** |
+| 上帝模块 | SettingsLogPageHost | **&lt;300 行** + 子模块提取 |
+| 展示层 | L-01 | **已关闭（非配置真源）** |
 
-## Settings 上帝模块
+## Settings 模块行数
 
-| 模块 | 文件 |
+| 模块 | 门禁 |
 |------|------|
-| 装配壳 | `SettingsWindowController` **&lt;300 行** |
-| 日志页 | `SettingsLogPageHost` |
-| 策略 | `SettingsPolicyCoordinator` |
-| 主题 | `SettingsThemeCoordinator` |
-| 关于 | `SettingsAboutCoordinator` |
-| 导航 | `SettingsNavigationShell` |
+| `SettingsWindowController` | &lt;300 行 |
+| `SettingsLogPageHost` | &lt;300 行 |
+| 日志子模块 | `SettingsLogExportActions`、`SettingsLogFollowTailCoordinator`、`SettingsLogSearchCoordinator` |
 
-## §9 验证清单
+## 验证命令
 
-- [x] Phase 8 Pester（**52** 项）+ Architecture.Tests（**39** 项）全绿
-- [x] 集成 stop helpers 委托 `Engine --uninstall`
-- [x] `ConfigMutationService` 统一 pause / manual HP 写入
-- [x] `PowerPlanCatalogProvider` Engine 单源
-- [x] `GuardianIterationRunner` 提取
-- [ ] L-01 默认阈值文档化 — 显式延期
+```powershell
+$env:SMARTGUARD_SKIP_INSTALLER_TESTS = '1'
+./Run-Tests.ps1
+```
 
 ## 结论
 
-**深挖治理验收通过** — Contract §7 延期项已关闭或登记折中/唯一 L-01；`SettingsWindowController` 已拆分为协调器壳层。
+第二轮审计条目均已关闭、折中登记或文档化；Tray 暂停、默认配置单源、启动/停止入口、LogViewer 重定向与日志页拆分均有 Architecture/单元测试门禁。

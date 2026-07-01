@@ -17,7 +17,7 @@
 | 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页、LogViewer | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
 | 计划任务名 | `ScheduledTaskRegistrar.GuardianTaskName` / `TrayTaskName` | 注册、恢复、安装 | `ScheduledTaskRegistrar` | 字面量 `"SmartGuard Guardian"` 散落 |
 | 开机自启 UI | `config.AutoStartEnabled` + `AutoStartService.SyncFromTasks` | Settings | `SettingsSaveCoordinator` + `AutoStartService` | 仅写 config 不读 schtasks |
-| 暂停状态展示 | `status.json` `paused`（Tray 菜单与状态行） | Tray | `ConfigMutationService.SetPaused` | Tray 菜单仅启动时读 config |
+| 暂停状态展示 | `status.json` `paused`（Tray 菜单与切换读源） | Tray | `ConfigMutationService.SetPaused` | Tray 读 `config.Paused` 决定切换 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
 | 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
@@ -29,11 +29,11 @@
 | 用户操作 | 唯一推荐入口 | 说明 |
 |----------|--------------|------|
 | 注册计划任务 | `SmartGuard.Engine.exe --install` | Inno / `Register-AllTasks.cmd` 委托此入口 |
-| 启动 Engine（生产） | 计划任务 `SmartGuard Guardian` | Tray `GuardianRecovery` 仅 `schtasks /Run` |
+| 启动 Engine（生产） | 计划任务 `SmartGuard Guardian` | Tray/Inno/`Start-Core.cmd` 均 `schtasks /Run`；dev 前台用 `Debug-Engine.cmd` |
 | 停止 Engine（卸载） | `EngineLifecycle.Stop` | CLI、Inno、集成测试共用 |
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings `tglPaused` 均经此 API；全量保存从 repository 读回 `Paused` |
 | 打开设置 | `ExternalToolLauncher.OpenSettings` | 命名管道激活或 spawn |
-| 打开日志 | `ExternalToolLauncher.OpenLogViewer` → Settings `--page logs` | 安装器开始菜单同入口；`LogViewer.exe` 仅作共享库 |
+| 打开日志 | `ExternalToolLauncher.OpenLogViewer` → Settings `--page logs` | `LogViewer.exe` 兼容重定向；禁止独立 WinForms 日志壳 |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
 ---
@@ -92,8 +92,26 @@
 
 | ID | 状态 | 说明 |
 |----|------|------|
-| M-15 | 折中 | `EngineLifecycle` + Architecture 禁止新增裸 `taskkill`；未做 WMI 命令行过滤 |
-| L-01 | 延期 | 默认阈值 `GuardConfig` vs `SettingsInitialValues` 文档化待补 |
+| M-15 | 折中 | `EngineLifecycle` 按镜像名停止 + Architecture 禁止关键脚本裸 `Stop-Process`/`taskkill` Engine |
+| L-01 | **已关闭（展示层）** | `SettingsInitialValues` 为 UI clamp/换算，非配置真源；默认阈值真源仍为 `GuardConfig` |
+
+## 8. 第二轮治理关闭项（2026-07-01）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| S-01 | **已关闭** | Tray 暂停菜单/切换读 `status.paused`（`TrayPauseState`） |
+| S-02 | **已关闭** | `GuardianRecovery` 消费 `enginePid` 跳过多余 `schtasks` |
+| S-03/S-04 | **已关闭** | `CreateDefault` → `PowerPlanCatalogProvider` + `SmartGuardPaths.DefaultLogFile` |
+| S-05 | **已关闭** | Settings 计划目录 `PowerPlanCatalogProvider.TryLoad()` |
+| S-06 | **已关闭** | AutoStart UI `SyncFromTasks()`；保存经 `SettingsSaveCoordinator` |
+| S-07 | **已关闭** | `ConfigFileWatcher` |
+| S-08 | **已关闭** | `Status.cmd` 与 `ScheduledTaskRegistrar` 任务名一致 |
+| E-01 | **已关闭** | `Start-Core.cmd` → `schtasks`；`Debug-Engine.cmd` dev 前台 |
+| E-02 | **已关闭** | `LogViewer.exe` → Settings `--page logs` |
+| E-04～E-07 | **已关闭** | 脚本/集成 stop 委托 `SmartGuardStop.ps1`；legacy 任务名 `LegacyScheduledTaskNames.ps1` |
+| E-03 | **登记** | Inno `[Run]` + `GuardianRecovery` 双 `schtasks /Run`（设计允许） |
+| E-08 | **折中** | 同 M-15 |
+| 上帝模块 | **已关闭** | `SettingsLogPageHost` &lt;300 行 + 提取 Export/FollowTail/Search 模块 |
 
 ---
 
@@ -111,5 +129,13 @@
 | `BrandIconLoader` | `BrandIconLoaderArchitectureTests` |
 | `DesktopAppBootstrap` | `DesktopAppBootstrapTests` |
 | `SettingsWindowController` &lt;300 行 | `SettingsWindowControllerLineCountTests` |
+| `SettingsLogPageHost` &lt;300 行 | `SettingsLogPageHostLineCountTests` |
+| Tray 暂停读 status | `TrayPauseArchitectureTests` |
+| 脚本 Engine 停止委托 | `ScriptStopArchitectureTests` |
+| `GuardianRecovery` enginePid | `GuardianRecoveryEnginePidTests` |
+| `GuardConfig.CreateDefault` 单源 | `GuardConfigDefaultsArchitectureTests` |
+| `Start-Core.cmd` schtasks | `StartCoreArchitectureTests` |
+| LogViewer 重定向 Settings | `LogViewerProgramArchitectureTests` |
+| `ConfigFileWatcher` 共享 | `ConfigFileWatcherArchitectureTests` |
 | `GuardianIterationRunner` | `GuardianIterationRunnerArchitectureTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |

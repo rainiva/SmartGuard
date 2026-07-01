@@ -37,6 +37,22 @@ function Wait-StatusFile {
 }
 
 function Stop-EngineTree {
-    param([int]$ProcessId)
+    param(
+        [int]$ProcessId = 0,
+        [string]$InstallRoot
+    )
+
+    if ($InstallRoot) {
+        $engineExe = Join-Path $InstallRoot 'bin\SmartGuard.Engine.exe'
+        if (Test-Path -LiteralPath $engineExe) {
+            Stop-SmartGuardProcesses -EngineExe $engineExe -Root $InstallRoot
+            Start-Sleep -Seconds 1
+            if ($ProcessId -gt 0) {
+                Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+            }
+            return
+        }
+    }
+
     Stop-SmartGuardForIntegrationTest
 }

@@ -31,7 +31,7 @@ Describe 'Tray core user flow (integration)' {
             Test-Path -LiteralPath (Join-Path $installRoot 'SmartGuard.config.json') | Should -Be $true
         }
         finally {
-            Stop-EngineTree -ProcessId $proc.Id
+            Stop-EngineTree -ProcessId $proc.Id -InstallRoot $installRoot
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
@@ -56,7 +56,7 @@ Describe 'Tray core user flow (integration)' {
             $LASTEXITCODE | Should -Be 0
         }
         finally {
-            Stop-EngineTree -ProcessId $proc.Id
+            Stop-EngineTree -ProcessId $proc.Id -InstallRoot $installRoot
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }

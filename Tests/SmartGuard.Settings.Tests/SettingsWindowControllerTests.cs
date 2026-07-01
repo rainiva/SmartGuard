@@ -1890,9 +1890,18 @@ public class SettingsWindowControllerTests
         return scrollViewer!;
     }
 
+    private static SettingsLogSearchCoordinator GetLogSearchCoordinator(SettingsWindowController controller)
+    {
+        var host = GetLogPageHost(controller);
+        var field = host.GetType().GetField(
+            "_searchCoordinator",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return (SettingsLogSearchCoordinator)field!.GetValue(host)!;
+    }
+
     private static void FlushLogCustomRangeDebounce(SettingsWindowController controller, Window window)
     {
-        var timer = GetLogHostField<System.Windows.Threading.DispatcherTimer>(controller, "_logCustomRangeDebounceTimer");
+        var timer = GetLogSearchCoordinator(controller).CustomRangeDebounceTimerForTests;
         timer.Should().NotBeNull("custom range debounce timer should exist after editing range inputs");
         timer!.IsEnabled.Should().BeTrue("custom range debounce timer should be running before flush");
         timer.Stop();
@@ -1902,7 +1911,7 @@ public class SettingsWindowControllerTests
 
     private static void FlushLogSearchDebounce(SettingsWindowController controller, Window window)
     {
-        var timer = GetLogHostField<System.Windows.Threading.DispatcherTimer>(controller, "_logSearchDebounceTimer");
+        var timer = GetLogSearchCoordinator(controller).SearchDebounceTimerForTests;
         timer.Should().NotBeNull("search debounce timer should exist after typing in search box");
         timer!.IsEnabled.Should().BeTrue("debounce timer should be running before flush");
         timer.Stop();

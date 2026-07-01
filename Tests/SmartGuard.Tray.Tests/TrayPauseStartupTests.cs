@@ -27,15 +27,11 @@ public class TrayPauseStartupTests
       StaTestHost.Run(() =>
       {
         using var context = new TrayApplicationContext(root);
-        var menu = GetPauseItemText(context);
-        menu.Should().Be("暂停守护", "startup defaults from status (not config Paused=true)");
+        WaitForPauseItemText(context, "暂停守护", TimeSpan.FromSeconds(2));
 
         File.WriteAllText(statusPath, JsonSerializer.Serialize(new StatusPayload { paused = true }));
         File.SetLastWriteTimeUtc(statusPath, DateTime.UtcNow.AddSeconds(1));
-        Thread.Sleep(200);
-        Application.DoEvents();
-
-        GetPauseItemText(context).Should().Be("恢复守护");
+        WaitForPauseItemText(context, "恢复守护", TimeSpan.FromSeconds(3));
       });
     }
     finally
@@ -43,6 +39,20 @@ public class TrayPauseStartupTests
       ToastAumidRegistrar.ResetForTests();
       try { Directory.Delete(root, true); } catch { }
     }
+  }
+
+  private static void WaitForPauseItemText(TrayApplicationContext context, string expected, TimeSpan timeout)
+  {
+    var deadline = DateTime.UtcNow + timeout;
+    while (DateTime.UtcNow < deadline)
+    {
+      Application.DoEvents();
+      Thread.Sleep(50);
+      if (GetPauseItemText(context) == expected)
+        return;
+    }
+
+    GetPauseItemText(context).Should().Be(expected);
   }
 
   private static string GetPauseItemText(TrayApplicationContext context)

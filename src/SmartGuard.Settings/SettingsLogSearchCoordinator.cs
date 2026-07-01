@@ -16,6 +16,10 @@ internal sealed class SettingsLogSearchCoordinator
     _refreshLogView = refreshLogView;
   }
 
+  internal System.Windows.Threading.DispatcherTimer? SearchDebounceTimerForTests => _searchDebounceTimer;
+
+  internal System.Windows.Threading.DispatcherTimer? CustomRangeDebounceTimerForTests => _customRangeDebounceTimer;
+
   internal void Dispose()
   {
     _searchDebounceTimer?.Stop();

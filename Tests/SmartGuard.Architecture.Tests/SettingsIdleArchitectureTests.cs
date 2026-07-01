@@ -11,6 +11,7 @@ public class SettingsIdleArchitectureTests
     controller.Should().NotContain("GetLastInputInfo");
 
     var host = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.cs");
-    host.Should().Contain("LogViewIdleReader");
+    var refresher = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogViewRefresher.cs");
+    (host + refresher).Should().Contain("LogViewIdleReader");
   }
 }
