@@ -20,6 +20,7 @@
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与状态行） | Tray | `ConfigMutationService.SetPaused` | Tray 菜单仅启动时读 config |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
+| 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
 
 ---
 
