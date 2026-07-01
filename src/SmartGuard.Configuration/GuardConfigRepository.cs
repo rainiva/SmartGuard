@@ -3,11 +3,19 @@ using System.Text.Json.Nodes;
 
 namespace SmartGuard.Configuration;
 
-public sealed class GuardConfigRepository(string configPath)
+public sealed class GuardConfigRepository
 {
+  private readonly string _configPath;
   private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
   private GuardConfig? _readCache;
   private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
+  private readonly FileSystemWatcher? _configWatcher;
+
+  public GuardConfigRepository(string configPath)
+  {
+    _configPath = configPath;
+    _configWatcher = CreateConfigWatcher(configPath, InvalidateReadCache);
+  }
 
   internal int DiskReadCountForTests { get; private set; }
 
@@ -15,20 +23,20 @@ public sealed class GuardConfigRepository(string configPath)
 
   public GuardConfig? TryLoad()
   {
-    if (!File.Exists(configPath))
+    if (!File.Exists(_configPath))
     {
       InvalidateReadCache();
       return null;
     }
 
-    var writeTimeUtc = File.GetLastWriteTimeUtc(configPath);
+    var writeTimeUtc = File.GetLastWriteTimeUtc(_configPath);
     if (_readCache is not null && _readCacheWriteTimeUtc == writeTimeUtc)
       return _readCache;
 
     DiskReadCountForTests++;
     try
     {
-      var node = JsonNode.Parse(File.ReadAllText(configPath));
+      var node = JsonNode.Parse(File.ReadAllText(_configPath));
       if (node is null)
       {
         InvalidateReadCache();
@@ -78,7 +86,7 @@ public sealed class GuardConfigRepository(string configPath)
     var content = node.ToJsonString(WriteOptions);
 
     // Idempotent save: do not touch the file if the serialized content is unchanged.
-    if (File.Exists(configPath) && File.ReadAllText(configPath) == content)
+    if (File.Exists(_configPath) && File.ReadAllText(_configPath) == content)
       return;
 
     WriteNode(content);
@@ -104,10 +112,10 @@ public sealed class GuardConfigRepository(string configPath)
 
   private JsonObject LoadOrCreateNode()
   {
-    if (!File.Exists(configPath)) return new JsonObject();
+    if (!File.Exists(_configPath)) return new JsonObject();
     try
     {
-      return JsonNode.Parse(File.ReadAllText(configPath)) as JsonObject ?? new JsonObject();
+      return JsonNode.Parse(File.ReadAllText(_configPath)) as JsonObject ?? new JsonObject();
     }
     catch
     {
@@ -147,9 +155,9 @@ public sealed class GuardConfigRepository(string configPath)
 
   private void WriteNode(string content)
   {
-    var dir = Path.GetDirectoryName(configPath);
+    var dir = Path.GetDirectoryName(_configPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    GuardConfigAtomicFileWriter.WriteAllText(configPath, content);
+    GuardConfigAtomicFileWriter.WriteAllText(_configPath, content);
     InvalidateReadCache();
   }
 
@@ -157,5 +165,25 @@ public sealed class GuardConfigRepository(string configPath)
   {
     _readCache = null;
     _readCacheWriteTimeUtc = DateTime.MinValue;
+  }
+
+  private static FileSystemWatcher? CreateConfigWatcher(string path, Action onChanged)
+  {
+    var dir = Path.GetDirectoryName(path);
+    var fileName = Path.GetFileName(path);
+    if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(fileName))
+      return null;
+
+    var watcher = new FileSystemWatcher(dir, fileName)
+    {
+      NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+    };
+    FileSystemEventHandler handler = (_, _) => onChanged();
+    watcher.Changed += handler;
+    watcher.Created += handler;
+    watcher.Deleted += handler;
+    watcher.Renamed += (_, _) => onChanged();
+    watcher.EnableRaisingEvents = true;
+    return watcher;
   }
 }
