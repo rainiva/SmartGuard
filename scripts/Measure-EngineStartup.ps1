@@ -1,9 +1,11 @@
 #Requires -Version 5.1
 $root = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+. (Join-Path $PSScriptRoot '..\Tests\Integration\SmartGuardStop.ps1')
+
 $exe = Join-Path $root 'bin\SmartGuard.Engine.exe'
 $log = Join-Path $root 'SmartGuard.log'
 
-Stop-Process -Name SmartGuard.Engine -Force -ErrorAction SilentlyContinue
+Stop-SmartGuardProcesses -EngineExe $exe -Root $root
 Start-Sleep -Seconds 1
 
 $logBytesBefore = if (Test-Path -LiteralPath $log) { (Get-Item -LiteralPath $log).Length } else { 0 }
@@ -36,4 +38,4 @@ Write-Output "StartupMs=$($sw.ElapsedMilliseconds)"
 Write-Output "FirstLogFound=$found"
 Write-Output "MemoryMB=$memMb"
 Write-Output "StillRunning=$([bool]$proc)"
-Stop-Process -Name SmartGuard.Engine -Force -ErrorAction SilentlyContinue
+Stop-SmartGuardProcesses -EngineExe $exe -Root $root
