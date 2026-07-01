@@ -20,6 +20,7 @@ public sealed class TrayApplicationContext : ApplicationContext
   private readonly TrayRefreshScheduler _refreshScheduler;
   private int _missedStatusReads;
   private bool _guardianRecoveryAttempted;
+  private bool? _statusPaused;
 
   public TrayApplicationContext(string root)
   {
@@ -73,7 +74,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     _notifyIcon.DoubleClick += OnOpenSettings;
     TrayContextMenuPrewarmer.WarmUp(menu);
 
-    _pauseItem.Text = config.Paused ? "恢复守护" : "暂停守护";
+    _pauseItem.Text = TrayPauseState.MenuText(null);
 
     _invokeSink = new Control();
     _invokeSink.CreateControl();
@@ -147,7 +148,10 @@ public sealed class TrayApplicationContext : ApplicationContext
     }
 
     if (update.Status is not null)
-      _pauseItem.Text = update.Status.paused ? "恢复守护" : "暂停守护";
+    {
+      _statusPaused = update.Status.paused;
+      _pauseItem.Text = TrayPauseState.MenuText(_statusPaused);
+    }
 
     if (update.Notification is not { UseBalloonFallback: true } notification)
       return;
@@ -164,13 +168,13 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
       var next = await Task.Run(() =>
       {
-        var previous = _configRepository.TryLoad()?.Paused ?? false;
-        var value = !previous;
+        var value = TrayPauseState.ToggleTarget(_statusPaused);
         _configMutations.SetPaused(value, _root, SmartGuardPaths.StartupLogFile(_root));
         return value;
       });
 
-      _pauseItem.Text = next ? "恢复守护" : "暂停守护";
+      _statusPaused = next;
+      _pauseItem.Text = TrayPauseState.MenuText(_statusPaused);
       ScheduleRefresh();
     }
     catch (Exception ex)
