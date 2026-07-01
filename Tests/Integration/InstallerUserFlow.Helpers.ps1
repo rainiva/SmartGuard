@@ -56,12 +56,10 @@ function Ensure-InstallerBuilt {
     return (Get-InstallerSetupExe)
 }
 
+. (Join-Path $PSScriptRoot 'SmartGuardStop.ps1')
+
 function Stop-SmartGuardForInstallerTest {
-    schtasks /End /TN 'SmartGuard Guardian' 2>$null | Out-Null
-    schtasks /End /TN 'SmartGuard Tray' 2>$null | Out-Null
-    Get-Process -Name 'SmartGuard.Tray', 'SmartGuard.Engine', 'SmartGuard.LogViewer', 'SmartGuard.Settings' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    Stop-SmartGuardForIntegrationTest
 }
 
 function Invoke-SmartGuardSilentInstall {

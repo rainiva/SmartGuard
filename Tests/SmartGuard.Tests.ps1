@@ -478,6 +478,18 @@
             $iss | Should -Not -Match '\{group\}.*日志.*SmartGuard\.LogViewer\.exe'
         }
 
+        It 'integration stop helpers delegate to Engine --uninstall' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $shared = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1') -Raw -Encoding UTF8
+            $tray = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Helpers.ps1') -Raw -Encoding UTF8
+            $installer = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Helpers.ps1') -Raw -Encoding UTF8
+            $shared | Should -Match '--uninstall'
+            $tray | Should -Match 'SmartGuardStop\.ps1'
+            $installer | Should -Match 'SmartGuardStop\.ps1'
+            $tray | Should -Not -Match 'schtasks /End'
+            $installer | Should -Not -Match 'schtasks /End'
+        }
+
         It 'Status.cmd and Inno use registrar task names' {
             $root = Split-Path -Parent $PSScriptRoot
             $status = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8

@@ -4,6 +4,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 title SmartGuard Tray
 
+REM Dev helper: restarts Tray only. For full stop use bin\SmartGuard.Engine.exe --uninstall --root "%~dp0"
 taskkill /F /IM SmartGuard.Tray.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
