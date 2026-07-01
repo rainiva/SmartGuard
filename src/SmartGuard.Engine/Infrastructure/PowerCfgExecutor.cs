@@ -39,11 +39,6 @@ public static partial class PowerCfgExecutor
 
   public static Guid? GetCurrentPlanGuid() => GetCurrentPlanInfo()?.Guid;
 
-  public static IReadOnlyDictionary<Guid, string> LoadPowerPlanCatalog()
-  {
-    return ParsePowerSchemeList(RunPowerCfg("/list"));
-  }
-
   public static Dictionary<Guid, string> ParsePowerSchemeList(string output)
   {
     var result = new Dictionary<Guid, string>();

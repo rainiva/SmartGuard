@@ -93,7 +93,7 @@ public sealed class GuardianLoop(
   private async Task ProcessIterationAsync(CancellationToken cancellationToken)
   {
     var config = LoadConfig();
-    var planCatalog = _planCatalog ?? PowerCfgExecutor.LoadPowerPlanCatalog();
+    var planCatalog = _planCatalog ?? PowerPlanCatalogProvider.TryLoad();
     var idle = (int)_idleTracker.Sample(IdleDetector.GetIdleSeconds, DateTime.UtcNow);
     var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
     var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();

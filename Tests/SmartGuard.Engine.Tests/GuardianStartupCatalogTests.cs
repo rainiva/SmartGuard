@@ -7,9 +7,9 @@ public class GuardianStartupCatalogTests
     {
         var source = File.ReadAllText(GuardianLoopSourcePath());
 
-        source.Should().NotContain("_planCatalog = PowerCfgExecutor.LoadPowerPlanCatalog();",
+        source.Should().NotContain("_planCatalog = PowerPlanCatalogProvider.TryLoad();",
             "plan catalog should load lazily on the first iteration to shorten cold start");
-        source.Should().Contain("_planCatalog ?? PowerCfgExecutor.LoadPowerPlanCatalog()",
+        source.Should().Contain("_planCatalog ?? PowerPlanCatalogProvider.TryLoad()",
             "first iteration must still load the catalog when it is missing");
     }
 
