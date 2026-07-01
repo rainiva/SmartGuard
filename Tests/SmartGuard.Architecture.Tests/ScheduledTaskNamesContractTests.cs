@@ -23,6 +23,19 @@ public class ScheduledTaskNamesContractTests
   }
 
   [Fact]
+  public void Inno_Run_section_starts_guardian_via_registrar_task_name()
+  {
+    var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+    var runStart = iss.IndexOf("[Run]", StringComparison.Ordinal);
+    runStart.Should().BeGreaterThan(-1);
+    var runEnd = iss.IndexOf("\n[", runStart + 5, StringComparison.Ordinal);
+    if (runEnd < 0) runEnd = iss.Length;
+    var runSection = iss[runStart..runEnd];
+    runSection.Should().Contain(ScheduledTaskRegistrar.GuardianTaskName);
+    runSection.Should().MatchRegex(@"schtasks\.exe.*\/Run", "post-install start is Inno-specific schtasks /Run entry");
+  }
+
+  [Fact]
   public void Inno_stop_procedure_does_not_duplicate_schtasks_literals()
   {
     var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
