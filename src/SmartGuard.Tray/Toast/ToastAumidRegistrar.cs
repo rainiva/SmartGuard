@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using Microsoft.Win32;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Tray.Toast;
 

@@ -21,6 +21,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="SmartGuard.Configuration.Tests" />
     <InternalsVisibleTo Include="SmartGuard.Settings.Tests" />
+    <InternalsVisibleTo Include="SmartGuard.Tray" />
   </ItemGroup>
 
 </Project>
