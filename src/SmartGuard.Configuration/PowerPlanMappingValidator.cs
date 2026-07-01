@@ -18,9 +18,9 @@ public static class PowerPlanMappingValidator
     IReadOnlyDictionary<Guid, string> catalog)
   {
     var messages = new List<string>();
-    AppendMissingPlan(config.ActivePlanGuid, "高性能", catalog, messages);
-    AppendMissingPlan(config.BalancedPlanGuid, "平衡", catalog, messages);
-    AppendMissingPlan(config.PowerSaverPlanGuid, "节能", catalog, messages);
+    AppendMissingPlan(config.ActivePlanGuid, PowerPlanCatalogProvider.HighPerformanceDisplayName, catalog, messages);
+    AppendMissingPlan(config.BalancedPlanGuid, PowerPlanCatalogProvider.BalancedDisplayName, catalog, messages);
+    AppendMissingPlan(config.PowerSaverPlanGuid, PowerPlanCatalogProvider.PowerSaverDisplayName, catalog, messages);
     return messages;
   }
 
@@ -28,11 +28,11 @@ public static class PowerPlanMappingValidator
   {
     var messages = new List<string>();
     if (config.ActivePlanGuid == config.BalancedPlanGuid)
-      messages.Add("高性能与平衡不能选择相同电源计划");
+      messages.Add($"{PowerPlanCatalogProvider.HighPerformanceDisplayName}与{PowerPlanCatalogProvider.BalancedDisplayName}不能选择相同电源计划");
     if (config.ActivePlanGuid == config.PowerSaverPlanGuid)
-      messages.Add("高性能与节能不能选择相同电源计划");
+      messages.Add($"{PowerPlanCatalogProvider.HighPerformanceDisplayName}与{PowerPlanCatalogProvider.PowerSaverDisplayName}不能选择相同电源计划");
     if (config.BalancedPlanGuid == config.PowerSaverPlanGuid)
-      messages.Add("平衡与节能不能选择相同电源计划");
+      messages.Add($"{PowerPlanCatalogProvider.BalancedDisplayName}与{PowerPlanCatalogProvider.PowerSaverDisplayName}不能选择相同电源计划");
     return messages;
   }
 
