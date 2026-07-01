@@ -15,7 +15,7 @@
 | **Task** | 将 SmartPowerPlan 迁移为 SmartGuard：C# 四件套 + Inno 安装包；**运行时不再依赖 PS 应用栈**（Phase 6） |
 | **Mode** | `STRICT` |
 | **Skill chain** | project-understanding → impact-analysis → task-contract-freeze → TDD → migration-refactor → code-review → release-check |
-| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.6 已完成**；PowerShell→C# 打包迁移 **已完成** |
+| **Status** | Phase 5 **5.1–5.2 已完成**；Phase 6 **6.1–6.5 已完成**；Phase 7 **7.1–7.6 已完成**；PowerShell→C# 打包迁移 **已完成**；**多真源深挖治理（2026-07-01）已完成** — 见 [`ARCHITECTURE-CONTRACT.md`](ARCHITECTURE-CONTRACT.md) 与 [`MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md`](MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md) |
 | **Next** | Phase 5.3 **干净 VM / 人工**验收 |
 
 ---

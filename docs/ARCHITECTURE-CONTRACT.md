@@ -73,24 +73,27 @@
 
 ---
 
-## 7. 登记延期项（非阻断）
+## 7. 已关闭延期项（2026-07-01 深挖治理）
 
-以下项已在审计中识别，**不阻塞当前发布**；新增改动不得扩大发散，下轮治理须先更新本文档再 TDD。
+| ID | 状态 | 真源 |
+|----|------|------|
+| M-04 | **已关闭** | `PowerPlanCatalogProvider.TryLoad()`（Engine/Settings 单源） |
+| M-06 | **已关闭** | `TrayDisplaySettingsCache` + config `FileSystemWatcher` 失效 |
+| M-07 | **已关闭** | `SettingsThemeCoordinator` + `SettingsThemeState` |
+| M-08 | **已关闭** | `LogViewIdleReader`（Contract §1 登记） |
+| M-11 | **已关闭** | `DesktopAppBootstrap` |
+| M-14 | **已关闭** | `status.json` `enginePid` |
+| M-16 | **已关闭** | `BrandIconLoader` |
+| L-02 | **已关闭** | `GuardConfigRepository` `FileSystemWatcher` + `LastWriteTimeUtc` |
+| L-03 | **已关闭** | `LegacyPaths` |
+| L-04 | **已关闭** | 本文档 + PHASE/INNO/MIGRATION 索引指针（见 MIGRATION） |
+
+仍开放（有门禁折中或下轮）：
 
 | ID | 状态 | 说明 |
 |----|------|------|
-| M-04 | 延期 | 运行时 powercfg vs config 映射 vs Settings 目录缓存 |
-| M-06 | 延期 | Tray 通知偏好 5s 缓存 |
-| M-07 | 延期 | 主题 registry + config + 内存三源 |
-| M-08 | 延期 | 空闲秒数 status 外推 vs Win32 API |
-| M-11 | 延期 | Settings/LogViewer Program 启动引导重复 |
-| M-14 | 延期 | 健康状态无 PID，多信号推断 |
-| M-15 | 延期 | `TryKillProcess` 按镜像名全局杀进程 |
-| M-16 | 延期 | 图标加载三处实现 |
-| L-01 | 延期 | 默认阈值 `GuardConfig` vs `SettingsInitialValues` |
-| L-02 | 延期 | `GuardConfigRepository` 读缓存无跨进程失效 |
-| L-03 | 延期 | 遗留路径 `C:\Tools\lib\SmartPowerPlan` |
-| L-04 | 延期 | PHASE-3 / INNO / MIGRATION 历史文档漂移（运行时以 Contract 为准） |
+| M-15 | 折中 | `EngineLifecycle` + Architecture 禁止新增裸 `taskkill`；未做 WMI 命令行过滤 |
+| L-01 | 延期 | 默认阈值 `GuardConfig` vs `SettingsInitialValues` 文档化待补 |
 
 ---
 
@@ -105,4 +108,8 @@
 | Inno 停止委托 Engine | `InnoStopDelegationArchitectureTests` |
 | 计划档位显示名 | `PolicyEngineDisplayNameArchitectureTests`、`SettingsDisplayNameArchitectureTests` |
 | SmartGuardPaths | `SmartGuardPathsArchitectureTests` |
+| `BrandIconLoader` | `BrandIconLoaderArchitectureTests` |
+| `DesktopAppBootstrap` | `DesktopAppBootstrapTests` |
+| `SettingsWindowController` &lt;300 行 | `SettingsWindowControllerLineCountTests` |
+| `GuardianIterationRunner` | `GuardianIterationRunnerArchitectureTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
