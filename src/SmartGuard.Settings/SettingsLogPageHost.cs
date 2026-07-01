@@ -9,11 +9,11 @@ internal sealed class SettingsLogPageHost
   private readonly Window _window;
   private readonly string _root;
   private readonly ToastNotificationService _toastService;
+  private readonly SettingsLogSearchCoordinator _searchCoordinator;
+  private readonly SettingsLogFollowTailCoordinator _followTailCoordinator;
 
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
-  private System.Windows.Threading.DispatcherTimer? _logSearchDebounceTimer;
-  private System.Windows.Threading.DispatcherTimer? _logCustomRangeDebounceTimer;
   private LogSearchFilterBar? _logSearchFilterBar;
   private WrapPanel? _logTagFilterLinksPanel;
   private ListBox? _lstLogView;
@@ -26,8 +26,6 @@ internal sealed class SettingsLogPageHost
   private string? _logPath;
   private string? _fallbackLogPath;
   private CheckBox? _chkLogFollowTail;
-  private bool _suppressFollowTailAutoSync;
-  private bool _pendingFollowTailInitialScroll;
   private ComboBox? _cmbLogTimeRange;
   private UIElement? _panelLogCustomRange;
   private TextBox? _txtLogRangeStart;
@@ -54,6 +52,14 @@ internal sealed class SettingsLogPageHost
     _toastService = toastService;
     _logPath = logPath;
     _fallbackLogPath = fallbackLogPath;
+    _searchCoordinator = new SettingsLogSearchCoordinator(window, () => RefreshLogView());
+    _followTailCoordinator = new SettingsLogFollowTailCoordinator(
+      window,
+      () => _logController,
+      () => _chkLogFollowTail,
+      () => _lstLogView,
+      ResolveLogScrollViewer,
+      forceRedraw => RefreshLogView(forceRedraw));
   }
 
   internal void ConfigurePaths(string logPath, string? fallbackLogPath)
@@ -69,7 +75,7 @@ internal sealed class SettingsLogPageHost
     if (!active)
     {
       _logTimer?.Stop();
-      _pendingFollowTailInitialScroll = false;
+      _followTailCoordinator.PendingFollowTailInitialScroll = false;
       return;
     }
 
@@ -77,19 +83,19 @@ internal sealed class SettingsLogPageHost
     if (_logTimer is null)
       return;
 
-    SyncFollowTailFromUi();
-    _pendingFollowTailInitialScroll = _logController?.FollowTail == true;
+    _followTailCoordinator.SyncFollowTailFromUi();
+    _followTailCoordinator.PendingFollowTailInitialScroll = _logController?.FollowTail == true;
     _logTimer.Start();
     EnsureLogScrollViewerHooked();
 
     if (reason == LogPageActivationReason.WindowRestored && _lastDisplayedLines.Count > 0)
     {
-      ApplyFollowTailScrollIfEnabled();
+      _followTailCoordinator.ApplyScrollIfEnabled();
       return;
     }
 
     RefreshLogView(forceRedraw: true);
-    ApplyFollowTailScrollIfEnabled();
+    _followTailCoordinator.ApplyScrollIfEnabled();
   }
 
   internal void EnsureLogScrollViewerHooked()
@@ -105,12 +111,8 @@ internal sealed class SettingsLogPageHost
     ScrollBarAutoHide.Attach(_logScrollViewer);
     _logScrollViewer.ScrollChanged += (_, _) =>
     {
-      if (_logController is null || _logScrollViewer is null)
-        return;
-      if (_suppressFollowTailAutoSync || _pendingFollowTailInitialScroll)
-        return;
-      _logController.FollowTail = LogViewScrollState.IsAtTail(_logScrollViewer);
-      SyncFollowTailToggle();
+      if (_logScrollViewer is not null)
+        _followTailCoordinator.OnScrollChanged(_logScrollViewer);
     };
     _logScrollHooked = true;
   }
@@ -120,8 +122,7 @@ internal sealed class SettingsLogPageHost
   internal void Dispose()
   {
     _logTimer?.Stop();
-    _logSearchDebounceTimer?.Stop();
-    _logCustomRangeDebounceTimer?.Stop();
+    _searchCoordinator.Dispose();
   }
 
   private void EnsureLogViewInitialized()
@@ -130,8 +131,7 @@ internal sealed class SettingsLogPageHost
       return;
 
     _logViewInitialized = true;
-    var fallbackLogPath = _fallbackLogPath;
-    var logController = new LogViewController(_logPath, fallbackLogPath);
+    var logController = new LogViewController(_logPath, _fallbackLogPath);
     _logController = logController;
     _logSearchFilterBar = new LogSearchFilterBar();
     var logSearchFilterHost = Require<ContentControl>(_window, "logSearchFilterHost");
@@ -150,7 +150,7 @@ internal sealed class SettingsLogPageHost
     _lstLogView.Loaded += (_, _) =>
     {
       EnsureLogScrollViewerHooked();
-      ApplyFollowTailScrollIfEnabled();
+      _followTailCoordinator.ApplyScrollIfEnabled();
     };
     _chkLogFollowTail = _window.FindName("chkLogFollowTail") as CheckBox;
     _cmbLogTimeRange = _window.FindName("cmbLogTimeRange") as ComboBox;
@@ -159,48 +159,26 @@ internal sealed class SettingsLogPageHost
     _txtLogRangeEnd = _window.FindName("txtLogRangeEnd") as TextBox;
     _chkLogSearchCaseSensitive = _window.FindName("chkLogSearchCaseSensitive") as CheckBox;
 
-    SyncCustomRangePanelVisibility();
+    SettingsLogSearchCoordinator.SyncCustomRangePanelVisibility(_panelLogCustomRange, _cmbLogTimeRange);
 
-    var btnLogCopy = _window.FindName("btnLogCopy") as Button;
-    var btnLogExport = _window.FindName("btnLogExport") as Button;
-    var btnLogOpenFolder = _window.FindName("btnLogOpenFolder") as Button;
-    var btnLogScrollTop = _window.FindName("btnLogScrollTop") as Button;
-    var btnLogScrollBottom = _window.FindName("btnLogScrollBottom") as Button;
-    var btnLogRefresh = _window.FindName("btnLogRefresh") as Button;
-
-    if (btnLogCopy is not null) btnLogCopy.Click += (_, _) => CopyVisibleLog();
-    if (btnLogExport is not null) btnLogExport.Click += (_, _) => ExportVisibleLog();
-    if (btnLogOpenFolder is not null) btnLogOpenFolder.Click += (_, _) => OpenLogFolder();
-    if (btnLogScrollTop is not null) btnLogScrollTop.Click += (_, _) => ScrollLogToTop();
-    if (btnLogScrollBottom is not null) btnLogScrollBottom.Click += (_, _) => ScrollLogToBottom();
-    if (btnLogRefresh is not null) btnLogRefresh.Click += (_, _) => ForceRefreshLogView();
-    if (_chkLogFollowTail is not null)
-    {
-      _chkLogFollowTail.Checked += (_, _) => SetFollowTail(true);
-      _chkLogFollowTail.Unchecked += (_, _) => SetFollowTail(false);
-    }
-
-    _logSearchFilterBar.FiltersChanged += (_, _) => QueueLogSearchRefresh();
-    if (_cmbLogTimeRange is not null)
-    {
-      _cmbLogTimeRange.SelectionChanged += (_, _) =>
-      {
-        SyncCustomRangePanelVisibility();
-        RefreshLogView();
-      };
-    }
-
-    if (_txtLogRangeStart is not null)
-      _txtLogRangeStart.TextChanged += (_, _) => QueueLogCustomRangeRefresh();
-    if (_txtLogRangeEnd is not null)
-      _txtLogRangeEnd.TextChanged += (_, _) => QueueLogCustomRangeRefresh();
-    if (_chkLogSearchCaseSensitive is not null)
-    {
-      _chkLogSearchCaseSensitive.Checked += (_, _) => RefreshLogView();
-      _chkLogSearchCaseSensitive.Unchecked += (_, _) => RefreshLogView();
-    }
-
-    SyncFollowTailFromUi();
+    SettingsLogPageHostWiring.WireToolbarButtons(
+      _window,
+      _chkLogFollowTail,
+      _followTailCoordinator,
+      CopyVisibleLog,
+      ExportVisibleLog,
+      OpenLogFolder,
+      ForceRefreshLogView);
+    SettingsLogPageHostWiring.WireSearchAndFilterEvents(
+      _logSearchFilterBar,
+      _searchCoordinator,
+      _cmbLogTimeRange,
+      _panelLogCustomRange,
+      _txtLogRangeStart,
+      _txtLogRangeEnd,
+      _chkLogSearchCaseSensitive,
+      () => RefreshLogView());
+    _followTailCoordinator.SyncFollowTailFromUi();
 
     var logTimer = new System.Windows.Threading.DispatcherTimer(
       System.Windows.Threading.DispatcherPriority.Background,
@@ -216,47 +194,24 @@ internal sealed class SettingsLogPageHost
   {
     if (_logController is null || _logListPresenter is null || _lblLogStatus is null) return;
 
-    if (forceRedraw)
-      ForceRefreshLogViewCountForTests++;
-
-    var idleRead = LogViewIdleReader.TryRead(_root);
-    if (idleRead.Seconds is not null)
-      _logIdleSeconds = idleRead.Seconds;
-    _logStatusMayBeStale = idleRead.StatusMayBeStale;
-
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
 
-    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, _logIdleSeconds, _logStatusMayBeStale);
-    var plan = LogViewUpdatePlanner.CreatePlan(_lastDisplayedLines, snapshot.DisplayLines, forceRedraw);
-
-    if (!forceRedraw && !snapshot.ContentChanged && plan.Mode == LogViewUpdateMode.NoChange)
-    {
-      _lblLogStatus.Text = statusText;
-      return;
-    }
-
-    var scrollViewer = ResolveLogScrollViewer();
-    var savedOffset = scrollViewer?.VerticalOffset ?? 0;
-    var wasAtTail = scrollViewer is null || LogViewScrollState.IsAtTail(scrollViewer);
-    var scrollToTail = _logController.FollowTail && wasAtTail;
-
-    _logListPresenter.Apply(plan);
-    _lastDisplayedLines = snapshot.DisplayLines.ToArray();
-    _lblLogStatus.Text = statusText;
-
-    if (scrollToTail)
-    {
-      ApplyFollowTailScrollIfEnabled();
-      return;
-    }
-
-    if (scrollViewer is null)
-      return;
-
-    scrollViewer.UpdateLayout();
-    if (!wasAtTail)
-      scrollViewer.ScrollToVerticalOffset(savedOffset);
+    var forceCount = ForceRefreshLogViewCountForTests;
+    SettingsLogViewRefresher.Apply(
+      snapshot,
+      _logController,
+      _logListPresenter,
+      _lblLogStatus,
+      _root,
+      ref _logIdleSeconds,
+      ref _logStatusMayBeStale,
+      ref _lastDisplayedLines,
+      ref forceCount,
+      _followTailCoordinator,
+      ResolveLogScrollViewer,
+      forceRedraw);
+    ForceRefreshLogViewCountForTests = forceCount;
   }
 
   private ScrollViewer? ResolveLogScrollViewer()
@@ -276,49 +231,15 @@ internal sealed class SettingsLogPageHost
   {
     if (_logController is null) return null;
 
-    _logController.SearchKeyword = _logSearchFilterBar?.Keyword ?? string.Empty;
-    _logController.ActiveTagFilters = _logSearchFilterBar?.ActiveTags ?? [];
-    _logController.SearchCaseSensitive = _chkLogSearchCaseSensitive?.IsChecked == true;
-    _logController.TimeRange = ReadTimeRange(_cmbLogTimeRange);
-    _logController.CustomRangeStart = TryReadCustomRangeStart();
-    _logController.CustomRangeEnd = TryReadCustomRangeEnd();
+    SettingsLogSearchCoordinator.ApplyFilters(
+      _logController,
+      _logSearchFilterBar,
+      _chkLogSearchCaseSensitive,
+      _cmbLogTimeRange,
+      _txtLogRangeStart,
+      _txtLogRangeEnd);
     _logController.RefreshFromDisk();
     return _logController.GetSnapshot();
-  }
-
-  private void SyncCustomRangePanelVisibility()
-  {
-    if (_panelLogCustomRange is null || _cmbLogTimeRange is null)
-      return;
-
-    _panelLogCustomRange.Visibility = _cmbLogTimeRange.SelectedIndex == 3
-      ? Visibility.Visible
-      : Visibility.Collapsed;
-  }
-
-  private static LogViewTimeRange ReadTimeRange(ComboBox? comboBox)
-  {
-    return comboBox?.SelectedIndex switch
-    {
-      1 => LogViewTimeRange.Today,
-      2 => LogViewTimeRange.LastHour,
-      3 => LogViewTimeRange.Custom,
-      _ => LogViewTimeRange.All,
-    };
-  }
-
-  private DateTime? TryReadCustomRangeStart()
-  {
-    return LogViewCustomRangeParser.TryParse(_txtLogRangeStart?.Text, out var value)
-      ? value
-      : null;
-  }
-
-  private DateTime? TryReadCustomRangeEnd()
-  {
-    return LogViewCustomRangeParser.TryParse(_txtLogRangeEnd?.Text, out var value)
-      ? value
-      : null;
   }
 
   internal void ForceRefreshLogView()
@@ -332,239 +253,27 @@ internal sealed class SettingsLogPageHost
   {
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
-
-    try
-    {
-      Clipboard.SetText(LogViewToolbarActions.BuildVisibleText(snapshot));
-      _toastService.Show("已复制到剪贴板", isError: false);
-    }
-    catch (Exception ex)
-    {
-      _toastService.Show($"复制失败：{ex.Message}", isError: true);
-    }
+    SettingsLogExportActions.CopyVisible(snapshot, _toastService);
   }
 
   private void ExportVisibleLog()
   {
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
-
-    var dialog = new Microsoft.Win32.SaveFileDialog
-    {
-      Filter = "文本文件 (*.txt)|*.txt",
-      FileName = "SmartGuard.log.txt",
-      DefaultExt = ".txt",
-    };
-
-    if (dialog.ShowDialog(_window) != true)
-      return;
-
-    ExportVisibleLogToPath(dialog.FileName);
+    SettingsLogExportActions.ExportVisible(snapshot, _window, _toastService, ExportVisibleLogToPath);
   }
 
   internal void ExportVisibleLogToPath(string destinationPath)
   {
     var snapshot = BuildLogSnapshot();
     if (snapshot is null) return;
-
-    try
-    {
-      LogViewToolbarActions.ExportVisibleText(
-        LogViewToolbarActions.BuildVisibleText(snapshot),
-        destinationPath);
-      _toastService.Show("日志已导出", isError: false);
-    }
-    catch (Exception ex)
-    {
-      _toastService.Show($"导出失败：{ex.Message}", isError: true);
-    }
+    SettingsLogExportActions.ExportToPath(snapshot, destinationPath, _toastService);
   }
 
   private void OpenLogFolder()
-  {
-    if (string.IsNullOrWhiteSpace(_logPath)) return;
-
-    var logFilePath = LogViewToolbarActions.ResolveLogFilePath(_logPath, _fallbackLogPath);
-    try
-    {
-      System.Diagnostics.Process.Start(LogViewToolbarActions.CreateRevealLogFileProcessStartInfo(logFilePath));
-    }
-    catch (Exception ex)
-    {
-      _toastService.Show($"打开目录失败：{ex.Message}", isError: true);
-    }
-  }
-
-  private void ScrollLogToTop()
-  {
-    _suppressFollowTailAutoSync = true;
-    try
-    {
-      if (_logController is not null)
-        _logController.FollowTail = false;
-      SyncFollowTailToggle();
-      ResolveLogScrollViewer()?.ScrollToVerticalOffset(0);
-    }
-    finally
-    {
-      ReleaseFollowTailAutoSyncSuppression();
-    }
-  }
-
-  private void ScrollLogToBottom()
-  {
-    _suppressFollowTailAutoSync = true;
-    try
-    {
-      ScrollLogViewToTail();
-      if (_logController is not null && _chkLogFollowTail?.IsChecked != true)
-        _logController.FollowTail = false;
-      SyncFollowTailToggle();
-    }
-    finally
-    {
-      ReleaseFollowTailAutoSyncSuppression();
-    }
-  }
-
-  private void ScrollLogViewToTail(bool deferred = false)
-  {
-    void ScrollNow()
-    {
-      var scrollViewer = ResolveLogScrollViewer();
-      if (scrollViewer is null)
-        return;
-
-      scrollViewer.UpdateLayout();
-
-      if (_lstLogView is not null && _lstLogView.Items.Count > 0)
-        _lstLogView.ScrollIntoView(_lstLogView.Items[_lstLogView.Items.Count - 1]);
-
-      scrollViewer.UpdateLayout();
-      scrollViewer.ScrollToEnd();
-    }
-
-    ScrollNow();
-    if (!deferred)
-      return;
-
-    _window.Dispatcher.BeginInvoke(
-      ScrollNow,
-      System.Windows.Threading.DispatcherPriority.Loaded);
-  }
-
-  private void ReleaseFollowTailAutoSyncSuppression()
-  {
-    _window.Dispatcher.BeginInvoke(
-      () => _suppressFollowTailAutoSync = false,
-      System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-  }
-
-  private void SetFollowTail(bool enabled)
-  {
-    if (_logController is null) return;
-
-    _logController.FollowTail = enabled;
-    if (enabled)
-    {
-      RefreshLogView(forceRedraw: true);
-      ApplyFollowTailScrollIfEnabled();
-    }
-  }
-
-  private void SyncFollowTailToggle()
-  {
-    if (_logController is null || _chkLogFollowTail is null) return;
-
-    _chkLogFollowTail.IsChecked = _logController.FollowTail;
-  }
-
-  private void SyncFollowTailFromUi()
-  {
-    if (_logController is null || _chkLogFollowTail is null)
-      return;
-
-    _logController.FollowTail = _chkLogFollowTail.IsChecked == true;
-  }
-
-  private void ApplyFollowTailScrollIfEnabled()
-  {
-    SyncFollowTailFromUi();
-    if (_logController is null || !_logController.FollowTail)
-    {
-      _pendingFollowTailInitialScroll = false;
-      return;
-    }
-
-    _pendingFollowTailInitialScroll = true;
-    _suppressFollowTailAutoSync = true;
-    ScrollLogViewToTail(deferred: true);
-    _window.Dispatcher.BeginInvoke(
-      () =>
-      {
-        ScrollLogViewToTail();
-        _window.Dispatcher.BeginInvoke(
-          () =>
-          {
-            if (_logScrollViewer is not null && LogViewScrollState.IsAtTail(_logScrollViewer))
-              _pendingFollowTailInitialScroll = false;
-
-            if (_logController is not null && _chkLogFollowTail?.IsChecked == true)
-              _logController.FollowTail = true;
-
-            SyncFollowTailToggle();
-            ReleaseFollowTailAutoSyncSuppression();
-          },
-          System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-      },
-      System.Windows.Threading.DispatcherPriority.Loaded);
-  }
-
-  private void QueueLogSearchRefresh()
-  {
-    if (_logSearchDebounceTimer is null)
-    {
-      _logSearchDebounceTimer = new System.Windows.Threading.DispatcherTimer(
-        System.Windows.Threading.DispatcherPriority.Background,
-        _window.Dispatcher)
-      {
-        Interval = TimeSpan.FromMilliseconds(300),
-      };
-      _logSearchDebounceTimer.Tick += (_, _) =>
-      {
-        _logSearchDebounceTimer.Stop();
-        RefreshLogView();
-      };
-    }
-
-    _logSearchDebounceTimer.Stop();
-    _logSearchDebounceTimer.Start();
-  }
-
-  private void QueueLogCustomRangeRefresh()
-  {
-    if (_logCustomRangeDebounceTimer is null)
-    {
-      _logCustomRangeDebounceTimer = new System.Windows.Threading.DispatcherTimer(
-        System.Windows.Threading.DispatcherPriority.Background,
-        _window.Dispatcher)
-      {
-        Interval = TimeSpan.FromMilliseconds(300),
-      };
-      _logCustomRangeDebounceTimer.Tick += (_, _) =>
-      {
-        _logCustomRangeDebounceTimer.Stop();
-        RefreshLogView();
-      };
-    }
-
-    _logCustomRangeDebounceTimer.Stop();
-    _logCustomRangeDebounceTimer.Start();
-  }
+    => SettingsLogExportActions.OpenLogFolder(_logPath, _fallbackLogPath, _toastService);
 
   private static T Require<T>(Window window, string name) where T : class
-  {
-    return window.FindName(name) as T
+    => window.FindName(name) as T
       ?? throw new InvalidOperationException($"Missing control: {name}");
-  }
 }
