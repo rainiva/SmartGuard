@@ -1,7 +1,8 @@
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
 
-$oldTasks = @('SmartPowerPlan Guardian', 'SmartPowerPlan Tray')
+. (Join-Path $PSScriptRoot 'LegacyScheduledTaskNames.ps1')
+$oldTasks = $Script:LegacySmartPowerPlanTaskNames
 
 Write-Host '=== 停止旧版 SmartPowerPlan 进程 ===' -ForegroundColor Cyan
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
