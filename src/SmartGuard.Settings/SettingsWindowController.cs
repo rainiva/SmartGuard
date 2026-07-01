@@ -12,6 +12,7 @@ public sealed class SettingsWindowController
 {
   private readonly string _root;
   private readonly GuardConfigRepository _repository;
+  private readonly ConfigMutationService _configMutations;
   private GuardConfig _originalConfig;
   private readonly Window _window;
   private readonly Border _toastContainer;
@@ -116,6 +117,7 @@ public sealed class SettingsWindowController
   {
     _root = root;
     _repository = repository;
+    _configMutations = new ConfigMutationService(repository);
     _originalConfig = originalConfig;
     _themeFollowSystem = originalConfig.ThemeFollowSystem;
     _themeIsDark = originalConfig.ThemeIsDark;
@@ -309,8 +311,8 @@ public sealed class SettingsWindowController
       QueueSaveAndRefreshPlanStatus();
     };
 
-    tglPaused.Checked += (_, _) => QueueSave();
-    tglPaused.Unchecked += (_, _) => QueueSave();
+    tglPaused.Checked += (_, _) => controller.OnPauseToggled();
+    tglPaused.Unchecked += (_, _) => controller.OnPauseToggled();
     tglNotify.Checked += (_, _) => QueueSave();
     tglNotify.Unchecked += (_, _) => QueueSave();
     tglNotifyExternal.Checked += (_, _) => QueueSave();
@@ -541,6 +543,26 @@ public sealed class SettingsWindowController
     _saveDebounceTimer.Start();
   }
 
+  internal void OnPauseToggled()
+  {
+    var paused = _tglPaused.IsChecked == true;
+    if (paused == _originalConfig.Paused)
+      return;
+
+    try
+    {
+      _configMutations.SetPaused(paused, _root, SmartGuardPaths.StartupLogFile(_root));
+      var loaded = _repository.TryLoad();
+      if (loaded is not null)
+        _originalConfig = loaded;
+    }
+    catch (Exception ex)
+    {
+      _tglPaused.IsChecked = _originalConfig.Paused;
+      _toastService.Show($"暂停设置失败：{ex.Message}", isError: true);
+    }
+  }
+
   private async void SaveCurrentSettings()
   {
     try
@@ -556,7 +578,7 @@ public sealed class SettingsWindowController
         activePlanGuid: ReadSelectedPlanGuid(_cmbActivePlan),
         balancedPlanGuid: ReadSelectedPlanGuid(_cmbBalancedPlan),
         powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
-        paused: _tglPaused.IsChecked == true,
+        paused: _originalConfig.Paused,
         notifyOnPlanChange: _tglNotify.IsChecked == true,
         notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
         autoStartEnabled: _tglAutoStart.IsChecked == true);
@@ -1391,7 +1413,7 @@ public sealed class SettingsWindowController
       activePlanGuid: ReadSelectedPlanGuid(_cmbActivePlan),
       balancedPlanGuid: ReadSelectedPlanGuid(_cmbBalancedPlan),
       powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
-      paused: _tglPaused.IsChecked == true,
+      paused: _originalConfig.Paused,
       notifyOnPlanChange: _tglNotify.IsChecked == true,
       notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
       autoStartEnabled: _tglAutoStart.IsChecked == true);
