@@ -119,6 +119,21 @@
             Test-Path -LiteralPath (Join-Path $root 'scripts\Publish-All.ps1') | Should -Be $false
         }
 
+        It 'runtime error messages must not reference removed Publish-All.ps1' {
+            $root = Split-Path -Parent $PSScriptRoot
+            @(
+                'Tests\Integration\SmartGuardStop.ps1'
+                'Tests\Integration\TrayCoreUserFlow.Helpers.ps1'
+                'Tests\Integration\InstallerUserFlow.Helpers.ps1'
+                'Start-Core.cmd'
+                'Debug-Engine.cmd'
+                'Register-AllTasks.cmd'
+            ) | ForEach-Object {
+                $content = Get-Content -LiteralPath (Join-Path $root $_) -Raw -Encoding UTF8
+                $content | Should -Not -Match 'Publish-All\.ps1' -Because $_
+            }
+        }
+
         It 'legacy per-project Publish scripts are removed' {
             $root = Split-Path -Parent $PSScriptRoot
             @(
@@ -339,11 +354,16 @@
 
         It 'ExternalToolLauncher opens only published desktop exes' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Infrastructure.cs') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Settings\.exe'
-            $content | Should -Not -Match 'SmartGuard\.Settings\.ps1'
-            $content | Should -Not -Match 'Show-LogViewer\.ps1'
-            $content | Should -Not -Match 'powershell\.exe'
+            $tray = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Infrastructure.cs') -Raw -Encoding UTF8
+            $tray | Should -Match 'SettingsMainPageLauncher\.Open'
+            $tray | Should -Match 'SettingsLogsPageLauncher\.Open'
+            $tray | Should -Not -Match 'SmartGuard\.Settings\.ps1'
+            $tray | Should -Not -Match 'Show-LogViewer\.ps1'
+            $tray | Should -Not -Match 'powershell\.exe'
+            $mainLauncher = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\SettingsMainPageLauncher.cs') -Raw -Encoding UTF8
+            $mainLauncher | Should -Match 'SmartGuardPaths\.SettingsExe'
+            $logsLauncher = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\SettingsLogsPageLauncher.cs') -Raw -Encoding UTF8
+            $logsLauncher | Should -Match 'SmartGuardPaths\.SettingsExe'
         }
     }
 
