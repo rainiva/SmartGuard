@@ -108,7 +108,7 @@
 | M-08 | **已关闭** | `LogViewIdleReader`（Contract §1 登记） |
 | M-11 | **已关闭** | `DesktopAppBootstrap` |
 | M-14 | **已关闭** | `status.json` `enginePid` |
-| M-16 | **已关闭** | `BrandIconLoader`（`lib/SmartGuard.ico`；任务栏/托盘/Settings 窗口统一取 **32×32** 帧，`TaskbarIconFrameSize` 常量） |
+| M-16 | **已关闭** | `BrandIconLoader` |
 | L-02 | **已关闭** | `GuardConfigRepository` `FileSystemWatcher` + `LastWriteTimeUtc` |
 | L-03 | **已关闭** | `LegacyPaths` |
 | L-04 | **已关闭** | 本文档 + PHASE/INNO/MIGRATION 索引指针（见 MIGRATION） |

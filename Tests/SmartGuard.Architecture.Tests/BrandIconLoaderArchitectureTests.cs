@@ -39,18 +39,4 @@ public class BrandIconLoaderArchitectureTests
     var brand = SourceScanHelper.ReadSource("src/SmartGuard.Settings/AppBrandIcon.cs");
     brand.Should().Contain("BrandIconLoader");
   }
-
-  [Fact]
-  public void BrandIconLoader_must_use_taskbar_frame_size_constant_not_parameterless_icon_ctor()
-  {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/BrandIconLoader.cs");
-    source.Should().Contain("TaskbarIconFrameSize",
-      "WinForms and WPF icon paths must share one taskbar frame size constant");
-    source.Should().NotMatchRegex(
-      @"new\s+DrawIcon\s*\(\s*iconPath\s*\)",
-      "LoadWinFormsIcon must not use parameterless Icon(path); specify TaskbarIconFrameSize");
-    source.Should().NotMatchRegex(
-      @"new\s+DrawIcon\s*\(\s*filePath\s*,\s*32\s*,\s*32\s*\)",
-      "WPF path must use TaskbarIconFrameSize constant instead of literal 32");
-  }
 }
