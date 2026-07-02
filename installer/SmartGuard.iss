@@ -16,6 +16,11 @@
 #define MyAppURL "https://github.com/rainiva/SmartGuard"
 #define MyAppExeName "SmartGuard.Tray.exe"
 #define MySetupIcon "..\lib\SmartGuard.ico"
+#define ConfigFileName "SmartGuard.config.json"
+#define StatusFileName "SmartGuard.status.json"
+#define DefaultLogFileName "SmartGuard.log"
+#define StartupLogFileName "SmartGuard.startup.log"
+#define InitMarkerFileName ".SmartGuard.initialized"
 
 [Setup]
 AppId={{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}
@@ -71,14 +76,14 @@ Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Descripti
 
 [UninstallDelete]
 ; Program files (always deleted)
-Type: files; Name: "{app}\.SmartGuard.initialized"
+Type: files; Name: "{app}\{#InitMarkerFileName}"
 Type: filesandordirs; Name: "{app}\bin"
 Type: filesandordirs; Name: "{app}\lib"
 ; User data (optional, based on user choice)
-Type: files; Name: "{app}\SmartGuard.config.json"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\SmartGuard.log"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\SmartGuard.startup.log"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\SmartGuard.status.json"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#ConfigFileName}"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#DefaultLogFileName}"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#StartupLogFileName}"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#StatusFileName}"; Check: ShouldDeleteUserData
 
 [Code]
 var
@@ -266,13 +271,13 @@ var
   FindRec: TFindRec;
   LogPattern: String;
 begin
-  DeleteFile(ExpandConstant('{app}\SmartGuard.config.json'));
-  DeleteFile(ExpandConstant('{app}\SmartGuard.log'));
-  DeleteFile(ExpandConstant('{app}\SmartGuard.startup.log'));
-  DeleteFile(ExpandConstant('{app}\SmartGuard.status.json'));
+  DeleteFile(ExpandConstant('{app}\{#ConfigFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#DefaultLogFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#StartupLogFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#StatusFileName}'));
 
   { Also remove rotated log backups such as SmartGuard.log.20260619.bak }
-  LogPattern := ExpandConstant('{app}\SmartGuard.log.*.bak');
+  LogPattern := ExpandConstant('{app}\{#DefaultLogFileName}.*.bak');
   if FindFirst(LogPattern, FindRec) then
   begin
     try
@@ -306,10 +311,10 @@ begin
       stop processes one last time and delete them. This covers cases where
       the engine was restarted between usUninstall and usPostUninstall. }
     if DeleteUserData and
-       (FileExists(ExpandConstant('{app}\SmartGuard.config.json')) or
-        FileExists(ExpandConstant('{app}\SmartGuard.log')) or
-        FileExists(ExpandConstant('{app}\SmartGuard.startup.log')) or
-        FileExists(ExpandConstant('{app}\SmartGuard.status.json'))) then
+       (FileExists(ExpandConstant('{app}\{#ConfigFileName}')) or
+        FileExists(ExpandConstant('{app}\{#DefaultLogFileName}')) or
+        FileExists(ExpandConstant('{app}\{#StartupLogFileName}')) or
+        FileExists(ExpandConstant('{app}\{#StatusFileName}')))) then
     begin
       TryStopSmartGuardProcesses();
       DeleteUserDataFiles;

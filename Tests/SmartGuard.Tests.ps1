@@ -288,7 +288,8 @@
         It 'Status.cmd shows startup log tail without powershell.exe' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.startup\.log'
+            $content | Should -Match 'SmartGuardPathConstants\.cmd'
+            $content | Should -Match 'SMARTGUARD_STARTUP_LOG'
             $content | Should -Not -Match 'powershell'
         }
     }
