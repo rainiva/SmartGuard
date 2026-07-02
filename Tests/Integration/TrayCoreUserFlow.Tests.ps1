@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
   真实用户流程集成测试：模拟「安装目录 + 计划任务启动引擎 + 托盘读状态」。
-  依赖已发布的 bin\SmartGuard.Engine.exe（Run-Tests 前需 Publish-All 或已有 bin 输出）。
+  依赖已发布的 bin\SmartGuard.Engine.exe（Run-Tests 前需 build.cmd 或已有 bin 输出）。
 #>
 Describe 'Tray core user flow (integration)' {
     BeforeAll {

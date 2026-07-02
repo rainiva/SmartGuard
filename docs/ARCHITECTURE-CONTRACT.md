@@ -30,10 +30,11 @@
 |----------|--------------|------|
 | 注册计划任务 | `SmartGuard.Engine.exe --install` | Inno / `Register-AllTasks.cmd` 委托此入口 |
 | 启动 Engine（生产） | 计划任务 `SmartGuard Guardian` | Tray/Inno/`Start-Core.cmd` 均 `schtasks /Run`；dev 前台用 `Debug-Engine.cmd` |
+| 启动 Tray（生产） | 计划任务 `SmartGuard Tray` | 登录时自动；dev 直启用 `Start-Tray.cmd` / `Restart-Tray.cmd`（**E-10 登记**） |
 | 停止 Engine（卸载） | `EngineLifecycle.Stop` | CLI、Inno、集成测试共用 |
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings `tglPaused` 均经此 API；全量保存从 repository 读回 `Paused` |
 | 打开设置 | `ExternalToolLauncher.OpenSettings` | 命名管道激活或 spawn |
-| 打开日志 | `ExternalToolLauncher.OpenLogViewer` → Settings `--page logs` | `LogViewer.exe` 兼容重定向；禁止独立 WinForms 日志壳 |
+| 打开日志 | `SettingsLogsPageLauncher.Open`（Tray 经 `ExternalToolLauncher.OpenLogViewer` 委托） | `LogViewer.exe` 兼容重定向；禁止独立 WinForms 日志壳 |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
 ---
@@ -78,8 +79,8 @@
 | ID | 状态 | 真源 |
 |----|------|------|
 | M-04 | **已关闭** | `PowerPlanCatalogProvider.TryLoad()`（Engine/Settings 单源） |
-| M-06 | **已关闭** | `TrayDisplaySettingsCache` + config `FileSystemWatcher` 失效 |
-| M-07 | **已关闭** | `SettingsThemeCoordinator` + `SettingsThemeState` |
+| M-06 | **已关闭** | `TrayApplicationContext` → `TrayDisplaySettingsCache(_configRepository, _root)` + `ConfigFileWatcher` |
+| M-07 | **已关闭** | `SettingsThemeCoordinator.SaveThemePreferences` → `SettingsPolicyCoordinator.SaveThemePreferences` → `SettingsSaveCoordinator.Save` |
 | M-08 | **已关闭** | `LogViewIdleReader`（Contract §1 登记） |
 | M-11 | **已关闭** | `DesktopAppBootstrap` |
 | M-14 | **已关闭** | `status.json` `enginePid` |
@@ -113,6 +114,28 @@
 | E-08 | **折中** | 同 M-15 |
 | 上帝模块 | **已关闭** | `SettingsLogPageHost` &lt;300 行 + 提取 Export/FollowTail/Search 模块 |
 
+## 9. 第三轮治理关闭项（2026-07-01）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| ME-08 | **已关闭** | `SettingsLogsPageLauncher.Open`（Tray + LogViewer 单源） |
+| ME-03 | **已关闭** | `PerformanceTestEngineLifecycle.Stop` → `EngineLifecycle.StopProcesses()` |
+| ME-12 | **已关闭** | 运行时错误信息统一 `build.cmd`（移除 `Publish-All.ps1`） |
+| LOG-SCRIPT | **已关闭** | `scripts/SmartGuardPathConstants.ps1` + `Measure-EngineStartup.ps1` |
+| ME-01 | **登记** | `Measure-EngineStartup.ps1` 保留 `# benchmark-only-start` + `Start-Process`（冷启动基准专用） |
+| 上帝模块 | **已关闭** | Toast / Policy / About / AppDialog / Tray 拆分 + `*LineCountTests` &lt;300 |
+
+## 10. 第四轮治理关闭项（2026-07-01）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| ME-09 | **已关闭** | `SettingsMainPageLauncher.Open`（Tray 设置 spawn 单源） |
+| DOC-01～03 | **已关闭** | 本文档 §2/§6/§9 与实现对齐 |
+| ME-12-R | **已关闭** | 集成测试注释移除 `Publish-All` |
+| GOD-01 | **已关闭** | `LogSearchFilterBar` &lt;300 行门禁 |
+| E-10 | **登记** | 生产 Tray = 计划任务；dev = `Start-Tray.cmd` / `Restart-Tray.cmd` |
+| PERF | **已关闭** | 性能测试 settle + 5000ms 预算 + lifecycle 门禁 |
+
 ---
 
 ## 6. 门禁索引
@@ -138,4 +161,16 @@
 | LogViewer 重定向 Settings | `LogViewerProgramArchitectureTests` |
 | `ConfigFileWatcher` 共享 | `ConfigFileWatcherArchitectureTests` |
 | `GuardianIterationRunner` | `GuardianIterationRunnerArchitectureTests` |
+| 第四轮文档契约 | `ArchitectureContractFourthRoundTests` |
+| 日志页启动单源 | `SettingsLogsPageLauncherArchitectureTests` |
+| 主题落盘单源 | `SettingsThemeSaveArchitectureTests` |
+| Tray 配置缓存 | `TrayDisplaySettingsCacheArchitectureTests` |
+| 性能测试 stop | `EnginePerformanceStopArchitectureTests`、`EnginePerformanceStartupArchitectureTests` |
+| 基准脚本常量 | `MeasureEngineStartupArchitectureTests` |
+| 移除 Publish-All 引用 | `PublishAllReferenceArchitectureTests` |
+| Toast 拆分 &lt;300 行 | `ToastNotificationLineCountTests` |
+| Policy 拆分 &lt;300 行 | `SettingsPolicyCoordinatorLineCountTests` |
+| About 拆分 &lt;300 行 | `SettingsAboutCoordinatorLineCountTests` |
+| AppDialog 拆分 &lt;300 行 | `AppDialogLineCountTests` |
+| Tray 拆分 &lt;300 行 | `TrayApplicationContextLineCountTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
