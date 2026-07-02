@@ -73,6 +73,7 @@
 | `StatusReporter` | `SmartGuard.Configuration` | 状态与启动日志尾部 |
 | `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 五件套 `dotnet publish` 单源 |
 | `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
+| `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
 
 ---
 
@@ -263,4 +264,5 @@
 | 状态报告 | `StatusReporterArchitectureTests` |
 | 第七轮文档契约 | `ArchitectureContractSeventhRoundTests` |
 | GitHub Token 保护 | `GitHubTokenArchitectureTests`、`GitHubTokenProtectorTests`、`GuardConfigRepositoryTokenTests` |
+| 诊断包导出脱敏 | `DiagnosticBundleExporterArchitectureTests`、`DiagnosticBundleExporterTests`、`SettingsDiagnosticExportCoordinatorTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |

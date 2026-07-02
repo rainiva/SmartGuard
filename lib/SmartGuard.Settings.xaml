@@ -1117,6 +1117,20 @@
                 <TextBlock Text="维护" Style="{StaticResource SettingsGroupTitle}"/>
                 <TextBlock Text="配置异常时可恢复默认策略" Style="{StaticResource SettingsCardDescription}"/>
 
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="导出诊断包" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="打包配置、状态与日志（已剔除 Token），便于反馈问题" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button x:Name="btnExportDiagnostic" Grid.Column="1" Content="导出诊断包…" Style="{StaticResource SecondaryButton}"/>
+                  </Grid>
+                </Border>
+
                 <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
                     <Grid.ColumnDefinitions>

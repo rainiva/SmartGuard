@@ -174,6 +174,12 @@ public sealed class SettingsWindowController
       (message, isError) => toastService.Show(message, isError));
     gitHubTokenCoordinator.WireAboutPage(window);
 
+    var diagnosticExportCoordinator = new SettingsDiagnosticExportCoordinator(
+      root,
+      SettingsAboutCoordinator.GetDisplayVersion,
+      (message, isError) => toastService.Show(message, isError));
+    diagnosticExportCoordinator.WireAboutPage(window);
+
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
 
