@@ -1,3 +1,5 @@
+using SmartGuard.Configuration;
+
 namespace SmartGuard.Tray.Toast;
 
 public sealed record ToastShortcutTarget(string TargetPath, string Arguments, string WorkingDirectory);
@@ -7,7 +9,7 @@ public static class ToastShortcutResolver
   public static ToastShortcutTarget Resolve(string root)
   {
     var workingDirectory = root;
-    var trayExe = Path.Combine(root, "bin", "SmartGuard.Tray.exe");
+    var trayExe = SmartGuardPaths.TrayExe(root);
     if (File.Exists(trayExe))
     {
       return new ToastShortcutTarget(trayExe, $"--root \"{root}\"", workingDirectory);
