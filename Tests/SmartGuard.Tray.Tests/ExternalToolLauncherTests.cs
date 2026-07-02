@@ -5,32 +5,49 @@ public class ExternalToolLauncherTests
   [Fact]
   public void OpenSettings_tries_activate_before_starting_process()
   {
-    var source = File.ReadAllText(
+    var launcher = File.ReadAllText(
+      Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmartGuard.Configuration", "SettingsMainPageLauncher.cs")));
+
+    launcher.Should().Contain("SingleInstanceActivation.TryNotifyExisting(\"Settings\")");
+    launcher.IndexOf("TryNotifyExisting(\"Settings\")")
+      .Should()
+      .BeLessThan(launcher.IndexOf("SmartGuardPaths.SettingsExe", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public void OpenSettings_launches_via_main_page_launcher()
+  {
+    var tray = File.ReadAllText(
       Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory,
         "..", "..", "..", "..", "..",
         "src", "SmartGuard.Tray", "Infrastructure.cs")));
+    tray.Should().Contain("SettingsMainPageLauncher.Open");
 
-    source.Should().Contain("SingleInstanceActivation.TryNotifyExisting(\"Settings\")");
-    source.IndexOf("TryNotifyExisting(\"Settings\")")
-      .Should()
-      .BeLessThan(source.IndexOf("SmartGuard.Settings.exe", StringComparison.Ordinal));
+    var launcher = File.ReadAllText(
+      Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmartGuard.Configuration", "SettingsMainPageLauncher.cs")));
+    launcher.Should().NotContain("--page logs");
   }
 
   [Fact]
   public void OpenLogViewer_tries_activate_settings_before_starting_process()
   {
-    var source = File.ReadAllText(
+    var launcher = File.ReadAllText(
       Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory,
         "..", "..", "..", "..", "..",
-        "src", "SmartGuard.Tray", "Infrastructure.cs")));
+        "src", "SmartGuard.Configuration", "SettingsLogsPageLauncher.cs")));
 
-    // LogViewer now opens through Settings window (navigated to logs page)
-    source.Should().Contain("SingleInstanceActivation.TryNotifyExisting(\"Settings\")");
-    source.IndexOf("TryNotifyExisting(\"Settings\")")
+    launcher.Should().Contain("SingleInstanceActivation.TryNotifyExisting(\"Settings\", \"logs\")");
+    launcher.IndexOf("TryNotifyExisting(\"Settings\", \"logs\")")
       .Should()
-      .BeLessThan(source.IndexOf("SmartGuard.Settings.exe", StringComparison.Ordinal));
+      .BeLessThan(launcher.IndexOf("SmartGuardPaths.SettingsExe", StringComparison.Ordinal));
   }
 
   [Fact]
@@ -49,15 +66,20 @@ public class ExternalToolLauncherTests
   [Fact]
   public void OpenLogViewer_launches_settings_with_log_page_argument()
   {
-    var source = File.ReadAllText(
+    var tray = File.ReadAllText(
       Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory,
         "..", "..", "..", "..", "..",
         "src", "SmartGuard.Tray", "Infrastructure.cs")));
+    tray.Should().Contain("SettingsLogsPageLauncher.Open");
 
-    // LogViewer now opens Settings with --page logs argument
-    source.Should().Contain("--page logs");
-    source.Should().NotContain("SmartGuard.LogViewer.exe");
+    var launcher = File.ReadAllText(
+      Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmartGuard.Configuration", "SettingsLogsPageLauncher.cs")));
+    launcher.Should().Contain("--page logs");
+    launcher.Should().NotContain("SmartGuard.LogViewer.exe");
   }
 
   [Fact]
