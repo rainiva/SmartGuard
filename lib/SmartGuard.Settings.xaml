@@ -1083,7 +1083,7 @@
                   </Grid>
                 </Border>
 
-                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="*"/>
@@ -1095,6 +1095,19 @@
                     </StackPanel>
                     <Button x:Name="btnCheckUpdate" Grid.Column="1" Content="检查更新" Style="{StaticResource PrimaryButton}"/>
                   </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                  <StackPanel>
+                    <TextBlock Text="GitHub Token" Style="{StaticResource SettingsItemTitle}"/>
+                    <TextBlock x:Name="txtGitHubTokenStatus" Text="未配置" Style="{StaticResource SettingsItemHint}"/>
+                    <TextBlock Text="公开仓库通常无需配置；若检查更新频繁触发限流，可填写 GitHub 个人访问令牌（建议最小权限 public_repo）。" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                    <PasswordBox x:Name="pwdGitHubToken" Margin="0,0,0,8" Padding="10,8" FontSize="13"/>
+                    <StackPanel Orientation="Horizontal">
+                      <Button x:Name="btnSaveGitHubToken" Content="保存 Token" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
+                      <Button x:Name="btnClearGitHubToken" Content="清除 Token" Style="{StaticResource SecondaryButton}"/>
+                    </StackPanel>
+                  </StackPanel>
                 </Border>
               </StackPanel>
             </Border>

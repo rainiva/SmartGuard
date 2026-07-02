@@ -167,6 +167,13 @@ public sealed class SettingsWindowController
       Require<TextBlock>(window, "txtVersion"),
       () => policyCoordinator.ReadConfigFromUi().GitHubToken);
 
+    var gitHubTokenCoordinator = new SettingsGitHubTokenCoordinator(
+      repository,
+      () => policyCoordinator.ReadConfigFromUi(),
+      policyCoordinator.CommitSavedConfig,
+      (message, isError) => toastService.Show(message, isError));
+    gitHubTokenCoordinator.WireAboutPage(window);
+
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
 

@@ -72,6 +72,7 @@
 | `TrayLauncher` / `TrayLifecycle` | `SmartGuard.Configuration` | dev Tray 启停 |
 | `StatusReporter` | `SmartGuard.Configuration` | 状态与启动日志尾部 |
 | `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 五件套 `dotnet publish` 单源 |
+| `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
 
 ---
 
@@ -261,4 +262,5 @@
 | 发布单源 | `PublishSingleSourceArchitectureTests`、`DesktopSuitePublisherTests` |
 | 状态报告 | `StatusReporterArchitectureTests` |
 | 第七轮文档契约 | `ArchitectureContractSeventhRoundTests` |
+| GitHub Token 保护 | `GitHubTokenArchitectureTests`、`GitHubTokenProtectorTests`、`GuardConfigRepositoryTokenTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
