@@ -9,6 +9,41 @@ internal static class AppDialogButtonFactory
 {
   internal static Button CreatePrimaryButton(string label, Window? owner)
   {
+    var button = new Button { Content = label };
+    if (TryApplyStyle(button, owner, "PrimaryButton"))
+      return button;
+
+    return CreatePrimaryButtonFallback(label, owner);
+  }
+
+  internal static Button CreateSecondaryButton(string label, Window? owner)
+  {
+    var button = new Button { Content = label };
+    if (TryApplyStyle(button, owner, "SecondaryButton"))
+      return button;
+
+    return CreateSecondaryButtonFallback(label, owner);
+  }
+
+  internal static SolidColorBrush ResolveBrush(Window? owner, string key, Color fallback)
+  {
+    if (owner is not null && owner.TryFindResource(key) is SolidColorBrush brush)
+      return brush;
+
+    return new SolidColorBrush(fallback);
+  }
+
+  private static bool TryApplyStyle(Button button, Window? owner, string styleKey)
+  {
+    if (owner?.TryFindResource(styleKey) is not Style style)
+      return false;
+
+    button.Style = style;
+    return true;
+  }
+
+  private static Button CreatePrimaryButtonFallback(string label, Window? owner)
+  {
     var button = new Button
     {
       Content = label,
@@ -32,35 +67,32 @@ internal static class AppDialogButtonFactory
     return button;
   }
 
-  internal static Button CreateTextButton(string label, Window? owner, bool isPrimary = false)
+  private static Button CreateSecondaryButtonFallback(string label, Window? owner)
   {
     var button = new Button
     {
       Content = label,
-      Background = Brushes.Transparent,
-      BorderThickness = new Thickness(0),
+      Background = owner is null
+        ? new SolidColorBrush(Colors.White)
+        : ResolveBrush(owner, "SecondaryButtonBackground", Colors.White),
       Foreground = owner is null
-        ? new SolidColorBrush(Color.FromRgb(0x00, 0x5F, 0xB8))
-        : ResolveBrush(owner, isPrimary ? "TextAccent" : "TextSecondary", Color.FromRgb(0x00, 0x5F, 0xB8)),
+        ? new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A))
+        : ResolveBrush(owner, "SecondaryButtonForeground", Color.FromRgb(0x1A, 0x1A, 0x1A)),
+      BorderBrush = owner is null
+        ? new SolidColorBrush(Color.FromRgb(0xD1, 0xD1, 0xD1))
+        : ResolveBrush(owner, "SecondaryButtonBorderBrush", Color.FromRgb(0xD1, 0xD1, 0xD1)),
+      BorderThickness = new Thickness(1),
       FontSize = 14,
-      FontWeight = isPrimary ? FontWeights.SemiBold : FontWeights.Normal,
-      Padding = new Thickness(12, 8, 12, 8),
-      MinWidth = 64,
+      FontWeight = FontWeights.Normal,
+      Padding = new Thickness(16, 8, 16, 8),
+      MinWidth = 72,
       Cursor = System.Windows.Input.Cursors.Hand,
     };
     var hoverBackground = owner is null
       ? new SolidColorBrush(AppDialogLayout.TextButtonHoverBackgroundFallback)
-      : ResolveBrush(owner, "NavigationItemHoverBackground", AppDialogLayout.TextButtonHoverBackgroundFallback);
-    button.Template = CreateTextButtonTemplate(hoverBackground);
+      : ResolveBrush(owner, "SecondaryButtonHoverBackground", AppDialogLayout.TextButtonHoverBackgroundFallback);
+    button.Template = CreateSecondaryButtonTemplate(hoverBackground);
     return button;
-  }
-
-  internal static SolidColorBrush ResolveBrush(Window? owner, string key, Color fallback)
-  {
-    if (owner is not null && owner.TryFindResource(key) is SolidColorBrush brush)
-      return brush;
-
-    return new SolidColorBrush(fallback);
   }
 
   private static ControlTemplate CreatePrimaryButtonTemplate(Brush hoverBackground)
@@ -106,13 +138,21 @@ internal static class AppDialogButtonFactory
     return template;
   }
 
-  private static ControlTemplate CreateTextButtonTemplate(Brush hoverBackground)
+  private static ControlTemplate CreateSecondaryButtonTemplate(Brush hoverBackground)
   {
     var template = new ControlTemplate(typeof(Button));
     var borderFactory = new FrameworkElementFactory(typeof(Border), "bd");
-    borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(AppDialogLayout.TextButtonCornerRadius));
+    borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(AppDialogLayout.SecondaryButtonCornerRadius));
     borderFactory.SetValue(Border.RenderTransformOriginProperty, new Point(0.5, 0.5));
     borderFactory.SetBinding(Border.BackgroundProperty, new Binding(nameof(Button.Background))
+    {
+      RelativeSource = RelativeSource.TemplatedParent,
+    });
+    borderFactory.SetBinding(Border.BorderBrushProperty, new Binding(nameof(Button.BorderBrush))
+    {
+      RelativeSource = RelativeSource.TemplatedParent,
+    });
+    borderFactory.SetBinding(Border.BorderThicknessProperty, new Binding(nameof(Button.BorderThickness))
     {
       RelativeSource = RelativeSource.TemplatedParent,
     });

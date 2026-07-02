@@ -77,7 +77,7 @@ public sealed class InlineToastNotification : IToastWindow
         ToastLayoutMetrics.InlinePaddingVertical),
       Margin = new Thickness(
         ToastLayoutMetrics.InlineOuterMargin,
-        ToastLayoutMetrics.InlineOuterMargin,
+        0,
         0,
         ToastLayoutMetrics.InlineOuterMargin),
       Child = content
