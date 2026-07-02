@@ -1,6 +1,6 @@
 # 多真源治理终验报告
 
-**日期：** 2026-07-01（第四轮治理全量修复后）  
+**日期：** 2026-07-02（第六轮治理全量修复后）  
 **Run-Tests.ps1（`SMARTGUARD_SKIP_INSTALLER_TESTS=1`）：** 见下方终验输出
 
 ## 第一轮（深挖治理）
@@ -133,3 +133,38 @@ Tray integration: 2/2
 第四轮审计 open 项均已关闭或登记：设置 spawn 与日志 spawn 对称单源、契约文档与实现对齐、LogSearchFilterBar 行数门禁、dev Tray 脚本登记、性能测试在全量套件负载下稳定。
 
 第五轮在第四轮基线上收敛 C# 路径小重复、Settings Policy/Update 上帝模块预防拆分、Tray Toast 注册与 Engine 主循环职责分离；M-15 折中维持登记，未收紧 schtasks-only 停止策略。
+
+## 第六轮关闭项（2026-07-02）
+
+| 类别 | ID | 状态 |
+|------|-----|------|
+| 多源 | M-20 | **已关闭**（`SmartGuardPaths`：`SettingsXaml`、Init/Elevation marker） |
+| 多源 | M-21 | **已关闭**（`SmartGuardPathConstants.ps1/.cmd` + Inno `#define` parity） |
+| 多源 | S-09 | **已关闭**（Settings 暂停开关初始展示读 `status.json`） |
+| 多入口 | E-11 | **已关闭**（`ElevationHelper` + `Request-AdminElevation.cmd`） |
+| 多入口 | E-11b | **已关闭**（Inno → `Open-*.cmd` 包装脚本） |
+| 文档 | DOC-05 | **已关闭**（§12 第六轮索引 + 本终验） |
+
+## 新增 Architecture 门禁（第六轮）
+
+- `SmartGuardPathsExtensionsArchitectureTests`
+- `ScriptPathConstantsParityArchitectureTests`
+- `SettingsPauseDisplayArchitectureTests`
+- `ElevationSingleSourceArchitectureTests`
+- `ElevationHelperTests`
+- `InnoShortcutWrapperArchitectureTests`
+- `ArchitectureContractSixthRoundTests`
+
+## 终验输出（第六轮）
+
+```
+PASSED=60 FAILED=0 TOTAL=60
+Pester: 58/58
+Architecture: 143/143
+Tray integration: 2/2
+（SMARTGUARD_SKIP_INSTALLER_TESTS=1，2026-07-02）
+```
+
+## 结论
+
+第六轮在第五轮基线上完成剩余路径字面量收敛、脚本/Inno 常量 parity、Settings 与 Tray 暂停展示对称、UAC 提升单源、安装器快捷方式经 `Open-*.cmd` 包装；E-11/E-11b 由登记转为已关闭。

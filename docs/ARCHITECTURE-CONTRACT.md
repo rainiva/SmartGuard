@@ -28,6 +28,8 @@
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
 | 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
+| UAC 提升（C#） | `ElevationHelper` | `InstallCommands`、`UpdateInstallerLauncher` | — | 内联 `Verb = "runas"` 散落 |
+| UAC 提升（cmd） | `scripts/Request-AdminElevation.cmd` | `Start-Core.cmd`、`Debug-Engine.cmd` | — | 内联 VBS `Shell.Application` 散落 |
 
 ---
 
@@ -42,6 +44,7 @@
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings `tglPaused` 均经此 API；全量保存从 repository 读回 `Paused` |
 | 打开设置 | `SettingsMainPageLauncher.Open`（Tray 经 `ExternalToolLauncher.OpenSettings` 委托） | 命名管道激活或 spawn |
 | 打开日志 | `SettingsLogsPageLauncher.Open`（Tray 经 `ExternalToolLauncher.OpenLogViewer` 委托） | `LogViewer.exe` 兼容重定向；禁止独立 WinForms 日志壳 |
+| 安装器快捷方式（设置/日志/托盘） | `Open-Settings.cmd` / `Open-Logs.cmd` / `Open-Tray.cmd` | Inno `[Icons]`、`[Run]` postinstall | Packaging staging | Inno 直 spawn `bin\*.exe` |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
 ---
@@ -57,6 +60,7 @@
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `ScheduledTaskRegistrar` | `SmartGuard.Configuration` | 任务名与 XML 唯一源 |
 | `EngineLifecycle` | `SmartGuard.Configuration` | 停止进程与任务顺序 |
+| `ElevationHelper` | `SmartGuard.Configuration` | C# UAC `runas` 单源 |
 
 ---
 
@@ -158,7 +162,20 @@
 | GOD-03 | **已关闭** | `SettingsPauseHandler` + `SettingsDebouncedSaver`；`SettingsPolicyCoordinator` 231 行 |
 | GOD-04 | **已关闭** | `ToastRegistryWriter` + `StartMenuShortcutWriter` 自 `ToastAumidRegistrar` 提取 |
 | GOD-05 | **已关闭** | `GuardianFirstRunInitializer` + `GuardianExceptionStormHandler` 自 `GuardianLoop` 提取 |
-| DOC-04 | **已关闭** | §2 `StopForUninstall` 与实现对齐；§11 登记 E-11/E-11b |
+| DOC-04 | **已关闭** | §2 `StopForUninstall` 与实现对齐；§11 登记 E-11/E-11b（第六轮关闭见 §12） |
+
+---
+
+## 12. 第六轮治理关闭项（2026-07-02）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| M-20 | **已关闭** | `SmartGuardPaths` 扩展：`SettingsXaml`、`InitMarkerFile`、`ElevationDeclinedMarkerFile` |
+| M-21 | **已关闭** | `SmartGuardPathConstants.ps1/.cmd` + Inno `#define` 与 `SmartGuardPaths.*FileName` parity |
+| S-09 | **已关闭** | Settings `tglPaused` 初始展示读 `status.json`（`SettingsPauseDisplayArchitectureTests`） |
+| E-11 | **已关闭** | `ElevationHelper` + `scripts/Request-AdminElevation.cmd` |
+| E-11b | **已关闭** | Inno `[Icons]`/`[Run]` → `Open-*.cmd` 包装脚本 |
+| DOC-05 | **已关闭** | 本文档 §1/§2/§6/§12 + `MULTI-SOURCE-GOVERNANCE-ACCEPTANCE` 第六轮终验 |
 
 ---
 
@@ -206,4 +223,10 @@
 | Policy 暂停/保存拆分 | `SettingsPolicyCoordinatorArchitectureTests` |
 | Toast AUMID 拆分 | `ToastAumidRegistrarArchitectureTests` |
 | GuardianLoop 拆分 | `GuardianLoopArchitectureTests` |
+| 第六轮路径扩展 | `SmartGuardPathsExtensionsArchitectureTests` |
+| 脚本/Inno 常量 parity | `ScriptPathConstantsParityArchitectureTests` |
+| Settings 暂停展示 | `SettingsPauseDisplayArchitectureTests` |
+| UAC 单源 | `ElevationSingleSourceArchitectureTests`、`ElevationHelperTests` |
+| Inno 包装脚本 | `InnoShortcutWrapperArchitectureTests` |
+| 第六轮文档契约 | `ArchitectureContractSixthRoundTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
