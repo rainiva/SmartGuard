@@ -314,7 +314,7 @@ begin
        (FileExists(ExpandConstant('{app}\{#ConfigFileName}')) or
         FileExists(ExpandConstant('{app}\{#DefaultLogFileName}')) or
         FileExists(ExpandConstant('{app}\{#StartupLogFileName}')) or
-        FileExists(ExpandConstant('{app}\{#StatusFileName}')))) then
+        FileExists(ExpandConstant('{app}\{#StatusFileName}'))) then
     begin
       TryStopSmartGuardProcesses();
       DeleteUserDataFiles;
