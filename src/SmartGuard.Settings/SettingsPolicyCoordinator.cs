@@ -106,7 +106,7 @@ internal sealed class SettingsPolicyCoordinator
     _tglPaused.IsChecked = status?.paused ?? config.Paused;
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
-    _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
+    _tglAutoStart.IsChecked = config.AutoStartEnabled;
   }
 
   internal void WireInstantApply()
@@ -203,7 +203,7 @@ internal sealed class SettingsPolicyCoordinator
     _tglPaused.IsChecked = config.Paused;
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
-    _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
+    _tglAutoStart.IsChecked = config.AutoStartEnabled;
     _planCatalog.ApplyPlanCombosToUi(config);
   }
 

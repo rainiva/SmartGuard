@@ -1,9 +1,28 @@
 using System.IO;
+using System.Drawing;
 
 namespace SmartGuard.Configuration.Tests;
 
 public class BrandIconLoaderTests
 {
+  [Fact]
+  public void LoadWinFormsIcon_returns_32x32_taskbar_frame_not_largest_ico_frame()
+  {
+    BrandIconLoader.ResetCacheForTests();
+    var repoRoot = Path.GetFullPath(Path.Combine(
+      AppContext.BaseDirectory,
+      "..", "..", "..", "..", ".."));
+    var iconPath = Path.Combine(repoRoot, "lib", "SmartGuard.ico");
+    File.Exists(iconPath).Should().BeTrue();
+
+    using var fallback = new System.Drawing.Icon(iconPath, 16, 16);
+    using var loaded = BrandIconLoader.LoadWinFormsIcon(repoRoot, fallback);
+
+    loaded.Width.Should().Be(32, "WinForms tray must use the 32px ICO frame for taskbar parity");
+    loaded.Height.Should().Be(32);
+    loaded.Width.Should().NotBe(256, "must not load the default largest ICO frame");
+  }
+
   [Fact]
   public void Brand_icon_ico_contains_taskbar_sizes()
   {

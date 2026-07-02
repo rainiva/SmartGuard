@@ -23,7 +23,7 @@
 | 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
 | 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威） | ps1/Inno | — | 脚本与 Inno 硬编码文件名；镜像见 `SmartGuardPathConstants.ps1` |
 | 计划任务名 | `ScheduledTaskRegistrar.GuardianTaskName` / `TrayTaskName` | 注册、恢复、安装 | `ScheduledTaskRegistrar` | 字面量 `"SmartGuard Guardian"` 散落 |
-| 开机自启 UI | `config.AutoStartEnabled` + `AutoStartService.SyncFromTasks` | Settings | `SettingsSaveCoordinator` + `AutoStartService` | 仅写 config 不读 schtasks |
+| 开机自启 UI | `config.AutoStartEnabled` | Settings | `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` | Settings 读 `schtasks`/`SyncFromTasks` 决定展示 |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
@@ -108,7 +108,7 @@
 | M-08 | **已关闭** | `LogViewIdleReader`（Contract §1 登记） |
 | M-11 | **已关闭** | `DesktopAppBootstrap` |
 | M-14 | **已关闭** | `status.json` `enginePid` |
-| M-16 | **已关闭** | `BrandIconLoader` |
+| M-16 | **已关闭** | `BrandIconLoader`（`lib/SmartGuard.ico`；任务栏/托盘/Settings 窗口统一取 **32×32** 帧，`TaskbarIconFrameSize` 常量） |
 | L-02 | **已关闭** | `GuardConfigRepository` `FileSystemWatcher` + `LastWriteTimeUtc` |
 | L-03 | **已关闭** | `LegacyPaths` |
 | L-04 | **已关闭** | 本文档 + PHASE/INNO/MIGRATION 索引指针（见 MIGRATION） |
@@ -128,7 +128,7 @@
 | S-02 | **已关闭** | `GuardianRecovery` 消费 `enginePid` 跳过多余 `schtasks` |
 | S-03/S-04 | **已关闭** | `CreateDefault` → `PowerPlanCatalogProvider` + `SmartGuardPaths.DefaultLogFile` |
 | S-05 | **已关闭** | Settings 计划目录 `PowerPlanCatalogProvider.TryLoad()` |
-| S-06 | **已关闭** | AutoStart UI `SyncFromTasks()`；保存经 `SettingsSaveCoordinator` |
+| S-06 | **已关闭** | AutoStart UI 读 `config.AutoStartEnabled`；写经 `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` |
 | S-07 | **已关闭** | `ConfigFileWatcher` |
 | S-08 | **已关闭** | `Status.cmd` 与 `ScheduledTaskRegistrar` 任务名一致 |
 | E-01 | **已关闭** | `Start-Core.cmd` → `schtasks`；`Debug-Engine.cmd` dev 前台 |

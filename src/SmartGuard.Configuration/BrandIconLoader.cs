@@ -10,6 +10,7 @@ namespace SmartGuard.Configuration;
 public static class BrandIconLoader
 {
   private const string EmbeddedSettingsIconUri = "pack://application:,,,/Assets/SmartGuard.ico";
+  private const int TaskbarIconFrameSize = 32;
 
   private static string? _cachedIconPath;
   private static DrawIcon? _cachedWinFormsIcon;
@@ -39,7 +40,7 @@ public static class BrandIconLoader
     {
       try
       {
-        var icon = new DrawIcon(iconPath);
+        var icon = new DrawIcon(iconPath, TaskbarIconFrameSize, TaskbarIconFrameSize);
         _cachedWinFormsIcon?.Dispose();
         _cachedWinFormsIcon = icon;
         _cachedIconPath = iconPath;
@@ -89,7 +90,7 @@ public static class BrandIconLoader
       if (stream is not null)
       {
         using var rawIcon = new DrawIcon(stream);
-        using var icon = new DrawIcon(rawIcon, 32, 32);
+        using var icon = new DrawIcon(rawIcon, TaskbarIconFrameSize, TaskbarIconFrameSize);
         return FromIcon(icon);
       }
     }
@@ -105,7 +106,7 @@ public static class BrandIconLoader
   {
     try
     {
-      using var icon = new DrawIcon(filePath, 32, 32);
+      using var icon = new DrawIcon(filePath, TaskbarIconFrameSize, TaskbarIconFrameSize);
       return FromIcon(icon);
     }
     catch
