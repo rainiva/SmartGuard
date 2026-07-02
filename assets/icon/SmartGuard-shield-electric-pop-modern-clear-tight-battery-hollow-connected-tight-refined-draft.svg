@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">SmartGuard App Icon Shield Electric Pop Modern Clear Tight Battery Hollow Connected Tight Refined Draft</title>
+  <desc id="desc">Shield draft with the connected hollow battery further refined by lowering the inner window and shortening the bolt.</desc>
+  <defs>
+    <linearGradient id="shieldInner" x1="128" y1="20" x2="128" y2="239" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A9BC6"/>
+      <stop offset="0.58" stop-color="#398CB8"/>
+      <stop offset="1" stop-color="#297098"/>
+    </linearGradient>
+  </defs>
+
+  <path
+    fill="#54D3F2"
+    d="M128 8
+       C159 19 191 35 223 50
+       V149
+       C223 173 213 201 128 249
+       C43 201 33 173 33 149
+       V50
+       C65 35 97 19 128 8
+       Z"/>
+
+  <path
+    fill="url(#shieldInner)"
+    stroke="#97E8F4"
+    stroke-opacity="0.075"
+    stroke-width="0.85"
+    d="M128 20
+       C156 30 185 45 212 60
+       V147
+       C212 168 203 191 128 237
+       C53 191 44 168 44 147
+       V60
+       C71 45 100 30 128 20
+       Z"/>
+
+  <g transform="translate(128 128) scale(0.92) translate(-128 -128)">
+    <path
+      fill="#F1F7FB"
+      d="M119 53
+         H137
+         Q141 53 141 57
+         V64
+         H145
+         Q158 64 158 77
+         V189
+         Q158 202 145 202
+         H111
+         Q98 202 98 189
+         V77
+         Q98 64 111 64
+         H115
+         V57
+         Q115 53 119 53
+         Z"/>
+
+    <rect x="106" y="79" width="44" height="112" rx="9" fill="url(#shieldInner)"/>
+
+    <path
+      fill="#E6FF72"
+      d="M129 108
+         L118 138
+         H128
+         L124 157
+         L138 133
+         H130
+         L129 108
+         Z"/>
+  </g>
+</svg>

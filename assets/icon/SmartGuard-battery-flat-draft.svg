@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">SmartGuard App Icon Battery Flat Draft</title>
+  <desc id="desc">Shield outline containing a flatter battery and lightning mark draft.</desc>
+  <defs>
+    <linearGradient id="shieldOuter" x1="128" y1="8" x2="128" y2="248" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#71D9EF"/>
+      <stop offset="1" stop-color="#58BFDA"/>
+    </linearGradient>
+    <linearGradient id="shieldInner" x1="128" y1="20" x2="128" y2="239" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12375D"/>
+      <stop offset="1" stop-color="#0B2B4D"/>
+    </linearGradient>
+  </defs>
+
+  <path
+    fill="url(#shieldOuter)"
+    d="M128 8
+       C159 19 191 35 223 50
+       V149
+       C223 173 213 201 128 249
+       C43 201 33 173 33 149
+       V50
+       C65 35 97 19 128 8
+       Z"/>
+
+  <path
+    fill="url(#shieldInner)"
+    stroke="#0A2F54"
+    stroke-width="1.6"
+    d="M128 20
+       C156 30 185 45 212 60
+       V147
+       C212 168 203 191 128 237
+       C53 191 44 168 44 147
+       V60
+       C71 45 100 30 128 20
+       Z"/>
+
+  <g transform="translate(128 128) scale(0.92) translate(-128 -128)">
+    <path
+      fill="#EAF5FB"
+      d="M115 48
+         H141
+         Q145 48 145 52
+         V60
+         H143
+         Q161 60 161 78
+         V189
+         Q161 206 143 206
+         H113
+         Q95 206 95 189
+         V78
+         Q95 60 113 60
+         H111
+         V52
+         Q111 48 115 48
+         Z"/>
+
+    <rect x="105" y="70" width="46" height="124" rx="10" fill="#4F97BF"/>
+
+    <path
+      fill="#E5FF63"
+      d="M131 98
+         L117 138
+         H129
+         L124 162
+         L140 134
+         H131
+         L131 98
+         Z"/>
+  </g>
+</svg>

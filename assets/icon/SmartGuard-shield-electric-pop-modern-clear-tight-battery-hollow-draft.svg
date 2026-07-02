@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">SmartGuard App Icon Shield Electric Pop Modern Clear Tight Battery Hollow Draft</title>
+  <desc id="desc">Shield draft with a more aggressive hollow battery center and a bolt placed directly on the shield field.</desc>
+  <defs>
+    <linearGradient id="shieldInner" x1="128" y1="20" x2="128" y2="239" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A9BC6"/>
+      <stop offset="0.58" stop-color="#398CB8"/>
+      <stop offset="1" stop-color="#297098"/>
+    </linearGradient>
+  </defs>
+
+  <path
+    fill="#54D3F2"
+    d="M128 8
+       C159 19 191 35 223 50
+       V149
+       C223 173 213 201 128 249
+       C43 201 33 173 33 149
+       V50
+       C65 35 97 19 128 8
+       Z"/>
+
+  <path
+    fill="url(#shieldInner)"
+    stroke="#97E8F4"
+    stroke-opacity="0.075"
+    stroke-width="0.85"
+    d="M128 20
+       C156 30 185 45 212 60
+       V147
+       C212 168 203 191 128 237
+       C53 191 44 168 44 147
+       V60
+       C71 45 100 30 128 20
+       Z"/>
+
+  <g transform="translate(128 128) scale(0.92) translate(-128 -128)">
+    <path
+      fill="none"
+      stroke="#F3F8FB"
+      stroke-width="13"
+      stroke-linejoin="round"
+      stroke-linecap="round"
+      d="M118 55
+         H138
+         V67
+         H140
+         C151 67 156 72 156 84
+         V183
+         C156 194 151 199 140 199
+         H116
+         C105 199 100 194 100 183
+         V84
+         C100 72 105 67 116 67
+         H118
+         Z"/>
+
+    <path
+      fill="#E6FF72"
+      d="M130 101
+         L118 136
+         H128
+         L123 160
+         L139 132
+         H129
+         L130 101
+         Z"/>
+  </g>
+</svg>
