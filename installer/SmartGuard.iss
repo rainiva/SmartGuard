@@ -60,19 +60,22 @@ Source: "{#StagingDir}\lib\SmartGuard.ico"; DestDir: "{app}\lib"; Flags: ignorev
 Source: "{#StagingDir}\lib\SmartGuard.Settings.xaml"; DestDir: "{app}\lib"; Flags: ignoreversion
 Source: "{#StagingDir}\license_zh-CN.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestName: "{#RuntimeInstallerFile}"; Flags: deleteafterinstall; Check: ShouldInstallDotNet
+Source: "{#StagingDir}\Open-Tray.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StagingDir}\Open-Settings.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StagingDir}\Open-Logs.cmd"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName} 托盘"; Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""
-Name: "{group}\{#MyAppName} 设置"; Filename: "{app}\bin\SmartGuard.Settings.exe"; Parameters: "--root ""{app}"""
-Name: "{group}\{#MyAppName} 日志"; Filename: "{app}\bin\SmartGuard.Settings.exe"; Parameters: "--root ""{app}"" --page logs"
+Name: "{group}\{#MyAppName} 托盘"; Filename: "{app}\Open-Tray.cmd"
+Name: "{group}\{#MyAppName} 设置"; Filename: "{app}\Open-Settings.cmd"
+Name: "{group}\{#MyAppName} 日志"; Filename: "{app}\Open-Logs.cmd"
 Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Open-Tray.cmd"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\{#RuntimeInstallerFile}"; Parameters: "/install /quiet /norestart"; StatusMsg: "正在安装 .NET 8 桌面运行时..."; Check: ShouldInstallDotNet; Flags: waituntilterminated
 Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish"; StatusMsg: "正在注册计划任务..."; Flags: waituntilterminated
 Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""SmartGuard Guardian"""; StatusMsg: "正在启动核心服务..."; Flags: runhidden waituntilterminated
-Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Description: "启动 {#MyAppName} 托盘"; Flags: nowait postinstall skipifsilent; Tasks: launchtray
+Filename: "{app}\Open-Tray.cmd"; Description: "启动 {#MyAppName} 托盘"; Flags: nowait postinstall skipifsilent; Tasks: launchtray
 
 [UninstallDelete]
 ; Program files (always deleted)

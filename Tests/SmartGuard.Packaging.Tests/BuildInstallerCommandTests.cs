@@ -32,7 +32,7 @@ public class BuildInstallerCommandTests : IDisposable
 
         exit.Should().Be(0);
         stageRan.Should().BeTrue();
-        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.25");
+        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.5");
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class BuildInstallerCommandTests : IDisposable
         var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: false));
 
         exit.Should().Be(0);
-        versionAtStageTime.Should().Be("1.0.26", "version must be bumped before the publish/stage step reads it");
-        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.26");
+        versionAtStageTime.Should().Be("1.0.6", "version must be bumped before the publish/stage step reads it");
+        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.6");
     }
 
     private string CreateFakeRepo()
@@ -68,8 +68,10 @@ public class BuildInstallerCommandTests : IDisposable
         File.WriteAllText(Path.Combine(_tempDir, "lib", "SmartGuard.ico"), "ico");
         File.WriteAllText(Path.Combine(_tempDir, "lib", "SmartGuard.Settings.xaml"), "xaml");
         Directory.CreateDirectory(Path.Combine(_tempDir, "installer"));
-        File.WriteAllText(Path.Combine(_tempDir, "installer", "version.txt"), "1.0.25");
+        File.WriteAllText(Path.Combine(_tempDir, "installer", "version.txt"), "1.0.5");
         File.WriteAllText(Path.Combine(_tempDir, "installer", "license_zh-CN.txt"), "license");
+        foreach (var wrapper in new[] { "Open-Tray.cmd", "Open-Settings.cmd", "Open-Logs.cmd" })
+            File.WriteAllText(Path.Combine(_tempDir, wrapper), "@echo off");
         return _tempDir;
     }
 

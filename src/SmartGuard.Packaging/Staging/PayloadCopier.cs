@@ -15,6 +15,9 @@ public static class PayloadCopier
 
         var version = InstallerVersionResolver.ReadCurrentVersion(Path.Combine(root, "installer", "version.txt"));
         File.WriteAllText(Path.Combine(stagingDir, "VERSION.txt"), version);
+
+        foreach (var wrapper in new[] { "Open-Tray.cmd", "Open-Settings.cmd", "Open-Logs.cmd" })
+            File.Copy(Path.Combine(root, wrapper), Path.Combine(stagingDir, wrapper), true);
     }
 
     private static void CopyDirectory(string source, string destination)

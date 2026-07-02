@@ -496,7 +496,9 @@
         It 'SmartGuard.Architecture.Tests project is wired in Run-Tests.ps1' {
             $root = Split-Path -Parent $PSScriptRoot
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
-            $runTests | Should -Match 'SmartGuard\.Architecture\.Tests'
+            $dotnetTests = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Match 'Invoke-SmartGuardDotNetTests\.ps1'
+            $dotnetTests | Should -Match 'SmartGuard\.Architecture\.Tests'
             Test-Path -LiteralPath (Join-Path $root 'Tests\SmartGuard.Architecture.Tests\SmartGuard.Architecture.Tests.csproj') | Should -Be $true
         }
 
@@ -518,7 +520,7 @@
         It 'installer log shortcut opens Settings logs page not LogViewer' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $iss | Should -Match 'SmartGuard\.Settings\.exe.*--page logs'
+            $iss | Should -Match 'Open-Logs\.cmd'
             $iss | Should -Not -Match '\{group\}.*日志.*SmartGuard\.LogViewer\.exe'
         }
 
@@ -544,6 +546,28 @@
             $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
             $stopBlock | Should -Match 'SmartGuard\.Engine\.exe'
             $stopBlock | Should -Match '--uninstall'
+        }
+    }
+
+    Describe 'Run-Tests optimization contract' {
+        It 'Run-Tests.ps1 delegates dotnet tests to Invoke-SmartGuardDotNetTests.ps1' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Match 'Invoke-SmartGuardDotNetTests\.ps1'
+            $runTests | Should -Match 'Invoke-SmartGuardDotNetTestSuite'
+        }
+
+        It 'Run-Tests.ps1 honors SMARTGUARD_TEST_TIER for integration gating' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Match 'SMARTGUARD_TEST_TIER'
+            $runTests | Should -Match 'Get-SmartGuardTestTier'
+        }
+
+        It 'Tray core user flow does not spawn nested dotnet test' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Tests.ps1') -Raw -Encoding UTF8
+            $flow | Should -Not -Match 'dotnet test'
         }
     }
 }

@@ -11,7 +11,10 @@ public static class StagingLayout
         @"lib\SmartGuard.ico",
         @"lib\SmartGuard.Settings.xaml",
         @"license_zh-CN.txt",
-        @"VERSION.txt"
+        @"VERSION.txt",
+        @"Open-Tray.cmd",
+        @"Open-Settings.cmd",
+        @"Open-Logs.cmd",
     }.AsReadOnly();
 
     public const string RedistPattern = @"redist\windowsdesktop-runtime-*-win-x64.exe";
