@@ -111,20 +111,10 @@ public static class InstallCommands
   private static int RerunElevated(string root, string command, string? extraArg, string startupLog)
   {
     WriteStartupLog(startupLog, "Requesting UAC elevation...");
-    var exe = Environment.ProcessPath;
-    if (string.IsNullOrWhiteSpace(exe))
-      return Fail(startupLog, "Unable to resolve current executable path for elevation.");
-
     var args = $"--root \"{root}\" {command}";
     if (!string.IsNullOrWhiteSpace(extraArg)) args += $" {extraArg}";
 
-    using var proc = Process.Start(new ProcessStartInfo
-    {
-      FileName = exe,
-      Arguments = args,
-      Verb = "runas",
-      UseShellExecute = true,
-    });
+    using var proc = ElevationHelper.RerunCurrentProcessElevated(args);
 
     if (proc is null)
     {

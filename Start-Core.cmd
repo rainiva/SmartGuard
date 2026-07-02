@@ -7,11 +7,7 @@ title SmartGuard Guardian
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo Requesting administrator privileges...
-    set "_elevate=%temp%\smartguard-elevate-%random%.vbs"
-    echo Set UAC = CreateObject("Shell.Application") > "%_elevate%"
-    echo UAC.ShellExecute "%~f0", "", "", "runas", 1 >> "%_elevate%"
-    cscript //nologo "%_elevate%"
-    del "%_elevate%" >nul 2>&1
+    call "%~dp0scripts\Request-AdminElevation.cmd" "%~f0"
     exit /b
 )
 
