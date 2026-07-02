@@ -8,10 +8,11 @@ internal sealed class SettingsPolicyCoordinator
 {
   private readonly string _root;
   private readonly GuardConfigRepository _repository;
-  private readonly ConfigMutationService _configMutations;
   private readonly Window _window;
   private readonly ToastNotificationService _toastService;
   private readonly SettingsPlanCatalogCoordinator _planCatalog;
+  private readonly SettingsPauseHandler _pauseHandler;
+  private readonly SettingsDebouncedSaver _debouncedSaver;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
   private readonly NumberBox _sldBattery;
@@ -27,8 +28,6 @@ internal sealed class SettingsPolicyCoordinator
   private readonly CheckBox _tglAutoStart;
 
   private GuardConfig _originalConfig;
-  private System.Windows.Threading.DispatcherTimer? _saveDebounceTimer;
-  private CancellationTokenSource? _saveCts;
 
   internal SettingsPolicyCoordinator(
     string root,
@@ -53,7 +52,6 @@ internal sealed class SettingsPolicyCoordinator
   {
     _root = root;
     _repository = repository;
-    _configMutations = new ConfigMutationService(repository);
     _originalConfig = originalConfig;
     _window = window;
     _toastService = toastService;
@@ -78,6 +76,22 @@ internal sealed class SettingsPolicyCoordinator
       lblPlanMappingStatus,
       () => _originalConfig,
       ReadConfigFromUi);
+    _pauseHandler = new SettingsPauseHandler(
+      root,
+      repository,
+      tglPaused,
+      toastService,
+      () => _originalConfig,
+      config => _originalConfig = config);
+    _debouncedSaver = new SettingsDebouncedSaver(
+      window,
+      root,
+      repository,
+      toastService,
+      ReadConfigFromUi,
+      () => _originalConfig,
+      config => _originalConfig = config,
+      config => _planCatalog.UpdatePlanMappingStatus(config));
   }
 
   internal void ApplyInitialValues(GuardConfig config)
@@ -96,7 +110,7 @@ internal sealed class SettingsPolicyCoordinator
 
   internal void WireInstantApply()
   {
-    void QueueSave() => QueueSaveDebounced();
+    void QueueSave() => _debouncedSaver.QueueSave();
     _sldBalanced.ValueChanged += (_, _) => QueueSave();
     _sldSaver.ValueChanged += (_, _) => QueueSave();
     _sldBattery.ValueChanged += (_, _) => QueueSave();
@@ -140,25 +154,7 @@ internal sealed class SettingsPolicyCoordinator
       btnResetDefaults.Click += (_, _) => ResetToDefaults();
   }
 
-  internal void OnPauseToggled()
-  {
-    var paused = _tglPaused.IsChecked == true;
-    if (paused == _originalConfig.Paused)
-      return;
-
-    try
-    {
-      _configMutations.SetPaused(paused, _root, SmartGuardPaths.StartupLogFile(_root));
-      var loaded = _repository.TryLoad();
-      if (loaded is not null)
-        _originalConfig = loaded;
-    }
-    catch (Exception ex)
-    {
-      _tglPaused.IsChecked = _originalConfig.Paused;
-      _toastService.Show($"暂停设置失败：{ex.Message}", isError: true);
-    }
-  }
+  internal void OnPauseToggled() => _pauseHandler.OnPauseToggled();
 
   internal GuardConfig ReadConfigFromUi()
   {
@@ -191,68 +187,8 @@ internal sealed class SettingsPolicyCoordinator
 
   internal void Dispose()
   {
-    _saveDebounceTimer?.Stop();
-    _saveCts?.Cancel();
-    _saveCts?.Dispose();
+    _debouncedSaver.Dispose();
     _planCatalog.Dispose();
-  }
-
-  private void QueueSaveDebounced()
-  {
-    if (_saveDebounceTimer is null)
-    {
-      _saveDebounceTimer = new System.Windows.Threading.DispatcherTimer(
-        System.Windows.Threading.DispatcherPriority.Background,
-        _window.Dispatcher)
-      {
-        Interval = TimeSpan.FromMilliseconds(300)
-      };
-      _saveDebounceTimer.Tick += (_, _) =>
-      {
-        _saveDebounceTimer.Stop();
-        SaveCurrentSettings();
-      };
-    }
-
-    _saveDebounceTimer.Stop();
-    _saveDebounceTimer.Start();
-  }
-
-  private async void SaveCurrentSettings()
-  {
-    try
-    {
-      var newConfig = ReadConfigFromUi();
-
-      var errors = GuardConfigValidator.Validate(newConfig);
-      errors = errors.Concat(PowerPlanMappingValidator.Validate(newConfig)).ToList();
-      if (errors.Count > 0)
-      {
-        _toastService.Show("保存失败：" + string.Join("；", errors), isError: true);
-        return;
-      }
-
-      _saveCts?.Cancel();
-      _saveCts?.Dispose();
-      _saveCts = new CancellationTokenSource();
-      var token = _saveCts.Token;
-
-      await Task.Run(() =>
-      {
-        token.ThrowIfCancellationRequested();
-        SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
-      }, token);
-      _originalConfig = newConfig;
-      _planCatalog.UpdatePlanMappingStatus(newConfig);
-      _toastService.Show("设置已保存", isError: false);
-    }
-    catch (OperationCanceledException)
-    {
-    }
-    catch (Exception ex)
-    {
-      _toastService.Show($"保存失败：{ex.Message}", isError: true);
-    }
   }
 
   private void ApplyConfigToUi(GuardConfig config)
