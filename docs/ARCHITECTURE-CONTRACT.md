@@ -175,4 +175,5 @@
 | Tray 拆分 &lt;300 行 | `TrayApplicationContextLineCountTests` |
 | 设置 spawn 单源 | `SettingsMainPageLauncherArchitectureTests` |
 | `LogSearchFilterBar` &lt;300 行 | `LogSearchFilterBarLineCountTests` |
+| Dev Tray 脚本登记 | `DevTrayScriptArchitectureTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |

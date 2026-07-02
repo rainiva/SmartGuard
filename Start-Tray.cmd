@@ -4,6 +4,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 title SmartGuard Tray
 
+REM Dev helper: starts Tray directly. Production uses scheduled task SmartGuard Tray.
 if not exist "%~dp0bin\SmartGuard.Tray.exe" (
     echo.
     echo ERROR: SmartGuard.Tray.exe not found.
