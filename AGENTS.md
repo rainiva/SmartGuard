@@ -81,6 +81,14 @@
 | 全部 Slice 完成但未做文档终验即宣告完成 | 违规 |
 | 终验发现缺口未开新 Slice 继续推进 | 违规 |
 
+## 本地磁盘卫生
+
+- 全量 `Run-Tests.ps1` / `build.cmd` / 打安装包后，工作区出现 **数百 MB～约 1 GB** 的 `bin/`、`obj/`、`installer/staging/`、`dist/` 等本地产物属正常现象（均已 `.gitignore`，不入库）。
+- 预览将清理的内容：`./Clean-Workspace.cmd -DryRun -AllLocal`
+- 清理本地产物（不含 `.worktrees/`）：`./Clean-Workspace.cmd -AllLocal`
+- 清理后跑测试会重新生成 Debug 构建缓存；Release publish / 安装包需重新 `build.cmd` 或打 installer。
+- 不再使用的 git worktree 请手动移除，例如：`git worktree remove .worktrees/feature/powershell-to-csharp`
+
 ## Git 提交规范
 
 ### 提交时机

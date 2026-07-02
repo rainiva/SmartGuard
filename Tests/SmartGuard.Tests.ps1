@@ -327,6 +327,19 @@
         }
     }
 
+    Describe 'Workspace cleanup script' {
+        It 'Clean-Workspace.ps1 supports DryRun without deleting build output' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $script = Join-Path $root 'scripts\Clean-Workspace.ps1'
+            Test-Path -LiteralPath $script | Should -Be $true
+
+            $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -DryRun -AllLocal 2>&1 | Out-String
+            $output | Should -Match 'Size before:'
+            $output | Should -Match 'Estimated reclaimable:'
+            $output | Should -Match 'Worktrees under .worktrees/'
+        }
+    }
+
     Describe 'Phase 6.3 remove PS application stack' {
         It 'does not ship legacy PS application entry scripts' {
             $root = Split-Path -Parent $PSScriptRoot

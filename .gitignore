@@ -5,7 +5,7 @@ SmartGuard.log.*.bak
 SmartGuard.startup.log
 SmartGuard.status.json
 SmartGuard.config.json
-.SmartGuard.initialized
+.SmartGuard.*
 test-result.txt
 settings-test.txt
 
@@ -13,6 +13,26 @@ settings-test.txt
 test-diag*.log
 test-diag.host.*.log
 test-run-output.*
+test-run-output.txt
+
+# Local scratch / generated assets (icon pipelines, debug exports)
+/tmp/
+
+# Backup copies of tracked assets
+*.backup
+*.backup-*
+*.bak
+
+# SmartGuard runtime log variants at repo root
+SmartGuard.log.*
+
+# Python tooling cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # .NET build output
 [Bb]in/
@@ -49,10 +69,12 @@ docs/superpowers/
 # OS / editor / AI tooling (local)
 Thumbs.db
 Desktop.ini
+.DS_Store
 .vs/
 .vscode/
 .idea/
 .cursor/
 .codegraph/
+.playwright-mcp/
 .qoder/
 *~
