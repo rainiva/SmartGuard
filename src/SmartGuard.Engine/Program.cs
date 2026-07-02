@@ -13,7 +13,7 @@ public static class Program
     var root = InstallRootResolver.Resolve(parsed.Root, args);
     var configPath = SmartGuardPaths.ConfigFile(root);
     var statusPath = SmartGuardPaths.StatusFile(root);
-    var initMarker = Path.Combine(root, ".SmartGuard.initialized");
+    var initMarker = SmartGuardPaths.InitMarkerFile(root);
     var fallbackLog = SmartGuardPaths.StartupLogFile(root);
 
     return parsed.Mode switch

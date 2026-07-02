@@ -6,13 +6,11 @@ namespace SmartGuard.Engine.Cli;
 
 public static class ElevationDeclinedMarker
 {
-  private const string MarkerFileName = ".SmartGuard.elevation-declined";
-
   public static bool Exists(string root)
   {
     try
     {
-      return File.Exists(Path.Combine(root, MarkerFileName));
+      return File.Exists(SmartGuardPaths.ElevationDeclinedMarkerFile(root));
     }
     catch
     {
@@ -24,7 +22,7 @@ public static class ElevationDeclinedMarker
   {
     try
     {
-      File.WriteAllText(Path.Combine(root, MarkerFileName), string.Empty);
+      File.WriteAllText(SmartGuardPaths.ElevationDeclinedMarkerFile(root), string.Empty);
     }
     catch
     {

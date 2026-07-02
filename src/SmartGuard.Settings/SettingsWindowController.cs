@@ -62,7 +62,7 @@ public sealed class SettingsWindowController
       var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var embeddedError);
       if (window is null)
       {
-        var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
+        var xamlPath = SmartGuardPaths.SettingsXaml(root);
         window = SettingsXamlLoader.TryLoadLooseWindowFromFile(xamlPath, out var fileError);
         if (window is null)
         {

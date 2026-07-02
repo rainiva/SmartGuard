@@ -18,6 +18,9 @@
 | 启动日志路径 | `SmartGuardPaths.StartupLogFile(root)` | Engine CLI、Settings/Tray 暂停回退 | — | `InstallCommands` 硬编码 `SmartGuard.startup.log` |
 | 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `LogViewerExe` | 注册、Toast、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
 | 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
+| Settings XAML | `SmartGuardPaths.SettingsXaml(root)` | Settings 窗口加载 | — | `Path.Combine(root, "lib", "SmartGuard.Settings.xaml")` 散落 |
+| 初始化标记 | `SmartGuardPaths.InitMarkerFile(root)` | Engine 首次运行 | Engine | `".SmartGuard.initialized"` 字面量散落 |
+| 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
 | 计划任务名 | `ScheduledTaskRegistrar.GuardianTaskName` / `TrayTaskName` | 注册、恢复、安装 | `ScheduledTaskRegistrar` | 字面量 `"SmartGuard Guardian"` 散落 |
 | 开机自启 UI | `config.AutoStartEnabled` + `AutoStartService.SyncFromTasks` | Settings | `SettingsSaveCoordinator` + `AutoStartService` | 仅写 config 不读 schtasks |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与切换读源） | Tray | `ConfigMutationService.SetPaused` | Tray 读 `config.Paused` 决定切换 |
