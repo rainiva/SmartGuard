@@ -6,11 +6,10 @@ namespace SmartGuard.Architecture.Tests;
 public class ScheduledTaskNamesContractTests
 {
   [Fact]
-  public void Status_cmd_queries_registrar_task_names_only()
+  public void StatusReporter_queries_registrar_task_names_only()
   {
-    var content = File.ReadAllText(Path.Combine(SourceScanHelper.RepoRoot, "Status.cmd"));
-    content.Should().Contain(ScheduledTaskRegistrar.GuardianTaskName);
-    content.Should().Contain(ScheduledTaskRegistrar.TrayTaskName);
+    var content = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/StatusReporter.cs");
+    content.Should().Contain("ScheduledTaskRegistrar.TaskNames");
     content.Should().NotContain("SmartPowerPlan");
   }
 

@@ -50,6 +50,7 @@ internal static class CliRouter
       "restart" => RunRestart(root, positional, output, error),
       "open" => CliOpenHandlers.Run(root, positional, error),
       "status" => RunStatus(root, output),
+      "publish" => CliPublishHandlers.Run(root, positional, output, error),
       _ => CliUsage.UnknownCommand(positional[0], error),
     };
   }

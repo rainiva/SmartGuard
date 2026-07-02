@@ -15,15 +15,6 @@ public class ScriptPathConstantsParityArchitectureTests
     [nameof(SmartGuardPaths.InitMarkerFileName)] = "$SmartGuardInitMarkerFileName",
   };
 
-  private static readonly Dictionary<string, string> FileNameToCmdVariable = new()
-  {
-    [nameof(SmartGuardPaths.ConfigFileName)] = "SMARTGUARD_CONFIG_FILE",
-    [nameof(SmartGuardPaths.StatusFileName)] = "SMARTGUARD_STATUS_FILE",
-    [nameof(SmartGuardPaths.DefaultLogFileName)] = "SMARTGUARD_DEFAULT_LOG",
-    [nameof(SmartGuardPaths.StartupLogFileName)] = "SMARTGUARD_STARTUP_LOG",
-    [nameof(SmartGuardPaths.InitMarkerFileName)] = "SMARTGUARD_INIT_MARKER",
-  };
-
   private static readonly Dictionary<string, string> FileNameToInnoDefine = new()
   {
     [nameof(SmartGuardPaths.ConfigFileName)] = "ConfigFileName",
@@ -46,24 +37,10 @@ public class ScriptPathConstantsParityArchitectureTests
   }
 
   [Fact]
-  public void Path_constants_cmd_must_mirror_SmartGuardPaths_file_names()
+  public void SmartGuardPathConstants_cmd_must_not_be_revived()
   {
-    var cmd = SourceScanHelper.ReadSource("SmartGuardPathConstants.cmd");
-    foreach (var (fieldName, variableName) in FileNameToCmdVariable)
-    {
-      var expectedValue = GetSmartGuardPathsConstant(fieldName);
-      cmd.Should().Contain($"set \"{variableName}={expectedValue}\"",
-        $"SmartGuardPathConstants.cmd must define {variableName} matching SmartGuardPaths.{fieldName}");
-    }
-  }
-
-  [Fact]
-  public void Status_cmd_must_use_path_constants_for_startup_log()
-  {
-    var content = SourceScanHelper.ReadSource("Status.cmd");
-    content.Should().Contain("SmartGuardPathConstants.cmd");
-    content.Should().NotContain("SmartGuard.startup.log");
-    content.Should().Contain("%SMARTGUARD_STARTUP_LOG%");
+    File.Exists(Path.Combine(SourceScanHelper.RepoRoot, "SmartGuardPathConstants.cmd"))
+      .Should().BeFalse("cmd path constants were removed; use SmartGuardPaths in C#");
   }
 
   [Fact]

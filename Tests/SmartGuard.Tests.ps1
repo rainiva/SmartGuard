@@ -120,11 +120,9 @@
             $content | Should -Match '<SelfContained>false</SelfContained>'
         }
 
-        It 'Setup-All.cmd calls build.cmd directly and Publish-All.ps1 is removed' {
+        It 'Setup-All.cmd is removed in favor of documented SmartGuard.Cli workflow' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'Setup-All.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'build\.cmd'
-            $content | Should -Not -Match 'Publish-All\.ps1'
+            Test-Path -LiteralPath (Join-Path $root 'Setup-All.cmd') | Should -Be $false
             Test-Path -LiteralPath (Join-Path $root 'scripts\Publish-All.ps1') | Should -Be $false
         }
 
@@ -292,13 +290,15 @@
         }
     }
 
-    Describe 'Phase 7.2 status cmd without PowerShell' {
-        It 'Status.cmd shows startup log tail without powershell.exe' {
+    Describe 'Phase 7.2 status via SmartGuard.Cli' {
+        It 'Status.cmd is removed and StatusReporter is the status true source' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuardPathConstants\.cmd'
-            $content | Should -Match 'SMARTGUARD_STARTUP_LOG'
-            $content | Should -Not -Match 'powershell'
+            Test-Path -LiteralPath (Join-Path $root 'Status.cmd') | Should -Be $false
+            $reporter = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\StatusReporter.cs') -Raw -Encoding UTF8
+            $reporter | Should -Match 'ScheduledTaskRegistrar\.TaskNames'
+            $reporter | Should -Match 'StartupLogFile'
+            $cli = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Cli\CliRouter.cs') -Raw -Encoding UTF8
+            $cli | Should -Match 'StatusReporter\.FormatStatus'
         }
     }
 
@@ -309,17 +309,9 @@
             Test-Path -LiteralPath (Join-Path $root 'Repair.cmd') | Should -Be $false
         }
 
-        It 'Setup-All.cmd uses repo-relative paths and current registration flow' {
+        It 'Setup-All.cmd is not shipped at repo root' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'Setup-All.cmd') -Raw -Encoding UTF8
-            $content | Should -Match '%~dp0'
-            $content | Should -Match 'build\.cmd'
-            $content | Should -Match 'Register-AllTasks\.cmd'
-            $content | Should -Match 'Run-Tests'
-            $content | Should -Not -Match 'D:\\Project\\SmartGuard'
-            $content | Should -Not -Match 'Repair-Encoding'
-            $content | Should -Not -Match 'Register-Task\.cmd'
-            $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
+            Test-Path -LiteralPath (Join-Path $root 'Setup-All.cmd') | Should -Be $false
         }
 
         It 'archives one-shot Migrate-RenameToSmartGuard script' {
@@ -545,12 +537,11 @@
             $installer | Should -Not -Match 'schtasks /End'
         }
 
-        It 'Status.cmd and Inno use registrar task names' {
+        It 'StatusReporter and Inno use registrar task names' {
             $root = Split-Path -Parent $PSScriptRoot
-            $status = Get-Content -LiteralPath (Join-Path $root 'Status.cmd') -Raw -Encoding UTF8
+            $status = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\StatusReporter.cs') -Raw -Encoding UTF8
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $status | Should -Match 'SmartGuard Guardian'
-            $status | Should -Match 'SmartGuard Tray'
+            $status | Should -Match 'ScheduledTaskRegistrar'
             $iss | Should -Match 'SmartGuard Guardian'
             $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
             $stopBlock | Should -Match 'SmartGuard\.Engine\.exe'

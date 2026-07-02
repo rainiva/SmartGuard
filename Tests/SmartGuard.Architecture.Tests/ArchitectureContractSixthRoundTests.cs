@@ -34,13 +34,20 @@ public class ArchitectureContractSixthRoundTests
   }
 
   [Fact]
-  public void Section1_must_register_ElevationHelper_and_Open_wrappers()
+  public void Section1_must_register_ElevationHelper_in_sixth_round_closure()
   {
     var content = ContractContent;
     content.Should().Contain("ElevationHelper");
-    content.Should().Contain("Request-AdminElevation.cmd");
-    content.Should().Contain("Open-Settings.cmd");
-    content.Should().Contain("Open-Logs.cmd");
-    content.Should().Contain("Open-Tray.cmd");
+    var section12 = ExtractSection(content, "## 12.");
+    section12.Should().Contain("E-11b");
+    section12.Should().Contain("Open-*.cmd");
+  }
+
+  private static string ExtractSection(string content, string header)
+  {
+    var start = content.IndexOf(header, StringComparison.Ordinal);
+    start.Should().BeGreaterThan(-1);
+    var next = content.IndexOf("\n## ", start + header.Length, StringComparison.Ordinal);
+    return next > start ? content[start..next] : content[start..];
   }
 }

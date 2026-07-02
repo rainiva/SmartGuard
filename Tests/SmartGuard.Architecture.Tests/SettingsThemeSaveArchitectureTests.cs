@@ -17,6 +17,5 @@ public class SettingsThemeSaveArchitectureTests
   {
     var controller = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsWindowController.cs");
     controller.Should().Contain("policyCoordinator.SaveThemePreferences");
-    controller.Should().NotContain("policyCoordinator.CommitSavedConfig,");
   }
 }

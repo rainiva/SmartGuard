@@ -20,6 +20,7 @@ internal static class CliUsage
     usage.AppendLine("  start guardian|engine|tray [--root <dir>]");
     usage.AppendLine("  restart tray [--root <dir>]");
     usage.AppendLine("  open tray|settings|logs [--root <dir>]");
+    usage.AppendLine("  publish [Release|Debug] [--root <dir>]");
     usage.AppendLine("  status [--root <dir>]");
     error.Write(usage.ToString());
   }

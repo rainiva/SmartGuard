@@ -155,6 +155,37 @@ Tray integration: 2/2
 - `InnoShortcutWrapperArchitectureTests`
 - `ArchitectureContractSixthRoundTests`
 
+第六轮在路径/脚本常量、Settings 暂停展示、UAC 与 Inno 包装脚本上完成收敛；第七轮将业务 cmd 迁入 `SmartGuard.Cli` + `SmartGuard.Configuration` 操作真源，删除 `Open-*.cmd`、`Status.cmd`、`Setup-All.cmd` 等运行时入口。
+
+## 第七轮关闭项（2026-07-02）
+
+| 类别 | ID | 状态 |
+|------|-----|------|
+| 多源 | R7-OPS | **已关闭**（`GuardianTaskRunner`、`TrayLauncher`、`TrayLifecycle`、`StatusReporter`；`InstallCommands` 在 Configuration） |
+| 多入口 | R7-CLI | **已关闭**（`SmartGuard.Cli.exe` 薄路由；dev cmd 单行转发） |
+| 多入口 | R7-INNO | **已关闭**（Inno → `SmartGuard.Cli.exe open *`） |
+| 多源 | R7-PUBLISH | **已关闭**（`DesktopSuitePublisher` 单源） |
+| 文档 | DOC-06 | **已关闭**（§13 第七轮索引 + 本终验） |
+
+## 新增 Architecture 门禁（第七轮）
+
+- `GuardianTaskRunnerArchitectureTests`
+- `CliThinFacadeArchitectureTests`
+- `InnoShortcutWrapperArchitectureTests`（更新：禁止 `Open-*.cmd`）
+- `PublishSingleSourceArchitectureTests`
+- `StatusReporterArchitectureTests`
+- `ArchitectureContractSeventhRoundTests`
+
+## 终验输出（第七轮）
+
+```
+PASSED=61 FAILED=0 TOTAL=61
+Pester: 59/59
+Architecture: 179/179
+Tray integration: 2/2
+（SMARTGUARD_SKIP_INSTALLER_TESTS=1，2026-07-02）
+```
+
 ## 终验输出（第六轮）
 
 ```
@@ -166,5 +197,7 @@ Tray integration: 2/2
 ```
 
 ## 结论
+
+第七轮将业务 cmd 收敛为 `SmartGuard.Cli.exe` 薄路由 + `SmartGuard.Configuration` 操作真源；删除 `Open-*.cmd`、`Status.cmd`、`Setup-All.cmd`、`SmartGuardPathConstants.cmd` 与 `Request-AdminElevation.cmd`；`DesktopSuitePublisher` 单源 publish；Inno 快捷方式经 `SmartGuard.Cli.exe open *`。DEV-ONLY 保留 `Run-Tests.cmd`、`Clean-Workspace.cmd`。
 
 第六轮在第五轮基线上完成剩余路径字面量收敛、脚本/Inno 常量 parity、Settings 与 Tray 暂停展示对称、UAC 提升单源、安装器快捷方式经 `Open-*.cmd` 包装；E-11/E-11b 由登记转为已关闭。
