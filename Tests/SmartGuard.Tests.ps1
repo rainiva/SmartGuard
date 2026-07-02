@@ -94,15 +94,24 @@
     }
 
     Describe 'Phase 7.5 dotnet publish chain' {
-        It 'build.cmd publishes all four desktop executables' {
+        It 'build.cmd delegates publish to SmartGuard.Cli' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'build.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Engine\.csproj'
-            $content | Should -Match 'SmartGuard\.Tray\.csproj'
-            $content | Should -Match 'SmartGuard\.LogViewer\.csproj'
-            $content | Should -Match 'SmartGuard\.Settings\.csproj'
-            $content | Should -Match '--self-contained false'
-            $content | Should -Match 'win-x64'
+            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'publish'
+            $content | Should -Not -Match 'dotnet publish'
+        }
+
+        It 'DesktopSuitePublisher owns the desktop publish project list' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $publisher = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Build\DesktopSuitePublisher.cs') -Raw -Encoding UTF8
+            $publisher | Should -Match 'SmartGuard\.Engine\.csproj'
+            $publisher | Should -Match 'SmartGuard\.Tray\.csproj'
+            $publisher | Should -Match 'SmartGuard\.LogViewer\.csproj'
+            $publisher | Should -Match 'SmartGuard\.Settings\.csproj'
+            $publisher | Should -Match 'SmartGuard\.Cli\.csproj'
+            $publisher | Should -Match '--self-contained false'
+            $publisher | Should -Match 'win-x64'
         }
 
         It 'Directory.Build.props pins framework-dependent publish defaults' {

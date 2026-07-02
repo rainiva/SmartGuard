@@ -17,9 +17,20 @@ public static class InstallerVersionResolver
         if (!match.Success)
             throw new ArgumentException($"Invalid installer version '{version}'. Expected major.minor.patch.", nameof(version));
 
+        if (increment < 0)
+            throw new ArgumentOutOfRangeException(nameof(increment), increment, "Increment must be non-negative.");
+
         var major = int.Parse(match.Groups[1].Value);
         var minor = int.Parse(match.Groups[2].Value);
-        var patch = int.Parse(match.Groups[3].Value) + increment;
+        var patch = int.Parse(match.Groups[3].Value);
+
+        if (minor is < 0 or > 9 || patch is < 0 or > 9)
+            throw new ArgumentException($"Invalid installer version '{version}'. Minor and patch must be 0-9.", nameof(version));
+
+        var total = major * 100 + minor * 10 + patch + increment;
+        major = total / 100;
+        minor = (total / 10) % 10;
+        patch = total % 10;
         return $"{major}.{minor}.{patch}";
     }
 
