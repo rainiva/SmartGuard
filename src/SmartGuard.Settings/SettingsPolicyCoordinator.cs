@@ -102,7 +102,8 @@ internal sealed class SettingsPolicyCoordinator
     _sldPoll.Value = config.CheckIntervalSec;
     _sldBrightMs.Value = config.BrightnessRestoreMs;
     _sldHeartbeat.Value = config.HeartbeatIntervalMin;
-    _tglPaused.IsChecked = config.Paused;
+    var status = StatusJsonReader.TryRead(SmartGuardPaths.StatusFile(_root));
+    _tglPaused.IsChecked = status?.paused ?? config.Paused;
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
