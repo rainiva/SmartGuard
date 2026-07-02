@@ -15,6 +15,9 @@
 | 配置文件 | `{root}/SmartGuard.config.json` | 全部经 `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save`、`ConfigMutationService` | Engine 直调 `GuardConfig.LoadFromFile` |
 | 运行时状态 | `{root}/SmartGuard.status.json` | `StatusJsonReader` / `StatusStore` | `StatusPublisher`（Engine） | Settings/Tray 各自解析 JSON |
 | 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页、LogViewer | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
+| 启动日志路径 | `SmartGuardPaths.StartupLogFile(root)` | Engine CLI、Settings/Tray 暂停回退 | — | `InstallCommands` 硬编码 `SmartGuard.startup.log` |
+| 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `LogViewerExe` | 注册、Toast、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
+| 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
 | 计划任务名 | `ScheduledTaskRegistrar.GuardianTaskName` / `TrayTaskName` | 注册、恢复、安装 | `ScheduledTaskRegistrar` | 字面量 `"SmartGuard Guardian"` 散落 |
 | 开机自启 UI | `config.AutoStartEnabled` + `AutoStartService.SyncFromTasks` | Settings | `SettingsSaveCoordinator` + `AutoStartService` | 仅写 config 不读 schtasks |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与切换读源） | Tray | `ConfigMutationService.SetPaused` | Tray 读 `config.Paused` 决定切换 |
@@ -31,7 +34,7 @@
 | 注册计划任务 | `SmartGuard.Engine.exe --install` | Inno / `Register-AllTasks.cmd` 委托此入口 |
 | 启动 Engine（生产） | 计划任务 `SmartGuard Guardian` | Tray/Inno/`Start-Core.cmd` 均 `schtasks /Run`；dev 前台用 `Debug-Engine.cmd` |
 | 启动 Tray（生产） | 计划任务 `SmartGuard Tray` | 登录时自动；dev 直启用 `Start-Tray.cmd` / `Restart-Tray.cmd`（**E-10 登记**） |
-| 停止 Engine（卸载） | `EngineLifecycle.Stop` | CLI、Inno、集成测试共用 |
+| 停止 Engine（卸载） | `EngineLifecycle.StopForUninstall` | CLI、Inno、集成测试共用 |
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings `tglPaused` 均经此 API；全量保存从 repository 读回 `Paused` |
 | 打开设置 | `SettingsMainPageLauncher.Open`（Tray 经 `ExternalToolLauncher.OpenSettings` 委托） | 命名管道激活或 spawn |
 | 打开日志 | `SettingsLogsPageLauncher.Open`（Tray 经 `ExternalToolLauncher.OpenLogViewer` 委托） | `LogViewer.exe` 兼容重定向；禁止独立 WinForms 日志壳 |
@@ -134,7 +137,24 @@
 | ME-12-R | **已关闭** | 集成测试注释移除 `Publish-All` |
 | GOD-01 | **已关闭** | `LogSearchFilterBar` &lt;300 行门禁 |
 | E-10 | **登记** | 生产 Tray = 计划任务；dev = `Start-Tray.cmd` / `Restart-Tray.cmd` |
+| E-11 | **登记** | UAC 提升：`Start-Core.cmd`/`Debug-Engine.cmd` VBS、`InstallCommands.RerunElevated`、`UpdateInstallerLauncher` 三套实现 |
+| E-11b | **登记** | Inno `[Run]`/`[Icons]` 直启 Tray/Settings（安装 UX；生产 Tray 主路径仍为计划任务） |
 | PERF | **已关闭** | 性能测试 settle + 5000ms 预算 + lifecycle 门禁 |
+
+---
+
+## 11. 第五轮治理关闭项（2026-07-02）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| M-17 | **已关闭** | `InstallCommands` → `SmartGuardPaths.StartupLogFile` |
+| M-18 | **已关闭** | `ScheduledTaskRegistrar` / `ToastShortcutResolver` → `SmartGuardPaths.*Exe` |
+| M-19 | **已关闭** | `EngineLifecycle` → `SmartGuardPaths.ProcessImageNames` |
+| GOD-02 | **已关闭** | `UpdateDownloadProgressWindowFactory` + `SettingsUpdateCheckCoordinator` &lt;300 行 |
+| GOD-03 | **已关闭** | `SettingsPauseHandler` + `SettingsDebouncedSaver`；`SettingsPolicyCoordinator` 231 行 |
+| GOD-04 | **已关闭** | `ToastRegistryWriter` + `StartMenuShortcutWriter` 自 `ToastAumidRegistrar` 提取 |
+| GOD-05 | **已关闭** | `GuardianFirstRunInitializer` + `GuardianExceptionStormHandler` 自 `GuardianLoop` 提取 |
+| DOC-04 | **已关闭** | §2 `StopForUninstall` 与实现对齐；§11 登记 E-11/E-11b |
 
 ---
 
@@ -176,4 +196,10 @@
 | 设置 spawn 单源 | `SettingsMainPageLauncherArchitectureTests` |
 | `LogSearchFilterBar` &lt;300 行 | `LogSearchFilterBarLineCountTests` |
 | Dev Tray 脚本登记 | `DevTrayScriptArchitectureTests` |
+| 路径/exe 单源 | `SmartGuardPathsSingleSourceArchitectureTests` |
+| 更新检查拆分 &lt;300 行 | `SettingsUpdateCheckCoordinatorLineCountTests` |
+| 更新进度窗工厂 | `SettingsUpdateCheckCoordinatorArchitectureTests` |
+| Policy 暂停/保存拆分 | `SettingsPolicyCoordinatorArchitectureTests` |
+| Toast AUMID 拆分 | `ToastAumidRegistrarArchitectureTests` |
+| GuardianLoop 拆分 | `GuardianLoopArchitectureTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |

@@ -37,7 +37,7 @@ public static class InstallCommands
 {
   public static int RunInstall(string root, bool skipPublish)
   {
-    var startupLog = Path.Combine(root, "SmartGuard.startup.log");
+    var startupLog = SmartGuardPaths.StartupLogFile(root);
     if (!IsAdministrator())
     {
       if (ElevationDeclinedMarker.Exists(root))
@@ -81,7 +81,7 @@ public static class InstallCommands
 
   public static int RunUninstall(string root)
   {
-    var startupLog = Path.Combine(root, "SmartGuard.startup.log");
+    var startupLog = SmartGuardPaths.StartupLogFile(root);
     if (!IsAdministrator())
     {
       if (ElevationDeclinedMarker.Exists(root))

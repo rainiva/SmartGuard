@@ -4,14 +4,6 @@ namespace SmartGuard.Configuration;
 
 public static class EngineLifecycle
 {
-  private static readonly string[] ProcessImageNames =
-  [
-    "SmartGuard.Tray.exe",
-    "SmartGuard.Engine.exe",
-    "SmartGuard.LogViewer.exe",
-    "SmartGuard.Settings.exe",
-  ];
-
   public static void EndAndDisableScheduledTasks()
   {
     foreach (var taskName in ScheduledTaskRegistrar.TaskNames)
@@ -23,7 +15,7 @@ public static class EngineLifecycle
 
   public static void StopProcesses()
   {
-    foreach (var processName in ProcessImageNames)
+    foreach (var processName in SmartGuardPaths.ProcessImageNames)
       TryKillProcess(processName);
   }
 
@@ -43,7 +35,7 @@ public static class EngineLifecycle
 
   public static bool AnySmartGuardProcessRunning()
   {
-    foreach (var processName in ProcessImageNames)
+    foreach (var processName in SmartGuardPaths.ProcessImageNames)
     {
       try
       {
