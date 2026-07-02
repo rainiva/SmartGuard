@@ -1,4 +1,5 @@
 ﻿using SmartGuard.Configuration;
+using SmartGuard.Configuration.Cli;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Cli;
 using SmartGuard.Engine.Worker;

@@ -1,8 +1,7 @@
 using System.Diagnostics;
 using System.Security.Principal;
-using SmartGuard.Configuration;
 
-namespace SmartGuard.Engine.Cli;
+namespace SmartGuard.Configuration.Cli;
 
 public static class ElevationDeclinedMarker
 {
@@ -50,7 +49,7 @@ public static class InstallCommands
     try
     {
       LegacyTaskCleaner.CleanLegacyTasks();
-      var engineExe = InstallPaths.GetEngineExe(root);
+      var engineExe = SmartGuardPaths.EngineExe(root);
       if (!skipPublish && !File.Exists(engineExe))
       {
         WriteStartupLog(startupLog,
@@ -124,22 +123,6 @@ public static class InstallCommands
 
     proc.WaitForExit();
     WriteStartupLog(startupLog, $"Elevated process exit code: {proc.ExitCode}");
-    return proc.ExitCode;
-  }
-
-  private static int RunProcess(string fileName, string arguments)
-  {
-    using var proc = Process.Start(new ProcessStartInfo
-    {
-      FileName = fileName,
-      Arguments = arguments,
-      UseShellExecute = false,
-      RedirectStandardOutput = true,
-      RedirectStandardError = true,
-      CreateNoWindow = true,
-    });
-    if (proc is null) throw new InvalidOperationException($"Failed to start {fileName}");
-    proc.WaitForExit();
     return proc.ExitCode;
   }
 

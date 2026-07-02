@@ -31,7 +31,7 @@ public class ElevationSingleSourceArchitectureTests
   [Fact]
   public void InstallCommands_must_use_ElevationHelper()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Cli/InstallCommands.cs");
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Cli/InstallCommands.cs");
     source.Should().Contain("ElevationHelper");
     source.Should().NotContain("Verb = \"runas\"");
   }

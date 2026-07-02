@@ -39,7 +39,7 @@ public class SmartGuardPathsExtensionsArchitectureTests
   [Fact]
   public void ElevationDeclinedMarker_must_use_SmartGuardPaths()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Cli/InstallCommands.cs");
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Cli/InstallCommands.cs");
     source.Should().NotContain(
       "\".SmartGuard.elevation-declined\"",
       "use SmartGuardPaths.ElevationDeclinedMarkerFile");

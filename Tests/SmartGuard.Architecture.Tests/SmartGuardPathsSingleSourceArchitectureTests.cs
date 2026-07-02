@@ -7,7 +7,7 @@ public class SmartGuardPathsSingleSourceArchitectureTests
   [Fact]
   public void InstallCommands_must_not_hardcode_startup_log_file_name()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Cli/InstallCommands.cs");
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Cli/InstallCommands.cs");
     source.Should().NotContain(
       "\"SmartGuard.startup.log\"",
       "use SmartGuardPaths.StartupLogFile or StartupLogFileName");

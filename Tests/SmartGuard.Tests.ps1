@@ -196,7 +196,7 @@
     Describe 'Phase 6.1 scheduled task registrar' {
         It 'InstallCommands registers tasks via ScheduledTaskRegistrar not PowerShell scripts' {
             $root = Split-Path -Parent $PSScriptRoot
-            $install = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Engine\Cli\InstallCommands.cs') -Raw -Encoding UTF8
+            $install = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Cli\InstallCommands.cs') -Raw -Encoding UTF8
             $install | Should -Match 'ScheduledTaskRegistrar\.RegisterGuardian'
             $install | Should -Match 'ScheduledTaskRegistrar\.RegisterTray'
             $install | Should -Not -Match 'RunPowerShellScript'

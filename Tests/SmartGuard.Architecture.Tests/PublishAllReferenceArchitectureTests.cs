@@ -10,7 +10,7 @@ public class PublishAllReferenceArchitectureTests
     "Tests/Integration/TrayCoreUserFlow.Helpers.ps1",
     "Tests/Integration/InstallerUserFlow.Helpers.ps1",
     "src/SmartGuard.Configuration/ScheduledTaskRegistrar.cs",
-    "src/SmartGuard.Engine/Cli/InstallCommands.cs",
+    "src/SmartGuard.Configuration/Cli/InstallCommands.cs",
     "Start-Core.cmd",
     "Debug-Engine.cmd",
     "Register-AllTasks.cmd",
