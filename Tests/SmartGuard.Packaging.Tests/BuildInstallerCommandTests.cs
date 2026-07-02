@@ -62,7 +62,7 @@ public class BuildInstallerCommandTests : IDisposable
     private string CreateFakeRepo()
     {
         Directory.CreateDirectory(Path.Combine(_tempDir, "bin"));
-        foreach (var f in new[] { "SmartGuard.Engine.exe", "SmartGuard.Tray.exe", "SmartGuard.LogViewer.exe", "SmartGuard.Settings.exe" })
+        foreach (var f in new[] { "SmartGuard.Engine.exe", "SmartGuard.Tray.exe", "SmartGuard.LogViewer.exe", "SmartGuard.Settings.exe", "SmartGuard.Cli.exe" })
             File.WriteAllText(Path.Combine(_tempDir, "bin", f), "exe");
         Directory.CreateDirectory(Path.Combine(_tempDir, "lib"));
         File.WriteAllText(Path.Combine(_tempDir, "lib", "SmartGuard.ico"), "ico");
@@ -70,8 +70,6 @@ public class BuildInstallerCommandTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_tempDir, "installer"));
         File.WriteAllText(Path.Combine(_tempDir, "installer", "version.txt"), "1.0.5");
         File.WriteAllText(Path.Combine(_tempDir, "installer", "license_zh-CN.txt"), "license");
-        foreach (var wrapper in new[] { "Open-Tray.cmd", "Open-Settings.cmd", "Open-Logs.cmd" })
-            File.WriteAllText(Path.Combine(_tempDir, wrapper), "@echo off");
         return _tempDir;
     }
 

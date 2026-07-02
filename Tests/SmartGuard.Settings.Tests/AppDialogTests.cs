@@ -6,6 +6,7 @@ using System.Windows.Media.Effects;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class AppDialogTests
 {
     [Fact]

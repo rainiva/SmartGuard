@@ -8,13 +8,11 @@ public static class StagingLayout
         @"bin\SmartGuard.Tray.exe",
         @"bin\SmartGuard.LogViewer.exe",
         @"bin\SmartGuard.Settings.exe",
+        @"bin\SmartGuard.Cli.exe",
         @"lib\SmartGuard.ico",
         @"lib\SmartGuard.Settings.xaml",
         @"license_zh-CN.txt",
         @"VERSION.txt",
-        @"Open-Tray.cmd",
-        @"Open-Settings.cmd",
-        @"Open-Logs.cmd",
     }.AsReadOnly();
 
     public const string RedistPattern = @"redist\windowsdesktop-runtime-*-win-x64.exe";

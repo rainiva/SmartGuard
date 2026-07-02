@@ -29,6 +29,7 @@ public class ArchitectureContractSixthRoundTests
     content.Should().Contain("SettingsPauseDisplayArchitectureTests");
     content.Should().Contain("ElevationSingleSourceArchitectureTests");
     content.Should().Contain("InnoShortcutWrapperArchitectureTests");
+    content.Should().Contain("RunTestsOptimizationArchitectureTests");
     content.Should().Contain("ArchitectureContractSixthRoundTests");
   }
 

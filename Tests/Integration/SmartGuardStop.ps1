@@ -4,6 +4,34 @@
   Delegates to SmartGuard.Engine.exe --uninstall when the engine binary exists.
 #>
 
+function Wait-SmartGuardEngineExit {
+    param(
+        [int]$ProcessId = 0,
+        [int]$TimeoutMs = 2000,
+        [int]$PollMs = 100
+    )
+
+    $deadline = [datetime]::UtcNow.AddMilliseconds($TimeoutMs)
+    while ([datetime]::UtcNow -lt $deadline) {
+        if ($ProcessId -gt 0) {
+            $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+            if (-not $proc) {
+                return $true
+            }
+        }
+        else {
+            $running = Get-Process -Name 'SmartGuard.Engine' -ErrorAction SilentlyContinue
+            if (-not $running) {
+                return $true
+            }
+        }
+
+        Start-Sleep -Milliseconds $PollMs
+    }
+
+    return $false
+}
+
 function Stop-SmartGuardProcesses {
     param(
         [string]$EngineExe,
@@ -17,7 +45,7 @@ function Stop-SmartGuardProcesses {
         }
         $arguments += '--uninstall'
         & $EngineExe @arguments 2>$null | Out-Null
-        Start-Sleep -Seconds 2
+        Wait-SmartGuardEngineExit | Out-Null
         return
     }
 

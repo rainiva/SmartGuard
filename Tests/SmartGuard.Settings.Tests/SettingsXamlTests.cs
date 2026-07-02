@@ -6,6 +6,7 @@ using System.Windows.Markup;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsXamlTests
 {
     [Fact]

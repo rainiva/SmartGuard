@@ -7,6 +7,7 @@ using SmartGuard.Settings;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsXamlLoaderTests
 {
     private static string RepoXamlPath()

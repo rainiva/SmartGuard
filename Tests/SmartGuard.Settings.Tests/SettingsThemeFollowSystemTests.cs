@@ -9,6 +9,7 @@ using Thickness = System.Windows.Thickness;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsThemeFollowSystemTests
 {
     [Fact]

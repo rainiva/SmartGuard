@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class LogSearchFilterBarTests
 {
     [Fact]

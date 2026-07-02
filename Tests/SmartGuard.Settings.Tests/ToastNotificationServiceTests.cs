@@ -3,6 +3,7 @@ using System.Windows;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class ToastNotificationServiceTests
 {
     private static T RunOnSta<T>(Func<T> action)

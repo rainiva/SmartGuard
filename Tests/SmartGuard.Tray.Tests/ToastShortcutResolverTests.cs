@@ -27,18 +27,19 @@ public class ToastShortcutResolverTests
   }
 
   [Fact]
-  public void Resolve_falls_back_to_start_tray_cmd_when_exe_missing()
+  public void Resolve_falls_back_to_cli_open_tray_when_exe_missing()
   {
     var root = Path.Combine(Path.GetTempPath(), "SmartGuardToastTests", Guid.NewGuid().ToString("N"));
-    Directory.CreateDirectory(root);
-    var startTray = Path.Combine(root, "Start-Tray.cmd");
-    File.WriteAllText(startTray, "@echo off\r\n");
+    var bin = Path.Combine(root, "bin");
+    Directory.CreateDirectory(bin);
+    var cliExe = Path.Combine(bin, "SmartGuard.Cli.exe");
+    File.WriteAllText(cliExe, string.Empty);
 
     try
     {
       var target = ToastShortcutResolver.Resolve(root);
-      target.TargetPath.Should().Be(startTray);
-      target.Arguments.Should().BeEmpty();
+      target.TargetPath.Should().Be(cliExe);
+      target.Arguments.Should().Be($"open tray --root \"{root}\"");
       target.WorkingDirectory.Should().Be(root);
     }
     finally

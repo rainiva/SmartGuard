@@ -5,6 +5,7 @@ using System.Windows.Media;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class ToastLayoutMetricsTests
 {
     [Fact]

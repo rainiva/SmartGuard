@@ -25,14 +25,13 @@ public class StageCommandTests : IDisposable
         File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.Tray.exe"), "exe");
         File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.LogViewer.exe"), "exe");
         File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.Settings.exe"), "exe");
+        File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.Cli.exe"), "exe");
         Directory.CreateDirectory(Path.Combine(_repoRoot, "lib"));
         File.WriteAllText(Path.Combine(_repoRoot, "lib", "SmartGuard.ico"), "ico");
         File.WriteAllText(Path.Combine(_repoRoot, "lib", "SmartGuard.Settings.xaml"), "xaml");
         Directory.CreateDirectory(Path.Combine(_repoRoot, "installer"));
         File.WriteAllText(Path.Combine(_repoRoot, "installer", "version.txt"), "1.0.25");
         File.WriteAllText(Path.Combine(_repoRoot, "installer", "license_zh-CN.txt"), "license");
-        foreach (var wrapper in new[] { "Open-Tray.cmd", "Open-Settings.cmd", "Open-Logs.cmd" })
-            File.WriteAllText(Path.Combine(_repoRoot, wrapper), "@echo off");
 
         var staging = Path.Combine(_repoRoot, "installer", "staging");
         var publishCalls = new List<(string root, string cfg)>();

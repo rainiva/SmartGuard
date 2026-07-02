@@ -519,7 +519,8 @@
         It 'installer log shortcut opens Settings logs page not LogViewer' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $iss | Should -Match 'Open-Logs\.cmd'
+            $iss | Should -Match 'SmartGuard\.Cli\.exe'
+            $iss | Should -Match 'open logs'
             $iss | Should -Not -Match '\{group\}.*日志.*SmartGuard\.LogViewer\.exe'
         }
 

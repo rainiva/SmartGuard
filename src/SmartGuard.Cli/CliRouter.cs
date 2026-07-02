@@ -1,4 +1,3 @@
-using System.Text;
 using SmartGuard.Configuration;
 using SmartGuard.Configuration.Cli;
 
@@ -10,7 +9,7 @@ internal static class CliRouter
   {
     if (args.Length == 0)
     {
-      PrintUsage(error);
+      CliUsage.Print(error);
       return 1;
     }
 
@@ -39,69 +38,29 @@ internal static class CliRouter
 
     if (positional.Count == 0)
     {
-      PrintUsage(error);
+      CliUsage.Print(error);
       return 1;
     }
 
     return positional[0].ToLowerInvariant() switch
     {
-      "install" => RunInstall(root, positional, error),
+      "install" => RunInstall(root, positional),
       "uninstall" => InstallCommands.RunUninstall(root),
-      "start" => RunStart(root, positional, args, error, output),
-      "restart" => RunRestart(root, positional, error, output),
+      "start" => CliStartHandlers.Run(root, positional, args, output, error),
+      "restart" => RunRestart(root, positional, output, error),
+      "open" => CliOpenHandlers.Run(root, positional, error),
       "status" => RunStatus(root, output),
-      _ => UnknownCommand(positional[0], error),
+      _ => CliUsage.UnknownCommand(positional[0], error),
     };
   }
 
-  private static int RunInstall(string root, List<string> positional, TextWriter error)
+  private static int RunInstall(string root, List<string> positional)
   {
     var skipPublish = positional.Contains("--skip-publish", StringComparer.OrdinalIgnoreCase);
     return InstallCommands.RunInstall(root, skipPublish);
   }
 
-  private static int RunStart(string root, List<string> positional, string[] fullArgs, TextWriter error, TextWriter output)
-  {
-    if (positional.Count < 2)
-    {
-      error.WriteLine("Usage: SmartGuard.Cli start guardian|engine|tray [--root <dir>]");
-      return 1;
-    }
-
-    return positional[1].ToLowerInvariant() switch
-    {
-      "guardian" => CliAdminRunner.RunElevatedIfNeeded(fullArgs, () =>
-      {
-        output.WriteLine("[SmartGuard] Starting Guardian scheduled task...");
-        GuardianTaskRunner.Run();
-        output.WriteLine("Guardian task started.");
-        return 0;
-      }),
-      "engine" => CliAdminRunner.RunElevatedIfNeeded(fullArgs, () =>
-      {
-        output.WriteLine("[SmartGuard] Starting engine in foreground (dev only)...");
-        return EngineLauncher.StartForeground(root);
-      }),
-      "tray" => RunTrayStart(root, error),
-      _ => UnknownCommand(positional[1], error),
-    };
-  }
-
-  private static int RunTrayStart(string root, TextWriter error)
-  {
-    try
-    {
-      TrayLauncher.Start(root);
-      return 0;
-    }
-    catch (Exception ex)
-    {
-      error.WriteLine(ex.Message);
-      return 1;
-    }
-  }
-
-  private static int RunRestart(string root, List<string> positional, TextWriter error, TextWriter output)
+  private static int RunRestart(string root, List<string> positional, TextWriter output, TextWriter error)
   {
     if (positional.Count < 2 || !positional[1].Equals("tray", StringComparison.OrdinalIgnoreCase))
     {
@@ -109,41 +68,12 @@ internal static class CliRouter
       return 1;
     }
 
-    try
-    {
-      TrayLifecycle.Restart(root);
-      output.WriteLine("Tray restarted. Check the notification area.");
-      return 0;
-    }
-    catch (Exception ex)
-    {
-      error.WriteLine(ex.Message);
-      return 1;
-    }
+    return CliTrayHandlers.Restart(root, output, error);
   }
 
   private static int RunStatus(string root, TextWriter output)
   {
     output.Write(StatusReporter.FormatStatus(root));
     return 0;
-  }
-
-  private static int UnknownCommand(string command, TextWriter error)
-  {
-    error.WriteLine($"Unknown command: {command}");
-    PrintUsage(error);
-    return 1;
-  }
-
-  private static void PrintUsage(TextWriter error)
-  {
-    var usage = new StringBuilder();
-    usage.AppendLine("SmartGuard.Cli usage:");
-    usage.AppendLine("  install [--skip-publish] [--root <dir>]");
-    usage.AppendLine("  uninstall [--root <dir>]");
-    usage.AppendLine("  start guardian|engine|tray [--root <dir>]");
-    usage.AppendLine("  restart tray [--root <dir>]");
-    usage.AppendLine("  status [--root <dir>]");
-    error.Write(usage.ToString());
   }
 }

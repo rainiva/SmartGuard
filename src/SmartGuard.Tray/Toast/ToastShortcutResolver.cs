@@ -15,20 +15,14 @@ public static class ToastShortcutResolver
       return new ToastShortcutTarget(trayExe, $"--root \"{root}\"", workingDirectory);
     }
 
-    var startTray = Path.Combine(root, "Start-Tray.cmd");
-    if (File.Exists(startTray))
+    var cliExe = SmartGuardPaths.CliExe(root);
+    if (File.Exists(cliExe))
     {
-      return new ToastShortcutTarget(startTray, string.Empty, workingDirectory);
-    }
-
-    var restartTray = Path.Combine(root, "Restart-Tray.cmd");
-    if (File.Exists(restartTray))
-    {
-      return new ToastShortcutTarget(restartTray, string.Empty, workingDirectory);
+      return new ToastShortcutTarget(cliExe, $"open tray --root \"{root}\"", workingDirectory);
     }
 
     throw new FileNotFoundException(
-      "SmartGuard tray launcher not found. Expected bin\\SmartGuard.Tray.exe or Start-Tray.cmd.",
+      "SmartGuard tray launcher not found. Expected bin\\SmartGuard.Tray.exe or bin\\SmartGuard.Cli.exe.",
       trayExe);
   }
 }

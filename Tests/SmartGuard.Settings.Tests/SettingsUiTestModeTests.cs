@@ -5,6 +5,7 @@ using SmartGuard.Settings;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsUiTestModeTests
 {
     [Fact]
