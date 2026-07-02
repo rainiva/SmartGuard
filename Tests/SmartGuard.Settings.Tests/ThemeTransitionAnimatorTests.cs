@@ -53,6 +53,48 @@ public class ThemeTransitionAnimatorTests
     }
 
     [Fact]
+    public void InstallRuntimeThemeLayer_moves_theme_colors_to_mutable_merged_dictionary()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            window.Should().NotBeNull(error);
+
+            var runtime = ThemeTransitionAnimator.InstallRuntimeThemeLayer(window!.Resources);
+            runtime.Should().NotBeNull();
+            window.Resources.Keys.OfType<string>().Should().NotContain("WindowBackground");
+            runtime.Contains("WindowBackground").Should().BeTrue();
+            ((SolidColorBrush)runtime["WindowBackground"]).IsFrozen.Should().BeFalse();
+        });
+    }
+
+    [Fact]
+    public void AnimateTransition_succeeds_when_theme_brushes_are_frozen()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            ThemeTransitionAnimator.ResetForTests();
+
+            var resources = CreateSampleResources();
+            ThemeTransitionAnimator.EnsureMutableBrushes(resources);
+            ThemeTransitionAnimator.ApplyImmediate(resources, isDark: false);
+
+            foreach (var key in ThemePalette.GetColors(isDark: false).Keys)
+            {
+                if (resources[key] is SolidColorBrush brush)
+                    brush.Freeze();
+            }
+
+            var window = new Window();
+            window.Resources.MergedDictionaries.Add(resources);
+
+            var act = () => ThemeTransitionAnimator.AnimateTransition(window, resources, isDark: true);
+            act.Should().NotThrow();
+            ThemeTransitionAnimator.ActiveStoryboard.Should().NotBeNull();
+        });
+    }
+
+    [Fact]
     public void AnimateTransition_uses_layered_duration_and_smooth_easing()
     {
         WpfStaTestHost.Run(() =>

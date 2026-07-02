@@ -23,14 +23,27 @@ internal static class ThemeTransitionAnimator
         ThemeTransitionProfile.TotalDuration = TimeSpan.FromMilliseconds(760);
     }
 
-    internal static void EnsureMutableBrushes(ResourceDictionary resources)
+    internal static ResourceDictionary InstallRuntimeThemeLayer(ResourceDictionary resources)
     {
+        var runtime = new ResourceDictionary();
         foreach (var key in ThemePalette.GetColors(isDark: false).Keys)
         {
             if (!resources.Contains(key))
                 continue;
 
-            if (resources[key] is SolidColorBrush { IsFrozen: false })
+            runtime[key] = ToMutableBrush(resources[key]);
+            resources.Remove(key);
+        }
+
+        resources.MergedDictionaries.Insert(0, runtime);
+        return runtime;
+    }
+
+    internal static void EnsureMutableBrushes(ResourceDictionary resources)
+    {
+        foreach (var key in ThemePalette.GetColors(isDark: false).Keys)
+        {
+            if (!resources.Contains(key))
                 continue;
 
             resources[key] = ToMutableBrush(resources[key]);
@@ -74,11 +87,7 @@ internal static class ThemeTransitionAnimator
                 if (!targetPalette.TryGetValue(key, out var targetColor) || !resources.Contains(key))
                     continue;
 
-                if (resources[key] is not SolidColorBrush brush)
-                {
-                    resources[key] = new SolidColorBrush(targetColor);
-                    continue;
-                }
+                var brush = ResolveAnimatableBrush(resources, key, targetColor);
 
                 var animation = new ColorAnimation
                 {
@@ -177,6 +186,25 @@ internal static class ThemeTransitionAnimator
 
             resources[key] = new SolidColorBrush(color);
         }
+    }
+
+    private static SolidColorBrush ResolveAnimatableBrush(
+        ResourceDictionary resources,
+        string key,
+        Color targetColor)
+    {
+        var mutableBrush = resources[key] switch
+        {
+            SolidColorBrush brush when !brush.IsFrozen => brush,
+            SolidColorBrush brush => new SolidColorBrush(brush.Color),
+            Color color => new SolidColorBrush(color),
+            _ => new SolidColorBrush(targetColor),
+        };
+
+        if (!ReferenceEquals(resources[key], mutableBrush))
+            resources[key] = mutableBrush;
+
+        return mutableBrush;
     }
 
     private static SolidColorBrush ToMutableBrush(object resource)

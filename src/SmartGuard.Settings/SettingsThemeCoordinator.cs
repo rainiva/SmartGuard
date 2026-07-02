@@ -18,6 +18,7 @@ public sealed class SettingsThemeCoordinator
   private readonly Func<GuardConfig> _readConfigFromUi;
   private readonly Action<GuardConfig> _commitSavedConfig;
   private readonly Action _onAfterThemeApply;
+  private ResourceDictionary _themeResources = null!;
   private bool _suppressThemeEvents;
   private SystemThemeWatcher? _systemThemeWatcher;
 
@@ -55,6 +56,7 @@ public sealed class SettingsThemeCoordinator
 
   public void Initialize(Window window)
   {
+    _themeResources = ThemeTransitionAnimator.InstallRuntimeThemeLayer(window.Resources);
     _suppressThemeEvents = true;
     _tglThemeFollowSystem.IsChecked = _state.FollowSystem;
     UpdateThemeControlsVisibility();
@@ -146,9 +148,10 @@ public sealed class SettingsThemeCoordinator
 
   private void ApplyTheme(Window window, bool isDark)
   {
+    var previousIsDark = _state.IsDarkThemeApplied;
     _state.IsDarkThemeApplied = isDark;
     _toastService.IsDarkMode = isDark;
-    var resources = window.Resources;
+    var resources = _themeResources;
 
     void FinishThemeApply()
     {
@@ -165,12 +168,27 @@ public sealed class SettingsThemeCoordinator
       return;
     }
 
-    ThemeTransitionAnimator.AnimateTransition(
-      window,
-      resources,
-      isDark,
-      FinishThemeApply,
-      onMidpoint: () => WindowTitleBarTheme.Apply(window, isDark));
+    if (previousIsDark == isDark)
+    {
+      FinishThemeApply();
+      return;
+    }
+
+    try
+    {
+      ThemeTransitionAnimator.AnimateTransition(
+        window,
+        resources,
+        isDark,
+        FinishThemeApply,
+        onMidpoint: () => WindowTitleBarTheme.Apply(window, isDark));
+    }
+    catch (InvalidOperationException)
+    {
+      WindowTitleBarTheme.Apply(window, isDark);
+      ThemeTransitionAnimator.ApplyImmediate(resources, isDark);
+      FinishThemeApply();
+    }
   }
 
   public void Dispose()

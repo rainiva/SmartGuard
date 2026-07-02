@@ -114,6 +114,24 @@ begin
   DeleteFile(OutputFile);
 end;
 
+function GetExistingSmartGuardInstallPath(): String;
+var
+  Path: string;
+begin
+  Result := '';
+  if RegQueryStringValue(
+    HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}_is1',
+    'InstallLocation', Path) then
+    Result := RemoveBackslash(Path);
+  if Result = '' then
+    if RegQueryStringValue(
+      HKLM,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}_is1',
+      'InstallLocation', Path) then
+      Result := RemoveBackslash(Path);
+end;
+
 procedure StopSmartGuardProcesses();
 var
   ResultCode: Integer;
@@ -160,24 +178,6 @@ begin
   Result := TryStopSmartGuardProcesses();
   if Result then
     SmartGuardStopCompleted := True;
-end;
-
-function GetExistingSmartGuardInstallPath(): String;
-var
-  Path: string;
-begin
-  Result := '';
-  if RegQueryStringValue(
-    HKCU,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}_is1',
-    'InstallLocation', Path) then
-    Result := RemoveBackslash(Path);
-  if Result = '' then
-    if RegQueryStringValue(
-      HKLM,
-      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}_is1',
-      'InstallLocation', Path) then
-      Result := RemoveBackslash(Path);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

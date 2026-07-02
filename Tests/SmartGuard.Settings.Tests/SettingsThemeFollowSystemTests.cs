@@ -129,6 +129,73 @@ public class SettingsThemeFollowSystemTests
     }
 
     [Fact]
+    public void User_disables_follow_system_after_window_shown_does_not_throw()
+    {
+        RunOnSta(() =>
+        {
+            SettingsUiTestMode.SetEnabled(false);
+            SystemThemeWatcher.RegistryReaderForTests = () => 1;
+            var installRoot = CreateInstallRoot(themeFollowSystem: true, themeIsDark: false);
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                WpfStaTestHost.ShowAndWait(window);
+
+                var tglThemeFollowSystem = window.FindName("tglThemeFollowSystem") as CheckBox;
+                tglThemeFollowSystem.Should().NotBeNull();
+
+                var act = () => tglThemeFollowSystem!.IsChecked = false;
+                act.Should().NotThrow("disabling follow-system must not crash theme transition animation");
+
+                controller!.IsDarkThemeEnabled.Should().BeFalse();
+            }
+            finally
+            {
+                SettingsUiTestMode.SetEnabled(true);
+                SystemThemeWatcher.ResetForTests();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void User_disables_follow_system_while_system_is_dark_applies_manual_light_without_throw()
+    {
+        RunOnSta(() =>
+        {
+            SettingsUiTestMode.SetEnabled(false);
+            SystemThemeWatcher.RegistryReaderForTests = () => 0;
+            var installRoot = CreateInstallRoot(themeFollowSystem: true, themeIsDark: false);
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+                controller!.IsDarkThemeEnabled.Should().BeTrue();
+
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+
+                var tglThemeFollowSystem = window.FindName("tglThemeFollowSystem") as CheckBox;
+                tglThemeFollowSystem.Should().NotBeNull();
+
+                var act = () => tglThemeFollowSystem!.IsChecked = false;
+                act.Should().NotThrow("switching from system-dark to manual-light must animate safely");
+
+                controller.IsDarkThemeEnabled.Should().BeFalse();
+            }
+            finally
+            {
+                SettingsUiTestMode.SetEnabled(true);
+                SystemThemeWatcher.ResetForTests();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void User_enables_follow_system_applies_registry_dark_mode()
     {
         RunOnSta(() =>
