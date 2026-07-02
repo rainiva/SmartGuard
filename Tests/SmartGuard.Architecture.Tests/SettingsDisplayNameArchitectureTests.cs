@@ -9,15 +9,17 @@ public class SettingsDisplayNameArchitectureTests
   public void SettingsWindowController_must_not_hardcode_tier_display_names()
   {
     var policySource = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsPolicyCoordinator.cs");
-    policySource.Should().NotContain($"\"{PowerPlanCatalogProvider.HighPerformanceDisplayName}\"",
+    var catalogSource = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsPlanCatalogCoordinator.cs");
+    var combined = policySource + catalogSource;
+    combined.Should().NotContain($"\"{PowerPlanCatalogProvider.HighPerformanceDisplayName}\"",
       "use PowerPlanCatalogProvider.HighPerformanceDisplayName");
-    policySource.Should().NotContain($"\"{PowerPlanCatalogProvider.BalancedDisplayName}\"",
+    combined.Should().NotContain($"\"{PowerPlanCatalogProvider.BalancedDisplayName}\"",
       "use PowerPlanCatalogProvider.BalancedDisplayName");
-    policySource.Should().NotContain($"\"{PowerPlanCatalogProvider.PowerSaverDisplayName}\"",
+    combined.Should().NotContain($"\"{PowerPlanCatalogProvider.PowerSaverDisplayName}\"",
       "use PowerPlanCatalogProvider.PowerSaverDisplayName");
-    policySource.Should().Contain("PowerPlanCatalogProvider.HighPerformanceDisplayName");
-    policySource.Should().Contain("PowerPlanCatalogProvider.BalancedDisplayName");
-    policySource.Should().Contain("PowerPlanCatalogProvider.PowerSaverDisplayName");
+    combined.Should().Contain("PowerPlanCatalogProvider.HighPerformanceDisplayName");
+    combined.Should().Contain("PowerPlanCatalogProvider.BalancedDisplayName");
+    combined.Should().Contain("PowerPlanCatalogProvider.PowerSaverDisplayName");
   }
 
   [Fact]

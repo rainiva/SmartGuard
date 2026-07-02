@@ -1,9 +1,10 @@
 #Requires -Version 5.1
 $root = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { 'D:\Project\SmartGuard' }
+. (Join-Path $PSScriptRoot 'SmartGuardPathConstants.ps1')
 . (Join-Path $PSScriptRoot '..\Tests\Integration\SmartGuardStop.ps1')
 
 $exe = Join-Path $root 'bin\SmartGuard.Engine.exe'
-$log = Join-Path $root 'SmartGuard.log'
+$log = Join-Path $root $SmartGuardDefaultLogFileName
 
 Stop-SmartGuardProcesses -EngineExe $exe -Root $root
 Start-Sleep -Seconds 1
@@ -12,6 +13,7 @@ $logBytesBefore = if (Test-Path -LiteralPath $log) { (Get-Item -LiteralPath $log
 $marker = "benchmark-{0}" -f [Guid]::NewGuid().ToString('N')
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
+# benchmark-only-start
 $p = Start-Process -FilePath $exe -ArgumentList '--root', $root -WindowStyle Hidden -PassThru
 $found = $false
 while ($sw.ElapsedMilliseconds -lt 10000) {

@@ -13,8 +13,11 @@ public class LogViewerProgramArchitectureTests
     program.Should().Contain("LogViewerEntryRedirect.LaunchSettingsLogsPage");
 
     var redirect = SourceScanHelper.ReadSource("src/SmartGuard.LogViewer/LogViewerEntryRedirect.cs");
-    redirect.Should().Contain("SmartGuardPaths.SettingsExe");
-    redirect.Should().Contain("--page logs");
+    redirect.Should().Contain("SettingsLogsPageLauncher.Open");
+
+    var launcher = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SettingsLogsPageLauncher.cs");
+    launcher.Should().Contain("SmartGuardPaths.SettingsExe");
+    launcher.Should().Contain("--page logs");
   }
 
   [Fact]

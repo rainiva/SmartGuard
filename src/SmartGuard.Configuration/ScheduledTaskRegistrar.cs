@@ -24,7 +24,7 @@ public static class ScheduledTaskRegistrar
     if (!File.Exists(engineExe))
     {
       throw new FileNotFoundException(
-        "SmartGuard.Engine.exe not found. Run build.cmd or scripts\\Publish-All.ps1, or reinstall SmartGuard.",
+        "SmartGuard.Engine.exe not found. Run build.cmd, or reinstall SmartGuard.",
         engineExe);
     }
 
@@ -37,7 +37,7 @@ public static class ScheduledTaskRegistrar
     if (!File.Exists(trayExe))
     {
       throw new FileNotFoundException(
-        "SmartGuard.Tray.exe not found. Run build.cmd or scripts\\Publish-All.ps1, or reinstall SmartGuard.",
+        "SmartGuard.Tray.exe not found. Run build.cmd, or reinstall SmartGuard.",
         trayExe);
     }
 

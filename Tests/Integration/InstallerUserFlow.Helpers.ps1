@@ -11,7 +11,7 @@ function Initialize-InstallerUserFlowContext {
     $global:SG_UI_EngineExe = Join-Path $global:SG_UI_EngineBin 'SmartGuard.Engine.exe'
 
     if (-not (Test-Path -LiteralPath $global:SG_UI_EngineExe)) {
-        throw "Missing publish output: $global:SG_UI_EngineExe (run scripts\Publish-All.ps1)"
+        throw "Missing publish output: $global:SG_UI_EngineExe (run build.cmd)"
     }
 }
 

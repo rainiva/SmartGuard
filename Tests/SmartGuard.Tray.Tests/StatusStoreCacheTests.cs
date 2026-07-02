@@ -49,7 +49,18 @@ public class StatusStoreCacheTests
             store.Read()!.currentPlan.Should().Be("平衡");
 
             File.WriteAllText(path, JsonSerializer.Serialize(new StatusPayload { currentPlan = "节能" }));
-            store.Read()!.currentPlan.Should().Be("节能");
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+            StatusPayload? updated = null;
+            while (DateTime.UtcNow < deadline)
+            {
+                updated = store.Read();
+                if (updated?.currentPlan == "节能")
+                    break;
+                Thread.Sleep(50);
+            }
+
+            updated.Should().NotBeNull();
+            updated!.currentPlan.Should().Be("节能");
 
             store.DiskReadCountForTests.Should().Be(2);
         }

@@ -11,6 +11,7 @@ internal sealed class SettingsPolicyCoordinator
   private readonly ConfigMutationService _configMutations;
   private readonly Window _window;
   private readonly ToastNotificationService _toastService;
+  private readonly SettingsPlanCatalogCoordinator _planCatalog;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
   private readonly NumberBox _sldBattery;
@@ -20,7 +21,6 @@ internal sealed class SettingsPolicyCoordinator
   private readonly ComboBox _cmbActivePlan;
   private readonly ComboBox _cmbBalancedPlan;
   private readonly ComboBox _cmbPowerSaverPlan;
-  private readonly TextBlock? _lblPlanMappingStatus;
   private readonly CheckBox _tglPaused;
   private readonly CheckBox _tglNotify;
   private readonly CheckBox _tglNotifyExternal;
@@ -29,9 +29,6 @@ internal sealed class SettingsPolicyCoordinator
   private GuardConfig _originalConfig;
   private System.Windows.Threading.DispatcherTimer? _saveDebounceTimer;
   private CancellationTokenSource? _saveCts;
-  private CancellationTokenSource? _planCatalogLoadCts;
-  private int _planCatalogLoadGeneration;
-  private bool _suppressPlanComboEvents;
 
   internal SettingsPolicyCoordinator(
     string root,
@@ -69,11 +66,18 @@ internal sealed class SettingsPolicyCoordinator
     _cmbActivePlan = cmbActivePlan;
     _cmbBalancedPlan = cmbBalancedPlan;
     _cmbPowerSaverPlan = cmbPowerSaverPlan;
-    _lblPlanMappingStatus = lblPlanMappingStatus;
     _tglPaused = tglPaused;
     _tglNotify = tglNotify;
     _tglNotifyExternal = tglNotifyExternal;
     _tglAutoStart = tglAutoStart;
+    _planCatalog = new SettingsPlanCatalogCoordinator(
+      window,
+      cmbActivePlan,
+      cmbBalancedPlan,
+      cmbPowerSaverPlan,
+      lblPlanMappingStatus,
+      () => _originalConfig,
+      ReadConfigFromUi);
   }
 
   internal void ApplyInitialValues(GuardConfig config)
@@ -102,23 +106,23 @@ internal sealed class SettingsPolicyCoordinator
 
     void QueueSaveAndRefreshPlanStatus()
     {
-      UpdatePlanMappingStatus();
+      _planCatalog.UpdatePlanMappingStatus();
       QueueSave();
     }
 
     _cmbActivePlan.SelectionChanged += (_, _) =>
     {
-      if (_suppressPlanComboEvents) return;
+      if (_planCatalog.IsUpdatingCombos) return;
       QueueSaveAndRefreshPlanStatus();
     };
     _cmbBalancedPlan.SelectionChanged += (_, _) =>
     {
-      if (_suppressPlanComboEvents) return;
+      if (_planCatalog.IsUpdatingCombos) return;
       QueueSaveAndRefreshPlanStatus();
     };
     _cmbPowerSaverPlan.SelectionChanged += (_, _) =>
     {
-      if (_suppressPlanComboEvents) return;
+      if (_planCatalog.IsUpdatingCombos) return;
       QueueSaveAndRefreshPlanStatus();
     };
 
@@ -166,9 +170,9 @@ internal sealed class SettingsPolicyCoordinator
       checkIntervalSec: _sldPoll.Value,
       brightnessRestoreMs: _sldBrightMs.Value,
       heartbeatIntervalMin: _sldHeartbeat.Value,
-      activePlanGuid: ReadSelectedPlanGuid(_cmbActivePlan),
-      balancedPlanGuid: ReadSelectedPlanGuid(_cmbBalancedPlan),
-      powerSaverPlanGuid: ReadSelectedPlanGuid(_cmbPowerSaverPlan),
+      activePlanGuid: SettingsPlanCatalogCoordinator.ReadSelectedPlanGuid(_cmbActivePlan),
+      balancedPlanGuid: SettingsPlanCatalogCoordinator.ReadSelectedPlanGuid(_cmbBalancedPlan),
+      powerSaverPlanGuid: SettingsPlanCatalogCoordinator.ReadSelectedPlanGuid(_cmbPowerSaverPlan),
       paused: _originalConfig.Paused,
       notifyOnPlanChange: _tglNotify.IsChecked == true,
       notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
@@ -177,43 +181,20 @@ internal sealed class SettingsPolicyCoordinator
 
   internal void CommitSavedConfig(GuardConfig config) => _originalConfig = config;
 
-  internal void BeginLoadPlanCatalogAsync()
+  internal void SaveThemePreferences(GuardConfig merged)
   {
-    var generation = Interlocked.Increment(ref _planCatalogLoadGeneration);
-    _planCatalogLoadCts?.Cancel();
-    _planCatalogLoadCts?.Dispose();
-    _planCatalogLoadCts = new CancellationTokenSource();
-
-    if (_lblPlanMappingStatus is not null)
-      _lblPlanMappingStatus.Text = "正在加载电源计划...";
-
-    _ = Task.Run(() => PowerPlanCatalogProvider.LoadWithRetry())
-      .ContinueWith(task =>
-      {
-        _window.Dispatcher.BeginInvoke(() =>
-        {
-          if (generation != Volatile.Read(ref _planCatalogLoadGeneration))
-            return;
-
-          if (task.IsFaulted)
-          {
-            if (_lblPlanMappingStatus is not null)
-              _lblPlanMappingStatus.Text = "无法读取电源计划，请关闭设置后重试";
-            return;
-          }
-
-          ApplyPlanCatalog(task.Result);
-        });
-      }, TaskScheduler.Default);
+    SettingsSaveCoordinator.Save(merged, _originalConfig, _root, _repository);
+    _originalConfig = merged;
   }
+
+  internal void BeginLoadPlanCatalogAsync() => _planCatalog.BeginLoadPlanCatalogAsync();
 
   internal void Dispose()
   {
     _saveDebounceTimer?.Stop();
     _saveCts?.Cancel();
     _saveCts?.Dispose();
-    _planCatalogLoadCts?.Cancel();
-    _planCatalogLoadCts?.Dispose();
+    _planCatalog.Dispose();
   }
 
   private void QueueSaveDebounced()
@@ -262,7 +243,7 @@ internal sealed class SettingsPolicyCoordinator
         SettingsSaveCoordinator.Save(newConfig, _originalConfig, _root, _repository);
       }, token);
       _originalConfig = newConfig;
-      UpdatePlanMappingStatus(newConfig);
+      _planCatalog.UpdatePlanMappingStatus(newConfig);
       _toastService.Show("设置已保存", isError: false);
     }
     catch (OperationCanceledException)
@@ -272,59 +253,6 @@ internal sealed class SettingsPolicyCoordinator
     {
       _toastService.Show($"保存失败：{ex.Message}", isError: true);
     }
-  }
-
-  private void ApplyPlanCatalog(IReadOnlyDictionary<Guid, string> catalog)
-  {
-    _ = catalog;
-    RepopulatePlanCombos();
-    UpdatePlanMappingStatus(_originalConfig);
-  }
-
-  private void RepopulatePlanCombos()
-  {
-    PopulatePlanCombo(_cmbActivePlan, _originalConfig.ActivePlanGuid, PowerPlanCatalogProvider.HighPerformanceDisplayName);
-    PopulatePlanCombo(_cmbBalancedPlan, _originalConfig.BalancedPlanGuid, PowerPlanCatalogProvider.BalancedDisplayName);
-    PopulatePlanCombo(_cmbPowerSaverPlan, _originalConfig.PowerSaverPlanGuid, PowerPlanCatalogProvider.PowerSaverDisplayName);
-  }
-
-  private void PopulatePlanCombo(ComboBox combo, Guid selectedGuid, string orphanRoleLabel)
-  {
-    _suppressPlanComboEvents = true;
-    try
-    {
-      combo.DisplayMemberPath = nameof(PowerPlanComboItem.DisplayName);
-      combo.SelectedValuePath = nameof(PowerPlanComboItem.PlanGuid);
-      var items = PowerPlanComboItemsBuilder.Build(PowerPlanCatalogProvider.TryLoad(), selectedGuid, orphanRoleLabel);
-      combo.ItemsSource = items;
-      combo.SelectedItem = PlanComboSelection.FindItem(items, selectedGuid);
-      if (combo.SelectedItem is null && selectedGuid != Guid.Empty)
-        combo.SelectedValue = selectedGuid;
-    }
-    finally
-    {
-      _suppressPlanComboEvents = false;
-    }
-  }
-
-  private static Guid ReadSelectedPlanGuid(ComboBox combo)
-  {
-    if (combo.SelectedItem is PowerPlanComboItem item)
-      return item.PlanGuid;
-    if (combo.SelectedValue is Guid guid)
-      return guid;
-    return Guid.Empty;
-  }
-
-  private void UpdatePlanMappingStatus(GuardConfig? config = null)
-  {
-    if (_lblPlanMappingStatus is null) return;
-
-    config ??= ReadConfigFromUi();
-    var messages = PowerPlanMappingValidator.Validate(config, PowerPlanCatalogProvider.TryLoad());
-    _lblPlanMappingStatus.Text = messages.Count == 0
-      ? "三档计划映射正常"
-      : string.Join("；", messages);
   }
 
   private void ApplyConfigToUi(GuardConfig config)
@@ -339,10 +267,7 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = AutoStartService.SyncFromTasks();
-    PopulatePlanCombo(_cmbActivePlan, config.ActivePlanGuid, PowerPlanCatalogProvider.HighPerformanceDisplayName);
-    PopulatePlanCombo(_cmbBalancedPlan, config.BalancedPlanGuid, PowerPlanCatalogProvider.BalancedDisplayName);
-    PopulatePlanCombo(_cmbPowerSaverPlan, config.PowerSaverPlanGuid, PowerPlanCatalogProvider.PowerSaverDisplayName);
-    UpdatePlanMappingStatus(config);
+    _planCatalog.ApplyPlanCombosToUi(config);
   }
 
   private void ResetToDefaults()

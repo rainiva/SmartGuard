@@ -21,7 +21,7 @@ function Stop-SmartGuardProcesses {
         return
     }
 
-    throw "SmartGuard.Engine.exe not found at '$EngineExe'. Run scripts\Publish-All.ps1 before stopping SmartGuard."
+    throw "SmartGuard.Engine.exe not found at '$EngineExe'. Run build.cmd before stopping SmartGuard."
 }
 
 function Resolve-SmartGuardRepoRoot {

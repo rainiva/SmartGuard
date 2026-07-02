@@ -139,7 +139,7 @@ public sealed class SettingsWindowController
       Require<Border>(window, "rowThemeDark"),
       toastService,
       () => policyCoordinator.ReadConfigFromUi(),
-      policyCoordinator.CommitSavedConfig,
+      policyCoordinator.SaveThemePreferences,
       () => logPageHost.RefreshLogViewForThemeChange());
 
     var aboutCoordinator = new SettingsAboutCoordinator();

@@ -10,7 +10,7 @@ function Initialize-TrayCoreUserFlowContext {
     $global:SG_TestEngineBin = Join-Path $RepoRoot 'bin'
     $global:SG_TestEngineExe = Join-Path $global:SG_TestEngineBin 'SmartGuard.Engine.exe'
     if (-not (Test-Path -LiteralPath $global:SG_TestEngineExe)) {
-        throw "Missing publish output: $global:SG_TestEngineExe (run scripts\Publish-All.ps1)"
+        throw "Missing publish output: $global:SG_TestEngineExe (run build.cmd)"
     }
 }
 

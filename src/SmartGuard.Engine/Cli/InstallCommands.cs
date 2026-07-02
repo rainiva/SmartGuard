@@ -56,7 +56,7 @@ public static class InstallCommands
       if (!skipPublish && !File.Exists(engineExe))
       {
         WriteStartupLog(startupLog,
-          $"WARN: Engine exe not found at {engineExe}. Run build.cmd or scripts\\Publish-All.ps1, or pass --skip-publish.");
+          $"WARN: Engine exe not found at {engineExe}. Run build.cmd, or pass --skip-publish.");
       }
 
       WriteStartupLog(startupLog, "Install: registering SmartGuard Guardian...");

@@ -10,8 +10,20 @@ public static class ToastAumidRegistrar
   internal static Func<string, bool>? StartMenuShortcutWriterForTests;
   internal static int ShortcutWriteCountForTests { get; private set; }
   internal static int AppUserModelIdWriteCountForTests { get; private set; }
+  private static readonly object TestHookSync = new();
 
   public static bool EnsureRegistered(string root)
+  {
+    if (StartMenuShortcutWriterForTests is not null)
+    {
+      lock (TestHookSync)
+        return EnsureRegisteredCore(root);
+    }
+
+    return EnsureRegisteredCore(root);
+  }
+
+  private static bool EnsureRegisteredCore(string root)
   {
     try
     {
@@ -27,9 +39,12 @@ public static class ToastAumidRegistrar
 
   internal static void ResetForTests()
   {
-    StartMenuShortcutWriterForTests = null;
-    ShortcutWriteCountForTests = 0;
-    AppUserModelIdWriteCountForTests = 0;
+    lock (TestHookSync)
+    {
+      StartMenuShortcutWriterForTests = null;
+      ShortcutWriteCountForTests = 0;
+      AppUserModelIdWriteCountForTests = 0;
+    }
   }
 
   private static void RegisterAppUserModelId(string root)
@@ -48,7 +63,8 @@ public static class ToastAumidRegistrar
       key.SetValue("IconUri", iconUri, RegistryValueKind.String);
     }
 
-    AppUserModelIdWriteCountForTests++;
+    if (StartMenuShortcutWriterForTests is not null)
+      AppUserModelIdWriteCountForTests++;
     MarkAumidRegistered(root);
   }
 
@@ -96,7 +112,8 @@ public static class ToastAumidRegistrar
 
   private static void MarkShortcutRegistered(string root)
   {
-    ShortcutWriteCountForTests++;
+    if (StartMenuShortcutWriterForTests is not null)
+      ShortcutWriteCountForTests++;
     var markerPath = GetShortcutMarkerPath(root);
     var markerDir = Path.GetDirectoryName(markerPath);
     if (!string.IsNullOrEmpty(markerDir))

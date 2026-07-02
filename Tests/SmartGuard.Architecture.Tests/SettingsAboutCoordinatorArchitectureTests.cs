@@ -11,8 +11,11 @@ public class SettingsAboutCoordinatorArchitectureTests
       .Should().BeTrue();
 
     var coordinator = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsAboutCoordinator.cs");
-    coordinator.Should().Contain("CheckForUpdateAsync");
     coordinator.Should().Contain("GetDisplayVersion");
+    coordinator.Should().Contain("SettingsUpdateCheckCoordinator");
+
+    var updateCheck = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsUpdateCheckCoordinator.cs");
+    updateCheck.Should().Contain("CheckForUpdateAsync");
 
     var controller = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsWindowController.cs");
     controller.Should().Contain("SettingsAboutCoordinator");

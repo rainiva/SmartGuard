@@ -31,14 +31,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     _configRepository = new GuardConfigRepository(configPath);
     _configMutations = new ConfigMutationService(_configRepository);
     var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
-    var config = _configRepository.LoadOrDefault(_root);
-    var displaySettingsCache = new TrayDisplaySettingsCache(
-      new TrayNotificationPreferences(config.NotifyOnPlanChange, config.NotifyOnExternalChange),
-      () =>
-      {
-        var loaded = _configRepository.LoadOrDefault(_root);
-        return new TrayNotificationPreferences(loaded.NotifyOnPlanChange, loaded.NotifyOnExternalChange);
-      });
+    var displaySettingsCache = new TrayDisplaySettingsCache(_configRepository, _root);
 
     _notifyIcon = new NotifyIcon
     {
@@ -47,34 +40,16 @@ public sealed class TrayApplicationContext : ApplicationContext
       Text = "智能电源守护",
     };
 
-    var menu = new ContextMenuStrip { ShowImageMargin = false, AutoSize = true };
-    menu.Font = SystemInformation.MenuFont;
-
-    _statusItem = new ToolStripMenuItem("加载中…") { Enabled = false, AutoSize = true };
-    menu.Items.Add(_statusItem);
-    menu.Items.Add(new ToolStripSeparator());
-    _pauseItem = new ToolStripMenuItem("暂停守护") { AutoSize = true };
-    _pauseItem.Click += OnPauseClick;
-    menu.Items.Add(_pauseItem);
-    var highPerfItem = new ToolStripMenuItem(TrayContextMenuTexts.SwitchHighPerformance) { AutoSize = true };
-    highPerfItem.Click += OnSwitchHighPerformanceClick;
-    menu.Items.Add(highPerfItem);
-    var logItem = new ToolStripMenuItem("打开日志") { AutoSize = true };
-    logItem.Click += (_, _) => OpenLogViewer();
-    menu.Items.Add(logItem);
-    var settingsItem = new ToolStripMenuItem("设置…") { AutoSize = true };
-    settingsItem.Click += OnOpenSettings;
-    menu.Items.Add(settingsItem);
-    menu.Items.Add(new ToolStripSeparator());
-    var exitItem = new ToolStripMenuItem("退出") { AutoSize = true };
-    exitItem.Click += (_, _) => ExitTray();
-    menu.Items.Add(exitItem);
-
-    _notifyIcon.ContextMenuStrip = menu;
+    var menuParts = TrayContextMenuFactory.Create(
+      OnPauseClick,
+      OnSwitchHighPerformanceClick,
+      (_, _) => OpenLogViewer(),
+      OnOpenSettings,
+      (_, _) => ExitTray());
+    _statusItem = menuParts.StatusItem;
+    _pauseItem = menuParts.PauseItem;
+    _notifyIcon.ContextMenuStrip = menuParts.Menu;
     _notifyIcon.DoubleClick += OnOpenSettings;
-    TrayContextMenuPrewarmer.WarmUp(menu);
-
-    _pauseItem.Text = TrayPauseState.MenuText(null);
 
     _invokeSink = new Control();
     _invokeSink.CreateControl();
@@ -86,12 +61,12 @@ public sealed class TrayApplicationContext : ApplicationContext
       _invokeSink,
       ApplyRefreshUi);
 
-    menu.Opening += (_, _) =>
+    menuParts.Menu.Opening += (_, _) =>
     {
       _refreshScheduler.ContextMenuOpen = true;
       _statusItem.Text = _displayState.StatusLine;
     };
-    menu.Closed += (_, _) => _refreshScheduler.OnMenuClosed();
+    menuParts.Menu.Closed += (_, _) => _refreshScheduler.OnMenuClosed();
 
     _statusWatcher = new StatusFileWatcher(statusPath, () =>
     {
@@ -128,16 +103,14 @@ public sealed class TrayApplicationContext : ApplicationContext
   {
     if (update.StatusWasMissing)
     {
-      _missedStatusReads++;
-      if (!_guardianRecoveryAttempted && GuardianRecovery.ShouldAttemptStart(_missedStatusReads))
-      {
-        _guardianRecoveryAttempted = true;
-        _ = Task.Run(() => GuardianRecovery.TryStartGuardian(_root));
-      }
+      _missedStatusReads = TrayGuardianRecoveryHandler.RegisterMissedStatusRead(
+        _missedStatusReads,
+        ref _guardianRecoveryAttempted,
+        _root);
     }
     else
     {
-      _missedStatusReads = 0;
+      _missedStatusReads = TrayGuardianRecoveryHandler.ResetMissedStatusReads();
     }
 
     if (_displayState.Apply(update.Status))
@@ -235,17 +208,4 @@ public sealed class TrayApplicationContext : ApplicationContext
     _notifyIcon.Visible = false;
     ExitThread();
   }
-}
-
-public static class TrayNotificationHelper
-{
-  public static bool PlanChangedForNotification(string? previousPlan, string? currentPlan)
-  {
-    if (string.IsNullOrWhiteSpace(currentPlan)) return false;
-    if (string.IsNullOrWhiteSpace(previousPlan)) return false;
-    return !string.Equals(previousPlan, currentPlan, StringComparison.Ordinal);
-  }
-
-  public static string FormatPlanChangeBalloon(string planName, int brightness)
-    => $"已切换至 {planName}（亮度 {brightness}%）";
 }
