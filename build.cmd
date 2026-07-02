@@ -20,5 +20,8 @@ if errorlevel 1 exit /b 1
 dotnet publish "%~dp0src\SmartGuard.Settings\SmartGuard.Settings.csproj" -c %CFG% -r win-x64 --self-contained false -p:PublishReadyToRun=true -o "%OUT%"
 if errorlevel 1 exit /b 1
 
+dotnet publish "%~dp0src\SmartGuard.Cli\SmartGuard.Cli.csproj" -c %CFG% -r win-x64 --self-contained false -o "%OUT%"
+if errorlevel 1 exit /b 1
+
 echo Published to %OUT%
 exit /b 0

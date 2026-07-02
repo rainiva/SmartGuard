@@ -1,23 +1,23 @@
 using FluentAssertions;
-using SmartGuard.Configuration;
 
 namespace SmartGuard.Architecture.Tests;
 
 public class StartCoreArchitectureTests
 {
   [Fact]
-  public void Start_Core_must_trigger_guardian_task_not_direct_engine_foreground()
+  public void Start_Core_must_delegate_to_Cli_start_guardian()
   {
     var content = SourceScanHelper.ReadSource("Start-Core.cmd");
-    content.Should().NotMatchRegex(@"SmartGuard\.Engine\.exe[\s\S]*--root", "direct foreground engine launch belongs in Debug-Engine.cmd");
-    content.Should().Contain("schtasks");
-    content.Should().Contain(ScheduledTaskRegistrar.GuardianTaskName);
+    content.Should().Contain("SmartGuard.Cli.exe");
+    content.Should().Contain("start guardian");
+    content.Should().NotMatchRegex(@"schtasks\s+/Run");
   }
 
   [Fact]
-  public void Debug_Engine_must_support_foreground_engine_for_dev()
+  public void Debug_Engine_must_delegate_to_Cli_start_engine()
   {
     var content = SourceScanHelper.ReadSource("Debug-Engine.cmd");
-    content.Should().MatchRegex(@"SmartGuard\.Engine\.exe[\s\S]*--root");
+    content.Should().Contain("SmartGuard.Cli.exe");
+    content.Should().Contain("start engine");
   }
 }

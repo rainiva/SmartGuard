@@ -113,7 +113,8 @@ public static class InstallCommands
     var args = $"--root \"{root}\" {command}";
     if (!string.IsNullOrWhiteSpace(extraArg)) args += $" {extraArg}";
 
-    using var proc = ElevationHelper.RerunCurrentProcessElevated(args);
+    var engineExe = SmartGuardPaths.EngineExe(root);
+    using var proc = ElevationHelper.StartElevated(engineExe, args);
 
     if (proc is null)
     {

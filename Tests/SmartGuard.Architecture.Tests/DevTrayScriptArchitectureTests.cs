@@ -23,10 +23,10 @@ public class DevTrayScriptArchitectureTests
   [Theory]
   [InlineData("Start-Tray.cmd")]
   [InlineData("Restart-Tray.cmd")]
-  public void Dev_tray_scripts_must_launch_tray_exe_directly_not_schtasks(string relativePath)
+  public void Dev_tray_scripts_must_delegate_to_Cli_not_schtasks(string relativePath)
   {
     var content = SourceScanHelper.ReadSource(relativePath);
-    content.Should().Contain("SmartGuard.Tray.exe");
+    content.Should().Contain("SmartGuard.Cli.exe");
     content.Should().NotContain("schtasks /Run");
   }
 
@@ -36,6 +36,6 @@ public class DevTrayScriptArchitectureTests
     var content = SourceScanHelper.ReadSource("Restart-Tray.cmd");
     foreach (var pattern in EngineStopPatterns)
       content.Should().NotMatchRegex(pattern);
-    content.Should().Contain("SmartGuard.Tray.exe");
+    content.Should().Contain("restart tray");
   }
 }

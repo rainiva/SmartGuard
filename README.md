@@ -14,7 +14,7 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 | `src/SmartGuard.Contracts/` | 共享契约与状态模型 |
 | `src/SmartGuard.Packaging/` | 发布、打包与安装包生成 |
 | `lib/` | 图标、Settings XAML |
-| `bin/*.exe` | `build.cmd` 发布后四件套：Engine / Tray / LogViewer / Settings |
+| `bin/*.exe` | `build.cmd` 发布后：Engine / Tray / LogViewer / Settings / Cli |
 | `installer/` | Inno Setup 6 脚本与 staging 文件 |
 | `dist/` | 安装包产出：`SmartGuard-Setup-{version}-x64.exe` |
 | `SmartGuard.config.json` | 运行配置 |
@@ -42,22 +42,23 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 ```batch
 cd <仓库根目录>
 
-:: 1. 编译并发布四件套到 bin/
+:: 1. 编译并发布到 bin/
 build.cmd Release
 
 :: 2. 注册计划任务（需要管理员权限）
-Register-AllTasks.cmd
-:: 或: bin\SmartGuard.Engine.exe --root <仓库根目录> --install
+bin\SmartGuard.Cli.exe install --skip-publish --root %CD%
+:: 或: Register-AllTasks.cmd / bin\SmartGuard.Engine.exe --root %CD% --install
 
-:: 3. 启动托盘
-Start-Tray.cmd
+:: 3. 启动托盘（开发）
+bin\SmartGuard.Cli.exe start tray --root %CD%
+:: 或: Start-Tray.cmd
 ```
 
 手动启动核心（调试）：
 
 ```batch
-Start-Core.cmd
-:: 或: bin\SmartGuard.Engine.exe --root <仓库根目录>
+bin\SmartGuard.Cli.exe start guardian --root %CD%
+:: 或: Start-Core.cmd / bin\SmartGuard.Engine.exe --root %CD%（前台调试）
 ```
 
 卸载计划任务（不删除配置与日志）：

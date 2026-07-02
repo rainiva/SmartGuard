@@ -213,36 +213,37 @@
     }
 
     Describe 'Phase 6.2 exe-only launchers' {
-        It 'Start-Core.cmd triggers Guardian scheduled task without PowerShell' {
+        It 'Start-Core.cmd delegates to SmartGuard.Cli start guardian' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Start-Core.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'schtasks'
-            $content | Should -Match 'SmartGuard Guardian'
-            $content | Should -Not -Match 'SmartGuard\.Engine\.exe[\s\S]*--root'
+            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'start guardian'
             $content | Should -Not -Match 'powershell\.exe'
             $content | Should -Not -Match 'SmartGuard\.Core\.ps1'
         }
 
-        It 'Debug-Engine.cmd launches engine exe in foreground for dev' {
+        It 'Debug-Engine.cmd delegates to SmartGuard.Cli start engine' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Debug-Engine.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Engine\.exe'
-            $content | Should -Match '--root'
+            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'start engine'
             $content | Should -Not -Match 'powershell\.exe'
         }
 
-        It 'Start-Tray.cmd launches tray exe without PowerShell fallback' {
+        It 'Start-Tray.cmd delegates to SmartGuard.Cli start tray' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Start-Tray.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Tray\.exe'
+            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'start tray'
             $content | Should -Not -Match 'powershell\.exe'
             $content | Should -Not -Match 'SmartGuard\.Tray\.ps1'
         }
 
-        It 'Restart-Tray.cmd launches tray exe without PowerShell' {
+        It 'Restart-Tray.cmd delegates to SmartGuard.Cli restart tray' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Restart-Tray.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Tray\.exe'
+            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'restart tray'
             $content | Should -Not -Match 'powershell\.exe'
         }
 
@@ -267,20 +268,18 @@
             }
         }
 
-        It 'Register-AllTasks.cmd registers via Engine install' {
+        It 'Register-AllTasks.cmd registers via SmartGuard.Cli install' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'Register-AllTasks.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Engine\.exe'
-            $content | Should -Match '--install'
+            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'install'
             $content | Should -Not -Match 'powershell\.exe'
             $content | Should -Not -Match 'Register-SmartGuardTask\.ps1'
         }
 
-        It 'Start-SmartGuard.cmd launches Start-Core.cmd without PowerShell' {
+        It 'Start-SmartGuard.cmd is removed in favor of SmartGuard.Cli' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'Start-SmartGuard.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'Start-Core\.cmd'
-            $content | Should -Not -Match 'powershell\.exe'
+            Test-Path -LiteralPath (Join-Path $root 'Start-SmartGuard.cmd') | Should -Be $false
         }
     }
 
