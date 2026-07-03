@@ -66,6 +66,23 @@
             $metrics.fill | Should -BeGreaterOrEqual 120
         }
 
+        It 'canonical SmartGuard.ico keeps vertical safe margins in taskbar and window frames' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); sizes=(24,32,48,64); data={}; 
+for size in sizes:
+    img=ico.ico.getimage((size,size)).convert('RGBA')
+    bbox=img.getchannel('A').getbbox()
+    data[str(size)]={'top': bbox[1], 'bottom': size - bbox[3], 'left': bbox[0], 'right': size - bbox[2]}
+print(json.dumps(data))" $icon
+            $metrics = $metricsJson | ConvertFrom-Json
+
+            foreach ($size in '24', '32', '48', '64') {
+                $metrics.$size.top | Should -BeGreaterOrEqual 1 -Because "${size}px frame must keep at least 1px transparent top margin to avoid visual clipping"
+                $metrics.$size.bottom | Should -BeGreaterOrEqual 1 -Because "${size}px frame must keep at least 1px transparent bottom margin to avoid visual clipping"
+            }
+        }
+
         It 'does not ship Create-TrayIcon.ps1 and packaging project exists' {
             $root = Split-Path -Parent $PSScriptRoot
             Test-Path -LiteralPath (Join-Path $root 'lib\Create-TrayIcon.ps1') | Should -Be $false

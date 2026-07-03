@@ -36,6 +36,16 @@ ALL_SIZES = tuple(sorted((*SMALL_SIZES, *LARGE_SIZES)))
 SMALL_FOOTPRINT_SCALE = 1.18
 SMALL_BASE_CENTER = 16.0
 
+VERTICAL_SAFE_PADDING = {
+    24: 1,
+    32: 1,
+    40: 1,
+    48: 1,
+    64: 1,
+    128: 4,
+    256: 8,
+}
+
 OVERSAMPLE = {
     48: 6,
     64: 6,
@@ -328,10 +338,28 @@ def render_small_icon(size: int) -> Image.Image:
     return image
 
 
+def apply_vertical_safe_padding(image: Image.Image) -> Image.Image:
+    size = image.width
+    padding = VERTICAL_SAFE_PADDING.get(size, 0)
+    if padding <= 0:
+        return image
+
+    safe_height = size - padding * 2
+    if safe_height <= 0:
+        return image
+
+    padded = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    squeezed = image.resize((size, safe_height), Image.Resampling.LANCZOS)
+    padded.alpha_composite(squeezed, (0, padding))
+    return padded
+
+
 def render_icon(size: int) -> Image.Image:
     if size in SMALL_SIZES:
-        return render_small_icon(size)
-    return render_large_icon(size)
+        image = render_small_icon(size)
+    else:
+        image = render_large_icon(size)
+    return apply_vertical_safe_padding(image)
 
 
 def save_png(path: Path, image: Image.Image) -> None:
