@@ -174,18 +174,18 @@ public sealed class SettingsThemeCoordinator
       return;
     }
 
-    WindowTitleBarTheme.Apply(window, isDark);
-
     try
     {
       ThemeTransitionAnimator.AnimateTransition(
         window,
         resources,
         isDark,
-        FinishThemeApply);
+        FinishThemeApply,
+        () => WindowTitleBarTheme.Apply(window, isDark));
     }
     catch (InvalidOperationException)
     {
+      WindowTitleBarTheme.Apply(window, isDark);
       ThemeTransitionAnimator.ApplyImmediate(resources, isDark);
       FinishThemeApply();
     }

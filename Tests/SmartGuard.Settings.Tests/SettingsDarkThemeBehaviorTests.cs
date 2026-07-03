@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
 
@@ -44,6 +45,49 @@ public class SettingsDarkThemeBehaviorTests
         RunOnSta(() =>
         {
             EnsureApplication();
+            SettingsUiTestMode.SetEnabled(false);
+
+            var installRoot = CreateInstallRoot(themeFollowSystem: false);
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller);
+                WindowTitleBarTheme.Apply(window, isDarkMode: false);
+                try
+                {
+                    WpfStaTestHost.ShowAndWait(window);
+                    WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeFalse();
+
+                    SetManualDarkMode(window, enabled: true);
+                    WaitForThemeMidpoint(window);
+
+                    WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeTrue();
+                }
+                finally
+                {
+                    WindowTitleBarTheme.Apply(window, isDarkMode: false);
+                    window.Close();
+                }
+            }
+            finally
+            {
+                SettingsUiTestMode.SetEnabled(true);
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void User_enables_manual_dark_mode_does_not_request_dark_title_bar_before_transition_midpoint()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+            SettingsUiTestMode.SetEnabled(false);
+            ThemeTransitionAnimator.ResetForTests();
+            ThemeTransitionAnimator.TransitionDuration = TimeSpan.FromMilliseconds(760);
 
             var installRoot = CreateInstallRoot(themeFollowSystem: false);
             try
@@ -60,16 +104,19 @@ public class SettingsDarkThemeBehaviorTests
 
                     SetManualDarkMode(window, enabled: true);
 
-                    WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeTrue();
+                    WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeFalse(
+                        "manual animated theme changes should let the content transition begin before the native title bar flips");
                 }
                 finally
                 {
+                    ThemeTransitionAnimator.ResetForTests();
                     WindowTitleBarTheme.Apply(window, isDarkMode: false);
                     window.Close();
                 }
             }
             finally
             {
+                SettingsUiTestMode.SetEnabled(true);
                 TryDelete(installRoot);
             }
         });
@@ -111,6 +158,22 @@ public class SettingsDarkThemeBehaviorTests
         var tglThemeDark = window.FindName("tglThemeDark") as CheckBox;
         tglThemeDark.Should().NotBeNull();
         tglThemeDark!.IsChecked = enabled;
+    }
+
+    private static void WaitForThemeMidpoint(Window window)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Render, window.Dispatcher)
+        {
+            Interval = ThemeTransitionProfile.TitleBarApplyAt + TimeSpan.FromMilliseconds(120)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            frame.Continue = false;
+        };
+        timer.Start();
+        Dispatcher.PushFrame(frame);
     }
 
     private static Window GetWindow(SettingsWindowController? controller)
