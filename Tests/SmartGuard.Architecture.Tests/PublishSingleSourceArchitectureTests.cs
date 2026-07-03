@@ -55,4 +55,33 @@ public class PublishSingleSourceArchitectureTests
     installer.Should().NotContain("Source: \"{#StagingDir}\\\\bin\\\\*\"");
     installer.Should().NotContain("Pos('SmartGuard.Engine.exe'");
   }
+
+  [Fact]
+  public void Installer_iss_must_include_generated_constants_and_run_includes()
+  {
+    var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+    iss.Should().Contain(@"generated\SmartGuard.Distribution.Constants.iss.inc");
+    iss.Should().Contain(@"generated\SmartGuard.Distribution.Run.iss.inc");
+  }
+
+  [Fact]
+  public void Installer_iss_must_not_handwrite_live_exe_or_task_literals()
+  {
+    var installer = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+    installer.Should().NotContain(@"#define MyAppExeName ""SmartGuard.Tray.exe""");
+    installer.Should().NotContain(@"UninstallDisplayIcon={app}\bin\SmartGuard.Tray.exe");
+    installer.Should().NotContain(@"Filename: ""{app}\bin\SmartGuard.Engine.exe""");
+    installer.Should().NotContain(@"Filename: ""{app}\bin\SmartGuard.Cli.exe""");
+    installer.Should().NotContain(@"/TN ""SmartGuard Guardian""");
+  }
+
+  [Fact]
+  public void Contract_docs_must_record_that_inno_live_exe_and_task_literals_are_generated_not_handwritten()
+  {
+    var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
+    contract.Should().Contain("generated/SmartGuard.Distribution.Constants.iss.inc");
+    contract.Should().Contain("generated/SmartGuard.Distribution.Run.iss.inc");
+    contract.Should().Contain("LegacyScheduledTaskCatalog");
+    contract.Should().NotContain("见 MIGRATION");
+  }
 }

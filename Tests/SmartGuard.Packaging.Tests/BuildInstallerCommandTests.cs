@@ -1,4 +1,5 @@
 using FluentAssertions;
+using SmartGuard.Configuration;
 using SmartGuard.Configuration.Distribution;
 using SmartGuard.Packaging.Commands;
 using SmartGuard.Packaging.Runtime;
@@ -34,10 +35,23 @@ public class BuildInstallerCommandTests : IDisposable
         exit.Should().Be(0);
         var filesIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Files.iss.inc");
         var processesIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Processes.iss.inc");
+        var constantsIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Constants.iss.inc");
+        var runIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Run.iss.inc");
         File.Exists(filesIncludePath).Should().BeTrue();
         File.Exists(processesIncludePath).Should().BeTrue();
+        File.Exists(constantsIncludePath).Should().BeTrue();
+        File.Exists(runIncludePath).Should().BeTrue();
         File.ReadAllText(filesIncludePath).Should().NotContain("SmartGuard.LogViewer.exe");
         File.ReadAllText(processesIncludePath).Should().NotContain("SmartGuard.LogViewer.exe");
+        var constantsInclude = File.ReadAllText(constantsIncludePath);
+        constantsInclude.Should().Contain($"#define TrayExeName \"{SmartGuardPaths.TrayExeFileName}\"");
+        constantsInclude.Should().Contain($"#define EngineExeName \"{SmartGuardPaths.EngineExeFileName}\"");
+        constantsInclude.Should().Contain($"#define CliExeName \"{SmartGuardPaths.CliExeFileName}\"");
+        constantsInclude.Should().Contain($"#define GuardianTaskName \"{ScheduledTaskRegistrar.GuardianTaskName}\"");
+        var runInclude = File.ReadAllText(runIncludePath);
+        runInclude.Should().Contain("{#EngineExeName}");
+        runInclude.Should().Contain("{#CliExeName}");
+        runInclude.Should().Contain("{#GuardianTaskName}");
         File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.5");
     }
 

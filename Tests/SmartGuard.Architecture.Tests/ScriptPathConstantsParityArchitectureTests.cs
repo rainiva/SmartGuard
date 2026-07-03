@@ -63,6 +63,22 @@ public class ScriptPathConstantsParityArchitectureTests
     afterDefines.Should().Contain("{#DefaultLogFileName}");
   }
 
+  [Fact]
+  public void Inno_exe_and_task_names_must_be_generated_from_SmartGuardPaths()
+  {
+    var writer = SourceScanHelper.ReadSource("src/SmartGuard.Packaging/Inno/InnoDistributionManifestWriter.cs");
+    writer.Should().Contain("BuildConstantsInclude");
+    writer.Should().Contain(nameof(SmartGuardPaths.EngineExeFileName));
+    writer.Should().Contain(nameof(SmartGuardPaths.TrayExeFileName));
+    writer.Should().Contain(nameof(SmartGuardPaths.CliExeFileName));
+    writer.Should().Contain("ScheduledTaskRegistrar.GuardianTaskName");
+
+    var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+    iss.Should().Contain(@"generated\SmartGuard.Distribution.Constants.iss.inc");
+    iss.Should().Contain("{#TrayExeName}");
+    iss.Should().NotContain(@"#define MyAppExeName ""SmartGuard.Tray.exe""");
+  }
+
   private static string GetSmartGuardPathsConstant(string fieldName)
   {
     var field = typeof(SmartGuardPaths).GetField(fieldName, BindingFlags.Public | BindingFlags.Static);

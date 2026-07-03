@@ -11,10 +11,11 @@
   #define RuntimeInstallerFile "windowsdesktop-runtime-8.0.18-win-x64.exe"
 #endif
 
+#include "generated\SmartGuard.Distribution.Constants.iss.inc"
+
 #define MyAppName "SmartGuard"
 #define MyAppPublisher "rainiva"
 #define MyAppURL "https://github.com/rainiva/SmartGuard"
-#define MyAppExeName "SmartGuard.Tray.exe"
 #define MySetupIcon "..\assets\branding\SmartGuard.ico"
 #define ConfigFileName "SmartGuard.config.json"
 #define StatusFileName "SmartGuard.status.json"
@@ -43,7 +44,7 @@ CloseApplications=no
 RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\bin\SmartGuard.Tray.exe
+UninstallDisplayIcon={app}\bin\{#TrayExeName}
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
@@ -60,11 +61,7 @@ Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestNa
 #include "generated\SmartGuard.Distribution.LegacyCleanup.iss.inc"
 
 [Run]
-Filename: "{tmp}\{#RuntimeInstallerFile}"; Parameters: "/install /quiet /norestart"; StatusMsg: "正在安装 .NET 8 桌面运行时..."; Check: ShouldInstallDotNet; Flags: waituntilterminated
-Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish"; StatusMsg: "正在注册计划任务..."; Check: not WizardIsTaskSelected('desktopicon'); Flags: runhidden waituntilterminated
-Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish --create-desktop-shortcut"; StatusMsg: "正在注册计划任务..."; Tasks: desktopicon; Flags: runhidden waituntilterminated
-Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""SmartGuard Guardian"""; StatusMsg: "正在启动核心服务..."; Flags: runhidden waituntilterminated
-Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open tray --root ""{app}"""; Description: "启动 {#MyAppName} 托盘"; Flags: runhidden nowait postinstall skipifsilent; Tasks: launchtray
+#include "generated\SmartGuard.Distribution.Run.iss.inc"
 
 [UninstallDelete]
 ; Program files (always deleted)

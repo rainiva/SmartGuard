@@ -1,4 +1,5 @@
 using System.Text;
+using SmartGuard.Configuration;
 using SmartGuard.Configuration.Distribution;
 
 namespace SmartGuard.Packaging.Inno;
@@ -13,6 +14,14 @@ internal static class InnoDistributionManifestWriter
     Directory.CreateDirectory(generatedDir);
 
     File.WriteAllText(
+      Path.Combine(generatedDir, "SmartGuard.Distribution.Constants.iss.inc"),
+      BuildConstantsInclude(),
+      Utf8NoBom);
+    File.WriteAllText(
+      Path.Combine(generatedDir, "SmartGuard.Distribution.Run.iss.inc"),
+      BuildRunInclude(),
+      Utf8NoBom);
+    File.WriteAllText(
       Path.Combine(generatedDir, "SmartGuard.Distribution.Files.iss.inc"),
       BuildFilesInclude(),
       Utf8NoBom);
@@ -24,6 +33,30 @@ internal static class InnoDistributionManifestWriter
       Path.Combine(generatedDir, "SmartGuard.Distribution.LegacyCleanup.iss.inc"),
       BuildLegacyCleanupInclude(),
       Utf8NoBom);
+  }
+
+  private static string BuildConstantsInclude()
+  {
+    return string.Join(Environment.NewLine, new[]
+    {
+      $@"#define EngineExeName ""{SmartGuardPaths.EngineExeFileName}""",
+      $@"#define TrayExeName ""{SmartGuardPaths.TrayExeFileName}""",
+      $@"#define SettingsExeName ""{SmartGuardPaths.SettingsExeFileName}""",
+      $@"#define CliExeName ""{SmartGuardPaths.CliExeFileName}""",
+      $@"#define GuardianTaskName ""{ScheduledTaskRegistrar.GuardianTaskName}""",
+    }) + Environment.NewLine;
+  }
+
+  private static string BuildRunInclude()
+  {
+    return string.Join(Environment.NewLine, new[]
+    {
+      @"Filename: ""{tmp}\{#RuntimeInstallerFile}""; Parameters: ""/install /quiet /norestart""; StatusMsg: ""正在安装 .NET 8 桌面运行时...""; Check: ShouldInstallDotNet; Flags: waituntilterminated",
+      @"Filename: ""{app}\bin\{#EngineExeName}""; Parameters: ""--root """"{app}"""" --install --skip-publish""; StatusMsg: ""正在注册计划任务...""; Check: not WizardIsTaskSelected('desktopicon'); Flags: runhidden waituntilterminated",
+      @"Filename: ""{app}\bin\{#EngineExeName}""; Parameters: ""--root """"{app}"""" --install --skip-publish --create-desktop-shortcut""; StatusMsg: ""正在注册计划任务...""; Tasks: desktopicon; Flags: runhidden waituntilterminated",
+      @"Filename: ""{sys}\schtasks.exe""; Parameters: ""/Run /TN """"{#GuardianTaskName}""""""; StatusMsg: ""正在启动核心服务...""; Flags: runhidden waituntilterminated",
+      @"Filename: ""{app}\bin\{#CliExeName}""; Parameters: ""open tray --root """"{app}""""""; Description: ""启动 {#MyAppName} 托盘""; Flags: runhidden nowait postinstall skipifsilent; Tasks: launchtray",
+    }) + Environment.NewLine;
   }
 
   private static string BuildFilesInclude()

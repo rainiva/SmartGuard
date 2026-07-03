@@ -40,8 +40,11 @@ public class InnoShortcutWrapperArchitectureTests
   {
     var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
     var runSection = ExtractSection(iss, "[Run]");
-    runSection.Should().Contain("--create-desktop-shortcut");
-    runSection.Should().Contain("desktopicon");
+    runSection.Should().Contain(@"generated\SmartGuard.Distribution.Run.iss.inc");
+
+    var writer = SourceScanHelper.ReadSource("src/SmartGuard.Packaging/Inno/InnoDistributionManifestWriter.cs");
+    writer.Should().Contain("--create-desktop-shortcut");
+    writer.Should().Contain("desktopicon");
   }
 
   [Fact]
