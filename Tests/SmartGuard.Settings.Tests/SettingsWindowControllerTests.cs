@@ -221,7 +221,7 @@ public class SettingsWindowControllerTests
             window.FindName("rowThemeLight").Should().NotBeNull();
             window.FindName("rowThemeDark").Should().NotBeNull();
             window.FindName("btnThemeToggle").Should().BeNull();
-            window.FindName("imgAppIcon").Should().NotBeNull();
+            window.FindName("imgAppIcon").Should().BeNull();
         });
     }
 
@@ -266,21 +266,73 @@ public class SettingsWindowControllerTests
             var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
             var lstLogView = window.FindName("lstLogView") as ListBox;
             var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
+            var btnLogMore = window.FindName("btnLogMore") as Button;
 
             pageLogs.Should().NotBeNull();
             logSearchFilterHost.Should().NotBeNull();
             logTagFilterLinksPanel.Should().NotBeNull();
             lstLogView.Should().NotBeNull();
             lblLogStatus.Should().NotBeNull();
-            window.FindName("btnLogCopy").Should().NotBeNull();
-            window.FindName("btnLogExport").Should().NotBeNull();
-            window.FindName("btnLogOpenFolder").Should().NotBeNull();
+            window.FindName("btnLogCopy").Should().BeNull();
+            window.FindName("btnLogExport").Should().BeNull();
+            window.FindName("btnLogOpenFolder").Should().BeNull();
             window.FindName("btnLogScrollTop").Should().NotBeNull();
             window.FindName("btnLogScrollBottom").Should().NotBeNull();
             window.FindName("btnLogRefresh").Should().NotBeNull();
+            btnLogMore.Should().NotBeNull();
             window.FindName("chkLogFollowTail").Should().NotBeNull();
             window.FindName("cmbLogTimeRange").Should().NotBeNull();
             window.FindName("chkLogSearchCaseSensitive").Should().NotBeNull();
+            btnLogMore!.ContextMenu.Should().BeNull();
+            var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
+            logMoreFlyout.Should().NotBeNull();
+            logMoreFlyout!.Visibility.Should().Be(Visibility.Collapsed);
+            window.FindName("btnLogMoreCopy").Should().NotBeNull();
+            window.FindName("btnLogMoreExport").Should().NotBeNull();
+            window.FindName("btnLogMoreOpenFolder").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public void Log_page_more_button_toggles_in_window_actions_flyout()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardLogMoreFlyout_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            File.WriteAllText(Path.Combine(tempRoot, "SmartGuard.log"), "[INFO] 2026-07-04 06:00:00 ok\n");
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var btnLogMore = window.FindName("btnLogMore") as Button;
+                var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
+
+                btnLogMore.Should().NotBeNull();
+                logMoreFlyout.Should().NotBeNull();
+                logMoreFlyout!.Visibility.Should().Be(Visibility.Collapsed);
+
+                btnLogMore!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                logMoreFlyout.Visibility.Should().Be(Visibility.Visible);
+
+                btnLogMore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                logMoreFlyout.Visibility.Should().Be(Visibility.Collapsed);
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
         });
     }
 

@@ -665,22 +665,10 @@
     <!-- Left Navigation Panel -->
     <Border Grid.Column="0" Background="{DynamicResource NavigationBackground}" BorderBrush="{DynamicResource NavigationBorderBrush}" BorderThickness="0,0,1,0">
       <Grid>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <!-- App Header -->
-        <StackPanel Grid.Row="0" Margin="20,24,20,16" Orientation="Horizontal">
-          <Image x:Name="imgAppIcon" Width="24" Height="24" Margin="0,0,10,0" VerticalAlignment="Center"/>
-          <TextBlock Text="智能电源守护" FontSize="18" FontWeight="SemiBold"
-                     VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}"/>
-        </StackPanel>
-
         <!-- Navigation Items -->
-        <ListBox Grid.Row="1" x:Name="navList" BorderThickness="0" Background="Transparent"
+        <ListBox x:Name="navList" BorderThickness="0" Background="Transparent"
                  FocusVisualStyle="{x:Null}"
-                 ItemContainerStyle="{StaticResource NavigationItemStyle}" Margin="8,0">
+                 ItemContainerStyle="{StaticResource NavigationItemStyle}" Margin="8,16,8,0">
           <ListBoxItem x:Name="navGeneral" IsSelected="True">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
@@ -731,7 +719,7 @@
       <TextBlock x:Name="txtPageTitle" Grid.Row="0" Text="常规设置" Style="{StaticResource SectionTitle}"/>
 
       <!-- Content Pages -->
-      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Style="{StaticResource SettingsScrollViewer}" HorizontalContentAlignment="Stretch" local:ScrollBarAutoHide.IsEnabled="True">
+      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Style="{StaticResource SettingsScrollViewer}" HorizontalContentAlignment="Stretch">
         <StackPanel HorizontalAlignment="Stretch">
 
           <!-- General Page -->
@@ -1163,78 +1151,94 @@
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Fixed Header: Title, Description, Search, Filters -->
+            <!-- Fixed Header: Search, filters, and summary -->
             <StackPanel Grid.Row="0">
-              <TextBlock Text="实时日志" Style="{StaticResource SettingsGroupTitle}"/>
-              <TextBlock Text="查看 SmartGuard 运行日志，支持搜索和筛选" Style="{StaticResource SettingsCardDescription}"/>
+              <TextBlock Text="&#x67E5;&#x770B; SmartGuard &#x8FD0;&#x884C;&#x65E5;&#x5FD7;&#xFF0C;&#x652F;&#x6301;&#x641C;&#x7D22;&#x548C;&#x7B5B;&#x9009;" Style="{StaticResource SettingsCardDescription}"/>
 
-              <!-- Search Bar with tag filter chips -->
-              <Border Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6" Margin="0,0,0,12">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                  <ContentControl x:Name="logSearchFilterHost" Grid.Column="1" VerticalAlignment="Center"/>
-                </Grid>
-              </Border>
+              <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-              <!-- Unified filter + action toolbar -->
-              <Border x:Name="logToolbarPanel"
-                      Background="{DynamicResource NumberBoxBackground}"
-                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
-                      BorderThickness="1"
-                      CornerRadius="4"
-                      Padding="12,10"
-                      Margin="0,0,0,12">
-                <StackPanel>
-                  <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,8">
-                    <TextBlock Text="标签" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
-                    <WrapPanel x:Name="logTagFilterLinksPanel"/>
-                  </WrapPanel>
-
-                  <WrapPanel x:Name="logFilterTimePanel">
-                    <TextBlock Text="时间" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                    <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,6" Style="{StaticResource SettingsComboBox}">
-                      <ComboBoxItem Content="全部"/>
-                      <ComboBoxItem Content="今天"/>
-                      <ComboBoxItem Content="最近1小时"/>
-                      <ComboBoxItem Content="自定义"/>
-                    </ComboBox>
-                    <CheckBox x:Name="chkLogSearchCaseSensitive" Content="区分大小写" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,0,6"/>
-                  </WrapPanel>
-
-                  <StackPanel x:Name="panelLogCustomRange" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
-                    <TextBlock Text="起" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox x:Name="txtLogRangeStart" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
-                    <TextBlock Text="止" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,6,0"/>
-                    <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
-                  </StackPanel>
-
-                  <Border x:Name="logToolbarDivider" Height="1" Background="{DynamicResource DividerBrush}" Margin="0,10,0,10"/>
-
+                <Border Grid.Column="0" Background="{DynamicResource NumberBoxBackground}" BorderBrush="{DynamicResource NumberBoxBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8,6">
                   <Grid>
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
                       <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-
-                    <WrapPanel Grid.Column="0" Margin="0,0,8,0">
-                      <Button x:Name="btnLogCopy" Content="复制可见" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
-                      <Button x:Name="btnLogExport" Content="导出" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
-                      <Button x:Name="btnLogOpenFolder" Content="打开目录" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
-                      <Button x:Name="btnLogScrollTop" Content="顶部" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,6"/>
-                      <Button x:Name="btnLogScrollBottom" Content="底部" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,0,6"/>
-                    </WrapPanel>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                      <CheckBox x:Name="chkLogFollowTail" Content="跟随最新" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,10,0"/>
-                      <Button x:Name="btnLogRefresh" Content="刷新" Style="{StaticResource LogToolbarCompactButton}"/>
-                    </StackPanel>
+                    <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextTertiary}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <ContentControl x:Name="logSearchFilterHost" Grid.Column="1" VerticalAlignment="Center"/>
                   </Grid>
-                </StackPanel>
-              </Border>
+                </Border>
+
+                <Grid Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right">
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="btnLogRefresh" Content="&#x5237;&#x65B0;" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
+                    <Button x:Name="btnLogMore" Content="&#x66F4;&#x591A;" Style="{StaticResource LogToolbarCompactButton}"/>
+                  </StackPanel>
+
+                  <Border x:Name="logMoreFlyout"
+                          Visibility="Collapsed"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Top"
+                          Margin="0,40,0,0"
+                          Background="{DynamicResource NumberBoxBackground}"
+                          BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                          BorderThickness="1"
+                          CornerRadius="6"
+                          Padding="6"
+                          Panel.ZIndex="20">
+                    <StackPanel>
+                      <Button x:Name="btnLogMoreCopy"
+                              Content="&#x590D;&#x5236;&#x53EF;&#x89C1;"
+                              Style="{StaticResource SecondaryButton}"
+                              MinWidth="128"
+                              Padding="12,8"
+                              HorizontalContentAlignment="Left"
+                              Margin="0,0,0,6"/>
+                      <Button x:Name="btnLogMoreExport"
+                              Content="&#x5BFC;&#x51FA;"
+                              Style="{StaticResource SecondaryButton}"
+                              MinWidth="128"
+                              Padding="12,8"
+                              HorizontalContentAlignment="Left"
+                              Margin="0,0,0,6"/>
+                      <Button x:Name="btnLogMoreOpenFolder"
+                              Content="&#x6253;&#x5F00;&#x76EE;&#x5F55;"
+                              Style="{StaticResource SecondaryButton}"
+                              MinWidth="128"
+                              Padding="12,8"
+                              HorizontalContentAlignment="Left"/>
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </Grid>
+
+              <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,8">
+                <TextBlock Text="&#x6807;&#x7B7E;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                <WrapPanel x:Name="logTagFilterLinksPanel"/>
+              </WrapPanel>
+
+              <WrapPanel x:Name="logFilterTimePanel" Margin="0,0,0,4">
+                <TextBlock Text="&#x65F6;&#x95F4;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,6" Style="{StaticResource SettingsComboBox}">
+                  <ComboBoxItem Content="&#x5168;&#x90E8;"/>
+                  <ComboBoxItem Content="&#x4ECA;&#x5929;"/>
+                  <ComboBoxItem Content="&#x6700;&#x8FD1;1&#x5C0F;&#x65F6;"/>
+                  <ComboBoxItem Content="&#x81EA;&#x5B9A;&#x4E49;"/>
+                </ComboBox>
+                <CheckBox x:Name="chkLogSearchCaseSensitive" Content="&#x533A;&#x5206;&#x5927;&#x5C0F;&#x5199;" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,0,6"/>
+              </WrapPanel>
+
+              <StackPanel x:Name="panelLogCustomRange" Orientation="Horizontal" Margin="0,4,0,8" Visibility="Collapsed">
+                <TextBlock Text="&#x8D77;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox x:Name="txtLogRangeStart" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
+                <TextBlock Text="&#x6B62;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
+              </StackPanel>
+
+              <TextBlock x:Name="lblLogStatus" Text="&#x6682;&#x65E0;&#x65E5;&#x5FD7;" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,8"/>
             </StackPanel>
 
             <!-- Scrollable Log Content -->
@@ -1258,8 +1262,20 @@
                        VerticalAlignment="Stretch"/>
             </Border>
 
-            <!-- Status Bar (outside scrollable area, stays visible) -->
-            <TextBlock x:Name="lblLogStatus" Text="暂无日志" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,8,0,0" Grid.Row="2"/>
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+
+              <CheckBox x:Name="chkLogFollowTail" Content="&#x8DDF;&#x968F;&#x6700;&#x65B0;" IsChecked="True" Style="{StaticResource SettingsFilterCheckBox}" VerticalAlignment="Center"/>
+
+              <WrapPanel Grid.Column="2">
+                <Button x:Name="btnLogScrollTop" Content="&#x9876;&#x90E8;" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,6,0"/>
+                <Button x:Name="btnLogScrollBottom" Content="&#x5E95;&#x90E8;" Style="{StaticResource LogToolbarCompactButton}"/>
+              </WrapPanel>
+            </Grid>
           </Grid>
         </Border>
       </Grid>

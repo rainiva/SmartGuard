@@ -18,7 +18,7 @@ public class SettingsContentLayoutTests
     }
 
     [Fact]
-    public void Page_titles_use_shared_header_row_aligned_with_navigation_brand()
+    public void Page_titles_use_shared_header_row_without_duplicate_sidebar_brand_heading()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
@@ -33,21 +33,23 @@ public class SettingsContentLayoutTests
             "pageGeneral[\\s\\S]{0,160}Text=\"常规设置\"[\\s\\S]{0,80}SectionTitle",
             "page titles should not be duplicated inside scrollable page content");
         xaml.Should().Contain("<Thickness x:Key=\"SettingsContentPageMargin\">24,24,24,12</Thickness>");
+        xaml.Should().NotMatchRegex(
+            "<!-- Left Navigation Panel -->[\\s\\S]{0,260}RowDefinition Height=\"Auto\"",
+            "the sidebar should no longer reserve a dedicated brand header row");
         xaml.Should().MatchRegex(
-            "Margin=\"20,24,20,16\"[\\s\\S]{0,200}imgAppIcon",
-            "left app title block uses 24px top margin");
+            "x:Name=\"navList\"[\\s\\S]{0,220}Margin=\"8,16,8,0\"",
+            "navigation should keep a light top inset after removing the duplicate brand heading");
     }
 
     [Fact]
-    public void Sidebar_brand_uses_single_title_without_settings_subtitle()
+    public void Sidebar_does_not_repeat_product_name_that_is_already_in_the_window_title()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
-        xaml.Should().Contain("x:Name=\"imgAppIcon\"");
-        xaml.Should().Contain("Text=\"智能电源守护\"");
+        xaml.Should().NotContain("x:Name=\"imgAppIcon\"");
         xaml.Should().NotMatchRegex(
-            "x:Name=\"imgAppIcon\"[\\s\\S]{0,400}Text=\"设置\"",
-            "sidebar brand should not repeat the window title with a separate 设置 subtitle");
+            "<!-- Left Navigation Panel -->[\\s\\S]{0,420}Text=\"智能电源守护\"[\\s\\S]{0,120}FontSize=\"18\"",
+            "the sidebar should rely on the window title and page title instead of repeating the product name");
     }
 
     [Fact]

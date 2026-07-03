@@ -4,19 +4,39 @@ namespace SmartGuard.Settings.Tests;
 public class LogToolbarLayoutTests
 {
     [Fact]
-    public void Log_toolbar_uses_wrap_layout_for_filters_to_avoid_overlap()
+    public void Log_page_uses_reader_style_header_instead_of_heavy_toolbar_card()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
-        xaml.Should().Contain("x:Name=\"logToolbarPanel\"");
-        xaml.Should().Contain("x:Name=\"logToolbarDivider\"");
-        xaml.Should().Contain("LogToolbarCompactButton");
+        xaml.Should().NotContain("Text=\"实时日志\"");
+        xaml.Should().NotContain("x:Name=\"logToolbarPanel\"");
+        xaml.Should().NotContain("x:Name=\"logToolbarDivider\"");
         xaml.Should().Contain("x:Name=\"logTagFilterLinksPanel\"");
         xaml.Should().Contain("x:Name=\"lstLogView\"");
-        xaml.Should().Contain("x:Name=\"logFilterTimePanel\"");
-        xaml.Should().NotContain("x:Name=\"chkInfo\"");
-        xaml.Should().NotMatchRegex(
-            "logToolbarPanel[\\s\\S]{0,1200}<Grid>[\\s\\S]{0,400}Grid\\.Column=\"1\"[\\s\\S]{0,200}chkError",
-            "level filters and time filters should not share one cramped grid row");
+        xaml.Should().Contain("x:Name=\"btnLogRefresh\"");
+        xaml.Should().Contain("x:Name=\"btnLogMore\"");
+        xaml.Should().Contain("x:Name=\"cmbLogTimeRange\"");
+        xaml.Should().Contain("x:Name=\"chkLogSearchCaseSensitive\"");
+        xaml.Should().Contain("x:Name=\"chkLogFollowTail\"");
+        xaml.Should().Contain("x:Name=\"lblLogStatus\"");
+        xaml.Should().NotContain("<ContextMenu");
+        xaml.Should().NotContain("<Button.ContextMenu>");
+        xaml.Should().Contain("x:Name=\"logMoreFlyout\"");
+        xaml.Should().Contain("x:Name=\"btnLogMoreCopy\"");
+        xaml.Should().Contain("x:Name=\"btnLogMoreExport\"");
+        xaml.Should().Contain("x:Name=\"btnLogMoreOpenFolder\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logSearchFilterHost\"[\\s\\S]{0,500}x:Name=\"btnLogRefresh\"[\\s\\S]{0,240}x:Name=\"btnLogMore\"[\\s\\S]{0,500}x:Name=\"logMoreFlyout\"",
+            "search should share the top action row with refresh and overflow actions");
+        var statusIndex = xaml.IndexOf("x:Name=\"lblLogStatus\"", StringComparison.Ordinal);
+        var viewportIndex = xaml.IndexOf("x:Name=\"logViewportBorder\"", StringComparison.Ordinal);
+        var followTailIndex = xaml.IndexOf("x:Name=\"chkLogFollowTail\"", StringComparison.Ordinal);
+        statusIndex.Should().BeGreaterThan(-1);
+        viewportIndex.Should().BeGreaterThan(-1);
+        followTailIndex.Should().BeGreaterThan(-1);
+        statusIndex.Should().BeLessThan(viewportIndex,
+            "status summary should sit above the log viewport");
+        viewportIndex.Should().BeLessThan(followTailIndex,
+            "reader controls should stay below the log viewport");
     }
 }
