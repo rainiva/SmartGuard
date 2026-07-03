@@ -10,7 +10,8 @@ namespace SmartGuard.Configuration;
 public static class BrandIconLoader
 {
   private const string EmbeddedSettingsIconUri = "pack://application:,,,/Assets/SmartGuard.ico";
-  private const int TaskbarIconFrameSize = 32;
+  private const int WinFormsTaskbarIconFrameSize = 32;
+  private const int WpfWindowIconFrameSize = 64;
 
   private static string? _cachedIconPath;
   private static DrawIcon? _cachedWinFormsIcon;
@@ -40,7 +41,7 @@ public static class BrandIconLoader
     {
       try
       {
-        var icon = new DrawIcon(iconPath, TaskbarIconFrameSize, TaskbarIconFrameSize);
+        var icon = new DrawIcon(iconPath, WinFormsTaskbarIconFrameSize, WinFormsTaskbarIconFrameSize);
         _cachedWinFormsIcon?.Dispose();
         _cachedWinFormsIcon = icon;
         _cachedIconPath = iconPath;
@@ -89,9 +90,7 @@ public static class BrandIconLoader
       using var stream = System.Windows.Application.GetResourceStream(uri)?.Stream;
       if (stream is not null)
       {
-        using var rawIcon = new DrawIcon(stream);
-        using var icon = new DrawIcon(rawIcon, TaskbarIconFrameSize, TaskbarIconFrameSize);
-        return FromIcon(icon);
+        return TryLoadBestWpfFrame(stream);
       }
     }
     catch
@@ -106,8 +105,8 @@ public static class BrandIconLoader
   {
     try
     {
-      using var icon = new DrawIcon(filePath, TaskbarIconFrameSize, TaskbarIconFrameSize);
-      return FromIcon(icon);
+      using var stream = File.OpenRead(filePath);
+      return TryLoadBestWpfFrame(stream);
     }
     catch
     {
@@ -115,39 +114,21 @@ public static class BrandIconLoader
     }
   }
 
-  private static ImageSource FromIcon(DrawIcon icon)
+  private static ImageSource? TryLoadBestWpfFrame(Stream stream)
   {
-    using var bitmap = new Bitmap(icon.Width, icon.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-    using (var graphics = Graphics.FromImage(bitmap))
-    {
-      graphics.Clear(System.Drawing.Color.Transparent);
-      graphics.DrawIcon(icon, new Rectangle(0, 0, icon.Width, icon.Height));
-    }
+    var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+    var frame = decoder.Frames
+      .Where(candidate => candidate.PixelWidth > 0 && candidate.PixelHeight > 0)
+      .OrderBy(candidate => candidate.PixelWidth < WpfWindowIconFrameSize || candidate.PixelHeight < WpfWindowIconFrameSize ? 1 : 0)
+      .ThenBy(candidate => Math.Abs(candidate.PixelWidth - WpfWindowIconFrameSize) + Math.Abs(candidate.PixelHeight - WpfWindowIconFrameSize))
+      .ThenBy(candidate => candidate.PixelWidth * candidate.PixelHeight)
+      .FirstOrDefault();
+    if (frame is null)
+      return null;
 
-    var bitmapData = bitmap.LockBits(
-      new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-      System.Drawing.Imaging.ImageLockMode.ReadOnly,
-      System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-    try
-    {
-      var stride = bitmapData.Stride;
-      var pixels = new byte[stride * bitmap.Height];
-      System.Runtime.InteropServices.Marshal.Copy(bitmapData.Scan0, pixels, 0, pixels.Length);
-      var source = BitmapSource.Create(
-        bitmap.Width,
-        bitmap.Height,
-        96,
-        96,
-        PixelFormats.Bgra32,
-        null,
-        pixels,
-        stride);
-      source.Freeze();
-      return source;
-    }
-    finally
-    {
-      bitmap.UnlockBits(bitmapData);
-    }
+    if (frame.CanFreeze && !frame.IsFrozen)
+      frame.Freeze();
+
+    return frame;
   }
 }
