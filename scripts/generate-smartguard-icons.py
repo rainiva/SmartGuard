@@ -14,7 +14,6 @@ ASSETS_DIR = ROOT / "assets" / "icon"
 PREVIEW_DIR = ROOT / "dist" / "icon-previews"
 CANDIDATE_DIR = PREVIEW_DIR / "face-system-v2"
 FINAL_SET_DIR = PREVIEW_DIR / "final-set"
-LIB_DIR = ROOT / "lib"
 
 CANVAS = 256.0
 
@@ -400,7 +399,6 @@ def promote(images: dict[int, Image.Image]) -> None:
         save_png(FINAL_SET_DIR / f"SmartGuard-{size}.png", image)
     save_ico(FINAL_SET_DIR / "SmartGuard.ico", images)
     save_ico(FINAL_SET_DIR / "SmartGuard-test.ico", images)
-    save_ico(LIB_DIR / "SmartGuard.ico", images)
     save_png(ASSETS_DIR / "SmartGuard-32.png", images[32])
 
     preview_2048 = render_large_icon(2048)
@@ -412,7 +410,7 @@ def main() -> None:
     parser.add_argument(
         "--promote",
         action="store_true",
-        help="Copy the generated icon set into final-set, lib/SmartGuard.ico, and assets/icon/SmartGuard-32.png.",
+        help="Copy the generated icon set into final-set and assets/icon/SmartGuard-32.png.",
     )
     args = parser.parse_args()
 
