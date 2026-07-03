@@ -52,6 +52,7 @@ Describe 'Installer user flow (integration)' {
         Initialize-InstallerUserFlowContext -RepoRoot $repoRoot
         Stop-SmartGuardForInstallerTest
         $script:SetupExe = Ensure-InstallerBuilt
+        $script:ProgramsDir = Get-SmartGuardProgramsDirectory
     }
 
     AfterAll {
@@ -176,6 +177,62 @@ Describe 'Installer user flow (integration)' {
         }
     }
 
+    It 'install creates exactly one start menu shortcut and no dedicated settings or logs shortcut' {
+        $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
+        try {
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install.ExitCode | Should -Be 0
+
+            ($script:ProgramsDir | Get-ChildItem -Filter 'SmartGuard*.lnk' -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty Name |
+                Sort-Object) | Should -Be @('SmartGuard.lnk')
+
+            $uninstall = Invoke-SmartGuardSilentUninstall -InstallRoot $installRoot
+            $uninstall.ExitCode | Should -Be 0
+        }
+        finally {
+            Stop-SmartGuardForInstallerTest
+            foreach ($path in Get-SmartGuardProgramsShortcuts) {
+                Remove-Item -LiteralPath $path.FullName -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path -LiteralPath $installRoot) {
+                Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    It 'repair removes legacy tray settings and logs shortcuts before writing the canonical shortcut' {
+        $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
+        $trayShortcutName = "SmartGuard $([char]0x6258)$([char]0x76D8).lnk"
+        $settingsShortcutName = "SmartGuard $([char]0x8BBE)$([char]0x7F6E).lnk"
+        $logsShortcutName = "SmartGuard $([char]0x65E5)$([char]0x5FD7).lnk"
+        try {
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install.ExitCode | Should -Be 0
+
+            foreach ($name in @($trayShortcutName, $settingsShortcutName, $logsShortcutName)) {
+                New-ShortcutFixture -Directory $script:ProgramsDir -Name $name
+            }
+
+            $repair = Invoke-SmartGuardRepair -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $repair.ExitCode | Should -Be 0
+
+            (Get-SmartGuardProgramsShortcuts | Select-Object -ExpandProperty Name) | Should -Be @('SmartGuard.lnk')
+
+            $uninstall = Invoke-SmartGuardSilentUninstall -InstallRoot $installRoot
+            $uninstall.ExitCode | Should -Be 0
+        }
+        finally {
+            Stop-SmartGuardForInstallerTest
+            foreach ($path in Get-SmartGuardProgramsShortcuts) {
+                Remove-Item -LiteralPath $path.FullName -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path -LiteralPath $installRoot) {
+                Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     It 'repair install removes legacy markers, loose assets, logviewer files, and legacy shell surfaces' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         $legacyLib = Join-Path $installRoot 'lib'
@@ -187,9 +244,10 @@ Describe 'Installer user flow (integration)' {
         $settingsShortcutName = "SmartGuard $([char]0x8BBE)$([char]0x7F6E).lnk"
         $logsShortcutName = "SmartGuard $([char]0x65E5)$([char]0x5FD7).lnk"
         $legacyUninstallShortcutName = "$([char]0x5378)$([char]0x8F7D) SmartGuard.lnk"
-        $newTrayShortcut = Join-Path $programsDir $trayShortcutName
-        $newSettingsShortcut = Join-Path $programsDir $settingsShortcutName
-        $newLogsShortcut = Join-Path $programsDir $logsShortcutName
+        $canonicalShortcut = Join-Path $programsDir 'SmartGuard.lnk'
+        $legacyTrayShortcut = Join-Path $programsDir $trayShortcutName
+        $legacySettingsShortcut = Join-Path $programsDir $settingsShortcutName
+        $legacyLogsShortcut = Join-Path $programsDir $logsShortcutName
         $legacyGroupShortcuts = @(
             (Join-Path $legacyGroupDir $trayShortcutName),
             (Join-Path $legacyGroupDir $settingsShortcutName),
@@ -219,7 +277,7 @@ Describe 'Installer user flow (integration)' {
                 [System.IO.File]::WriteAllText((Join-Path $legacyBin $legacyName), 'legacy-logviewer', $utf8NoBom)
             }
 
-            foreach ($path in @($newTrayShortcut, $newSettingsShortcut, $newLogsShortcut) + $legacyGroupShortcuts) {
+            foreach ($path in @($legacyTrayShortcut, $legacySettingsShortcut, $legacyLogsShortcut) + $legacyGroupShortcuts) {
                 $directory = Split-Path -Parent $path
                 if (-not [string]::IsNullOrWhiteSpace($directory)) {
                     [System.IO.Directory]::CreateDirectory($directory) | Out-Null
@@ -227,7 +285,7 @@ Describe 'Installer user flow (integration)' {
                 [System.IO.File]::WriteAllBytes($path, [byte[]]@())
             }
 
-            Remove-Item -LiteralPath $newTrayShortcut, $newSettingsShortcut, $newLogsShortcut -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $canonicalShortcut -Force -ErrorAction SilentlyContinue
             Stop-SmartGuardForInstallerTest
 
             $repair = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -PreserveExisting
@@ -239,16 +297,17 @@ Describe 'Installer user flow (integration)' {
             foreach ($path in $legacyGroupShortcuts) {
                 Wait-SmartGuardPath -Path $path -ShouldExist $false | Should -Be $true -Because $path
             }
-            Wait-SmartGuardPath -Path $newTrayShortcut -ShouldExist $true | Should -Be $true
-            Wait-SmartGuardPath -Path $newSettingsShortcut -ShouldExist $true | Should -Be $true
-            Wait-SmartGuardPath -Path $newLogsShortcut -ShouldExist $true | Should -Be $true
+            foreach ($path in @($legacyTrayShortcut, $legacySettingsShortcut, $legacyLogsShortcut)) {
+                Wait-SmartGuardPath -Path $path -ShouldExist $false | Should -Be $true -Because $path
+            }
+            Wait-SmartGuardPath -Path $canonicalShortcut -ShouldExist $true | Should -Be $true
 
             $uninstall = Invoke-SmartGuardSilentUninstall -InstallRoot $installRoot
             $uninstall.ExitCode | Should -Be 0
         }
         finally {
             Stop-SmartGuardForInstallerTest
-            foreach ($path in @($newTrayShortcut, $newSettingsShortcut, $newLogsShortcut)) {
+            foreach ($path in @($canonicalShortcut, $legacyTrayShortcut, $legacySettingsShortcut, $legacyLogsShortcut)) {
                 if (Test-Path -LiteralPath $path) {
                     Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
                 }
