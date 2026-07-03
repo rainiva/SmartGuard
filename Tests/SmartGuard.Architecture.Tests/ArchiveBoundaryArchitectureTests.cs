@@ -19,11 +19,12 @@ public class ArchiveBoundaryArchitectureTests
   }
 
   [Fact]
-  public void Acceptance_docs_must_record_that_active_scripts_can_no_longer_regenerate_retired_lib_assets()
+  public void Acceptance_docs_must_record_that_live_icon_truth_is_official_source_frames_plus_canonical_branding_asset()
   {
     var acceptance = SourceScanHelper.ReadSource("docs/MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md");
     acceptance.Should().Contain("scripts/archive/");
-    acceptance.Should().Contain("generate-smartguard-icons.py");
-    acceptance.Should().Contain(@"lib\SmartGuard.ico");
+    acceptance.Should().Contain("assets/branding/official");
+    acceptance.Should().Contain("assets/branding/SmartGuard.ico");
+    acceptance.Should().Contain("assets/icon");
   }
 }

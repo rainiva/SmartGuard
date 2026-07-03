@@ -201,7 +201,7 @@ Tray integration: 2/2
 | 切片 | 最终状态 |
 |------|------|
 | shell owner | **阻断生效**：`InstallCommands -> DesktopShellRegistration` 是唯一 shell owner；live shell surface 仅为开始菜单 `SmartGuard.lnk` 与可选桌面 `SmartGuard.lnk`；Tray / Notifier 不得 runtime 自注册或自愈 AUMID |
-| xaml/icon 真源 | **阻断生效**：`SmartGuard.Settings.xaml` 只允许项目内 embedded source；`assets/branding/SmartGuard.ico` 是唯一品牌图标真源；`installRoot\lib` 不再承载 runtime 真源 |
+| xaml/icon 真源 | **阻断生效**：`SmartGuard.Settings.xaml` 只允许项目内 embedded source；官方原始图标帧只允许位于 `assets/branding/official/`，live build-time 品牌图标只允许是 `assets/branding/SmartGuard.ico`；`installRoot\lib` 不再承载 runtime 真源 |
 | distribution manifest | **阻断生效**：发布项目、payload、installer 进程与 legacy cleanup 只允许来自 `DesktopDistributionManifest`；Inno 仅消费生成的 include |
 | LogViewer 退场 | **阻断生效**：`SmartGuard.LogViewer.exe` 与 `SmartGuard.LogViewer` 命名空间/测试项目身份不再是 live product artifact；日志功能仅保留 `SmartGuard.Settings.LogView` 内部身份与 `SmartGuard.Settings.exe --page logs` 运行时入口 |
 
@@ -238,7 +238,7 @@ Installer rebuild output: dist\SmartGuard-Setup-1.1.7-x64.exe
 | 切片 | 最终状态 |
 |------|------|
 | repo-governance 边界 | **阻断生效**：历史 task-contract / migration / diagnosis 文档只允许位于 `docs/archive/**`；历史脚本只允许位于 `scripts/archive/**`；`docs/superpowers/plans/**` 仅作计划记录，不得充当 live authority |
-| dev asset generation | **阻断生效**：活动脚本 `scripts/generate-smartguard-icons.py` 不得再生成 `lib\SmartGuard.ico` 或 `lib\SmartGuard.Settings.xaml`；若需保留旧产物描述，必须位于 archive 路径 |
+| dev asset generation | **阻断生效**：live repo 不得保留 `assets/icon/**` 草稿树，也不得保留旧图标 draft / generator 脚本；唯一允许的 live 图标源层是 `assets/branding/official/`，唯一允许的 live build-time 图标资产是 `assets/branding/SmartGuard.ico`；历史脚本或旧产物描述只允许位于 archive 路径 |
 | gate 豁免机制 | **阻断生效**：Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按 `PHASE-`、`MIGRATION`、日期、单文件名做豁免 |
 
 ## 第十轮 live entry/source 收口（2026-07-03）

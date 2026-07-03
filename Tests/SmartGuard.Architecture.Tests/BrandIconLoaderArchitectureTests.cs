@@ -59,4 +59,29 @@ public class BrandIconLoaderArchitectureTests
     loader.Should().NotContain("LoadWinFormsIcon(DrawIcon fallback)");
     loader.Should().NotContain("return (DrawIcon)fallback.Clone()");
   }
+
+  [Fact]
+  public void Official_brand_icon_source_must_replace_retired_draft_assets_and_generators()
+  {
+    Directory.Exists(Path.Combine(SourceScanHelper.RepoRoot, "assets", "branding", "official"))
+      .Should().BeTrue("the live repo must keep the approved official icon source frames under assets/branding/official");
+
+    Directory.Exists(Path.Combine(SourceScanHelper.RepoRoot, "assets", "icon"))
+      .Should().BeFalse("the retired draft icon tree must leave the live repo");
+
+    foreach (var relative in new[]
+    {
+      "scripts/generate-smartguard-icons.py",
+      "scripts/generate-smartguard-small-draft-board.py",
+      "scripts/generate-smartguard-guardian-variants.py",
+      "scripts/generate-smartguard-cursor-style-drafts.py",
+      "scripts/generate-smartguard-cursor-style-hd.py",
+      "scripts/test_generate_smartguard_icons.py",
+      "scripts/test_generate_smartguard_guardian_variants.py",
+    })
+    {
+      File.Exists(Path.Combine(SourceScanHelper.RepoRoot, relative.Replace('/', Path.DirectorySeparatorChar)))
+        .Should().BeFalse($"{relative} is a retired icon draft/generator path and must not stay live");
+    }
+  }
 }

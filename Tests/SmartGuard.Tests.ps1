@@ -1,85 +1,68 @@
 ﻿Describe 'SmartGuard' {
     Describe 'Tray assets' {
-        It 'canonical SmartGuard.ico lives under assets branding' {
+        It 'canonical SmartGuard.ico lives under assets branding and official source frames exist' {
             $root = Split-Path -Parent $PSScriptRoot
             $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
+            $officialDir = Join-Path $root 'assets\branding\official'
             Test-Path -LiteralPath $icon | Should -Be $true
             (Get-Item -LiteralPath $icon).Length | Should -BeGreaterThan 1000
+            Test-Path -LiteralPath $officialDir | Should -Be $true
+
+            foreach ($name in @(
+                'SmartGuard-final-official-16.png',
+                'SmartGuard-final-official-2048-transparent-24.png',
+                'SmartGuard-final-official-2048-transparent-32.png',
+                'SmartGuard-final-official-2048-transparent-48.png',
+                'SmartGuard-final-official-4096-transparent-64.png',
+                'SmartGuard-final-official-4096-transparent-128.png',
+                'SmartGuard-final-official-4096-transparent-256.png'
+            )) {
+                Test-Path -LiteralPath (Join-Path $officialDir $name) | Should -Be $true
+            }
         }
 
-        It 'canonical SmartGuard.ico fills enough 24px taskbar canvas width' {
+        It 'canonical SmartGuard.ico matches official source frames and carries promoted shell sizes' {
             $root = Split-Path -Parent $PSScriptRoot
             $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $widthPct = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((24,24)).convert('RGBA'); bbox=img.getchannel('A').getbbox(); print(f'{(bbox[2]-bbox[0])/24*100:.1f}')" $icon
-
-            [double]$widthPct | Should -BeGreaterOrEqual 88.0
-        }
-
-        It 'canonical SmartGuard.ico fills enough 16px taskbar canvas width' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $widthPct = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((16,16)).convert('RGBA'); bbox=img.getchannel('A').getbbox(); print(f'{(bbox[2]-bbox[0])/16*100:.1f}')" $icon
-
-            [double]$widthPct | Should -BeGreaterOrEqual 90.0
-        }
-
-        It 'canonical SmartGuard.ico keeps enough 16px tray footprint' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $fill = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((16,16)).convert('RGBA'); pixels=sum(1 for p in img.getdata() if p[3] > 8); print(f'{pixels / 256 * 100:.1f}')" $icon
-
-            [double]$fill | Should -BeGreaterOrEqual 47.0
-        }
-
-        It 'canonical SmartGuard.ico keeps the 24px white lightning accent and a simplified 16px tray palette' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img24=ico.ico.getimage((24,24)).convert('RGBA'); img16=ico.ico.getimage((16,16)).convert('RGBA'); white24=sum(1 for r,g,b,a in img24.getdata() if a > 200 and r > 230 and g > 235 and b > 235); bright16=sum(1 for r,g,b,a in img16.getdata() if a > 32 and r >= 90 and g >= 170 and b >= 220); blue16=sum(1 for r,g,b,a in img16.getdata() if a > 32 and 60 <= r <= 170 and 120 <= g <= 220 and 170 <= b <= 255); white16=sum(1 for r,g,b,a in img16.getdata() if a > 200 and r > 230 and g > 235 and b > 235); print(json.dumps({'white24': white24, 'bright16': bright16, 'blue16': blue16, 'white16': white16}))" $icon
+            $officialDir = Join-Path $root 'assets\branding\official'
+            $metricsJson = python -c "from pathlib import Path; from PIL import Image, ImageChops; import json, sys; icon_path=Path(sys.argv[1]); official_dir=Path(sys.argv[2]); ico=Image.open(icon_path); expected={16:'SmartGuard-final-official-16.png',24:'SmartGuard-final-official-2048-transparent-24.png',32:'SmartGuard-final-official-2048-transparent-32.png',48:'SmartGuard-final-official-2048-transparent-48.png',64:'SmartGuard-final-official-4096-transparent-64.png',128:'SmartGuard-final-official-4096-transparent-128.png',256:'SmartGuard-final-official-4096-transparent-256.png'}; result={'sizes': [f'{w}x{h}' for w,h in sorted(list(ico.ico.sizes()))], 'matches': {}}; 
+for size, name in expected.items():
+    frame = ico.ico.getimage((size,size)).convert('RGBA')
+    source = Image.open(official_dir / name).convert('RGBA')
+    result['matches'][str(size)] = ImageChops.difference(frame, source).getbbox() is None
+print(json.dumps(result))" $icon $officialDir
             $metrics = $metricsJson | ConvertFrom-Json
 
-            $metrics.white24 | Should -BeGreaterThan 6
-            $metrics.bright16 | Should -BeGreaterThan 30
-            $metrics.blue16 | Should -BeGreaterThan 120
-            $metrics.white16 | Should -BeLessOrEqual 4
+            $metrics.sizes | Should -Be @(
+                '16x16',
+                '20x20',
+                '24x24',
+                '32x32',
+                '40x40',
+                '48x48',
+                '64x64',
+                '128x128',
+                '256x256'
+            )
+            foreach ($size in '16', '24', '32', '48', '64', '128', '256') {
+                $metrics.matches.$size | Should -Be $true
+            }
         }
 
-        It 'canonical SmartGuard.ico keeps a crisp 32px frame for taskbar and Explorer' {
+        It 'retires the old draft asset tree and icon generation scripts' {
             $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); bbox=img32.getchannel('A').getbbox(); white32=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 230 and g > 235 and b > 235); alpha32={a for _,_,_,a in img32.getdata() if a > 0}; print(json.dumps({'white32': white32, 'widthPct': (bbox[2]-bbox[0])/32*100, 'alpha32': len(alpha32)}))" $icon
-            $metrics = $metricsJson | ConvertFrom-Json
+            Test-Path -LiteralPath (Join-Path $root 'assets\icon') | Should -Be $false
 
-            $metrics.white32 | Should -BeGreaterThan 15
-            $metrics.widthPct | Should -BeGreaterOrEqual 88.0
-            $metrics.alpha32 | Should -BeLessOrEqual 90
-        }
-
-        It 'canonical SmartGuard.ico keeps readable 32px lightning and battery mass' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); white=[(x,y) for y in range(img32.height) for x in range(img32.width) if (lambda p: p[3] > 200 and p[0] > 230 and p[1] > 235 and p[2] > 235)(img32.getpixel((x, y)))]; xs=[p[0] for p in white]; ys=[p[1] for p in white]; shell=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 200 and g > 220 and b > 230); fill=sum(1 for r,g,b,a in img32.getdata() if a > 200 and 60 < r < 130 and 120 < g < 190 and 150 < b < 230); print(json.dumps({'width': max(xs) - min(xs) + 1, 'height': max(ys) - min(ys) + 1, 'shell': shell, 'fill': fill}))" $icon
-            $metrics = $metricsJson | ConvertFrom-Json
-
-            $metrics.width | Should -BeGreaterOrEqual 5
-            $metrics.height | Should -BeGreaterOrEqual 9
-            $metrics.shell | Should -BeLessOrEqual 220
-            $metrics.fill | Should -BeGreaterOrEqual 120
-        }
-
-        It 'canonical SmartGuard.ico keeps vertical safe margins in taskbar and window frames' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); sizes=(24,32,48,64); data={}; 
-for size in sizes:
-    img=ico.ico.getimage((size,size)).convert('RGBA')
-    bbox=img.getchannel('A').getbbox()
-    data[str(size)]={'top': bbox[1], 'bottom': size - bbox[3], 'left': bbox[0], 'right': size - bbox[2]}
-print(json.dumps(data))" $icon
-            $metrics = $metricsJson | ConvertFrom-Json
-
-            foreach ($size in '24', '32', '48', '64') {
-                $metrics.$size.top | Should -BeGreaterOrEqual 1 -Because "${size}px frame must keep at least 1px transparent top margin to avoid visual clipping"
-                $metrics.$size.bottom | Should -BeGreaterOrEqual 1 -Because "${size}px frame must keep at least 1px transparent bottom margin to avoid visual clipping"
+            foreach ($path in @(
+                'scripts\generate-smartguard-icons.py',
+                'scripts\generate-smartguard-small-draft-board.py',
+                'scripts\generate-smartguard-guardian-variants.py',
+                'scripts\generate-smartguard-cursor-style-drafts.py',
+                'scripts\generate-smartguard-cursor-style-hd.py',
+                'scripts\test_generate_smartguard_icons.py',
+                'scripts\test_generate_smartguard_guardian_variants.py'
+            )) {
+                Test-Path -LiteralPath (Join-Path $root $path) | Should -Be $false
             }
         }
 
@@ -522,11 +505,10 @@ print(json.dumps(data))" $icon
     }
 
     Describe 'Phase 8 architecture single source of truth' {
-        It 'active scripts do not advertise retired lib icon outputs' {
+        It 'live tree no longer keeps the retired icon draft generator chain' {
             $root = Split-Path -Parent $PSScriptRoot
-            $script = Get-Content -LiteralPath (Join-Path $root 'scripts\generate-smartguard-icons.py') -Raw -Encoding UTF8
-            $script | Should -Not -Match 'save_ico\(LIB_DIR / "SmartGuard\.ico"'
-            $script | Should -Not -Match 'lib/SmartGuard\.ico'
+            Test-Path -LiteralPath (Join-Path $root 'scripts\generate-smartguard-icons.py') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'assets\icon') | Should -Be $false
         }
 
         It 'historical task-contract and diagnosis docs live under docs/archive instead of top-level docs' {

@@ -8,7 +8,7 @@
 2. Any `fallback`, `marker`, runtime self-healing, compatibility stub, or duplicated resolver counts as a second owner and is forbidden.
 3. User-visible shell entrypoints are installer-owned only: `InstallCommands -> DesktopShellRegistration` writes one start-menu shortcut `SmartGuard.lnk` and an optional desktop `SmartGuard.lnk` when the user opts in during install.
 4. Settings layout is embedded-only: runtime must not read `installRoot\lib\SmartGuard.Settings.xaml`.
-5. Runtime branding is embedded-only: `assets/branding/SmartGuard.ico` is the only build-time icon source, and runtime must not read `installRoot\lib\SmartGuard.ico`.
+5. Runtime branding is embedded-only: approved raw source frames live under `assets/branding/official/`, the only live build-time icon asset is `assets/branding/SmartGuard.ico`, and runtime must not read `installRoot\lib\SmartGuard.ico`.
 6. Distribution topology is manifest-owned only: payload, published projects, installer process list, and legacy cleanup must come from `DesktopDistributionManifest`.
 7. Log entry is settings-only: `SmartGuard.Settings.exe --page logs` is the only live user entry; `SmartGuard.LogViewer.exe` must not return as a product artifact.
 8. Shell damage or legacy residue must be repaired only by install/repair. Tray runtime and notifier runtime are not allowed to write shell state back.
@@ -23,7 +23,7 @@
 | Concern | Canonical owner | Forbidden second owner |
 | --- | --- | --- |
 | shell owner | `InstallCommands -> DesktopShellRegistration` → one live start-menu shortcut `SmartGuard.lnk`; optional desktop `SmartGuard.lnk` | Tray runtime self-registration, `[Icons]`, dedicated settings/logs shortcuts, marker self-healing |
-| xaml/icon true source | embedded `SmartGuard.Settings.xaml` and project-consumed `assets/branding/SmartGuard.ico` | loose `lib` assets, runtime file reads, `SystemIcons.Shield`, caller-supplied icon fallbacks |
+| xaml/icon true source | embedded `SmartGuard.Settings.xaml` plus `assets/branding/official/*.png` -> project-consumed `assets/branding/SmartGuard.ico` | loose `lib` assets, runtime file reads, `SystemIcons.Shield`, caller-supplied icon fallbacks, live `assets/icon/**` drafts |
 | distribution manifest | `DesktopDistributionManifest` + `InnoDistributionManifestWriter` generated includes | duplicated project/file/process lists in staging, installer, tests; handwritten Inno `[Run]` exe/task literals |
 | logs entry | `SmartGuard.Settings.exe --page logs` | no dedicated shell shortcut; no `SmartGuard.LogViewer` product identity |
 | legacy cleanup | `LegacyScheduledTaskCatalog` via `LegacyTaskCleaner` / `InstallCommands` | live `scripts/*.ps1` duplicate task names or manual unregister entrypoints |

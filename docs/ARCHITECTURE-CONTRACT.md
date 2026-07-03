@@ -19,7 +19,7 @@
 | 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `CliExe` | 注册、shell、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
 | 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
 | Settings XAML | `src/SmartGuard.Settings/SmartGuard.Settings.xaml`（编译嵌入/BAML） | `SettingsXamlLoader.TryLoadEmbeddedWindow` | Settings 项目源文件 | runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` |
-| 品牌图标 | `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标；允许的 Windows consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=Tray.exe` | 资产源文件 + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico`；`SystemIcons.Shield` 或 caller-supplied fallback |
+| 品牌图标 | `assets/branding/official/*.png` 官方源帧 -> `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标；允许的 Windows consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=Tray.exe` | official 源帧 + canonical `.ico` + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico`；`SystemIcons.Shield`、caller-supplied fallback，或 live `assets/icon/**` 草稿树 |
 | 初始化标记 | `SmartGuardPaths.InitMarkerFile(root)` | Engine 首次运行 | Engine | `".SmartGuard.initialized"` 字面量散落 |
 | 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
 | 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威）→ `InnoDistributionManifestWriter` 生成 `installer/generated/SmartGuard.Distribution.Constants.iss.inc` | ps1/Inno | — | 脚本与 Inno 硬编码文件名；`SmartGuard.iss` 手写 live exe/task literal |
