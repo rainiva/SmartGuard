@@ -3,7 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
-namespace SmartGuard.LogViewer;
+namespace SmartGuard.Settings.LogView;
 
 public sealed record LogFileSlice(long Length, string Text);
 

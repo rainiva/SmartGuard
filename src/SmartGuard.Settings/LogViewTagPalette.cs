@@ -1,5 +1,5 @@
 using System.Windows.Media;
-using SmartGuard.LogViewer;
+using SmartGuard.Settings.LogView;
 using MediaColor = System.Windows.Media.Color;
 
 namespace SmartGuard.Settings;

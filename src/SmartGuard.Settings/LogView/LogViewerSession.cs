@@ -1,6 +1,6 @@
 using System.Windows.Forms;
 
-namespace SmartGuard.LogViewer;
+namespace SmartGuard.Settings.LogView;
 
 internal sealed class LogViewerSession
 {

@@ -32,4 +32,19 @@ public class LogViewerProgramArchitectureTests
     source.Should().Contain("SetInitialPage");
     source.Should().Contain("--page");
   }
+
+  [Fact]
+  public void Product_must_not_keep_LogViewer_test_or_namespace_identity()
+  {
+    var slnx = SourceScanHelper.ReadSource("SmartGuard.slnx");
+    var settingsProject = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SmartGuard.Settings.csproj");
+    var source = string.Join(
+      Environment.NewLine,
+      Directory.EnumerateFiles(Path.Combine(SourceScanHelper.RepoRoot, "src"), "*.cs", SearchOption.AllDirectories)
+        .Select(File.ReadAllText));
+
+    slnx.Should().NotContain("SmartGuard.LogViewer.Tests");
+    settingsProject.Should().NotContain("InternalsVisibleTo Include=\"SmartGuard.LogViewer.Tests\"");
+    source.Should().NotContain("namespace SmartGuard.LogViewer");
+  }
 }

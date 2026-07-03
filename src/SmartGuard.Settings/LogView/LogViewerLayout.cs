@@ -1,4 +1,4 @@
-namespace SmartGuard.LogViewer;
+namespace SmartGuard.Settings.LogView;
 
 public static class LogViewerLayout
 {

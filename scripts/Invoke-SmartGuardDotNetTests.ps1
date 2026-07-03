@@ -31,7 +31,7 @@ function Get-SmartGuardDotNetTestProjectPaths {
         (Join-Path $RepoRoot 'Tests\SmartGuard.Cli.Tests\SmartGuard.Cli.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Architecture.Tests\SmartGuard.Architecture.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Tray.Tests\SmartGuard.Tray.Tests.csproj')
-        (Join-Path $RepoRoot 'Tests\SmartGuard.LogViewer.Tests\SmartGuard.LogViewer.Tests.csproj')
+        (Join-Path $RepoRoot 'Tests\SmartGuard.Settings.LogView.Tests\SmartGuard.Settings.LogView.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Packaging.Tests\SmartGuard.Packaging.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Engine.PerformanceTests\SmartGuard.Engine.PerformanceTests.csproj')
@@ -55,7 +55,7 @@ function Get-SmartGuardSerialDotNetTestProjectPaths {
 
     @(
         (Join-Path $RepoRoot 'Tests\SmartGuard.Tray.Tests\SmartGuard.Tray.Tests.csproj')
-        (Join-Path $RepoRoot 'Tests\SmartGuard.LogViewer.Tests\SmartGuard.LogViewer.Tests.csproj')
+        (Join-Path $RepoRoot 'Tests\SmartGuard.Settings.LogView.Tests\SmartGuard.Settings.LogView.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj')
         (Join-Path $RepoRoot 'Tests\SmartGuard.Engine.PerformanceTests\SmartGuard.Engine.PerformanceTests.csproj')
     )

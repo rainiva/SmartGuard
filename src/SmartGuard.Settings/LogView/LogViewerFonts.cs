@@ -1,6 +1,6 @@
 using System.Drawing;
 
-namespace SmartGuard.LogViewer;
+namespace SmartGuard.Settings.LogView;
 
 public static class LogViewerFonts
 {

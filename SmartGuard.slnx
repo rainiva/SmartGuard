@@ -11,7 +11,7 @@
     <Project Path="tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj" />
     <Project Path="tests/SmartGuard.Engine.PerformanceTests/SmartGuard.Engine.PerformanceTests.csproj" />
     <Project Path="tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj" />
-    <Project Path="tests/SmartGuard.LogViewer.Tests/SmartGuard.LogViewer.Tests.csproj" />
+    <Project Path="tests/SmartGuard.Settings.LogView.Tests/SmartGuard.Settings.LogView.Tests.csproj" />
     <Project Path="tests/SmartGuard.Packaging.Tests/SmartGuard.Packaging.Tests.csproj" />
     <Project Path="tests/SmartGuard.Settings.Tests/SmartGuard.Settings.Tests.csproj" />
     <Project Path="tests/SmartGuard.Tray.Tests/SmartGuard.Tray.Tests.csproj" />

@@ -1,4 +1,4 @@
-namespace SmartGuard.LogViewer.Tests;
+namespace SmartGuard.Settings.LogView.Tests;
 
 [Collection("LogViewerWinForms")]
 public class LogViewerFontsTests
