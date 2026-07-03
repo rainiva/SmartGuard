@@ -8,17 +8,23 @@ public class InnoShortcutWrapperArchitectureTests
   public void Installer_must_not_own_user_shell_shortcuts()
   {
     var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
-    if (iss.Contains("[Icons]", StringComparison.Ordinal))
-    {
-      var iconsSection = ExtractSection(iss, "[Icons]");
-      iconsSection.Should().NotContain("SmartGuard.Cli.exe");
-      iconsSection.Should().NotContain("SmartGuard.Tray.exe");
-      iconsSection.Should().NotContain("SmartGuard.Settings.exe");
-      iconsSection.Should().NotContain("open tray");
-      iconsSection.Should().NotContain("open settings");
-      iconsSection.Should().NotContain("open logs");
-      iconsSection.Should().NotContain(@"{autodesktop}\{#MyAppName}");
-    }
+    iss.Should().NotContain("[Icons]", "installer must delegate shell surfaces to DesktopShellRegistration");
+    iss.Should().NotContain("SmartGuard 托盘.lnk");
+    iss.Should().NotContain("SmartGuard 设置.lnk");
+    iss.Should().NotContain("SmartGuard 日志.lnk");
+  }
+
+  [Fact]
+  public void Shell_owner_publishes_one_start_menu_entry_and_optional_desktop_shortcut()
+  {
+    var shellOwner = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Shell/DesktopShellRegistration.cs");
+    var liveStartMenu = SourceScanHelper.ExtractMethodBody(shellOwner, "GetStartMenuShortcuts(string root)");
+
+    liveStartMenu.Should().Contain("SmartGuard.lnk");
+    liveStartMenu.Should().NotContain("SmartGuard 托盘.lnk", "live shell surface must not include legacy tray shortcut");
+    liveStartMenu.Should().NotContain("SmartGuard 设置.lnk", "live shell surface must not include dedicated settings shortcut");
+    liveStartMenu.Should().NotContain("SmartGuard 日志.lnk", "live shell surface must not include dedicated logs shortcut");
+    shellOwner.Should().Contain("createDesktopShortcut");
   }
 
   [Fact]

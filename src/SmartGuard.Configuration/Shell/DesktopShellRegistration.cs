@@ -20,17 +20,9 @@ public static class DesktopShellRegistration
     return
     [
       CreateShortcut(
-        Path.Combine(programsDir, "SmartGuard 托盘.lnk"),
+        Path.Combine(programsDir, "SmartGuard.lnk"),
         SmartGuardPaths.TrayExe(root),
         $"--root \"{root}\""),
-      CreateShortcut(
-        Path.Combine(programsDir, "SmartGuard 设置.lnk"),
-        SmartGuardPaths.SettingsExe(root),
-        $"--root \"{root}\""),
-      CreateShortcut(
-        Path.Combine(programsDir, "SmartGuard 日志.lnk"),
-        SmartGuardPaths.SettingsExe(root),
-        $"--root \"{root}\" --page logs"),
     ];
   }
 
@@ -135,7 +127,14 @@ public static class DesktopShellRegistration
 
   private static void DeleteLegacyArtifacts(string root)
   {
-    DeleteShortcut(Path.Combine(GetProgramsDirectory(), "SmartGuard.lnk"));
+    foreach (var shortcutPath in new[]
+    {
+      Path.Combine(GetProgramsDirectory(), "SmartGuard 托盘.lnk"),
+      Path.Combine(GetProgramsDirectory(), "SmartGuard 设置.lnk"),
+      Path.Combine(GetProgramsDirectory(), "SmartGuard 日志.lnk"),
+      Path.Combine(GetProgramsDirectory(), "SmartGuard.lnk"),
+    })
+      DeleteShortcut(shortcutPath);
 
     var legacyGroupDir = Path.Combine(GetProgramsDirectory(), "SmartGuard");
     foreach (var name in new[] { "SmartGuard 托盘.lnk", "SmartGuard 设置.lnk", "SmartGuard 日志.lnk", "卸载 SmartGuard.lnk" })

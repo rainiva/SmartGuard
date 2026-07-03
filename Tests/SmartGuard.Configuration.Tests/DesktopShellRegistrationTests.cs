@@ -6,22 +6,17 @@ namespace SmartGuard.Configuration.Tests;
 public class DesktopShellRegistrationTests
 {
   [Fact]
-  public void Start_menu_shortcuts_point_to_tray_settings_and_logs_entrypoints()
+  public void Start_menu_shortcuts_collapse_to_one_primary_entrypoint()
   {
     var root = @"D:\Apps\SmartGuard";
 
     var shortcuts = DesktopShellRegistration.GetStartMenuShortcuts(root);
 
-    shortcuts.Should().HaveCount(3);
-    shortcuts.Select(x => x.TargetPath).Should().ContainInOrder(
-      SmartGuardPaths.TrayExe(root),
-      SmartGuardPaths.SettingsExe(root),
-      SmartGuardPaths.SettingsExe(root));
-    shortcuts.Select(x => x.Arguments).Should().ContainInOrder(
-      $"--root \"{root}\"",
-      $"--root \"{root}\"",
-      $"--root \"{root}\" --page logs");
-    shortcuts.Should().OnlyContain(x => x.AppUserModelId == SmartGuardToastAppId.AppId);
+    shortcuts.Should().HaveCount(1);
+    shortcuts[0].ShortcutPath.Should().EndWith("SmartGuard.lnk");
+    shortcuts[0].TargetPath.Should().Be(SmartGuardPaths.TrayExe(root));
+    shortcuts[0].Arguments.Should().Be($"--root \"{root}\"");
+    shortcuts[0].AppUserModelId.Should().Be(SmartGuardToastAppId.AppId);
   }
 
   [Fact]
