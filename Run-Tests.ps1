@@ -13,7 +13,15 @@ if ((chcp) -notmatch '65001') {
 . (Join-Path $PSScriptRoot 'scripts\Test-IsProcessElevated.ps1')
 . (Join-Path $PSScriptRoot 'scripts\Invoke-SmartGuardDotNetTests.ps1')
 if (Test-RunTestsNeedsInstallerElevation -RepoRoot $PSScriptRoot) {
-    Invoke-RunTestsSingleElevation -RunTestsScript (Join-Path $PSScriptRoot 'Run-Tests.ps1')
+    $handoff = Invoke-RunTestsSingleElevation -RunTestsScript (Join-Path $PSScriptRoot 'Run-Tests.ps1')
+    if ($handoff.HandedOff) {
+        exit $handoff.ExitCode
+    }
+}
+
+if ($env:SMARTGUARD_ELEVATED_RUN -eq '1') {
+    $declinedMarker = Get-ElevationDeclinedMarkerPath -RepoRoot $PSScriptRoot
+    Remove-Item -LiteralPath $declinedMarker -Force -ErrorAction SilentlyContinue
 }
 
 $pester = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
@@ -73,7 +81,18 @@ if (Test-Path -LiteralPath $installerFlow) {
         }
     }
     else {
-        $reason = if ($tier -eq 'fast') { "SMARTGUARD_TEST_TIER=$tier" } else { 'SMARTGUARD_SKIP_INSTALLER_TESTS=1' }
+        $reason = if ($tier -eq 'fast') {
+            "SMARTGUARD_TEST_TIER=$tier"
+        }
+        elseif ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
+            'SMARTGUARD_SKIP_INSTALLER_TESTS=1'
+        }
+        elseif (-not (Test-IsProcessElevated)) {
+            'requires administrator (accept one UAC prompt or run elevated shell)'
+        }
+        else {
+            'disabled'
+        }
         Write-Host "Skipping installer integration: $reason" -ForegroundColor Yellow
     }
 }

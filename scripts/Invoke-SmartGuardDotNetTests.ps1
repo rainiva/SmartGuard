@@ -219,9 +219,13 @@ function Test-SmartGuardInstallerIntegrationEnabled {
         return $false
     }
 
-    if ($Tier -eq 'nightly') {
-        return $true
+    if ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
+        return $false
     }
 
-    return $env:SMARTGUARD_SKIP_INSTALLER_TESTS -ne '1'
+    if (-not (Test-IsProcessElevated)) {
+        return $false
+    }
+
+    return $true
 }

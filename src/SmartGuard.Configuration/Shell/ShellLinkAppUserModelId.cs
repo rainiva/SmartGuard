@@ -5,6 +5,8 @@ namespace SmartGuard.Configuration.Shell;
 
 internal static class ShellLinkAppUserModelId
 {
+  private const uint StgmReadWrite = 0x00000002;
+
   private static readonly PropertyKey AppUserModelIdKey = new(
     new Guid("9F4C2855-9F59-4B38-AC27-8B953B3F3C28"), 5);
 
@@ -15,7 +17,7 @@ internal static class ShellLinkAppUserModelId
 
     var link = (IShellLinkW)new ShellLink();
     var persist = (IPersistFile)link;
-    persist.Load(shortcutPath, 0);
+    persist.Load(shortcutPath, StgmReadWrite);
     var store = (IPropertyStore)link;
     var key = AppUserModelIdKey;
     var pv = new PropVariant { vt = 31, pointerValue = Marshal.StringToCoTaskMemUni(appUserModelId) };

@@ -15,8 +15,9 @@ public static class EngineLifecycle
 
   public static void StopProcesses()
   {
+    var currentProcessId = Environment.ProcessId;
     foreach (var processName in SmartGuardPaths.ProcessImageNames)
-      TryKillProcess(processName);
+      TryKillProcess(processName, currentProcessId);
   }
 
   public static void DeleteScheduledTasks()
@@ -35,11 +36,13 @@ public static class EngineLifecycle
 
   public static bool AnySmartGuardProcessRunning()
   {
+    var currentProcessId = Environment.ProcessId;
     foreach (var processName in SmartGuardPaths.ProcessImageNames)
     {
       try
       {
-        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName)).Length > 0)
+        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName))
+                   .Any(process => process.Id != currentProcessId))
           return true;
       }
       catch
@@ -62,21 +65,25 @@ public static class EngineLifecycle
     }
   }
 
-  private static void TryKillProcess(string processName)
+  private static void TryKillProcess(string processName, int currentProcessId)
   {
     try
     {
       var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName));
       foreach (var process in processes)
       {
+        if (process.Id == currentProcessId)
+          continue;
+
         try
         {
-          process.Kill();
-          process.WaitForExit(5000);
+          process.Kill(entireProcessTree: true);
+          if (!process.WaitForExit(5000))
+            TryForceKillProcessById(process.Id);
         }
         catch
         {
-          // ignore individual process kill failures
+          TryForceKillProcessById(process.Id);
         }
       }
     }
@@ -89,13 +96,19 @@ public static class EngineLifecycle
   private static void TryDeleteScheduledTask(string taskName)
     => TryRunSchtasks($"/Delete /TN \"{taskName}\" /F");
 
+  private static void TryForceKillProcessById(int processId)
+    => TryRunProcess("taskkill.exe", $"/F /T /PID {processId}");
+
   private static void TryRunSchtasks(string arguments)
+    => TryRunProcess("schtasks.exe", arguments);
+
+  private static void TryRunProcess(string fileName, string arguments)
   {
     try
     {
       using var proc = Process.Start(new ProcessStartInfo
       {
-        FileName = "schtasks.exe",
+        FileName = fileName,
         Arguments = arguments,
         UseShellExecute = false,
         CreateNoWindow = true,

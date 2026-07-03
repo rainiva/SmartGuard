@@ -525,6 +525,19 @@
             $content | Should -Match 'GuardConfigRepository'
         }
 
+        It 'single-entry single-source rule doc exists as the short governance entrypoint' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $ruleDoc = Join-Path $root 'docs\architecture\single-entry-single-source.md'
+            Test-Path -LiteralPath $ruleDoc | Should -Be $true
+            $content = Get-Content -LiteralPath $ruleDoc -Raw -Encoding UTF8
+            $content | Should -Match 'canonical owner'
+            $content | Should -Match 'fallback'
+            $content | Should -Match 'marker'
+            $content | Should -Match 'DesktopShellRegistration'
+            $content | Should -Match 'DesktopDistributionManifest'
+            $content | Should -Match 'SmartGuard\.Settings\.exe --page logs'
+        }
+
         It 'AGENTS.md documents architecture and multi-source TDD rules' {
             $root = Split-Path -Parent $PSScriptRoot
             $agents = Get-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Raw -Encoding UTF8
@@ -562,6 +575,8 @@
             $iss | Should -Match 'SmartGuard\.Cli\.exe'
             $iss | Should -Match '--create-desktop-shortcut'
             $iss | Should -Not -Match '(?ms)^\[Icons\]'
+            $iss | Should -Not -Match 'DefaultGroupName='
+            $iss | Should -Not -Match 'DisableProgramGroupPage='
         }
 
         It 'installer does not package or advertise SmartGuard.LogViewer.exe as a live entry' {
@@ -613,6 +628,50 @@
             $root = Split-Path -Parent $PSScriptRoot
             $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Tests.ps1') -Raw -Encoding UTF8
             $flow | Should -Not -Match 'dotnet test'
+        }
+
+        It 'Invoke-RunTestsSingleElevation exits parent after successful UAC handoff' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $elevation = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-IsProcessElevated.ps1') -Raw -Encoding UTF8
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $fn = [regex]::Match($elevation, '(?s)function Invoke-RunTestsSingleElevation.*?(?=\r?\nfunction |\z)').Value
+            $fn | Should -Match 'HandedOff\s*=\s*\$true'
+            $fn | Should -Match 'LASTEXITCODE'
+            $runTests | Should -Match 'if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode'
+        }
+
+        It 'Test-SmartGuardInstallerIntegrationEnabled requires elevation to avoid repeated UAC' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $helper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
+            $fn = [regex]::Match($helper, '(?s)function Test-SmartGuardInstallerIntegrationEnabled.*?(?=\r?\nfunction |\z)').Value
+            $fn | Should -Match 'Test-IsProcessElevated'
+            $fn | Should -Not -Match "if\s*\(\s*\`$Tier\s*-eq\s*'nightly'\s*\)\s*\{\s*return\s+\`$true\s*\}"
+        }
+
+        It 'InstallerUserFlow.Tests.ps1 self-handoffs to one elevated Pester run when launched directly' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $elevation = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-IsProcessElevated.ps1') -Raw -Encoding UTF8
+            $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Tests.ps1') -Raw -Encoding UTF8
+            $elevation | Should -Match 'function Invoke-InstallerUserFlowSingleElevation'
+            $elevation | Should -Match 'Invoke-Pester\s+-Path'
+            $elevation | Should -Match 'SMARTGUARD_ELEVATED_RUN'
+            $flow | Should -Match 'Invoke-InstallerUserFlowSingleElevation'
+            $flow | Should -Match '\$PSCommandPath'
+            $flow | Should -Match '\$installerFlowHandoff\.HandedOff'
+        }
+
+        It 'InstallerUserFlow.Tests.ps1 re-resolves repo root in BeforeAll when script scope is empty' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Tests.ps1') -Raw -Encoding UTF8
+            $flow | Should -Match 'IsNullOrWhiteSpace\(\$script:InstallerUserFlowRepoRoot\)'
+            $flow | Should -Match '\$script:InstallerUserFlowRepoRoot = \(Resolve-Path \(Join-Path \$PSScriptRoot ''\.\.\\\.\.''\)\)\.Path'
+        }
+
+        It 'Stop-SmartGuardProcesses avoids Engine --uninstall UAC when not elevated' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $stop = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1') -Raw -Encoding UTF8
+            $stop | Should -Match 'Stop-SmartGuardProcessesWithoutElevation'
+            $stop | Should -Match 'if\s*\(\s*-not\s*\(\s*Test-IsProcessElevated\s*\)\s*\)'
         }
     }
 }

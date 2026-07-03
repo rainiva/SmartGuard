@@ -45,7 +45,7 @@ function Stop-EngineTree {
     if ($InstallRoot) {
         $engineExe = Join-Path $InstallRoot 'bin\SmartGuard.Engine.exe'
         if (Test-Path -LiteralPath $engineExe) {
-            Stop-SmartGuardProcesses -EngineExe $engineExe -Root $InstallRoot
+            Stop-SmartGuardProcesses -EngineExe $engineExe -Root $InstallRoot -ProcessId $ProcessId
             Wait-SmartGuardEngineExit -ProcessId $ProcessId | Out-Null
             if ($ProcessId -gt 0) {
                 Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue

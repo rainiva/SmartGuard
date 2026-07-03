@@ -1,8 +1,11 @@
 #Requires -Version 5.1
 <#
   Shared stop helper for integration tests and dev scripts.
-  Delegates to SmartGuard.Engine.exe --uninstall when the engine binary exists.
+  Delegates to SmartGuard.Engine.exe --uninstall when elevated; otherwise kills processes only (no UAC).
 #>
+
+$script:SmartGuardStopRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $script:SmartGuardStopRepoRoot 'scripts\Test-IsProcessElevated.ps1')
 
 function Wait-SmartGuardEngineExit {
     param(
@@ -32,11 +35,29 @@ function Wait-SmartGuardEngineExit {
     return $false
 }
 
+function Stop-SmartGuardProcessesWithoutElevation {
+    param([int]$ProcessId = 0)
+
+    if ($ProcessId -gt 0) {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+    Get-Process -Name 'SmartGuard.Engine', 'SmartGuard.Tray' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Wait-SmartGuardEngineExit -ProcessId $ProcessId | Out-Null
+}
+
 function Stop-SmartGuardProcesses {
     param(
         [string]$EngineExe,
-        [string]$Root
+        [string]$Root,
+        [int]$ProcessId = 0
     )
+
+    if (-not (Test-IsProcessElevated)) {
+        Stop-SmartGuardProcessesWithoutElevation -ProcessId $ProcessId
+        return
+    }
 
     if ($EngineExe -and (Test-Path -LiteralPath $EngineExe)) {
         $arguments = @()
@@ -45,7 +66,7 @@ function Stop-SmartGuardProcesses {
         }
         $arguments += '--uninstall'
         & $EngineExe @arguments 2>$null | Out-Null
-        Wait-SmartGuardEngineExit | Out-Null
+        Wait-SmartGuardEngineExit -ProcessId $ProcessId | Out-Null
         return
     }
 

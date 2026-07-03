@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Runtime.InteropServices;
 
 namespace SmartGuard.Configuration.Shell;
 
@@ -41,6 +42,7 @@ public static class DesktopShellRegistration
 
   public static void Apply(string root, bool createDesktopShortcut)
   {
+    DeleteLegacyArtifacts(root);
     RegisterAppUserModelId(root);
 
     foreach (var shortcut in GetStartMenuShortcuts(root))
@@ -51,8 +53,6 @@ public static class DesktopShellRegistration
       WriteShortcut(desktopShortcut);
     else
       DeleteShortcut(desktopShortcut.ShortcutPath);
-
-    DeleteLegacyArtifacts(root);
   }
 
   public static void Remove(string root)
@@ -108,14 +108,27 @@ public static class DesktopShellRegistration
 
     var shellType = Type.GetTypeFromProgID("WScript.Shell")
       ?? throw new InvalidOperationException("WScript.Shell is not available.");
-    dynamic shell = Activator.CreateInstance(shellType)!;
-    dynamic link = shell.CreateShortcut(shortcut.ShortcutPath);
-    link.TargetPath = shortcut.TargetPath;
-    link.Arguments = shortcut.Arguments;
-    link.WorkingDirectory = shortcut.WorkingDirectory;
-    link.Description = shortcut.Description;
-    link.IconLocation = shortcut.IconLocation;
-    link.Save();
+    dynamic? shell = null;
+    dynamic? link = null;
+    try
+    {
+      shell = Activator.CreateInstance(shellType)!;
+      link = shell.CreateShortcut(shortcut.ShortcutPath);
+      link.TargetPath = shortcut.TargetPath;
+      link.Arguments = shortcut.Arguments;
+      link.WorkingDirectory = shortcut.WorkingDirectory;
+      link.Description = shortcut.Description;
+      link.IconLocation = shortcut.IconLocation;
+      link.Save();
+    }
+    finally
+    {
+      if (link is not null && Marshal.IsComObject(link))
+        Marshal.FinalReleaseComObject(link);
+
+      if (shell is not null && Marshal.IsComObject(shell))
+        Marshal.FinalReleaseComObject(shell);
+    }
 
     ShellLinkAppUserModelId.Apply(shortcut.ShortcutPath, shortcut.AppUserModelId);
   }
@@ -127,7 +140,7 @@ public static class DesktopShellRegistration
     var legacyGroupDir = Path.Combine(GetProgramsDirectory(), "SmartGuard");
     foreach (var name in new[] { "SmartGuard 托盘.lnk", "SmartGuard 设置.lnk", "SmartGuard 日志.lnk", "卸载 SmartGuard.lnk" })
       DeleteShortcut(Path.Combine(legacyGroupDir, name));
-    DeleteDirectoryIfEmpty(legacyGroupDir);
+    DeleteDirectoryTree(legacyGroupDir);
 
     foreach (var markerPath in new[]
     {
@@ -149,30 +162,70 @@ public static class DesktopShellRegistration
 
   private static void DeleteShortcut(string shortcutPath)
   {
-    try
+    for (var attempt = 0; attempt < 3; attempt++)
     {
-      if (File.Exists(shortcutPath))
+      try
+      {
+        if (!File.Exists(shortcutPath))
+          return;
+
+        File.SetAttributes(shortcutPath, FileAttributes.Normal);
         File.Delete(shortcutPath);
-    }
-    catch
-    {
-      // shortcut cleanup is best-effort
+        if (!File.Exists(shortcutPath))
+          return;
+      }
+      catch
+      {
+        if (attempt == 2)
+          return;
+      }
+
+      System.Threading.Thread.Sleep(50);
     }
   }
 
-  private static void DeleteDirectoryIfEmpty(string directoryPath)
+  private static void DeleteDirectoryTree(string directoryPath)
   {
-    try
+    if (!Directory.Exists(directoryPath))
+      return;
+
+    foreach (var filePath in Directory.EnumerateFiles(directoryPath, "*", SearchOption.AllDirectories))
     {
-      if (Directory.Exists(directoryPath) &&
-          !Directory.EnumerateFileSystemEntries(directoryPath).Any())
-      {
-        Directory.Delete(directoryPath, false);
-      }
+      DeleteShortcut(filePath);
     }
-    catch
+
+    foreach (var childDirectory in Directory.EnumerateDirectories(directoryPath, "*", SearchOption.AllDirectories)
+                                           .OrderByDescending(path => path.Length))
     {
-      // best-effort cleanup
+      TryDeleteEmptyDirectory(childDirectory);
+    }
+
+    TryDeleteEmptyDirectory(directoryPath);
+  }
+
+  private static void TryDeleteEmptyDirectory(string directoryPath)
+  {
+    for (var attempt = 0; attempt < 3; attempt++)
+    {
+      try
+      {
+        if (!Directory.Exists(directoryPath))
+          return;
+
+        if (Directory.EnumerateFileSystemEntries(directoryPath).Any())
+          return;
+
+        Directory.Delete(directoryPath, false);
+        if (!Directory.Exists(directoryPath))
+          return;
+      }
+      catch
+      {
+        if (attempt == 2)
+          return;
+      }
+
+      System.Threading.Thread.Sleep(50);
     }
   }
 

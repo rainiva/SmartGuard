@@ -77,4 +77,39 @@ public class RunTestsOptimizationArchitectureTests
     source.Should().Contain("Wait-SmartGuardEngineExit");
     source.Should().NotMatchRegex(@"Start-Sleep\s+-Seconds\s+2");
   }
+
+  [Fact]
+  public void Invoke_RunTestsSingleElevation_must_exit_parent_after_successful_elevation_handoff()
+  {
+    var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
+    var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
+    var fnMatch = System.Text.RegularExpressions.Regex.Match(
+      elevation,
+      @"(?s)function Invoke-RunTestsSingleElevation.*?(?=\r?\nfunction |\z)");
+    fnMatch.Success.Should().BeTrue();
+    fnMatch.Value.Should().Contain("HandedOff = $true");
+    fnMatch.Value.Should().Contain("exit `$LASTEXITCODE");
+    runTests.Should().MatchRegex(@"if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode");
+  }
+
+  [Fact]
+  public void SmartGuardStop_must_avoid_uninstall_uac_when_not_elevated()
+  {
+    var source = SourceScanHelper.ReadSource("Tests/Integration/SmartGuardStop.ps1");
+    source.Should().Contain("Stop-SmartGuardProcessesWithoutElevation");
+    source.Should().MatchRegex(@"if\s*\(\s*-not\s*\(\s*Test-IsProcessElevated\s*\)\s*\)");
+  }
+
+  [Fact]
+  public void Installer_integration_gate_must_require_elevation_to_avoid_repeated_uac()
+  {
+    var helper = SourceScanHelper.ReadSource("scripts/Invoke-SmartGuardDotNetTests.ps1");
+    var fnMatch = System.Text.RegularExpressions.Regex.Match(
+      helper,
+      @"(?s)function Test-SmartGuardInstallerIntegrationEnabled.*?(?=\r?\nfunction |\z)");
+    fnMatch.Success.Should().BeTrue();
+    fnMatch.Value.Should().Contain("Test-IsProcessElevated");
+    fnMatch.Value.Should().NotMatchRegex(
+      @"if\s*\(\s*\$Tier\s*-eq\s*'nightly'\s*\)\s*\{\s*return\s+\$true\s*\}");
+  }
 }
