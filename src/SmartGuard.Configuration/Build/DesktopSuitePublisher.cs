@@ -1,26 +1,24 @@
 using System.Diagnostics;
+using SmartGuard.Configuration.Distribution;
 
 namespace SmartGuard.Configuration.Build;
 
 public static class DesktopSuitePublisher
 {
   public static IReadOnlyList<string> ProjectRelativePaths { get; } =
-  [
-    "src/SmartGuard.Engine/SmartGuard.Engine.csproj",
-    "src/SmartGuard.Tray/SmartGuard.Tray.csproj",
-    "src/SmartGuard.LogViewer/SmartGuard.LogViewer.csproj",
-    "src/SmartGuard.Settings/SmartGuard.Settings.csproj",
-    "src/SmartGuard.Cli/SmartGuard.Cli.csproj",
-  ];
+    DesktopDistributionManifest.PublishedProjects
+      .Select(project => project.ProjectRelativePath)
+      .ToList()
+      .AsReadOnly();
 
   internal static Func<ProcessStartInfo, int>? RunProcessForTests;
 
   public static int Publish(string root, string configuration = "Release")
   {
     var outputDir = Path.Combine(root, "bin");
-    foreach (var relativeProject in ProjectRelativePaths)
+    foreach (var project in DesktopDistributionManifest.PublishedProjects)
     {
-      var exit = PublishProject(root, relativeProject, configuration, outputDir);
+      var exit = PublishProject(root, project, configuration, outputDir);
       if (exit != 0)
         return exit;
     }
@@ -28,10 +26,10 @@ public static class DesktopSuitePublisher
     return 0;
   }
 
-  private static int PublishProject(string root, string relativeProject, string configuration, string outputDir)
+  private static int PublishProject(string root, DesktopPublishedProject project, string configuration, string outputDir)
   {
-    var projectPath = Path.Combine(root, relativeProject);
-    var arguments = BuildPublishArguments(projectPath, configuration, outputDir, relativeProject);
+    var projectPath = Path.Combine(root, project.ProjectRelativePath);
+    var arguments = BuildPublishArguments(projectPath, configuration, outputDir, project);
     return RunProcess("dotnet", arguments, root);
   }
 
@@ -39,14 +37,11 @@ public static class DesktopSuitePublisher
     string projectPath,
     string configuration,
     string outputDir,
-    string relativeProject)
+    DesktopPublishedProject project)
   {
     var args = $"publish \"{projectPath}\" -c {configuration} -r win-x64 --self-contained false -o \"{outputDir}\"";
-    if (relativeProject.Contains("SmartGuard.LogViewer", StringComparison.Ordinal)
-        || relativeProject.Contains("SmartGuard.Settings", StringComparison.Ordinal))
-    {
+    if (project.PublishReadyToRun)
       args += " -p:PublishReadyToRun=true";
-    }
 
     return args;
   }

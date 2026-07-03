@@ -29,13 +29,12 @@ public class SmartGuardPathsSingleSourceArchitectureTests
   }
 
   [Fact]
-  public void ToastShortcutResolver_must_use_SmartGuardPaths_for_tray_exe()
+  public void SmartGuardPaths_must_not_keep_a_legacy_LogViewer_executable_entry()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Tray/Toast/ToastShortcutResolver.cs");
-    source.Should().NotContain(
-      "Path.Combine(root, \"bin\", \"SmartGuard.Tray.exe\")",
-      "use SmartGuardPaths.TrayExe");
-    source.Should().Contain("SmartGuardPaths.TrayExe");
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SmartGuardPaths.cs");
+    source.Should().NotContain("LogViewerExeFileName");
+    source.Should().NotContain("LogViewerExe(");
+    source.Should().NotContain("SmartGuard.LogViewer.exe");
   }
 
   [Fact]

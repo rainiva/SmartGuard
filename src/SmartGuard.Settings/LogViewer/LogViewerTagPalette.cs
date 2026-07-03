@@ -1,3 +1,5 @@
+using System.Drawing;
+
 namespace SmartGuard.LogViewer;
 
 public static class LogViewerTagPalette

@@ -151,13 +151,7 @@ public class ScrollBarAutoHideTests
     }
 
     private static string ReadSettingsXaml()
-    {
-        var assemblyLocation = typeof(SettingsWindowController).Assembly.Location;
-        var repoRoot = Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(assemblyLocation)!,
-            "..", "..", "..", "..", ".."));
-        return File.ReadAllText(Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml"));
-    }
+        => SettingsSourcePaths.ReadSettingsXamlSource();
 
     private static Style LoadSettingsScrollViewerStyle()
     {

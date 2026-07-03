@@ -9,9 +9,7 @@ public static class SmartGuardPaths
   public const string EngineExeFileName = "SmartGuard.Engine.exe";
   public const string TrayExeFileName = "SmartGuard.Tray.exe";
   public const string SettingsExeFileName = "SmartGuard.Settings.exe";
-  public const string LogViewerExeFileName = "SmartGuard.LogViewer.exe";
   public const string CliExeFileName = "SmartGuard.Cli.exe";
-  public const string SettingsXamlFileName = "SmartGuard.Settings.xaml";
   public const string InitMarkerFileName = ".SmartGuard.initialized";
   public const string ElevationDeclinedMarkerFileName = ".SmartGuard.elevation-declined";
 
@@ -19,7 +17,6 @@ public static class SmartGuardPaths
   [
     TrayExeFileName,
     EngineExeFileName,
-    LogViewerExeFileName,
     SettingsExeFileName,
   ];
 
@@ -30,10 +27,7 @@ public static class SmartGuardPaths
   public static string EngineExe(string root) => Path.Combine(root, "bin", EngineExeFileName);
   public static string TrayExe(string root) => Path.Combine(root, "bin", TrayExeFileName);
   public static string SettingsExe(string root) => Path.Combine(root, "bin", SettingsExeFileName);
-  public static string LogViewerExe(string root) => Path.Combine(root, "bin", LogViewerExeFileName);
   public static string CliExe(string root) => Path.Combine(root, "bin", CliExeFileName);
-  public static string BrandIcon(string root) => Path.Combine(root, "lib", "SmartGuard.ico");
-  public static string SettingsXaml(string root) => Path.Combine(root, "lib", SettingsXamlFileName);
   public static string InitMarkerFile(string root) => Path.Combine(root, InitMarkerFileName);
   public static string ElevationDeclinedMarkerFile(string root) => Path.Combine(root, ElevationDeclinedMarkerFileName);
 

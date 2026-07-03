@@ -10,20 +10,16 @@ public class TrayIconLoaderCacheTests
     var repoRoot = Path.GetFullPath(Path.Combine(
       AppContext.BaseDirectory,
       "..", "..", "..", "..", ".."));
-    var iconPath = Path.Combine(repoRoot, "lib", "SmartGuard.ico");
+    var iconPath = Path.Combine(repoRoot, "assets", "branding", "SmartGuard.ico");
     if (!File.Exists(iconPath))
       return;
-
-    var installRoot = Path.Combine(Path.GetTempPath(), "sg-tray-icon-" + Guid.NewGuid().ToString("N"));
-    Directory.CreateDirectory(Path.Combine(installRoot, "lib"));
-    File.Copy(iconPath, Path.Combine(installRoot, "lib", "SmartGuard.ico"));
 
     TrayIconLoader.ResetCacheForTests();
     try
     {
-      using var first = TrayIconLoader.Load(installRoot);
+      using var first = TrayIconLoader.Load();
       var loadCountAfterFirst = TrayIconLoader.LoadCountForTests;
-      using var second = TrayIconLoader.Load(installRoot);
+      using var second = TrayIconLoader.Load();
 
       first.Should().NotBeNull();
       second.Should().NotBeNull();
@@ -32,7 +28,6 @@ public class TrayIconLoaderCacheTests
     finally
     {
       TrayIconLoader.ResetCacheForTests();
-      try { Directory.Delete(installRoot, true); } catch { }
     }
   }
 }

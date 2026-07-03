@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.IO;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -21,14 +20,11 @@ public class AppBrandIconTests
     {
         RunOnSta(() =>
         {
-            var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-            var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-            var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-            var iconPath = Path.Combine(repoRoot, "lib", "SmartGuard.ico");
+            var iconPath = SettingsSourcePaths.BrandIconPath();
 
             File.Exists(iconPath).Should().BeTrue();
 
-            var settingsIcon = AppBrandIcon.LoadImageSource(repoRoot);
+            var settingsIcon = AppBrandIcon.LoadImageSource();
 
             settingsIcon.Should().NotBeNull();
             settingsIcon!.Width.Should().BeGreaterThanOrEqualTo(64,
@@ -38,18 +34,15 @@ public class AppBrandIconTests
     }
 
     [Fact]
-    public void LoadImageSource_reads_install_root_icon_file()
+    public void LoadImageSource_reads_embedded_brand_icon()
     {
         RunOnSta(() =>
         {
-            var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-            var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-            var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-            var iconPath = Path.Combine(repoRoot, "lib", "SmartGuard.ico");
+            var iconPath = SettingsSourcePaths.BrandIconPath();
 
             File.Exists(iconPath).Should().BeTrue();
 
-            var image = AppBrandIcon.LoadImageSource(repoRoot);
+            var image = AppBrandIcon.LoadImageSource();
             image.Should().NotBeNull();
             image!.Width.Should().BeGreaterThan(0);
             image.Height.Should().BeGreaterThan(0);
@@ -57,18 +50,14 @@ public class AppBrandIconTests
     }
 
     [Fact]
-    public void ApplyTo_sets_window_icon_from_install_root()
+    public void ApplyTo_sets_window_icon_from_embedded_brand_resource()
     {
         RunOnSta(() =>
         {
             EnsureApplication();
 
-            var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-            var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-            var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-
             var window = new Window();
-            AppBrandIcon.ApplyTo(window, repoRoot);
+            AppBrandIcon.ApplyTo(window);
 
             window.Icon.Should().NotBeNull();
             window.Icon!.Width.Should().BeGreaterThan(0);
@@ -82,10 +71,6 @@ public class AppBrandIconTests
         {
             EnsureApplication();
 
-            var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-            var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-            var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-
             var window = new Window
             {
                 ShowInTaskbar = true,
@@ -96,10 +81,10 @@ public class AppBrandIconTests
                 Top = 0,
             };
 
-            AppBrandIcon.ApplyTo(window, repoRoot);
+            AppBrandIcon.ApplyTo(window);
             window.Show();
             window.UpdateLayout();
-            AppBrandIcon.ApplyTo(window, repoRoot);
+            AppBrandIcon.ApplyTo(window);
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
             var handle = new WindowInteropHelper(window).Handle;

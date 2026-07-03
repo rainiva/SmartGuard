@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SmartGuard.Packaging.Inno;
 using SmartGuard.Packaging.Runtime;
 using SmartGuard.Packaging.Versioning;
 
@@ -38,6 +39,8 @@ public class BuildInstallerCommand
 
         var runtimeMarker = Path.Combine(stagingDir, "redist", "runtime-installer.txt");
         var runtimeFile = File.ReadAllText(runtimeMarker).Trim();
+
+        InnoDistributionManifestWriter.Write(root);
 
         var iscc = ResolveIscc(options.IsccPath);
         var iss = Path.Combine(root, "installer", "SmartGuard.iss");

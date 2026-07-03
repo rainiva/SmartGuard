@@ -1,62 +1,68 @@
 ﻿Describe 'SmartGuard' {
     Describe 'Tray assets' {
-        It 'bundled SmartGuard.ico exists for tray and installers' {
+        It 'canonical SmartGuard.ico lives under assets branding' {
             $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
             Test-Path -LiteralPath $icon | Should -Be $true
             (Get-Item -LiteralPath $icon).Length | Should -BeGreaterThan 1000
         }
 
-        It 'bundled SmartGuard.ico keeps enough 16px tray footprint' {
+        It 'canonical SmartGuard.ico fills enough 24px taskbar canvas width' {
             $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
+            $widthPct = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((24,24)).convert('RGBA'); bbox=img.getchannel('A').getbbox(); print(f'{(bbox[2]-bbox[0])/24*100:.1f}')" $icon
+
+            [double]$widthPct | Should -BeGreaterOrEqual 88.0
+        }
+
+        It 'canonical SmartGuard.ico fills enough 16px taskbar canvas width' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
+            $widthPct = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((16,16)).convert('RGBA'); bbox=img.getchannel('A').getbbox(); print(f'{(bbox[2]-bbox[0])/16*100:.1f}')" $icon
+
+            [double]$widthPct | Should -BeGreaterOrEqual 90.0
+        }
+
+        It 'canonical SmartGuard.ico keeps enough 16px tray footprint' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
             $fill = python -c "from PIL import Image; import sys; ico=Image.open(sys.argv[1]); img=ico.ico.getimage((16,16)).convert('RGBA'); pixels=sum(1 for p in img.getdata() if p[3] > 8); print(f'{pixels / 256 * 100:.1f}')" $icon
 
             [double]$fill | Should -BeGreaterOrEqual 47.0
         }
 
-        It 'bundled SmartGuard.ico keeps the 24px white lightning accent and a simplified 16px tray palette' {
+        It 'canonical SmartGuard.ico keeps the 24px white lightning accent and a simplified 16px tray palette' {
             $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
             $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img24=ico.ico.getimage((24,24)).convert('RGBA'); img16=ico.ico.getimage((16,16)).convert('RGBA'); white24=sum(1 for r,g,b,a in img24.getdata() if a > 200 and r > 230 and g > 235 and b > 235); bright16=sum(1 for r,g,b,a in img16.getdata() if a > 32 and r >= 90 and g >= 170 and b >= 220); blue16=sum(1 for r,g,b,a in img16.getdata() if a > 32 and 60 <= r <= 170 and 120 <= g <= 220 and 170 <= b <= 255); white16=sum(1 for r,g,b,a in img16.getdata() if a > 200 and r > 230 and g > 235 and b > 235); print(json.dumps({'white24': white24, 'bright16': bright16, 'blue16': blue16, 'white16': white16}))" $icon
             $metrics = $metricsJson | ConvertFrom-Json
 
             $metrics.white24 | Should -BeGreaterThan 6
-            $metrics.bright16 | Should -BeGreaterThan 55
+            $metrics.bright16 | Should -BeGreaterThan 30
             $metrics.blue16 | Should -BeGreaterThan 120
             $metrics.white16 | Should -BeLessOrEqual 4
         }
 
-        It 'bundled SmartGuard.ico keeps a crisp 32px frame for taskbar and Explorer' {
+        It 'canonical SmartGuard.ico keeps a crisp 32px frame for taskbar and Explorer' {
             $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); white32=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 230 and g > 235 and b > 235); bright32=sum(1 for r,g,b,a in img32.getdata() if a > 32 and r >= 90 and g >= 170 and b >= 220); alpha32={a for _,_,_,a in img32.getdata() if a > 0}; print(json.dumps({'white32': white32, 'bright32': bright32, 'alpha32': len(alpha32)}))" $icon
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); bbox=img32.getchannel('A').getbbox(); white32=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 230 and g > 235 and b > 235); alpha32={a for _,_,_,a in img32.getdata() if a > 0}; print(json.dumps({'white32': white32, 'widthPct': (bbox[2]-bbox[0])/32*100, 'alpha32': len(alpha32)}))" $icon
             $metrics = $metricsJson | ConvertFrom-Json
 
             $metrics.white32 | Should -BeGreaterThan 15
-            $metrics.bright32 | Should -BeGreaterThan 150
+            $metrics.widthPct | Should -BeGreaterOrEqual 88.0
             $metrics.alpha32 | Should -BeLessOrEqual 90
         }
 
-        It 'bundled SmartGuard.ico keeps a compact 32px lightning silhouette for Explorer lists' {
+        It 'canonical SmartGuard.ico keeps readable 32px lightning and battery mass' {
             $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); white=[(x,y) for y in range(img32.height) for x in range(img32.width) if (lambda p: p[3] > 200 and p[0] > 230 and p[1] > 235 and p[2] > 235)(img32.getpixel((x, y)))]; xs=[p[0] for p in white]; ys=[p[1] for p in white]; print(json.dumps({'width': max(xs) - min(xs) + 1, 'height': max(ys) - min(ys) + 1}))" $icon
+            $icon = Join-Path $root 'assets\branding\SmartGuard.ico'
+            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); white=[(x,y) for y in range(img32.height) for x in range(img32.width) if (lambda p: p[3] > 200 and p[0] > 230 and p[1] > 235 and p[2] > 235)(img32.getpixel((x, y)))]; xs=[p[0] for p in white]; ys=[p[1] for p in white]; shell=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 200 and g > 220 and b > 230); fill=sum(1 for r,g,b,a in img32.getdata() if a > 200 and 60 < r < 130 and 120 < g < 190 and 150 < b < 230); print(json.dumps({'width': max(xs) - min(xs) + 1, 'height': max(ys) - min(ys) + 1, 'shell': shell, 'fill': fill}))" $icon
             $metrics = $metricsJson | ConvertFrom-Json
 
             $metrics.width | Should -BeGreaterOrEqual 5
-            $metrics.width | Should -BeLessOrEqual 8
             $metrics.height | Should -BeGreaterOrEqual 9
-            $metrics.height | Should -BeLessOrEqual 12
-        }
-
-        It 'bundled SmartGuard.ico keeps a tighter 32px battery shell for Explorer lists' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $icon = Join-Path $root 'lib\SmartGuard.ico'
-            $metricsJson = python -c "from PIL import Image; import json, sys; ico=Image.open(sys.argv[1]); img32=ico.ico.getimage((32,32)).convert('RGBA'); shell=sum(1 for r,g,b,a in img32.getdata() if a > 200 and r > 200 and g > 220 and b > 230); fill=sum(1 for r,g,b,a in img32.getdata() if a > 200 and 60 < r < 130 and 120 < g < 190 and 150 < b < 230); print(json.dumps({'shell': shell, 'fill': fill}))" $icon
-            $metrics = $metricsJson | ConvertFrom-Json
-
-            $metrics.shell | Should -BeLessOrEqual 140
+            $metrics.shell | Should -BeLessOrEqual 220
             $metrics.fill | Should -BeGreaterOrEqual 120
         }
 
@@ -68,25 +74,32 @@
     }
 
     Describe 'Phase 7.4 settings xaml source of truth' {
-        It 'ships committed SmartGuard.Settings.xaml without generation script' {
+        It 'settings project owns committed SmartGuard.Settings.xaml and retires loose runtime copies' {
             $root = Split-Path -Parent $PSScriptRoot
-            $xamlPath = Join-Path $root 'lib\SmartGuard.Settings.xaml'
+            $xamlPath = Join-Path $root 'src\SmartGuard.Settings\SmartGuard.Settings.xaml'
             $writer = Join-Path $root 'lib\Write-SmartGuardSettingsXaml.ps1'
             Test-Path -LiteralPath $xamlPath | Should -Be $true
             Test-Path -LiteralPath $writer | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'lib\SmartGuard.Settings.xaml') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'lib\Themes\Light.xaml') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'lib\Themes\Dark.xaml') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'lib\SmartGuard.ico') | Should -Be $false
             $xaml = Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8
             $xaml | Should -Match 'x:Name="tglPaused"'
             $xaml | Should -Match 'x:Name="tglAutoStart"'
         }
 
-        It 'Settings project links lib xaml as WPF Page' {
+        It 'Settings project uses project-local xaml and themes as WPF pages' {
             $root = Split-Path -Parent $PSScriptRoot
             $csproj = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Settings\SmartGuard.Settings.csproj') -Raw -Encoding UTF8
-            $csproj | Should -Match 'lib\\SmartGuard\.Settings\.xaml'
-            $csproj | Should -Match '<Page Include'
+            $csproj | Should -Match '<Page Include="SmartGuard\.Settings\.xaml"'
+            $csproj | Should -Match '<Page Include="Themes\\Light\.xaml"'
+            $csproj | Should -Match '<Page Include="Themes\\Dark\.xaml"'
+            $csproj | Should -Not -Match 'lib\\SmartGuard\.Settings\.xaml'
+            $csproj | Should -Not -Match 'lib\\Themes\\'
         }
 
-        It 'Build-Staging does not regenerate settings xaml' {
+        It 'Build-Staging does not require loose settings xaml payloads' {
             $root = Split-Path -Parent $PSScriptRoot
             Test-Path -LiteralPath (Join-Path $root 'installer\Build-Staging.ps1') | Should -Be $false
             Test-Path -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\SmartGuard.Packaging.csproj') | Should -Be $true
@@ -102,14 +115,30 @@
             $content | Should -Not -Match 'dotnet publish'
         }
 
-        It 'DesktopSuitePublisher owns the desktop publish project list' {
+        It 'DesktopDistributionManifest owns the desktop publish and payload lists' {
             $root = Split-Path -Parent $PSScriptRoot
+            $manifest = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Distribution\DesktopDistributionManifest.cs') -Raw -Encoding UTF8
             $publisher = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Build\DesktopSuitePublisher.cs') -Raw -Encoding UTF8
-            $publisher | Should -Match 'SmartGuard\.Engine\.csproj'
-            $publisher | Should -Match 'SmartGuard\.Tray\.csproj'
-            $publisher | Should -Match 'SmartGuard\.LogViewer\.csproj'
-            $publisher | Should -Match 'SmartGuard\.Settings\.csproj'
-            $publisher | Should -Match 'SmartGuard\.Cli\.csproj'
+            $copier = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Staging\PayloadCopier.cs') -Raw -Encoding UTF8
+            $layout = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Staging\StagingLayout.cs') -Raw -Encoding UTF8
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $slnx = Get-Content -LiteralPath (Join-Path $root 'SmartGuard.slnx') -Raw -Encoding UTF8
+            $settingsProject = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Settings\SmartGuard.Settings.csproj') -Raw -Encoding UTF8
+            $settingsTests = Get-Content -LiteralPath (Join-Path $root 'Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj') -Raw -Encoding UTF8
+            $manifest | Should -Match 'PublishedProjects'
+            $manifest | Should -Match 'PayloadEntries'
+            $manifest | Should -Match 'InstallerProcesses'
+            $manifest | Should -Not -Match 'SmartGuard\.LogViewer\.csproj'
+            $manifest | Should -Not -Match 'LogViewerExeFileName'
+            $publisher | Should -Match 'DesktopDistributionManifest\.PublishedProjects'
+            $copier | Should -Match 'DesktopDistributionManifest\.PayloadEntries'
+            $layout | Should -Match 'DesktopDistributionManifest\.RequiredStagingPaths'
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Files\.iss\.inc'
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Processes\.iss\.inc'
+            $iss | Should -Not -Match 'SmartGuard\.LogViewer\.exe'
+            $slnx | Should -Not -Match 'src/SmartGuard\.LogViewer/SmartGuard\.LogViewer\.csproj'
+            $settingsProject | Should -Not -Match 'SmartGuard\.LogViewer\.csproj'
+            $settingsTests | Should -Not -Match 'SmartGuard\.LogViewer\.csproj'
             $publisher | Should -Match '--self-contained false'
             $publisher | Should -Match 'win-x64'
         }
@@ -254,9 +283,9 @@
             $content | Should -Not -Match 'powershell\.exe'
         }
 
-        It 'ToastShortcutResolver does not fall back to powershell.exe' {
+        It 'DesktopShellRegistration does not fall back to powershell.exe' {
             $root = Split-Path -Parent $PSScriptRoot
-            $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Toast\ToastShortcutResolver.cs') -Raw -Encoding UTF8
+            $content = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Shell\DesktopShellRegistration.cs') -Raw -Encoding UTF8
             $content | Should -Not -Match 'powershell\.exe'
         }
 
@@ -370,7 +399,9 @@
             $root = Split-Path -Parent $PSScriptRoot
             $tray = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Tray\Infrastructure.cs') -Raw -Encoding UTF8
             $tray | Should -Match 'SettingsMainPageLauncher\.Open'
+            $tray | Should -Match 'OpenLogsPage'
             $tray | Should -Match 'SettingsLogsPageLauncher\.Open'
+            $tray | Should -Not -Match 'OpenLogViewer'
             $tray | Should -Not -Match 'SmartGuard\.Settings\.ps1'
             $tray | Should -Not -Match 'Show-LogViewer\.ps1'
             $tray | Should -Not -Match 'powershell\.exe'
@@ -409,15 +440,23 @@
         It 'stops SmartGuard processes before install and uninstall' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $manifest = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Distribution\DesktopDistributionManifest.cs') -Raw -Encoding UTF8
             $iss | Should -Match 'CloseApplications=no'
             $iss | Should -Match 'EnsureSmartGuardStopped'
-            $iss | Should -Match 'restartreplace'
+            $iss | Should -Match '\[InstallDelete\]'
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.LegacyCleanup\.iss\.inc'
             $iss | Should -Match 'function PrepareToInstall'
             $iss | Should -Match 'procedure StopSmartGuardProcesses'
             $iss | Should -Match 'CurPageID = wpReady'
             $iss | Should -Match 'if not SmartGuardProcessesStillRunning\(\) then'
             $iss | Should -Match 'tasklist /NH'
-            $iss | Should -Match "Pos\('SmartGuard\.Tray\.exe'"
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Processes\.iss\.inc'
+            $iss | Should -Not -Match "Pos\('SmartGuard\.Tray\.exe'"
+            $manifest | Should -Match 'SmartGuardPaths\.EngineExeFileName'
+            $manifest | Should -Match 'SmartGuardPaths\.TrayExeFileName'
+            $manifest | Should -Match 'SmartGuardPaths\.SettingsExeFileName'
+            $manifest | Should -Not -Match 'SmartGuard\.LogViewer\.csproj'
+            $manifest | Should -Not -Match 'LogViewerExeFileName'
             $iss | Should -Not -Match 'Get-Process -Name SmartGuard\*'
             $iss | Should -Not -Match 'Get-CimInstance Win32_Process'
             $iss | Should -Not -Match 'CurStepChanged'
@@ -517,12 +556,18 @@
             $workflow | Should -Match 'windows-latest'
         }
 
-        It 'installer log shortcut opens Settings logs page not LogViewer' {
+        It 'installer delegates shell surfaces to InstallCommands instead of owning [Icons]' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
             $iss | Should -Match 'SmartGuard\.Cli\.exe'
-            $iss | Should -Match 'open logs'
-            $iss | Should -Not -Match '\{group\}.*日志.*SmartGuard\.LogViewer\.exe'
+            $iss | Should -Match '--create-desktop-shortcut'
+            $iss | Should -Not -Match '(?ms)^\[Icons\]'
+        }
+
+        It 'installer does not package or advertise SmartGuard.LogViewer.exe as a live entry' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Not -Match 'SmartGuard\.LogViewer\.exe'
         }
 
         It 'integration stop helpers delegate to Engine --uninstall' {

@@ -1,4 +1,4 @@
-namespace SmartGuard.Tray.Toast;
+namespace SmartGuard.Configuration.Shell;
 
 public static class SmartGuardToastAppId
 {

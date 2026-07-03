@@ -25,6 +25,14 @@ public class SettingsWindowControllerTests
         WpfStaTestHost.Run(action);
     }
 
+    private static string RepoRoot() => SettingsSourcePaths.RepoRoot();
+
+    private static string ReadProjectSettingsXaml() => SettingsSourcePaths.ReadSettingsXamlSource();
+
+    private static Window LoadCompiledWindow()
+        => (Window)Application.LoadComponent(
+            new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
+
     [Fact]
     public void Embedded_resource_can_load_window()
     {
@@ -148,19 +156,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
+            var projectRoot = RepoRoot();
             var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
             var repository = new GuardConfigRepository(configPath);
             var config = repository.LoadOrDefault(projectRoot);
@@ -175,19 +171,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
+            var projectRoot = RepoRoot();
             var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
             var repository = new GuardConfigRepository(configPath);
             var config = new GuardConfig
@@ -209,16 +193,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                // Skip if xaml not available in test environment
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             var pageGeneral = window.FindName("pageGeneral") as StackPanel;
             var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
@@ -238,15 +213,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             window.FindName("tglThemeFollowSystem").Should().NotBeNull();
             window.FindName("tglThemeLight").Should().NotBeNull();
@@ -277,15 +244,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             window.FindName("sldBalanced").Should().NotBeNull();
             window.FindName("sldSaver").Should().NotBeNull();
@@ -300,15 +259,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             var pageLogs = window.FindName("pageLogs") as Panel;
             var logSearchFilterHost = window.FindName("logSearchFilterHost") as ContentControl;
@@ -380,15 +331,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             var lstLogView = window.FindName("lstLogView") as ListBox;
 
@@ -402,15 +345,8 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var xaml = ReadProjectSettingsXaml();
+            var window = LoadCompiledWindow();
             var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
 
             logTagFilterLinksPanel.Should().NotBeNull();
@@ -965,21 +901,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            // Find XAML in project root (not test output directory)
-            // AppContext.BaseDirectory = Tests/SmartGuard.Settings.Tests/bin/Debug/net8.0-windows10.0.17763.0/
-            // Need to go up 5 levels to reach project root
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-
-            File.Exists(xamlPath).Should().BeTrue($"XAML file must exist at {xamlPath}");
-
-            var xaml = File.ReadAllText(xamlPath);
+            var xaml = ReadProjectSettingsXaml();
 
             // DropShadowEffect causes rendering artifacts when window is maximized:
             // 1. Effect expands render bounds beyond element bounds
@@ -999,18 +921,6 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            // Find XAML in project root
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-
-            File.Exists(xamlPath).Should().BeTrue($"XAML file must exist at {xamlPath}");
-
             // Load the compiled BAML so custom controls (local:NumberBox) resolve correctly.
             var window = (Window)Application.LoadComponent(
                 new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
@@ -1070,19 +980,16 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             var navList = window.FindName("navList") as ListBox;
             navList.Should().NotBeNull();
-            navList.Items.Count.Should().Be(4);
+            navList!.Items.Count.Should().Be(6);
+            navList.Items
+                .OfType<ListBoxItem>()
+                .Select(item => item.Name)
+                .Should()
+                .ContainInOrder("navGeneral", "navAdvanced", "navNotifications", "navLogs", "navDisplay", "navAbout");
         });
     }
 
@@ -1091,15 +998,7 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = AppContext.BaseDirectory;
-            var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var xaml = File.ReadAllText(xamlPath);
-            var window = (Window)System.Windows.Markup.XamlReader.Parse(xaml);
+            var window = LoadCompiledWindow();
 
             window.FindName("tglPaused").Should().NotBeNull();
             window.FindName("tglNotify").Should().NotBeNull();
@@ -1172,47 +1071,18 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            // Create a fake log file so LogViewController initializes
-            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
-            var fallbackLogPath = Path.Combine(projectRoot, "SmartGuard.startup.log");
-            var logCreated = false;
-            if (!File.Exists(logPath) && !File.Exists(fallbackLogPath))
-            {
-                File.WriteAllText(logPath, "[INFO] Test log entry\r\n");
-                logCreated = true;
-            }
+            var tempRoot = CreateTempSettingsRootWithLog("[INFO] Test log entry\r\n");
 
             try
             {
-                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
-                var repository = new GuardConfigRepository(configPath);
-                var config = repository.LoadOrDefault(projectRoot);
-
-                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(tempRoot));
+                var config = repository.LoadOrDefault(tempRoot);
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
-                // Simulate user clicking "日志" in navigation
                 var window = GetWindowField(controller);
-                var navList = window.FindName("navList") as ListBox;
-                navList.Should().NotBeNull();
+                NavigateToLogsPage(controller!, window);
 
-                // Select logs page (index 3)
-                navList.SelectedIndex = 3;
-
-                // Verify logs page is visible and general page is hidden
                 var pageGeneral = window.FindName("pageGeneral") as StackPanel;
                 var pageLogs = window.FindName("pageLogs") as Panel;
                 pageGeneral.Should().NotBeNull();
@@ -1220,7 +1090,6 @@ public class SettingsWindowControllerTests
                 pageGeneral.Visibility.Should().Be(Visibility.Collapsed);
                 pageLogs.Visibility.Should().Be(Visibility.Visible);
 
-                // Verify log controls are accessible
                 var filterBar = GetLogSearchFilterBar(controller);
                 var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
 
@@ -1230,10 +1099,7 @@ public class SettingsWindowControllerTests
             }
             finally
             {
-                if (logCreated && File.Exists(logPath))
-                {
-                    try { File.Delete(logPath); } catch { }
-                }
+                DeleteDirectoryQuietly(tempRoot);
             }
         });
     }
@@ -1243,56 +1109,28 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            // Create a fake log file so LogViewController initializes
-            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
-            var fallbackLogPath = Path.Combine(projectRoot, "SmartGuard.startup.log");
-            var logCreated = false;
-            if (!File.Exists(logPath) && !File.Exists(fallbackLogPath))
-            {
-                File.WriteAllText(logPath, "[INFO] Test log entry\r\n");
-                logCreated = true;
-            }
+            var tempRoot = CreateTempSettingsRootWithLog("[INFO] Test log entry\r\n");
 
             try
             {
-                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
-                var repository = new GuardConfigRepository(configPath);
-                var config = repository.LoadOrDefault(projectRoot);
-
-                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(tempRoot));
+                var config = repository.LoadOrDefault(tempRoot);
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller);
-                var navList = window.FindName("navList") as ListBox;
                 var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
                 var pageLogs = window.FindName("pageLogs") as Panel;
 
-                navList.Should().NotBeNull();
                 contentScrollViewer.Should().NotBeNull();
                 pageLogs.Should().NotBeNull();
 
-                // Switch to logs page: outer scrollable pages must hide and log page must show
-                navList!.SelectedIndex = 3;
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                NavigateToLogsPage(controller!, window);
 
                 contentScrollViewer!.Visibility.Should().Be(Visibility.Collapsed);
                 pageLogs!.Visibility.Should().Be(Visibility.Visible);
 
-                // Switch back to general page: outer scrollable pages must show and log page must hide
-                navList.SelectedIndex = 0;
+                controller.NavigateTo("general");
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
                 contentScrollViewer.Visibility.Should().Be(Visibility.Visible);
@@ -1300,10 +1138,7 @@ public class SettingsWindowControllerTests
             }
             finally
             {
-                if (logCreated && File.Exists(logPath))
-                {
-                    try { File.Delete(logPath); } catch { }
-                }
+                DeleteDirectoryQuietly(tempRoot);
             }
         });
     }
@@ -1537,58 +1372,35 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
-            var logCreated = false;
-            if (!File.Exists(logPath))
-            {
-                File.WriteAllText(logPath,
-                    "[INFO] System idle detected\r\n" +
-                    "[WARN] Battery low warning\r\n" +
-                    "[ERROR] Failed to switch plan\r\n" +
-                    "[HEART] Monitoring active\r\n");
-                logCreated = true;
-            }
+            var tempRoot = CreateTempSettingsRootWithLog(
+                "[INFO] System idle detected\r\n" +
+                "[WARN] Battery low warning\r\n" +
+                "[ERROR] Failed to switch plan\r\n" +
+                "[HEART] Monitoring active\r\n");
 
             try
             {
-                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
-                var repository = new GuardConfigRepository(configPath);
-                var config = repository.LoadOrDefault(projectRoot);
+                var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(tempRoot));
+                var config = repository.LoadOrDefault(tempRoot);
 
-                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller);
-                var navList = window.FindName("navList") as ListBox;
-                navList!.SelectedIndex = 3;
+                NavigateToLogsPage(controller!, window);
+                InvokeRefreshLogView(controller!);
 
                 var filterBar = GetLogSearchFilterBar(controller!);
+                GetLogViewPlainText(controller!).Should().Contain("Battery low warning");
                 filterBar.SetKeyword("Battery");
                 FlushLogSearchDebounce(controller!, window);
 
-                // Verify filtered results contain the search term
-                GetLogViewPlainText(controller!).Should().Contain("Battery");
-                GetLogViewPlainText(controller!).Should().NotContain("System idle");
+                GetLogViewPlainText(controller!).Should().Contain("Battery low warning");
+                GetLogViewPlainText(controller!).Should().NotContain("System idle detected");
             }
             finally
             {
-                if (logCreated && File.Exists(logPath))
-                {
-                    try { File.Delete(logPath); } catch { }
-                }
+                DeleteDirectoryQuietly(tempRoot);
             }
         });
     }
@@ -1598,41 +1410,21 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
-            {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            }
-            if (!File.Exists(xamlPath))
-            {
-                return;
-            }
-
-            var logPath = Path.Combine(projectRoot, "SmartGuard.log");
-            var logCreated = false;
-            if (!File.Exists(logPath))
-            {
-                File.WriteAllText(logPath,
-                    "[INFO] System idle detected\r\n" +
-                    "[WARN] Battery low warning\r\n");
-                logCreated = true;
-            }
+            var tempRoot = CreateTempSettingsRootWithLog(
+                "[INFO] System idle detected\r\n" +
+                "[WARN] Battery low warning\r\n");
 
             try
             {
-                var configPath = Path.Combine(projectRoot, "SmartGuard.config.json");
-                var repository = new GuardConfigRepository(configPath);
-                var config = repository.LoadOrDefault(projectRoot);
+                var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(tempRoot));
+                var config = repository.LoadOrDefault(tempRoot);
 
-                var controller = SettingsWindowController.TryCreate(projectRoot, repository, config);
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller);
-                var navList = window.FindName("navList") as ListBox;
-                navList!.SelectedIndex = 3;
+                NavigateToLogsPage(controller!, window);
+                InvokeRefreshLogView(controller!);
 
                 var filterBar = GetLogSearchFilterBar(controller);
                 GetLogViewPlainText(controller!).Should().Contain("INFO");
@@ -1647,10 +1439,7 @@ public class SettingsWindowControllerTests
             }
             finally
             {
-                if (logCreated && File.Exists(logPath))
-                {
-                    try { File.Delete(logPath); } catch { }
-                }
+                DeleteDirectoryQuietly(tempRoot);
             }
         });
     }
@@ -1660,51 +1449,46 @@ public class SettingsWindowControllerTests
     {
         RunOnSta(() =>
         {
-            var root = Path.GetFullPath(AppContext.BaseDirectory);
-            var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
-            var xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
-            if (!File.Exists(xamlPath))
+            var tempRoot = CreateTempSettingsRootWithLog("[INFO] 2026-06-21 10:00:00 alpha\n");
+
+            try
             {
-                projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", ".."));
-                xamlPath = Path.Combine(projectRoot, "lib", "SmartGuard.Settings.xaml");
+                var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(tempRoot));
+                var config = repository.LoadOrDefault(tempRoot);
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                NavigateToLogsPage(controller!, window);
+
+                var pageLogs = window.FindName("pageLogs") as Panel;
+                pageLogs.Should().NotBeNull();
+
+                var lstLogView = window.FindName("lstLogView") as ListBox;
+                lstLogView.Should().NotBeNull();
+
+                var logScrollViewer = GetLogScrollViewer(window, controller!);
+                logScrollViewer.Should().NotBeNull(
+                    "lstLogView must host an internal ScrollViewer so log content can scroll independently. " +
+                    "The header (title, description, search bar, filters) should remain fixed.");
+
+                var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+                contentScrollViewer.Should().NotBeNull();
+
+                var ancestor = LogicalTreeHelper.GetParent(pageLogs!);
+                while (ancestor is not null && ancestor != contentScrollViewer)
+                {
+                    ancestor = LogicalTreeHelper.GetParent(ancestor);
+                }
+
+                ancestor.Should().NotBe(contentScrollViewer,
+                    "pageLogs must be a direct child of the content area, not inside contentScrollViewer. " +
+                    "This prevents the outer page ScrollViewer from appearing on the logs page.");
             }
-            if (!File.Exists(xamlPath))
+            finally
             {
-                return;
+                DeleteDirectoryQuietly(tempRoot);
             }
-
-            // Load the compiled BAML so custom controls (local:NumberBox) resolve correctly.
-            var window = (Window)Application.LoadComponent(
-                new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
-
-            var pageLogs = window.FindName("pageLogs") as Panel;
-            pageLogs.Should().NotBeNull();
-
-            // The pageLogs should contain a Grid with a fixed header area
-            // and a scrollable content area for the log display.
-            var lstLogView = window.FindName("lstLogView") as ListBox;
-            lstLogView.Should().NotBeNull();
-
-            var logScrollViewer = LogViewListPresenter.FindScrollViewer(lstLogView!);
-            logScrollViewer.Should().NotBeNull(
-                "lstLogView must host an internal ScrollViewer so log content can scroll independently. " +
-                "The header (title, description, search bar, filters) should remain fixed.");
-
-            // The logs page itself is no longer inside the outer page ScrollViewer;
-            // it occupies the content area directly, so the outer page ScrollViewer
-            // cannot scroll while viewing logs.
-            var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
-            contentScrollViewer.Should().NotBeNull();
-
-            var ancestor = LogicalTreeHelper.GetParent(pageLogs!);
-            while (ancestor is not null && ancestor != contentScrollViewer)
-            {
-                ancestor = LogicalTreeHelper.GetParent(ancestor);
-            }
-
-            ancestor.Should().NotBe(contentScrollViewer,
-                "pageLogs must be a direct child of the content area, not inside contentScrollViewer. " +
-                "This prevents the outer page ScrollViewer from appearing on the logs page.");
         });
     }
 
@@ -1839,6 +1623,34 @@ public class SettingsWindowControllerTests
     {
         var field = typeof(SettingsWindowController).GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         return (Window)field!.GetValue(controller)!;
+    }
+
+    private static string CreateTempSettingsRootWithLog(string logContents, string? startupLogContents = null)
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsTests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        File.WriteAllText(SmartGuardPaths.DefaultLogFile(tempRoot), logContents);
+        if (startupLogContents is not null)
+            File.WriteAllText(SmartGuardPaths.StartupLogFile(tempRoot), startupLogContents);
+        return tempRoot;
+    }
+
+    private static void DeleteDirectoryQuietly(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void NavigateToLogsPage(SettingsWindowController controller, Window window)
+    {
+        controller.NavigateTo("logs");
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private static void InvokeRefreshLogView(SettingsWindowController controller, bool forceRedraw = false)

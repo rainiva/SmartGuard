@@ -6,26 +6,35 @@ namespace SmartGuard.Architecture.Tests;
 public class SmartGuardPathsExtensionsArchitectureTests
 {
   [Fact]
-  public void SmartGuardPaths_must_expose_SettingsXaml_and_InitMarker()
+  public void SmartGuardPaths_must_not_expose_runtime_SettingsXaml_or_BrandIcon_paths()
   {
-    SmartGuardPaths.SettingsXamlFileName.Should().Be("SmartGuard.Settings.xaml");
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SmartGuardPaths.cs");
+    source.Should().NotContain("SettingsXamlFileName");
+    source.Should().NotContain("BrandIcon(");
     SmartGuardPaths.InitMarkerFileName.Should().Be(".SmartGuard.initialized");
     SmartGuardPaths.ElevationDeclinedMarkerFileName.Should().Be(".SmartGuard.elevation-declined");
 
     var root = @"C:\SmartGuard";
-    SmartGuardPaths.SettingsXaml(root).Should().Be(Path.Combine(root, "lib", "SmartGuard.Settings.xaml"));
     SmartGuardPaths.InitMarkerFile(root).Should().Be(Path.Combine(root, ".SmartGuard.initialized"));
     SmartGuardPaths.ElevationDeclinedMarkerFile(root).Should().Be(Path.Combine(root, ".SmartGuard.elevation-declined"));
   }
 
   [Fact]
-  public void SettingsWindowController_must_use_SmartGuardPaths_SettingsXaml()
+  public void SettingsWindowController_must_use_embedded_settings_xaml_only()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsWindowController.cs");
-    source.Should().NotContain(
-      "Path.Combine(root, \"lib\", \"SmartGuard.Settings.xaml\")",
-      "use SmartGuardPaths.SettingsXaml");
-    source.Should().Contain("SmartGuardPaths.SettingsXaml");
+    source.Should().Contain("SettingsXamlLoader.TryLoadEmbeddedWindow");
+    source.Should().NotContain("TryLoadLooseWindowFromFile");
+    source.Should().NotContain("SmartGuardPaths.SettingsXaml");
+  }
+
+  [Fact]
+  public void AppBrandIcon_must_not_accept_install_root_inputs()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/AppBrandIcon.cs");
+    source.Should().NotContain("installRoot");
+    source.Should().NotContain("LoadImageSource(string");
+    source.Should().NotContain("ApplyTo(Window window, string");
   }
 
   [Fact]

@@ -28,4 +28,10 @@ public class CommandLineParserTests
   {
     CommandLineParser.Parse(new[] { "--install", "--skip-publish" }).SkipPublish.Should().BeTrue();
   }
+
+  [Fact]
+  public void Parse_reads_create_desktop_shortcut_flag()
+  {
+    CommandLineParser.Parse(new[] { "--install", "--create-desktop-shortcut" }).CreateDesktopShortcut.Should().BeTrue();
+  }
 }

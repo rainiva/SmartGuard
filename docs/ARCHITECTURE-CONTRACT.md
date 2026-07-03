@@ -14,11 +14,12 @@
 | 安装根 `{root}` | `InstallRootResolver` | 全部 exe | — | 各 exe 内私有 `RootResolver` |
 | 配置文件 | `{root}/SmartGuard.config.json` | 全部经 `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save`、`ConfigMutationService` | Engine 直调 `GuardConfig.LoadFromFile` |
 | 运行时状态 | `{root}/SmartGuard.status.json` | `StatusJsonReader` / `StatusStore` | `StatusPublisher`（Engine） | Settings/Tray 各自解析 JSON |
-| 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页、LogViewer | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
+| 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页 | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
 | 启动日志路径 | `SmartGuardPaths.StartupLogFile(root)` | Engine CLI、Settings/Tray 暂停回退 | — | `InstallCommands` 硬编码 `SmartGuard.startup.log` |
-| 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `LogViewerExe` | 注册、Toast、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
+| 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `CliExe` | 注册、shell、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
 | 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
-| Settings XAML | `SmartGuardPaths.SettingsXaml(root)` | Settings 窗口加载 | — | `Path.Combine(root, "lib", "SmartGuard.Settings.xaml")` 散落 |
+| Settings XAML | `src/SmartGuard.Settings/SmartGuard.Settings.xaml`（编译嵌入/BAML） | `SettingsXamlLoader.TryLoadEmbeddedWindow` | Settings 项目源文件 | runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` |
+| 品牌图标 | `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标 | 资产源文件 + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico` |
 | 初始化标记 | `SmartGuardPaths.InitMarkerFile(root)` | Engine 首次运行 | Engine | `".SmartGuard.initialized"` 字面量散落 |
 | 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
 | 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威） | ps1/Inno | — | 脚本与 Inno 硬编码文件名；镜像见 `SmartGuardPathConstants.ps1` |
@@ -29,7 +30,8 @@
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
 | 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
 | UAC 提升 | `ElevationHelper` + `CliAdminRunner` | `InstallCommands`、`UpdateInstallerLauncher`、`SmartGuard.Cli` | — | 内联 `Verb = "runas"` / VBS 散落 |
-| 桌面套件发布 | `DesktopSuitePublisher` | `SmartGuard.Cli publish`、`StageCommand` | — | `build.cmd` / 各项目内嵌 `dotnet publish` 列表 |
+| shell 集成 | `DesktopShellRegistration` | Installer / repair | `DesktopShellRegistration.Apply`、`DesktopShellRegistration.Remove` | Tray runtime 自注册、marker 自愈、Inno `[Icons]` 用户快捷方式 |
+| 分发清单 | `DesktopDistributionManifest` | `DesktopSuitePublisher`、`StageCommand`、`PayloadCopier`、`StagingLayout`、Inno include 生成 | — | 在 publisher/staging/installer 各自维护项目/文件/进程列表 |
 | 运维子命令 | `SmartGuard.Cli` 薄路由 | dev cmd 单行转发、README | `Configuration` 操作真源 | Cli 内嵌 `schtasks`/`taskkill`/spawn 逻辑 |
 | GitHub Token（内存） | `GuardConfig.GitHubToken` | Settings 更新检查（`SettingsUpdateCheckCoordinator`） | `GuardConfigRepository.Save`（经 Settings 关于页 `SettingsGitHubTokenCoordinator` 或策略保存透传） | Engine/Tray 读取；磁盘明文 `GitHubToken` |
 | GitHub Token（磁盘） | `SmartGuard.config.json` 字段 `GitHubTokenProtected`（DPAPI `CurrentUser`，经 `GitHubTokenProtector`） | `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save` | 明文 `GitHubToken` 写入；诊断包导出须剔除 `GitHubToken` 与 `GitHubTokenProtected` |
@@ -42,7 +44,7 @@
 |----------|--------------|------|
 | 注册计划任务 | `SmartGuard.Engine.exe --install` 或 `SmartGuard.Cli.exe install` | Inno / `Register-AllTasks.cmd` 委托 Cli；实现真源 `InstallCommands` |
 | 启动 Engine（生产） | 计划任务 `SmartGuard Guardian` | `SmartGuard.Cli start guardian` → `GuardianTaskRunner`；dev 前台 `Cli start engine` |
-| 启动 Tray（生产） | 计划任务 `SmartGuard Tray` | 登录时自动；dev `Cli start tray` / `restart tray`（**E-10 登记**） |
+| 启动 Tray（生产） | 计划任务 `SmartGuard Tray` | 登录时自动；dev `Cli start tray` / `restart tray`（仅 dev 例外，生产入口受 **E-10 阻断**） |
 | 停止 Engine（卸载） | `EngineLifecycle.StopForUninstall` | Engine/Cli `uninstall`、Inno、集成测试共用 |
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings `tglPaused` 均经此 API |
 | 打开设置 | `SettingsMainPageLauncher.Open` | Tray、`Cli open settings`、Inno 快捷方式均委托此 API |
@@ -50,7 +52,7 @@
 | 打开托盘 | `TrayLauncher.Start` | `Cli open tray`、Inno postinstall |
 | 查看状态 | `StatusReporter.FormatStatus` | `SmartGuard.Cli status` |
 | 发布桌面套件 | `DesktopSuitePublisher.Publish` | `SmartGuard.Cli publish`、`build.cmd` 转发 |
-| 安装器快捷方式 | `SmartGuard.Cli.exe open * --root "{app}"` | Inno `[Icons]`、`[Run]`；禁止直 spawn Settings/Tray exe |
+| 开始菜单/桌面快捷方式 | `DesktopShellRegistration` → `SmartGuard.Tray.exe` / `SmartGuard.Settings.exe --page logs` | 仅 install/repair 写入；shell 损坏必须经 install/repair 恢复，Tray runtime 禁止补写 |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
 ---
@@ -71,7 +73,8 @@
 | `GuardianTaskRunner` | `SmartGuard.Configuration` | 生产式 `schtasks /Run` Guardian |
 | `TrayLauncher` / `TrayLifecycle` | `SmartGuard.Configuration` | dev Tray 启停 |
 | `StatusReporter` | `SmartGuard.Configuration` | 状态与启动日志尾部 |
-| `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 五件套 `dotnet publish` 单源 |
+| `DesktopDistributionManifest` | `SmartGuard.Configuration.Distribution` | 发布项目、payload、installer 进程、legacy cleanup 唯一真源 |
+| `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`） |
 | `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
 | `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
 
@@ -85,6 +88,10 @@
 4. 不得在 Settings 硬编码 `Path.Combine(root, "SmartGuard.log")`（使用 `SmartGuardPaths` + `config.LogFile`）。
 5. 不得新增绕过 `SettingsSaveCoordinator` 的主题/config 全量写（含 `SaveThemePreferences` 直写 `_originalConfig`）。
 6. 不得在 Inno/cmd 新增独立 schtasks 注册逻辑（委托 Engine `--install`）。
+7. 不得新增 Tray/runtime shell 自注册、自愈 marker 或第二个 shell owner（唯一 owner = `DesktopShellRegistration`）。
+8. 不得在 runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` 或 `installRoot\\lib\\SmartGuard.ico` 作为真源。
+9. 不得在 publisher/staging/installer 各自维护第二份项目/文件/进程清单（唯一真源 = `DesktopDistributionManifest`）。
+10. 不得重新引入 `SmartGuard.LogViewer.exe` 作为 live product artifact、进程清单或用户入口。
 
 ---
 
@@ -157,9 +164,9 @@
 | DOC-01～03 | **已关闭** | 本文档 §2/§6/§9 与实现对齐 |
 | ME-12-R | **已关闭** | 集成测试注释移除 `Publish-All` |
 | GOD-01 | **已关闭** | `LogSearchFilterBar` &lt;300 行门禁 |
-| E-10 | **登记** | 生产 Tray = 计划任务；dev = `Start-Tray.cmd` / `Restart-Tray.cmd` |
-| E-11 | **登记** | UAC 提升：`Start-Core.cmd`/`Debug-Engine.cmd` VBS、`InstallCommands.RerunElevated`、`UpdateInstallerLauncher` 三套实现 |
-| E-11b | **登记** | Inno `[Run]`/`[Icons]` 直启 Tray/Settings（安装 UX；生产 Tray 主路径仍为计划任务） |
+| E-10 | **已收口为阻断规则** | 当前强制语义见 §12：shell user entry 只能经 `DesktopShellRegistration` 落地；dev `Start-Tray.cmd` / `Restart-Tray.cmd` 仅保留为开发辅助 |
+| E-11 | **已收口为阻断规则** | 当前强制语义见 §12：提升后的 install/uninstall 只能委托 `InstallCommands` + `DesktopShellRegistration` |
+| E-11b | **已收口为阻断规则** | 当前强制语义见 §12：Inno 不得再拥有 `[Icons]` 用户快捷方式；仅允许透传 `--create-desktop-shortcut` |
 | PERF | **已关闭** | 性能测试 settle + 5000ms 预算 + lifecycle 门禁 |
 
 ---
@@ -175,7 +182,7 @@
 | GOD-03 | **已关闭** | `SettingsPauseHandler` + `SettingsDebouncedSaver`；`SettingsPolicyCoordinator` 231 行 |
 | GOD-04 | **已关闭** | `ToastRegistryWriter` + `StartMenuShortcutWriter` 自 `ToastAumidRegistrar` 提取 |
 | GOD-05 | **已关闭** | `GuardianFirstRunInitializer` + `GuardianExceptionStormHandler` 自 `GuardianLoop` 提取 |
-| DOC-04 | **已关闭** | §2 `StopForUninstall` 与实现对齐；§11 登记 E-11/E-11b（第六轮关闭见 §12） |
+| DOC-04 | **已关闭** | §2 `StopForUninstall` 与实现对齐；§11 首次记录 E-11/E-11b，当前阻断语义见 §12 |
 
 ---
 
@@ -186,8 +193,9 @@
 | M-20 | **已关闭** | `SmartGuardPaths` 扩展：`SettingsXaml`、`InitMarkerFile`、`ElevationDeclinedMarkerFile` |
 | M-21 | **已关闭** | `SmartGuardPathConstants.ps1/.cmd` + Inno `#define` 与 `SmartGuardPaths.*FileName` parity |
 | S-09 | **已关闭** | Settings `tglPaused` 初始展示读 `status.json`（`SettingsPauseDisplayArchitectureTests`） |
-| E-11 | **已关闭** | `ElevationHelper` + `scripts/Request-AdminElevation.cmd` |
-| E-11b | **已关闭** | Inno `[Icons]`/`[Run]` → `Open-*.cmd` 包装脚本 |
+| E-10 | **阻断** | shell user entry 只能经 `DesktopShellRegistration` 落地；生产 Tray 入口不得回退到第二 owner |
+| E-11 | **阻断** | 提升后的 install/uninstall 只能委托 `InstallCommands` + `DesktopShellRegistration` |
+| E-11b | **阻断** | Inno 不得再拥有 `[Icons]` 用户快捷方式；仅允许透传 `--create-desktop-shortcut` |
 | DOC-05 | **已关闭** | 本文档 §1/§2/§6/§12 + `MULTI-SOURCE-GOVERNANCE-ACCEPTANCE` 第六轮终验 |
 
 ---
@@ -198,8 +206,8 @@
 |----|------|-----------|
 | R7-OPS | **已关闭** | `GuardianTaskRunner`、`TrayLauncher`、`TrayLifecycle`、`StatusReporter`；`InstallCommands` 迁至 `Configuration` |
 | R7-CLI | **已关闭** | `SmartGuard.Cli.exe` 薄路由 + dev cmd 单行转发；`Request-AdminElevation.cmd` 删除 |
-| R7-INNO | **已关闭** | Inno `[Icons]`/`[Run]` → `SmartGuard.Cli.exe open *`；删除 `Open-*.cmd` |
-| R7-PUBLISH | **已关闭** | `DesktopSuitePublisher`；`StageCommand` 不再 shell `build.cmd` |
+| R7-INNO | **阻断** | 用户 shell 入口不得回流到 Inno `[Icons]`；唯一 owner = `DesktopShellRegistration` |
+| R7-PUBLISH | **阻断** | 分发/安装包构件必须收敛到 `DesktopDistributionManifest`，不得保留第二份列表 |
 | DOC-06 | **已关闭** | 本文档 §1/§2/§6/§13 + `StatusReporter` 替代 `Status.cmd` |
 
 **DEV-ONLY 保留：** `Run-Tests.cmd`、`Clean-Workspace.cmd`（测试编排，非运行时入口）。
@@ -226,7 +234,7 @@
 | `GuardianRecovery` enginePid | `GuardianRecoveryEnginePidTests` |
 | `GuardConfig.CreateDefault` 单源 | `GuardConfigDefaultsArchitectureTests` |
 | `Start-Core.cmd` Cli 转发 | `StartCoreArchitectureTests` |
-| LogViewer 重定向 Settings | `LogViewerProgramArchitectureTests` |
+| LogViewer 退场 | `LogViewerProgramArchitectureTests` |
 | `ConfigFileWatcher` 共享 | `ConfigFileWatcherArchitectureTests` |
 | `GuardianIterationRunner` | `GuardianIterationRunnerArchitectureTests` |
 | 第四轮文档契约 | `ArchitectureContractFourthRoundTests` |

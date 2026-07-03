@@ -8,15 +8,14 @@ public class ArchitectureContractSeventhRoundTests
     SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
 
   [Fact]
-  public void Section13_must_close_R7_cmd_migration_items()
+  public void Section13_must_register_distribution_blockers_for_former_closure_rows()
   {
-    var content = ContractContent;
-    content.Should().Contain("## 13. 第七轮治理关闭项");
-    content.Should().Contain("| R7-CLI | **已关闭** |");
-    content.Should().Contain("| R7-OPS | **已关闭** |");
-    content.Should().Contain("| R7-INNO | **已关闭** |");
-    content.Should().Contain("| R7-PUBLISH | **已关闭** |");
-    content.Should().Contain("| DOC-06 | **已关闭** |");
+    var section13 = ExtractSection(ContractContent, "## 13.");
+    section13.Should().Contain("| R7-INNO |");
+    section13.Should().Contain("| R7-PUBLISH |");
+    section13.Should().Contain("DesktopShellRegistration");
+    section13.Should().Contain("DesktopDistributionManifest");
+    section13.Should().Contain("阻断");
   }
 
   [Fact]
@@ -32,13 +31,12 @@ public class ArchitectureContractSeventhRoundTests
   }
 
   [Fact]
-  public void Section2_must_register_SmartGuard_Cli_entry_points()
+  public void Section2_must_register_direct_user_entrypoints_not_cli_shortcut_wrappers()
   {
     var section2 = ExtractSection(ContractContent, "## 2.");
-    section2.Should().Contain("SmartGuard.Cli.exe");
-    section2.Should().Contain("DesktopSuitePublisher");
-    section2.Should().NotContain("Open-Settings.cmd");
-    section2.Should().NotContain("Request-AdminElevation.cmd");
+    section2.Should().Contain("SmartGuard.Tray.exe");
+    section2.Should().Contain("SmartGuard.Settings.exe --page logs");
+    section2.Should().NotContain("SmartGuard.Cli.exe open");
   }
 
   private static string ExtractSection(string content, string header)

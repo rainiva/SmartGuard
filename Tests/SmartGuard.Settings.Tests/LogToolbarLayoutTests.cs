@@ -1,22 +1,12 @@
 using System.IO;
-using System.Reflection;
-
 namespace SmartGuard.Settings.Tests;
 
 public class LogToolbarLayoutTests
 {
-    private static string RepoXamlPath()
-    {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-        return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
-    }
-
     [Fact]
     public void Log_toolbar_uses_wrap_layout_for_filters_to_avoid_overlap()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("x:Name=\"logToolbarPanel\"");
         xaml.Should().Contain("x:Name=\"logToolbarDivider\"");

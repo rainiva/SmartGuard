@@ -3,13 +3,13 @@ namespace SmartGuard.Tray.Tests;
 public class ToastRegistrationReliabilityTests
 {
     [Fact]
-    public void WinRtToastNotifier_still_registers_before_showing()
+    public void WinRtToastNotifier_must_not_register_shell_state_before_showing()
     {
         var source = File.ReadAllText(WinRtToastNotifierSourcePath());
 
-        source.Should().Contain(
+        source.Should().NotContain(
             "ToastAumidRegistrar.EnsureRegistered(root)",
-            "toast display must self-register so deferred tray startup cannot break notifications");
+            "desktop shell registration must be installer-owned, not repaired by tray runtime");
     }
 
     private static string WinRtToastNotifierSourcePath()

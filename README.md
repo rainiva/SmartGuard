@@ -8,13 +8,13 @@ Windows 智能电源守护：根据空闲时间、电池状态自动切换电源
 |------|------|
 | `src/SmartGuard.Engine/` | C# 核心守护引擎 |
 | `src/SmartGuard.Tray/` | C# 托盘 |
-| `src/SmartGuard.LogViewer/` | C# 日志查看器 |
 | `src/SmartGuard.Settings/` | C# 设置窗体（WPF） |
 | `src/SmartGuard.Configuration/` | 配置、计划任务与自动启动服务 |
 | `src/SmartGuard.Contracts/` | 共享契约与状态模型 |
 | `src/SmartGuard.Packaging/` | 发布、打包与安装包生成 |
-| `lib/` | 图标、Settings XAML |
-| `bin/*.exe` | `build.cmd` 发布后：Engine / Tray / LogViewer / Settings / Cli |
+| `assets/branding/` | 品牌图标真源 |
+| `lib/` | 部署说明与兼容修复脚本（非运行时真源） |
+| `bin/*.exe` | `build.cmd` 发布后：Engine / Tray / Settings / Cli |
 | `installer/` | Inno Setup 6 脚本与 staging 文件 |
 | `dist/` | 安装包产出：`SmartGuard-Setup-{version}-x64.exe` |
 | `SmartGuard.config.json` | 运行配置 |
@@ -74,12 +74,12 @@ bin\SmartGuard.Engine.exe --root <仓库根目录> --uninstall
 ─────────────────             ─────────────
 SmartGuard.Tray.exe      ←→   SmartGuard.Engine.exe
 SmartGuard.Settings.exe       status.json / config.json
-SmartGuard.LogViewer.exe
-Engine.exe --install（计划任务）
+Settings.exe --page logs
+Engine.exe / Cli.exe install（计划任务 / shell）
 ```
 
 - **引擎**：空闲检测、三档计划策略、powercfg、WMI 亮度、日志、心跳
-- **壳层**：托盘、WPF 设置、Toast、日志查看器（均为 C# exe）
+- **壳层**：托盘、WPF 设置、Toast；日志入口统一收口到 `SmartGuard.Settings.exe --page logs`
 
 ## 配置
 
@@ -104,7 +104,7 @@ Engine.exe --install（计划任务）
 需要 [Inno Setup 6](https://jrsoftware.org/isinfo.php)。若未安装在默认路径，可设置环境变量 `SMARTGUARD_ISCC`（例如 `D:\Apps\Inno Setup 6\ISCC.exe`），或传参 `--iscc`。
 
 ```batch
-:: 生成 staging：发布四件套 + 下载 .NET 8 Desktop Runtime redist
+:: 生成 staging：发布四件桌面组件 + 下载 .NET 8 Desktop Runtime redist
 dotnet run --project src\SmartGuard.Packaging -- stage --root . --configuration Release
 
 :: 编译安装包 → dist\SmartGuard-Setup-<version>-x64.exe
@@ -135,7 +135,9 @@ Run-Tests.cmd
 若组件缺失或行为异常：
 
 1. 普通用户：重新运行最新 Release 安装包。
-2. 开发者：在仓库根目录执行 `build.cmd` 后，运行 `bin\SmartGuard.Engine.exe --root . --install` 重新注册任务。
+2. 开发者：在仓库根目录执行 `build.cmd` 后，运行 `bin\SmartGuard.Cli.exe install --skip-publish --root .` 重新注册任务与 shell 集成。
+
+说明：开始菜单、桌面快捷方式、Toast AUMID、旧 `LogViewer`/loose `lib` 资源清理都只在 install/repair 路径处理；Tray 运行时不会自愈这些状态。
 
 ## 许可证
 

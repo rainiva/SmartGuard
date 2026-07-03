@@ -5,14 +5,14 @@ namespace SmartGuard.Architecture.Tests;
 public class PublishSingleSourceArchitectureTests
 {
   [Fact]
-  public void DesktopSuitePublisher_must_be_the_only_dotnet_publish_orchestrator()
+  public void DesktopDistributionManifest_must_exist_as_the_only_distribution_truth()
   {
     File.Exists(Path.Combine(
       SourceScanHelper.RepoRoot,
       "src",
       "SmartGuard.Configuration",
-      "Build",
-      "DesktopSuitePublisher.cs")).Should().BeTrue();
+      "Distribution",
+      "DesktopDistributionManifest.cs")).Should().BeTrue();
 
     var buildCmd = SourceScanHelper.ReadSource("build.cmd");
     buildCmd.Should().NotContain("dotnet publish");
@@ -20,17 +20,27 @@ public class PublishSingleSourceArchitectureTests
     buildCmd.Should().Contain("publish");
   }
 
-  [Theory]
-  [InlineData("src/SmartGuard.Packaging/Commands/StageCommand.cs")]
-  [InlineData("src/SmartGuard.Cli/CliRouter.cs")]
-  public void Publish_callers_must_delegate_to_DesktopSuitePublisher(string relativePath)
+  [Fact]
+  public void Publish_stage_and_installer_must_delegate_to_DesktopDistributionManifest()
   {
-    var source = SourceScanHelper.ReadSource(relativePath);
-    if (source.Contains("dotnet publish", StringComparison.Ordinal))
-    {
-      source.Should().Contain(
-        "DesktopSuitePublisher",
-        $"{relativePath} must not orchestrate dotnet publish directly");
-    }
+    var manifest = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Distribution/DesktopDistributionManifest.cs");
+    manifest.Should().NotContain("SmartGuard.LogViewer.csproj");
+    manifest.Should().NotContain("LogViewerExeFileName");
+
+    var publisher = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Build/DesktopSuitePublisher.cs");
+    publisher.Should().Contain("DesktopDistributionManifest.PublishedProjects");
+
+    var copier = SourceScanHelper.ReadSource("src/SmartGuard.Packaging/Staging/PayloadCopier.cs");
+    copier.Should().Contain("DesktopDistributionManifest.PayloadEntries");
+
+    var layout = SourceScanHelper.ReadSource("src/SmartGuard.Packaging/Staging/StagingLayout.cs");
+    layout.Should().Contain("DesktopDistributionManifest.RequiredStagingPaths");
+
+    var installer = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+    installer.Should().Contain(@"generated\SmartGuard.Distribution.Files.iss.inc");
+    installer.Should().Contain(@"generated\SmartGuard.Distribution.Processes.iss.inc");
+    installer.Should().NotContain("SmartGuard.LogViewer.exe");
+    installer.Should().NotContain("Source: \"{#StagingDir}\\\\bin\\\\*\"");
+    installer.Should().NotContain("Pos('SmartGuard.Engine.exe'");
   }
 }

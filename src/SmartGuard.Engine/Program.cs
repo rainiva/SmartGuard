@@ -19,7 +19,7 @@ public static class Program
 
     return parsed.Mode switch
     {
-      EngineCommandMode.Install => InstallCommands.RunInstall(root, parsed.SkipPublish),
+      EngineCommandMode.Install => InstallCommands.RunInstall(root, parsed.SkipPublish, parsed.CreateDesktopShortcut),
       EngineCommandMode.Uninstall => InstallCommands.RunUninstall(root),
       _ => RunGuardian(root, configPath, statusPath, initMarker, fallbackLog),
     };

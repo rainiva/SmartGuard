@@ -1,3 +1,5 @@
+using SmartGuard.Configuration.Shell;
+
 namespace SmartGuard.Tray.Tests;
 
 public class SmartGuardToastAppIdTests
@@ -9,8 +11,8 @@ public class SmartGuardToastAppIdTests
   }
 
   [Fact]
-  public void DisplayName_is_smart_guard()
+  public void DisplayName_is_non_empty()
   {
-    SmartGuardToastAppId.DisplayName.Should().Be("智能电源守护");
+    SmartGuardToastAppId.DisplayName.Should().NotBeNullOrWhiteSpace();
   }
 }

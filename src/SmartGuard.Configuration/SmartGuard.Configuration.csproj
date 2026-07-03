@@ -19,6 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\branding\SmartGuard.ico">
+      <LogicalName>SmartGuard.Configuration.Assets.Branding.SmartGuard.ico</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="SmartGuard.Configuration.Tests" />
     <InternalsVisibleTo Include="SmartGuard.Settings.Tests" />
     <InternalsVisibleTo Include="SmartGuard.Settings" />

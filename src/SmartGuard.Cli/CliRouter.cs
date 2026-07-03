@@ -58,7 +58,8 @@ internal static class CliRouter
   private static int RunInstall(string root, List<string> positional)
   {
     var skipPublish = positional.Contains("--skip-publish", StringComparer.OrdinalIgnoreCase);
-    return InstallCommands.RunInstall(root, skipPublish);
+    var createDesktopShortcut = positional.Contains("--create-desktop-shortcut", StringComparer.OrdinalIgnoreCase);
+    return InstallCommands.RunInstall(root, skipPublish, createDesktopShortcut);
   }
 
   private static int RunRestart(string root, List<string> positional, TextWriter output, TextWriter error)

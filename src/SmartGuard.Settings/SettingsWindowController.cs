@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using SmartGuard.Configuration;
@@ -62,16 +61,11 @@ public sealed class SettingsWindowController
       var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var embeddedError);
       if (window is null)
       {
-        var xamlPath = SmartGuardPaths.SettingsXaml(root);
-        window = SettingsXamlLoader.TryLoadLooseWindowFromFile(xamlPath, out var fileError);
-        if (window is null)
-        {
-          loadError = fileError ?? embeddedError ?? "Unknown settings layout load failure.";
-          return null;
-        }
+        loadError = embeddedError ?? "Unknown settings layout load failure.";
+        return null;
       }
 
-      AppBrandIcon.ApplyTo(window, root);
+      AppBrandIcon.ApplyTo(window);
       return BuildController(root, repository, config, window);
     }
     catch (Exception ex)
@@ -230,7 +224,7 @@ public sealed class SettingsWindowController
   {
     _window.Dispatcher.Invoke(() =>
     {
-      AppBrandIcon.ApplyTo(_window, _root);
+      AppBrandIcon.ApplyTo(_window);
       if (!_window.IsVisible)
         _window.Show();
       _window.WindowState = WindowState.Normal;

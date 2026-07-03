@@ -30,12 +30,12 @@ public sealed class TrayApplicationContext : ApplicationContext
     var statusStore = new StatusStore(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
     _configMutations = new ConfigMutationService(_configRepository);
-    var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(root));
+    var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier());
     var displaySettingsCache = new TrayDisplaySettingsCache(_configRepository, _root);
 
     _notifyIcon = new NotifyIcon
     {
-      Icon = TrayIconLoader.Load(root),
+      Icon = TrayIconLoader.Load(),
       Visible = true,
       Text = "智能电源守护",
     };
@@ -43,7 +43,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     var menuParts = TrayContextMenuFactory.Create(
       OnPauseClick,
       OnSwitchHighPerformanceClick,
-      (_, _) => OpenLogViewer(),
+      (_, _) => OpenLogsPage(),
       OnOpenSettings,
       (_, _) => ExitTray());
     _statusItem = menuParts.StatusItem;
@@ -77,9 +77,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     _timer = new System.Windows.Forms.Timer { Interval = 5000 };
     _timer.Tick += (_, _) => ScheduleRefresh();
     _timer.Start();
-
     ScheduleRefresh();
-    _ = Task.Run(() => ToastAumidRegistrar.EnsureRegistered(_root));
   }
 
   protected override void Dispose(bool disposing)
@@ -191,11 +189,11 @@ public sealed class TrayApplicationContext : ApplicationContext
     }
   }
 
-  private async void OpenLogViewer()
+  private async void OpenLogsPage()
   {
     try
     {
-      await Task.Run(() => ExternalToolLauncher.OpenLogViewer(_root));
+      await Task.Run(() => ExternalToolLauncher.OpenLogsPage(_root));
     }
     catch (Exception ex)
     {

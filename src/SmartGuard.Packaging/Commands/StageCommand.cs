@@ -26,9 +26,6 @@ public class StageCommand
             ? Path.Combine(root, "installer", "staging")
             : Path.GetFullPath(options.StagingDir);
 
-        if (!File.Exists(Path.Combine(root, "lib", "SmartGuard.ico")))
-            throw new FileNotFoundException("Missing required asset: SmartGuard.ico");
-
         if (!options.SkipPublish)
         {
             var exit = (_publishRunner ?? DefaultPublishRunner)(root, options.Configuration);

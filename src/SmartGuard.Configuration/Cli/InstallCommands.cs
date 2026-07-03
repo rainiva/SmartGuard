@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Principal;
+using SmartGuard.Configuration.Shell;
 
 namespace SmartGuard.Configuration.Cli;
 
@@ -32,7 +33,7 @@ public static class ElevationDeclinedMarker
 
 public static class InstallCommands
 {
-  public static int RunInstall(string root, bool skipPublish)
+  public static int RunInstall(string root, bool skipPublish, bool createDesktopShortcut = false)
   {
     var startupLog = SmartGuardPaths.StartupLogFile(root);
     if (!IsAdministrator())
@@ -43,7 +44,12 @@ public static class InstallCommands
         Console.Error.WriteLine("Install requires administrator privileges. Run as administrator or delete the elevation marker file to retry.");
         return 1;
       }
-      return RerunElevated(root, "--install", skipPublish ? "--skip-publish" : null, startupLog);
+      return RerunElevated(
+        root,
+        "--install",
+        startupLog,
+        skipPublish ? "--skip-publish" : null,
+        createDesktopShortcut ? "--create-desktop-shortcut" : null);
     }
 
     try
@@ -66,6 +72,9 @@ public static class InstallCommands
       if (trayCode != 0)
         return Fail(startupLog, $"SmartGuard Tray task registration failed with exit code {trayCode}");
 
+      WriteStartupLog(startupLog, "Install: registering desktop shell integration...");
+      DesktopShellRegistration.Apply(root, createDesktopShortcut);
+
       WriteStartupLog(startupLog, "Install: completed successfully.");
       Console.WriteLine("SmartGuard scheduled tasks installed.");
       return 0;
@@ -87,7 +96,7 @@ public static class InstallCommands
         Console.Error.WriteLine("Uninstall requires administrator privileges. Run as administrator or delete the elevation marker file to retry.");
         return 1;
       }
-      return RerunElevated(root, "--uninstall", null, startupLog);
+      return RerunElevated(root, "--uninstall", startupLog);
     }
 
     try
@@ -96,6 +105,7 @@ public static class InstallCommands
 
       WriteStartupLog(startupLog, "Uninstall: stopping running processes and removing tasks...");
       EngineLifecycle.StopForUninstall();
+      DesktopShellRegistration.Remove(root);
 
       WriteStartupLog(startupLog, "Uninstall: completed successfully.");
       Console.WriteLine("SmartGuard scheduled tasks removed.");
@@ -107,11 +117,15 @@ public static class InstallCommands
     }
   }
 
-  private static int RerunElevated(string root, string command, string? extraArg, string startupLog)
+  private static int RerunElevated(string root, string command, string startupLog, params string?[] extraArgs)
   {
     WriteStartupLog(startupLog, "Requesting UAC elevation...");
     var args = $"--root \"{root}\" {command}";
-    if (!string.IsNullOrWhiteSpace(extraArg)) args += $" {extraArg}";
+    foreach (var extraArg in extraArgs)
+    {
+      if (!string.IsNullOrWhiteSpace(extraArg))
+        args += $" {extraArg}";
+    }
 
     var engineExe = SmartGuardPaths.EngineExe(root);
     using var proc = ElevationHelper.StartElevated(engineExe, args);

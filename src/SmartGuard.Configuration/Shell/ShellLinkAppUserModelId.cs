@@ -1,17 +1,18 @@
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 
-namespace SmartGuard.Tray.Toast;
+namespace SmartGuard.Configuration.Shell;
 
 internal static class ShellLinkAppUserModelId
 {
-  private static readonly Guid PropertyStoreGuid = new("00021401-0000-0000-C000-000000000046");
   private static readonly PropertyKey AppUserModelIdKey = new(
     new Guid("9F4C2855-9F59-4B38-AC27-8B953B3F3C28"), 5);
 
   public static bool Apply(string shortcutPath, string appUserModelId)
   {
-    if (!File.Exists(shortcutPath)) return false;
+    if (!File.Exists(shortcutPath))
+      return false;
+
     var link = (IShellLinkW)new ShellLink();
     var persist = (IPersistFile)link;
     persist.Load(shortcutPath, 0);

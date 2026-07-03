@@ -26,8 +26,8 @@ public class ArchitectureContractFifthRoundTests
     content.Should().Contain("| GOD-03 | **已关闭** |");
     content.Should().Contain("| GOD-04 | **已关闭** |");
     content.Should().Contain("| GOD-05 | **已关闭** |");
-    content.Should().Contain("| E-11 | **登记** |");
-    content.Should().Contain("| E-11b | **登记** |");
+    content.Should().Contain("| E-11 | **已收口为阻断规则** |");
+    content.Should().Contain("| E-11b | **已收口为阻断规则** |");
   }
 
   [Fact]

@@ -5,34 +5,31 @@ namespace SmartGuard.Architecture.Tests;
 public class ToastAumidRegistrarArchitectureTests
 {
   [Fact]
-  public void ToastAumidRegistrar_must_delegate_registry_and_shortcut_writers()
+  public void DesktopShellRegistration_must_own_registry_and_shortcut_writes()
   {
     File.Exists(Path.Combine(
         SourceScanHelper.RepoRoot,
         "src",
-        "SmartGuard.Tray",
-        "Toast",
-        "ToastRegistryWriter.cs"))
-      .Should().BeTrue();
-    File.Exists(Path.Combine(
-        SourceScanHelper.RepoRoot,
-        "src",
-        "SmartGuard.Tray",
-        "Toast",
-        "StartMenuShortcutWriter.cs"))
+        "SmartGuard.Configuration",
+        "Shell",
+        "DesktopShellRegistration.cs"))
       .Should().BeTrue();
 
-    var registrar = SourceScanHelper.ReadSource("src/SmartGuard.Tray/Toast/ToastAumidRegistrar.cs");
-    registrar.Should().Contain("ToastRegistryWriter");
-    registrar.Should().Contain("StartMenuShortcutWriter");
-    registrar.Should().NotContain("Registry.CurrentUser.CreateSubKey");
-    registrar.Should().NotContain("WScript.Shell");
+    var registration = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Shell/DesktopShellRegistration.cs");
+    registration.Should().Contain("Registry.CurrentUser.CreateSubKey");
+    registration.Should().Contain("WScript.Shell");
+    registration.Should().Contain("ShellLinkAppUserModelId");
 
-    File.ReadAllLines(Path.Combine(
-        SourceScanHelper.RepoRoot,
-        "src",
-        "SmartGuard.Tray",
-        "Toast",
-        "ToastAumidRegistrar.cs")).Length.Should().BeLessThan(300);
+    foreach (var obsoleteRuntimeOwner in new[]
+    {
+      "src/SmartGuard.Tray/Toast/ToastAumidRegistrar.cs",
+      "src/SmartGuard.Tray/Toast/ToastRegistryWriter.cs",
+      "src/SmartGuard.Tray/Toast/StartMenuShortcutWriter.cs",
+      "src/SmartGuard.Tray/Toast/ToastShortcutResolver.cs",
+    })
+    {
+      File.Exists(Path.Combine(SourceScanHelper.RepoRoot, obsoleteRuntimeOwner))
+        .Should().BeFalse($"{obsoleteRuntimeOwner} was replaced by installer-owned shell registration");
+    }
   }
 }

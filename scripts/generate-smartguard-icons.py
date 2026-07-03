@@ -32,6 +32,11 @@ LARGE_SIZES = (48, 64, 128, 256)
 SMALL_SIZES = (16, 20, 24, 32, 40)
 ALL_SIZES = tuple(sorted((*SMALL_SIZES, *LARGE_SIZES)))
 
+# Small tray/taskbar frames are authored in a 32x32 grid. Scale up around center so
+# Windows taskbar icons match neighboring apps without hand-editing promoted ICO bytes.
+SMALL_FOOTPRINT_SCALE = 1.18
+SMALL_BASE_CENTER = 16.0
+
 OVERSAMPLE = {
     48: 6,
     64: 6,
@@ -262,24 +267,65 @@ def scale_small_box(box: tuple[float, float, float, float], size: int) -> tuple[
     return tuple(scale_small(value, size) for value in box)
 
 
+def scale_small_base_point(
+    point: tuple[float, float],
+    footprint_scale: float = SMALL_FOOTPRINT_SCALE,
+    center: float = SMALL_BASE_CENTER,
+) -> tuple[float, float]:
+    x, y = point
+    return center + (x - center) * footprint_scale, center + (y - center) * footprint_scale
+
+
+def scale_small_base_box(
+    box: tuple[float, float, float, float],
+    footprint_scale: float = SMALL_FOOTPRINT_SCALE,
+    center: float = SMALL_BASE_CENTER,
+) -> tuple[float, float, float, float]:
+    left, top = scale_small_base_point((box[0], box[1]), footprint_scale, center)
+    right, bottom = scale_small_base_point((box[2], box[3]), footprint_scale, center)
+    return left, top, right, bottom
+
+
+def scale_small_points_with_footprint(
+    points: list[tuple[float, float]],
+    size: int,
+    footprint_scale: float = SMALL_FOOTPRINT_SCALE,
+) -> list[tuple[int, int]]:
+    return [
+        (
+            scale_small(scale_small_base_point((x, y), footprint_scale)[0], size),
+            scale_small(scale_small_base_point((x, y), footprint_scale)[1], size),
+        )
+        for x, y in points
+    ]
+
+
+def scale_small_box_with_footprint(
+    box: tuple[float, float, float, float],
+    size: int,
+    footprint_scale: float = SMALL_FOOTPRINT_SCALE,
+) -> tuple[int, int, int, int]:
+    return scale_small_box(scale_small_base_box(box, footprint_scale), size)
+
+
 def render_small_icon(size: int) -> Image.Image:
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
-    draw.polygon(scale_small_points(SMALL_BASE["outer"], size), fill=OUTER_SHIELD)
-    draw.polygon(scale_small_points(SMALL_BASE["inner"], size), fill=SMALL_INNER)
+    draw.polygon(scale_small_points_with_footprint(SMALL_BASE["outer"], size), fill=OUTER_SHIELD)
+    draw.polygon(scale_small_points_with_footprint(SMALL_BASE["inner"], size), fill=SMALL_INNER)
 
-    body = scale_small_box(SMALL_BASE["battery_body"], size)
-    body_radius = max(1, scale_small(SMALL_BASE["battery_radius"], size))
-    cap = scale_small_box(SMALL_BASE["battery_cap"], size)
-    cap_radius = max(1, scale_small(SMALL_BASE["cap_radius"], size))
-    cell = scale_small_box(SMALL_BASE["cell"], size)
-    cell_radius = max(1, scale_small(SMALL_BASE["cell_radius"], size))
+    body = scale_small_box_with_footprint(SMALL_BASE["battery_body"], size)
+    body_radius = max(1, scale_small(SMALL_BASE["battery_radius"] * SMALL_FOOTPRINT_SCALE, size))
+    cap = scale_small_box_with_footprint(SMALL_BASE["battery_cap"], size)
+    cap_radius = max(1, scale_small(SMALL_BASE["cap_radius"] * SMALL_FOOTPRINT_SCALE, size))
+    cell = scale_small_box_with_footprint(SMALL_BASE["cell"], size)
+    cell_radius = max(1, scale_small(SMALL_BASE["cell_radius"] * SMALL_FOOTPRINT_SCALE, size))
 
     draw.rounded_rectangle(body, radius=body_radius, fill=BATTERY_WHITE)
     draw.rounded_rectangle(cap, radius=cap_radius, fill=BATTERY_WHITE)
     draw.rounded_rectangle(cell, radius=cell_radius, fill=CELL_BLUE)
-    draw.polygon(scale_small_points(SMALL_BASE["bolt"], size), fill=BOLT_LIME)
+    draw.polygon(scale_small_points_with_footprint(SMALL_BASE["bolt"], size), fill=BOLT_LIME)
     return image
 
 

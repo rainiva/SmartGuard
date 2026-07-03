@@ -5,19 +5,23 @@ namespace SmartGuard.Architecture.Tests;
 public class LogViewerProgramArchitectureTests
 {
   [Fact]
-  public void LogViewer_main_must_redirect_to_settings_logs_page()
+  public void Product_must_not_ship_a_LogViewer_host_executable()
   {
-    var program = SourceScanHelper.ReadSource("src/SmartGuard.LogViewer/Program.cs");
-    program.Should().NotContain("Application.Run(form");
-    program.Should().NotContain("new LogViewerForm");
-    program.Should().Contain("LogViewerEntryRedirect.LaunchSettingsLogsPage");
-
-    var redirect = SourceScanHelper.ReadSource("src/SmartGuard.LogViewer/LogViewerEntryRedirect.cs");
-    redirect.Should().Contain("SettingsLogsPageLauncher.Open");
-
-    var launcher = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SettingsLogsPageLauncher.cs");
-    launcher.Should().Contain("SmartGuardPaths.SettingsExe");
-    launcher.Should().Contain("--page logs");
+    File.Exists(Path.Combine(
+      SourceScanHelper.RepoRoot,
+      "src",
+      "SmartGuard.LogViewer",
+      "SmartGuard.LogViewer.csproj")).Should().BeFalse();
+    File.Exists(Path.Combine(
+      SourceScanHelper.RepoRoot,
+      "src",
+      "SmartGuard.LogViewer",
+      "Program.cs")).Should().BeFalse();
+    File.Exists(Path.Combine(
+      SourceScanHelper.RepoRoot,
+      "src",
+      "SmartGuard.LogViewer",
+      "LogViewerEntryRedirect.cs")).Should().BeFalse();
   }
 
   [Fact]

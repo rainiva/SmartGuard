@@ -170,13 +170,7 @@ public class SettingsWindowResizeStabilityTests
         });
     }
 
-    private static string RepoXamlPath()
-    {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-        return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
-    }
+    private static string RepoXamlPath() => SettingsSourcePaths.ProjectSettingsXamlPath();
 
     private static SettingsWindowController? CreateController(string installRoot)
     {

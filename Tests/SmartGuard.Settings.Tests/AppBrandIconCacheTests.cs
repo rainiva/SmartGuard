@@ -11,18 +11,15 @@ public class AppBrandIconCacheTests
     {
         WpfStaTestHost.Run(() =>
         {
-            var repoRoot = Path.GetFullPath(Path.Combine(
-                Path.GetDirectoryName(typeof(SettingsWindowController).Assembly.Location)!,
-                "..", "..", "..", "..", ".."));
-            var iconPath = Path.Combine(repoRoot, "lib", "SmartGuard.ico");
+            var iconPath = SettingsSourcePaths.BrandIconPath();
             if (!File.Exists(iconPath))
                 return;
 
             AppBrandIcon.ClearCacheForTests();
             try
             {
-                var first = AppBrandIcon.LoadImageSource(repoRoot);
-                var second = AppBrandIcon.LoadImageSource(repoRoot);
+                var first = AppBrandIcon.LoadImageSource();
+                var second = AppBrandIcon.LoadImageSource();
 
                 first.Should().NotBeNull();
                 ReferenceEquals(first, second).Should().BeTrue();

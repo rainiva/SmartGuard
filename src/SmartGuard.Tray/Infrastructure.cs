@@ -7,7 +7,7 @@ public static class ExternalToolLauncher
 {
   public static void OpenSettings(string root) => SettingsMainPageLauncher.Open(root);
 
-  public static void OpenLogViewer(string root) => SettingsLogsPageLauncher.Open(root);
+  public static void OpenLogsPage(string root) => SettingsLogsPageLauncher.Open(root);
 }
 
 public static class TrayIconLoader
@@ -16,6 +16,6 @@ public static class TrayIconLoader
 
   internal static void ResetCacheForTests() => BrandIconLoader.ResetCacheForTests();
 
-  public static Icon Load(string root)
-    => BrandIconLoader.LoadWinFormsIcon(root, SystemIcons.Shield);
+  public static Icon Load()
+    => BrandIconLoader.LoadWinFormsIcon(SystemIcons.Shield);
 }

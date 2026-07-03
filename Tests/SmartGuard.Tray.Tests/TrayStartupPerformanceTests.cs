@@ -5,18 +5,11 @@ namespace SmartGuard.Tray.Tests;
 public class TrayStartupPerformanceTests
 {
     [Fact]
-    public void TrayApplicationContext_does_not_block_on_toast_registration()
+    public void TrayApplicationContext_startup_does_not_wait_on_shell_registration()
     {
         var root = Path.Combine(Path.GetTempPath(), "SmartGuardTrayStartup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(root, "lib"));
         File.WriteAllText(Path.Combine(root, "SmartGuard.config.json"), "{\"Paused\":false,\"NotifyOnPlanChange\":true}");
-
-        ToastAumidRegistrar.ResetForTests();
-        ToastAumidRegistrar.StartMenuShortcutWriterForTests = _ =>
-        {
-            Thread.Sleep(400);
-            return true;
-        };
 
         try
         {
@@ -29,7 +22,6 @@ public class TrayStartupPerformanceTests
         }
         finally
         {
-            ToastAumidRegistrar.ResetForTests();
             try { Directory.Delete(root, true); } catch { }
         }
     }

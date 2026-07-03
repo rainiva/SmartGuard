@@ -36,7 +36,7 @@
 | 文档 | DOC-01～03 | **已关闭**（`ARCHITECTURE-CONTRACT` §2/§6/§9/§10 对齐） |
 | 文档 | ME-12-R | **已关闭**（集成测试注释移除 `Publish-All`） |
 | 上帝模块 | GOD-01 | **已关闭**（`LogSearchFilterBar` &lt;300 行门禁） |
-| 多入口 | E-10 | **登记**（dev `Start-Tray.cmd` / `Restart-Tray.cmd`） |
+| 多入口 | E-10 | **阻断**（shell user entry 只能经 `DesktopShellRegistration` 落地） |
 | 测试稳定性 | PERF | **已关闭**（启动 5000ms 预算 + stop 后 settle） |
 
 ## 新增 Architecture 门禁（第三轮 + 第四轮）
@@ -107,7 +107,7 @@ Tray integration: 2/2
 | 上帝模块 | GOD-03 | **已关闭**（`SettingsPauseHandler` + `SettingsDebouncedSaver`） |
 | 上帝模块 | GOD-04 | **已关闭**（`ToastRegistryWriter` + `StartMenuShortcutWriter`） |
 | 上帝模块 | GOD-05 | **已关闭**（`GuardianFirstRunInitializer` + `GuardianExceptionStormHandler`） |
-| 多入口 | E-11, E-11b | **登记**（UAC 多实现；Inno 直启 Tray/Settings 安装 UX） |
+| 多入口 | E-11, E-11b | **阻断**（install/uninstall 只能经 `InstallCommands`；Inno 不得再拥有用户快捷方式） |
 | 文档 | DOC-04 | **已关闭**（§2 `StopForUninstall`；§11 第五轮索引） |
 
 ## 新增 Architecture 门禁（第五轮）
@@ -141,8 +141,8 @@ Tray integration: 2/2
 | 多源 | M-20 | **已关闭**（`SmartGuardPaths`：`SettingsXaml`、Init/Elevation marker） |
 | 多源 | M-21 | **已关闭**（`SmartGuardPathConstants.ps1/.cmd` + Inno `#define` parity） |
 | 多源 | S-09 | **已关闭**（Settings 暂停开关初始展示读 `status.json`） |
-| 多入口 | E-11 | **已关闭**（`ElevationHelper` + `Request-AdminElevation.cmd`） |
-| 多入口 | E-11b | **已关闭**（Inno → `Open-*.cmd` 包装脚本） |
+| 多入口 | E-11 | **阻断**（提升后的 install/uninstall 只能委托 `InstallCommands` + `DesktopShellRegistration`） |
+| 多入口 | E-11b | **阻断**（Inno 不得再拥有 `[Icons]` 用户快捷方式） |
 | 文档 | DOC-05 | **已关闭**（§12 第六轮索引 + 本终验） |
 
 ## 新增 Architecture 门禁（第六轮）
@@ -163,8 +163,8 @@ Tray integration: 2/2
 |------|-----|------|
 | 多源 | R7-OPS | **已关闭**（`GuardianTaskRunner`、`TrayLauncher`、`TrayLifecycle`、`StatusReporter`；`InstallCommands` 在 Configuration） |
 | 多入口 | R7-CLI | **已关闭**（`SmartGuard.Cli.exe` 薄路由；dev cmd 单行转发） |
-| 多入口 | R7-INNO | **已关闭**（Inno → `SmartGuard.Cli.exe open *`） |
-| 多源 | R7-PUBLISH | **已关闭**（`DesktopSuitePublisher` 单源） |
+| 多入口 | R7-INNO | **阻断**（用户 shell 入口不得回流到 Inno `[Icons]`） |
+| 多源 | R7-PUBLISH | **阻断**（分发清单必须收敛到 `DesktopDistributionManifest`） |
 | 文档 | DOC-06 | **已关闭**（§13 第七轮索引 + 本终验） |
 
 ## 新增 Architecture 门禁（第七轮）
@@ -196,8 +196,39 @@ Tray integration: 2/2
 （SMARTGUARD_SKIP_INSTALLER_TESTS=1，2026-07-02）
 ```
 
+## 第八轮绝对收口（2026-07-03）
+
+| 切片 | 最终状态 |
+|------|------|
+| shell owner | **阻断生效**：`InstallCommands -> DesktopShellRegistration` 是唯一 shell owner；Tray / Notifier 不得 runtime 自注册或自愈 AUMID |
+| xaml/icon 真源 | **阻断生效**：`SmartGuard.Settings.xaml` 只允许项目内 embedded source；`assets/branding/SmartGuard.ico` 是唯一品牌图标真源；`installRoot\lib` 不再承载 runtime 真源 |
+| distribution manifest | **阻断生效**：发布项目、payload、installer 进程与 legacy cleanup 只允许来自 `DesktopDistributionManifest`；Inno 仅消费生成的 include |
+| LogViewer 退场 | **阻断生效**：`SmartGuard.LogViewer.exe` 不再是 live product artifact、用户入口或进程清单成员；日志入口永久收口到 `SmartGuard.Settings.exe --page logs` |
+
+## 终验输出（第八轮）
+
+```
+PASSED=68 FAILED=0 TOTAL=68
+Pester: 61/61
+Architecture: 187/187
+Engine: 104/104
+Configuration: 96/96
+Cli: 1/1
+Packaging: 14/14
+Tray: 58/58
+LogViewer: 36/36
+Settings: 268/268
+Tray integration: 2/2
+Installer integration: 5/5
+Installer integration output: dist\SmartGuard-Setup-1.1.6-x64.exe
+Installer rebuild output: dist\SmartGuard-Setup-1.1.7-x64.exe
+（2026-07-03）
+```
+
 ## 结论
 
 第七轮将业务 cmd 收敛为 `SmartGuard.Cli.exe` 薄路由 + `SmartGuard.Configuration` 操作真源；删除 `Open-*.cmd`、`Status.cmd`、`Setup-All.cmd`、`SmartGuardPathConstants.cmd` 与 `Request-AdminElevation.cmd`；`DesktopSuitePublisher` 单源 publish；Inno 快捷方式经 `SmartGuard.Cli.exe open *`。DEV-ONLY 保留 `Run-Tests.cmd`、`Clean-Workspace.cmd`。
 
-第六轮在第五轮基线上完成剩余路径字面量收敛、脚本/Inno 常量 parity、Settings 与 Tray 暂停展示对称、UAC 提升单源、安装器快捷方式经 `Open-*.cmd` 包装；E-11/E-11b 由登记转为已关闭。
+截至 2026-07-03，E-10、E-11、E-11b、R7-INNO、R7-PUBLISH 都必须被视为当前阻断规则，而不是历史上已关闭的例外：shell user entry 只能由 `DesktopShellRegistration` 落地，提升后的 install/uninstall 只能经 `InstallCommands`，Inno 不得再拥有 `[Icons]` 用户快捷方式，分发清单只能来自 `DesktopDistributionManifest`。
+
+同一轮绝对收口还要求：runtime 不得继续自愈 shell/AUMID，不得再把 `installRoot\lib\SmartGuard.Settings.xaml` 或 `installRoot\lib\SmartGuard.ico` 当作真源，`SmartGuard.LogViewer.exe` 不得再作为 live product artifact、用户入口或进程清单成员；所有遗留物只能在 install/repair 期间清理。

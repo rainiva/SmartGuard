@@ -5,7 +5,7 @@
 
 1. 安装 .NET 8 桌面运行时
 2. 以管理员运行分步命令（或 `bin\SmartGuard.Cli.exe install`）：
-   - `build.cmd` 或 `bin\SmartGuard.Cli.exe publish`  编译五件套到 bin\
+   - `build.cmd` 或 `bin\SmartGuard.Cli.exe publish`  编译四件桌面组件到 bin\
    - `Register-AllTasks.cmd` 或 `bin\SmartGuard.Cli.exe install --skip-publish`  注册计划任务
 3. `Start-Tray.cmd` 或 `bin\SmartGuard.Cli.exe start tray` 启动托盘
 
@@ -14,7 +14,6 @@
 - bin\SmartGuard.Engine.exe
 - bin\SmartGuard.Tray.exe
 - bin\SmartGuard.Settings.exe
-- bin\SmartGuard.LogViewer.exe
 - bin\SmartGuard.Cli.exe
 
 ## 配置文件

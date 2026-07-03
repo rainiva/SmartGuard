@@ -5,28 +5,46 @@ namespace SmartGuard.Architecture.Tests;
 public class InnoShortcutWrapperArchitectureTests
 {
   [Fact]
-  public void Inno_icons_must_use_Cli_open_not_spawn_settings_exe_directly()
+  public void Installer_must_not_own_user_shell_shortcuts()
   {
     var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
-    var iconsSection = ExtractSection(iss, "[Icons]");
-    iconsSection.Should().Contain("SmartGuard.Cli.exe");
-    iconsSection.Should().Contain("open settings");
-    iconsSection.Should().Contain("open logs");
-    iconsSection.Should().Contain("open tray");
-    iconsSection.Should().NotContain("Open-Settings.cmd");
-    iconsSection.Should().NotContain("bin\\SmartGuard.Settings.exe");
-    iconsSection.Should().NotContain(@"{app}\bin\{#MyAppExeName}");
+    if (iss.Contains("[Icons]", StringComparison.Ordinal))
+    {
+      var iconsSection = ExtractSection(iss, "[Icons]");
+      iconsSection.Should().NotContain("SmartGuard.Cli.exe");
+      iconsSection.Should().NotContain("SmartGuard.Tray.exe");
+      iconsSection.Should().NotContain("SmartGuard.Settings.exe");
+      iconsSection.Should().NotContain("open tray");
+      iconsSection.Should().NotContain("open settings");
+      iconsSection.Should().NotContain("open logs");
+      iconsSection.Should().NotContain(@"{autodesktop}\{#MyAppName}");
+    }
   }
 
   [Fact]
-  public void Inno_Run_postinstall_must_use_Cli_open_tray()
+  public void InstallCommands_must_delegate_shell_registration_to_DesktopShellRegistration()
+  {
+    var installCommands = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Cli/InstallCommands.cs");
+    installCommands.Should().Contain("DesktopShellRegistration.Apply");
+    installCommands.Should().Contain("DesktopShellRegistration.Remove");
+  }
+
+  [Fact]
+  public void Installer_must_pass_desktop_shortcut_choice_to_install_command()
   {
     var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
     var runSection = ExtractSection(iss, "[Run]");
-    runSection.Should().Contain("SmartGuard.Cli.exe");
-    runSection.Should().Contain("open tray");
-    runSection.Should().NotContain("Open-Tray.cmd");
-    runSection.Should().NotContain("{app}\\bin\\{#MyAppExeName}");
+    runSection.Should().Contain("--create-desktop-shortcut");
+    runSection.Should().Contain("desktopicon");
+  }
+
+  [Fact]
+  public void Runtime_shell_registration_hooks_must_be_absent_from_tray_sources()
+  {
+    var tray = SourceScanHelper.ReadSource("src/SmartGuard.Tray/TrayApplicationContext.cs");
+    var notifier = SourceScanHelper.ReadSource("src/SmartGuard.Tray/Toast/WinRtToastNotifier.cs");
+    tray.Should().NotContain("ToastAumidRegistrar.EnsureRegistered");
+    notifier.Should().NotContain("ToastAumidRegistrar.EnsureRegistered");
   }
 
   [Fact]
@@ -44,16 +62,6 @@ public class InnoShortcutWrapperArchitectureTests
     router.Should().Contain("TrayLauncher.Start");
     mainLauncher.Should().Contain("Arguments = $\"--root \\\"{root}\\\"\"");
     logsLauncher.Should().Contain("Arguments = $\"--root \\\"{root}\\\" --page logs\"");
-  }
-
-  [Fact]
-  public void Open_wrapper_cmds_must_not_exist_at_repo_root()
-  {
-    foreach (var wrapper in new[] { "Open-Tray.cmd", "Open-Settings.cmd", "Open-Logs.cmd" })
-    {
-      File.Exists(Path.Combine(SourceScanHelper.RepoRoot, wrapper))
-        .Should().BeFalse($"{wrapper} was replaced by SmartGuard.Cli.exe open");
-    }
   }
 
   private static string ExtractSection(string iss, string header)

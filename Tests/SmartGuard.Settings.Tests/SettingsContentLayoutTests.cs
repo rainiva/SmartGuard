@@ -1,22 +1,12 @@
 using System.IO;
-using System.Reflection;
-
 namespace SmartGuard.Settings.Tests;
 
 public class SettingsContentLayoutTests
 {
-    private static string RepoXamlPath()
-    {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-        return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
-    }
-
     [Fact]
     public void Right_content_root_uses_shared_margin_like_logs_page()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("x:Key=\"SettingsContentPageMargin\"");
         xaml.Should().MatchRegex(
@@ -30,7 +20,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Page_titles_use_shared_header_row_aligned_with_navigation_brand()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("x:Name=\"txtPageTitle\"");
         xaml.Should().MatchRegex(
@@ -51,7 +41,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Sidebar_brand_uses_single_title_without_settings_subtitle()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("x:Name=\"imgAppIcon\"");
         xaml.Should().Contain("Text=\"智能电源守护\"");
@@ -63,7 +53,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Settings_scroll_viewer_template_honors_padding()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
         xaml.Should().MatchRegex(
             "ScrollContentPresenter[\\s\\S]{0,120}Margin=\"\\{TemplateBinding Padding\\}\"",
             "scroll content presenter should honor padding inside the scroll viewer template");
@@ -72,7 +62,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Single_row_system_card_does_not_show_trailing_divider()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().MatchRegex(
             "Text=\"管理开机启动和基本系统行为\"[\\s\\S]{0,120}Border Style=\"\\{StaticResource SettingsItemRow\\}\" BorderThickness=\"0\"",
@@ -82,7 +72,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Log_viewport_border_wraps_scroll_viewer_not_log_content()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().MatchRegex(
             "x:Name=\"logViewportBorder\"[\\s\\S]{0,420}x:Name=\"lstLogView\"",

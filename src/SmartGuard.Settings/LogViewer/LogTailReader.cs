@@ -1,4 +1,7 @@
 using System.Text;
+using System.Drawing;
+using System.IO;
+using System.Windows.Forms;
 
 namespace SmartGuard.LogViewer;
 

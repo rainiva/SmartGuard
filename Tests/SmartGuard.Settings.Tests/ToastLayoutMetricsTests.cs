@@ -141,11 +141,5 @@ public class ToastLayoutMetricsTests
     private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 
     private static string ReadSettingsXaml()
-    {
-        var assemblyLocation = typeof(SettingsWindowController).Assembly.Location;
-        var repoRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(
-            System.IO.Path.GetDirectoryName(assemblyLocation)!,
-            "..", "..", "..", "..", ".."));
-        return System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml"));
-    }
+        => SettingsSourcePaths.ReadSettingsXamlSource();
 }

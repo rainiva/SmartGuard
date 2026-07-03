@@ -1,22 +1,12 @@
 using System.IO;
-using System.Reflection;
-
 namespace SmartGuard.Settings.Tests;
 
 public class SettingsUiConsistencyTests
 {
-  private static string RepoXamlPath()
-  {
-    var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-    var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-    var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-    return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
-  }
-
   [Fact]
   public void Settings_xaml_uses_unified_combo_and_filter_checkbox_styles()
   {
-    var xaml = File.ReadAllText(RepoXamlPath());
+    var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
     xaml.Should().Contain("x:Key=\"SettingsTextBox\"");
     xaml.Should().Contain("TargetType=\"{x:Type ComboBox}\"");
@@ -32,7 +22,7 @@ public class SettingsUiConsistencyTests
   [Fact]
   public void Settings_xaml_defines_numberbox_button_before_numberbox_style()
   {
-    var xaml = File.ReadAllText(RepoXamlPath());
+    var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
     var buttonStyleIndex = xaml.IndexOf("x:Key=\"NumberBoxButton\"", StringComparison.Ordinal);
     var numberBoxStyleIndex = xaml.IndexOf("TargetType=\"local:NumberBox\"", StringComparison.Ordinal);
 
@@ -44,7 +34,7 @@ public class SettingsUiConsistencyTests
   [Fact]
   public void Settings_xaml_shows_legacy_app_icon_in_header()
   {
-    var xaml = File.ReadAllText(RepoXamlPath());
+    var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
     xaml.Should().Contain("x:Name=\"imgAppIcon\"");
   }
 }

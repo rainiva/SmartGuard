@@ -1,16 +1,16 @@
+using SmartGuard.Configuration.Shell;
 using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
 
 namespace SmartGuard.Tray.Toast;
 
-public sealed class WinRtToastNotifier(string root) : IToastNotifier
+public sealed class WinRtToastNotifier : IToastNotifier
 {
   public bool TryShow(string title, string body, string tag)
   {
     if (string.IsNullOrWhiteSpace(title)) return false;
     try
     {
-      ToastAumidRegistrar.EnsureRegistered(root);
       var xml = ToastNotificationXmlBuilder.Build(title, body);
       var doc = new XmlDocument();
       doc.LoadXml(xml);

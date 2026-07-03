@@ -15,7 +15,7 @@
 #define MyAppPublisher "rainiva"
 #define MyAppURL "https://github.com/rainiva/SmartGuard"
 #define MyAppExeName "SmartGuard.Tray.exe"
-#define MySetupIcon "..\lib\SmartGuard.ico"
+#define MySetupIcon "..\assets\branding\SmartGuard.ico"
 #define ConfigFileName "SmartGuard.config.json"
 #define StatusFileName "SmartGuard.status.json"
 #define DefaultLogFileName "SmartGuard.log"
@@ -45,7 +45,7 @@ CloseApplications=no
 RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\lib\SmartGuard.ico
+UninstallDisplayIcon={app}\bin\SmartGuard.Tray.exe
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
@@ -55,30 +55,24 @@ Name: "desktopicon"; Description: "创建桌面快捷方式（托盘）"; GroupD
 Name: "launchtray"; Description: "安装完成后启动托盘"; GroupDescription: "安装后:"; Flags: checkedonce
 
 [Files]
-Source: "{#StagingDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
-Source: "{#StagingDir}\lib\SmartGuard.ico"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "{#StagingDir}\lib\SmartGuard.Settings.xaml"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "{#StagingDir}\license_zh-CN.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+#include "generated\SmartGuard.Distribution.Files.iss.inc"
 Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestName: "{#RuntimeInstallerFile}"; Flags: deleteafterinstall; Check: ShouldInstallDotNet
 
-[Icons]
-Name: "{group}\{#MyAppName} 托盘"; Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open tray --root ""{app}"""
-Name: "{group}\{#MyAppName} 设置"; Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open settings --root ""{app}"""
-Name: "{group}\{#MyAppName} 日志"; Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open logs --root ""{app}"""
-Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open tray --root ""{app}"""; Tasks: desktopicon
+[InstallDelete]
+#include "generated\SmartGuard.Distribution.LegacyCleanup.iss.inc"
 
 [Run]
 Filename: "{tmp}\{#RuntimeInstallerFile}"; Parameters: "/install /quiet /norestart"; StatusMsg: "正在安装 .NET 8 桌面运行时..."; Check: ShouldInstallDotNet; Flags: waituntilterminated
-Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish"; StatusMsg: "正在注册计划任务..."; Flags: waituntilterminated
+Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish"; StatusMsg: "正在注册计划任务..."; Check: not WizardIsTaskSelected('desktopicon'); Flags: runhidden waituntilterminated
+Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish --create-desktop-shortcut"; StatusMsg: "正在注册计划任务..."; Tasks: desktopicon; Flags: runhidden waituntilterminated
 Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""SmartGuard Guardian"""; StatusMsg: "正在启动核心服务..."; Flags: runhidden waituntilterminated
-Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open tray --root ""{app}"""; Description: "启动 {#MyAppName} 托盘"; Flags: nowait postinstall skipifsilent; Tasks: launchtray
+Filename: "{app}\bin\SmartGuard.Cli.exe"; Parameters: "open tray --root ""{app}"""; Description: "启动 {#MyAppName} 托盘"; Flags: runhidden nowait postinstall skipifsilent; Tasks: launchtray
 
 [UninstallDelete]
 ; Program files (always deleted)
 Type: files; Name: "{app}\{#InitMarkerFileName}"
 Type: filesandordirs; Name: "{app}\bin"
-Type: filesandordirs; Name: "{app}\lib"
+#include "generated\SmartGuard.Distribution.LegacyCleanup.iss.inc"
 ; User data (optional, based on user choice)
 Type: files; Name: "{app}\{#ConfigFileName}"; Check: ShouldDeleteUserData
 Type: files; Name: "{app}\{#DefaultLogFileName}"; Check: ShouldDeleteUserData
@@ -110,10 +104,7 @@ begin
     if LoadStringFromFile(OutputFile, Output) then
     begin
       Result :=
-        (Pos('SmartGuard.Tray.exe', Output) > 0) or
-        (Pos('SmartGuard.Engine.exe', Output) > 0) or
-        (Pos('SmartGuard.LogViewer.exe', Output) > 0) or
-        (Pos('SmartGuard.Settings.exe', Output) > 0);
+#include "generated\SmartGuard.Distribution.Processes.iss.inc"
     end;
   end;
   DeleteFile(OutputFile);

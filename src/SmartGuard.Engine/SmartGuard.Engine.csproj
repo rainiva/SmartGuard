@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
-    <ApplicationIcon>..\..\lib\SmartGuard.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\branding\SmartGuard.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
