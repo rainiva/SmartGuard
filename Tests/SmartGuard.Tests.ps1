@@ -410,13 +410,15 @@
         It 'SmartGuard.iss includes signed publisher and install hooks' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
             $iss | Should -Match '#define MyAppPublisher "rainiva"'
             $iss | Should -Match 'https://github.com/rainiva/SmartGuard'
             $iss | Should -Match 'SetupIconFile='
-            $iss | Should -Match '--skip-publish'
             $iss | Should -Match 'ShouldDeleteUserData'
             $iss | Should -Match 'license_zh-CN\.txt'
-            $iss | Should -Match '\{app\}\\bin\\SmartGuard\.Engine\.exe'
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
+            $writer | Should -Match '--skip-publish'
+            $writer | Should -Match '\{#EngineExeName\}'
             $iss | Should -Not -Match 'Register-SmartGuardTask\.ps1'
             $iss | Should -Not -Match 'Register-TrayTask\.ps1'
         }
@@ -469,8 +471,10 @@
         It 'starts guardian after install before tray' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $iss | Should -Match '/Run /TN ""SmartGuard Guardian""'
-            $iss | Should -Match '正在启动核心服务'
+            $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
+            $writer | Should -Match '\{#GuardianTaskName\}'
+            $writer | Should -Match '正在启动核心服务'
         }
 
         It 'allows only one installed SmartGuard instance' {
@@ -484,8 +488,10 @@
         It 'upgrade path re-registers tasks after install' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $iss | Should -Match '--install.*--skip-publish'
-            $iss | Should -Match 'schtasks\.exe.*Run.*SmartGuard Guardian'
+            $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
+            $writer | Should -Match '--install.*--skip-publish'
+            $writer | Should -Match 'schtasks\.exe.*Run.*\{#GuardianTaskName\}'
         }
 
         It 'installer staging and version logic are in C# packaging project' {
@@ -586,8 +592,10 @@
         It 'installer delegates shell surfaces to InstallCommands instead of owning [Icons]' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $iss | Should -Match 'SmartGuard\.Cli\.exe'
-            $iss | Should -Match '--create-desktop-shortcut'
+            $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
+            $writer | Should -Match '\{#CliExeName\}'
+            $writer | Should -Match '--create-desktop-shortcut'
             $iss | Should -Not -Match '(?ms)^\[Icons\]'
             $iss | Should -Not -Match 'DefaultGroupName='
             $iss | Should -Not -Match 'DisableProgramGroupPage='
@@ -656,6 +664,37 @@
             $iss | Should -Not -Match 'SmartGuard\.LogViewer\.exe'
         }
 
+        It 'installer does not keep live exe or task literals once generated includes exist' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Constants\.iss\.inc'
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
+            $iss | Should -Not -Match '#define MyAppExeName "SmartGuard\.Tray\.exe"'
+            $iss | Should -Not -Match 'UninstallDisplayIcon=\{app\}\\bin\\SmartGuard\.Tray\.exe'
+            $iss | Should -Not -Match 'Filename: "\{app\}\\bin\\SmartGuard\.Engine\.exe"'
+            $iss | Should -Not -Match 'Filename: "\{app\}\\bin\\SmartGuard\.Cli\.exe"'
+            $iss | Should -Not -Match '/TN ""SmartGuard Guardian""'
+        }
+
+        It 'live scripts do not keep legacy SmartPowerPlan cleanup entrypoints' {
+            $root = Split-Path -Parent $PSScriptRoot
+            Test-Path -LiteralPath (Join-Path $root 'scripts\LegacyScheduledTaskNames.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'scripts\Unregister-LegacySmartPowerPlanTasks.ps1') | Should -Be $false
+            Test-Path -LiteralPath (Join-Path $root 'scripts\archive\LegacyScheduledTaskNames.ps1') | Should -Be $true
+            Test-Path -LiteralPath (Join-Path $root 'scripts\archive\Unregister-LegacySmartPowerPlanTasks.ps1') | Should -Be $true
+        }
+
+        It 'contract docs do not leave historical migration pointers in live guidance' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $contract = Get-Content -LiteralPath (Join-Path $root 'docs\ARCHITECTURE-CONTRACT.md') -Raw -Encoding UTF8
+            $acceptance = Get-Content -LiteralPath (Join-Path $root 'docs\MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md') -Raw -Encoding UTF8
+            $contract | Should -Not -Match '见 MIGRATION'
+            $contract | Should -Match 'generated/SmartGuard\.Distribution\.Constants\.iss\.inc'
+            $contract | Should -Match 'LegacyScheduledTaskCatalog'
+            $acceptance | Should -Match 'scripts/archive/'
+            $acceptance | Should -Match 'SmartGuard\.Distribution\.Run\.iss\.inc'
+        }
+
         It 'integration stop helpers delegate to Engine --uninstall' {
             $root = Split-Path -Parent $PSScriptRoot
             $shared = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1') -Raw -Encoding UTF8
@@ -672,8 +711,11 @@
             $root = Split-Path -Parent $PSScriptRoot
             $status = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\StatusReporter.cs') -Raw -Encoding UTF8
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
             $status | Should -Match 'ScheduledTaskRegistrar'
-            $iss | Should -Match 'SmartGuard Guardian'
+            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Constants\.iss\.inc'
+            $iss | Should -Not -Match 'SmartGuard Guardian'
+            $writer | Should -Match 'ScheduledTaskRegistrar\.GuardianTaskName'
             $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
             $stopBlock | Should -Match 'SmartGuard\.Engine\.exe'
             $stopBlock | Should -Match '--uninstall'

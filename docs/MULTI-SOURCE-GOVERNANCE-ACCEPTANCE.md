@@ -240,3 +240,32 @@ Installer rebuild output: dist\SmartGuard-Setup-1.1.7-x64.exe
 | repo-governance 边界 | **阻断生效**：历史 task-contract / migration / diagnosis 文档只允许位于 `docs/archive/**`；历史脚本只允许位于 `scripts/archive/**`；`docs/superpowers/plans/**` 仅作计划记录，不得充当 live authority |
 | dev asset generation | **阻断生效**：活动脚本 `scripts/generate-smartguard-icons.py` 不得再生成 `lib\SmartGuard.ico` 或 `lib\SmartGuard.Settings.xaml`；若需保留旧产物描述，必须位于 archive 路径 |
 | gate 豁免机制 | **阻断生效**：Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按 `PHASE-`、`MIGRATION`、日期、单文件名做豁免 |
+
+## 第十轮 live entry/source 收口（2026-07-03）
+
+| 切片 | 最终状态 |
+|------|------|
+| third-pass installer closeout | **阻断生效**：`SmartGuard.iss` 不得手写 live exe/task literals；只能消费 `generated/SmartGuard.Distribution.Constants.iss.inc` 与 `generated/SmartGuard.Distribution.Run.iss.inc` |
+| third-pass legacy cleanup closeout | **阻断生效**：legacy task names 只允许存在于 `LegacyScheduledTaskCatalog`；live `scripts/` 不得保留 `LegacyScheduledTaskNames.ps1` / `Unregister-LegacySmartPowerPlanTasks.ps1`；历史脚本仅 `scripts/archive/**` |
+| contract history pointers | **阻断生效**：live `docs/ARCHITECTURE-CONTRACT.md` 不得保留指向已归档 migration 文档的索引指针 |
+
+## 终验输出（第十轮）
+
+```
+PASSED=77 FAILED=0 TOTAL=77
+Pester: 75/75
+Architecture: 201/201
+Engine: 104/104
+Configuration: 102/102
+Cli: 1/1
+Packaging: 14/14
+Tray: 58/58
+LogView: 36/36
+Settings: 268/268
+Tray integration: 2/2
+（SMARTGUARD_SKIP_INSTALLER_TESTS=1，2026-07-03）
+```
+
+## 结论（第十轮）
+
+第三轮 live entry/source 收口完成：`SmartGuard.iss` 活跃 exe/task literal 已迁至 `InnoDistributionManifestWriter` 生成的 Constants/Run include；`LegacyScheduledTaskCatalog` 成为唯一 live 旧任务名真源；历史 cleanup 脚本已移至 `scripts/archive/**`。

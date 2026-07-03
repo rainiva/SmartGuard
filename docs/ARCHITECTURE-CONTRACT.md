@@ -22,8 +22,10 @@
 | 品牌图标 | `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标 | 资产源文件 + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico` |
 | 初始化标记 | `SmartGuardPaths.InitMarkerFile(root)` | Engine 首次运行 | Engine | `".SmartGuard.initialized"` 字面量散落 |
 | 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
-| 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威） | ps1/Inno | — | 脚本与 Inno 硬编码文件名；镜像见 `SmartGuardPathConstants.ps1` |
-| 计划任务名 | `ScheduledTaskRegistrar.GuardianTaskName` / `TrayTaskName` | 注册、恢复、安装 | `ScheduledTaskRegistrar` | 字面量 `"SmartGuard Guardian"` 散落 |
+| 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威）→ `InnoDistributionManifestWriter` 生成 `installer/generated/SmartGuard.Distribution.Constants.iss.inc` | ps1/Inno | — | 脚本与 Inno 硬编码文件名；`SmartGuard.iss` 手写 live exe/task literal |
+| 计划任务名 | `ScheduledTaskRegistrar.GuardianTaskName` / `TrayTaskName` → generated constants/run include | 注册、恢复、安装 | `ScheduledTaskRegistrar` | 字面量 `"SmartGuard Guardian"` 散落；`SmartGuard.iss` 手写 `/TN` |
+| Inno live entry/file-name truth | `SmartGuardPaths.*ExeFileName` + `ScheduledTaskRegistrar.GuardianTaskName` → `InnoDistributionManifestWriter` generated `installer/generated/SmartGuard.Distribution.Constants.iss.inc` / `installer/generated/SmartGuard.Distribution.Run.iss.inc` | Inno 安装流程 | `InnoDistributionManifestWriter` | `SmartGuard.iss` 仅保留安装流程与 UI，不得手写 live exe/task literal |
+| legacy cleanup 任务名 | `LegacyScheduledTaskCatalog.TaskNames` | `LegacyTaskCleaner`（经 `InstallCommands`） | — | `LegacyTaskCleaner` 内联旧任务名；live `scripts/*.ps1` 维护第二份名单 |
 | 开机自启 UI | `config.AutoStartEnabled` | Settings | `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` | Settings 读 `schtasks`/`SyncFromTasks` 决定展示 |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
@@ -31,7 +33,7 @@
 | 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
 | UAC 提升 | `ElevationHelper` + `CliAdminRunner` | `InstallCommands`、`UpdateInstallerLauncher`、`SmartGuard.Cli` | — | 内联 `Verb = "runas"` / VBS 散落 |
 | shell 集成 | `DesktopShellRegistration` | Installer / repair | `DesktopShellRegistration.Apply`、`DesktopShellRegistration.Remove` | Tray runtime 自注册、marker 自愈、Inno `[Icons]` 用户快捷方式 |
-| 分发清单 | `DesktopDistributionManifest` | `DesktopSuitePublisher`、`StageCommand`、`PayloadCopier`、`StagingLayout`、Inno include 生成 | — | 在 publisher/staging/installer 各自维护项目/文件/进程列表 |
+| 分发清单 | `DesktopDistributionManifest` | `DesktopSuitePublisher`、`StageCommand`、`PayloadCopier`、`StagingLayout`、Inno include 生成（Files/Processes/LegacyCleanup/Constants/Run） | — | 在 publisher/staging/installer 各自维护项目/文件/进程列表；`SmartGuard.iss` 手写 `[Run]` exe/task |
 | 运维子命令 | `SmartGuard.Cli` 薄路由 | dev cmd 单行转发、README | `Configuration` 操作真源 | Cli 内嵌 `schtasks`/`taskkill`/spawn 逻辑 |
 | GitHub Token（内存） | `GuardConfig.GitHubToken` | Settings 更新检查（`SettingsUpdateCheckCoordinator`） | `GuardConfigRepository.Save`（经 Settings 关于页 `SettingsGitHubTokenCoordinator` 或策略保存透传） | Engine/Tray 读取；磁盘明文 `GitHubToken` |
 | GitHub Token（磁盘） | `SmartGuard.config.json` 字段 `GitHubTokenProtected`（DPAPI `CurrentUser`，经 `GitHubTokenProtector`） | `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save` | 明文 `GitHubToken` 写入；诊断包导出须剔除 `GitHubToken` 与 `GitHubTokenProtected` |
@@ -75,6 +77,8 @@
 | `TrayLauncher` / `TrayLifecycle` | `SmartGuard.Configuration` | dev Tray 启停 |
 | `StatusReporter` | `SmartGuard.Configuration` | 状态与启动日志尾部 |
 | `DesktopDistributionManifest` | `SmartGuard.Configuration.Distribution` | 发布项目、payload、installer 进程、legacy cleanup 唯一真源 |
+| `InnoDistributionManifestWriter` | `SmartGuard.Packaging.Inno` | Inno generated include（Constants/Run/Files/Processes/LegacyCleanup） |
+| `LegacyScheduledTaskCatalog` | `SmartGuard.Configuration` | 旧 SmartPowerPlan 计划任务名唯一 live 名单 |
 | `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`） |
 | `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
 | `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
@@ -94,6 +98,8 @@
 9. 不得在 publisher/staging/installer 各自维护第二份项目/文件/进程清单（唯一真源 = `DesktopDistributionManifest`）。
 10. 不得重新引入 `SmartGuard.LogViewer.exe` 作为 live product artifact、进程清单或用户入口。
 11. Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按日期、`PHASE-`、`MIGRATION`、单文件名做豁免。
+12. 不得在 `installer/SmartGuard.iss` 手写 live exe/task file-name literal（`MyAppExeName`、`UninstallDisplayIcon` 直写 exe、`[Run]` 内 Engine/Cli/schtasks）；必须消费 `InnoDistributionManifestWriter` 生成的 Constants/Run include。
+13. 不得在 live `scripts/` 保留 legacy cleanup 入口或第二份 `SmartPowerPlan Guardian/Tray` 名单；唯一 live 真源 = `LegacyScheduledTaskCatalog`；历史脚本仅允许 `scripts/archive/**`。
 
 ---
 
@@ -120,7 +126,7 @@
 | M-16 | **已关闭** | `BrandIconLoader` |
 | L-02 | **已关闭** | `GuardConfigRepository` `FileSystemWatcher` + `LastWriteTimeUtc` |
 | L-03 | **已关闭** | `LegacyPaths` |
-| L-04 | **已关闭** | 本文档 + PHASE/INNO/MIGRATION 索引指针（见 MIGRATION） |
+| L-04 | **已关闭** | 本文档 + `docs/archive/**` 历史边界；live contract 不得保留指向已归档 migration 文档的索引指针 |
 
 仍开放（有门禁折中或下轮）：
 
@@ -142,7 +148,7 @@
 | S-08 | **已关闭** | `Status.cmd` 与 `ScheduledTaskRegistrar` 任务名一致 |
 | E-01 | **已关闭** | `Start-Core.cmd` → `schtasks`；`Debug-Engine.cmd` dev 前台 |
 | E-02 | **已关闭** | `LogViewer.exe` → Settings `--page logs` |
-| E-04～E-07 | **已关闭** | 脚本/集成 stop 委托 `SmartGuardStop.ps1`；legacy 任务名 `LegacyScheduledTaskNames.ps1` |
+| E-04～E-07 | **已关闭** | 脚本/集成 stop 委托 `SmartGuardStop.ps1`；legacy 任务名 `LegacyScheduledTaskCatalog`（历史脚本 `scripts/archive/**`） |
 | E-03 | **登记** | Inno `[Run]` + `GuardianRecovery` 双 `schtasks /Run`（设计允许） |
 | E-08 | **折中** | 同 M-15 |
 | 上帝模块 | **已关闭** | `SettingsLogPageHost` &lt;300 行 + 提取 Export/FollowTail/Search 模块 |
@@ -271,9 +277,20 @@
 | Cli 薄路由 | `CliThinFacadeArchitectureTests`、`CliLineCountTests`、`CliForbiddenReferencesArchitectureTests` |
 | Cli 委托 Launcher/Install | `CliOpenDelegatesLauncherArchitectureTests`、`CliInstallDelegatesArchitectureTests`、`CliStartDelegatesArchitectureTests` |
 | 发布单源 | `PublishSingleSourceArchitectureTests`、`DesktopSuitePublisherTests` |
+| legacy cleanup 单源 | `LegacyTaskCleanupArchitectureTests`、`LegacyTaskCleanerTests` |
 | 状态报告 | `StatusReporterArchitectureTests` |
 | 第七轮文档契约 | `ArchitectureContractSeventhRoundTests` |
 | Archive 边界 | `ArchiveBoundaryArchitectureTests` |
 | GitHub Token 保护 | `GitHubTokenArchitectureTests`、`GitHubTokenProtectorTests`、`GuardConfigRepositoryTokenTests` |
 | 诊断包导出脱敏 | `DiagnosticBundleExporterArchitectureTests`、`DiagnosticBundleExporterTests`、`SettingsDiagnosticExportCoordinatorTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
+
+---
+
+## 14. 第十轮 live entry/source 收口（2026-07-03）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| INNO-LIVE | **阻断** | `SmartGuard.iss` 不得手写 live exe/task literal；只能消费 `generated/SmartGuard.Distribution.Constants.iss.inc` 与 `generated/SmartGuard.Distribution.Run.iss.inc` |
+| LEGACY-CLEANUP | **阻断** | `LegacyScheduledTaskCatalog.TaskNames` 是唯一 live 旧任务名真源；`scripts/archive/**` 保留历史人工脚本 |
+| DOC-07 | **已关闭** | 本文档 §1/§4/§14 + `MULTI-SOURCE-GOVERNANCE-ACCEPTANCE` 第十轮终验 |
