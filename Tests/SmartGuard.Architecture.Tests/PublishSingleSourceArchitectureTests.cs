@@ -27,8 +27,11 @@ public class PublishSingleSourceArchitectureTests
 
     var buildCmd = SourceScanHelper.ReadSource("build.cmd");
     buildCmd.Should().NotContain("dotnet publish");
-    buildCmd.Should().Contain("SmartGuard.Cli.exe");
+    buildCmd.Should().Contain("SmartGuard.Cli.csproj");
     buildCmd.Should().Contain("publish");
+    buildCmd.Should().Contain("dotnet run --project");
+    buildCmd.Should().Contain("--root \"%~dp0.\"");
+    buildCmd.Should().NotContain("if exist \"%~dp0bin\\SmartGuard.Cli.exe\"");
   }
 
   [Fact]

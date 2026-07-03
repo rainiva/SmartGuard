@@ -110,9 +110,12 @@ print(json.dumps(result))" $icon $officialDir
         It 'build.cmd delegates publish to SmartGuard.Cli' {
             $root = Split-Path -Parent $PSScriptRoot
             $content = Get-Content -LiteralPath (Join-Path $root 'build.cmd') -Raw -Encoding UTF8
-            $content | Should -Match 'SmartGuard\.Cli\.exe'
+            $content | Should -Match 'SmartGuard\.Cli\.csproj'
             $content | Should -Match 'publish'
             $content | Should -Not -Match 'dotnet publish'
+            $content | Should -Not -Match 'if exist "%~dp0bin\\SmartGuard\.Cli\.exe"'
+            $content | Should -Match 'dotnet run --project'
+            $content | Should -Match '--root "%~dp0\."'
         }
 
         It 'DesktopDistributionManifest owns the desktop publish and payload lists' {

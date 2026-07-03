@@ -15,6 +15,7 @@ public static class DesktopSuitePublisher
 
   public static int Publish(string root, string configuration = "Release")
   {
+    root = InstallRootResolver.NormalizeRootPath(root);
     var outputDir = Path.Combine(root, "bin");
     foreach (var project in DesktopDistributionManifest.PublishedProjects)
     {

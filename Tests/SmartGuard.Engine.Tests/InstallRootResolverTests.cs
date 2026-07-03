@@ -12,6 +12,26 @@ public class InstallRootResolverTests
   }
 
   [Fact]
+  public void Resolve_strips_trailing_quote_from_explicit_root_argument()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "sg-root-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+
+    try
+    {
+      InstallRootResolver.ResolveFromBaseDirectory(
+          @"C:\Apps\SmartGuard\bin",
+          root + "\"",
+          [])
+        .Should().Be(Path.GetFullPath(root));
+    }
+    finally
+    {
+      Directory.Delete(root, true);
+    }
+  }
+
+  [Fact]
   public void Resolve_uses_install_root_when_exe_runs_from_bin_without_config()
   {
     var installRoot = Path.Combine(Path.GetTempPath(), "sg-root-" + Guid.NewGuid().ToString("N"));

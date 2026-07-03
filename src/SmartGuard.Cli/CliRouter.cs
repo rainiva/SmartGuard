@@ -28,7 +28,7 @@ internal static class CliRouter
 
     try
     {
-      root ??= InstallRootResolver.Resolve(null, args);
+      root = InstallRootResolver.Resolve(root, args);
     }
     catch (Exception ex)
     {

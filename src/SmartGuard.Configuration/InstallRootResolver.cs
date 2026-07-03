@@ -5,20 +5,33 @@ public static class InstallRootResolver
   public static string Resolve(string? explicitRoot, string[] args)
     => ResolveFromBaseDirectory(AppContext.BaseDirectory, explicitRoot, args);
 
+  internal static string NormalizeRootPath(string root)
+  {
+    var normalized = Path.GetFullPath(root.Trim().Trim('"'));
+    var pathRoot = Path.GetPathRoot(normalized);
+    if (!string.IsNullOrWhiteSpace(pathRoot)
+        && normalized.Length > pathRoot.Length)
+    {
+      normalized = normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    return normalized;
+  }
+
   public static string ResolveFromBaseDirectory(string baseDirectory, string? explicitRoot, string[] args)
   {
     if (!string.IsNullOrWhiteSpace(explicitRoot))
-      return Path.GetFullPath(explicitRoot);
+      return NormalizeRootPath(explicitRoot);
 
     for (var i = 0; i < args.Length - 1; i++)
     {
       if (args[i] is "--root" or "-r")
-        return Path.GetFullPath(args[i + 1]);
+        return NormalizeRootPath(args[i + 1]);
     }
 
     var env = Environment.GetEnvironmentVariable("SMARTGUARD_ROOT");
     if (!string.IsNullOrWhiteSpace(env))
-      return Path.GetFullPath(env);
+      return NormalizeRootPath(env);
 
     var dir = Path.GetFullPath(baseDirectory)
       .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
