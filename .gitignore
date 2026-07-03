@@ -48,6 +48,7 @@ coverage/
 
 # Installer build artifacts
 installer/staging/
+installer/generated/
 installer/redist/*.exe
 dist/
 
@@ -73,7 +74,9 @@ Desktop.ini
 .vs/
 .vscode/
 .idea/
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .codegraph/
 .playwright-mcp/
 .qoder/

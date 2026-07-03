@@ -1,0 +1,33 @@
+---
+description: GitHub Release 发布说明必须使用简体中文
+globs: .work/release-notes/**,.github/release_template.md
+alwaysApply: false
+---
+
+# Release 说明语言规范
+
+面向用户的 **GitHub Releases 发布说明必须使用简体中文**。
+
+## 适用范围
+
+- Release 标题（tag 名 `v*` 除外）
+- Release body（更新摘要、修复、改进、安装步骤、环境要求）
+- 安装包资产的用户可见描述
+
+## 不适用
+
+- Git commit message、PR 标题/描述（可中英混用或英文）
+- 源码注释、架构文档
+
+## 工作流
+
+1. 在 `.work/release-notes/v{version}.md` 起草中文说明（参考 `TEMPLATE.md`）
+2. 发布时用该文件全文作为 GitHub Release body
+3. 发布前自检：正文不得出现整段英文说明；专有名词（如 GitHub Releases、.NET 8）可保留英文
+
+## 阻断项
+
+| 行为 | 判定 |
+|------|------|
+| 远程 Release body 使用英文或未翻译 | 违规，改中文后再发布 |
+| 跳过 `.work/release-notes/` 直接在 GitHub 写英文 | 违规 |
