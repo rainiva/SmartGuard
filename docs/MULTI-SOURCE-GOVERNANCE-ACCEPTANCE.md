@@ -232,3 +232,11 @@ Installer rebuild output: dist\SmartGuard-Setup-1.1.7-x64.exe
 截至 2026-07-03，E-10、E-11、E-11b、R7-INNO、R7-PUBLISH 都必须被视为当前阻断规则，而不是历史上已关闭的例外：shell user entry 只能由 `DesktopShellRegistration` 落地，提升后的 install/uninstall 只能经 `InstallCommands`，Inno 不得再拥有 `[Icons]` 用户快捷方式，分发清单只能来自 `DesktopDistributionManifest`。
 
 同一轮绝对收口还要求：runtime 不得继续自愈 shell/AUMID，不得再把 `installRoot\lib\SmartGuard.Settings.xaml` 或 `installRoot\lib\SmartGuard.ico` 当作真源，shell surface 只能是一个开始菜单主入口加可选桌面入口，`SmartGuard.LogViewer` 产品身份不得残留（`LegacyCleanupPaths` 仅用于升级清理旧 `SmartGuard.LogViewer.*` 文件）；所有遗留物只能在 install/repair 期间清理。
+
+## 第九轮 repo-governance 收口（2026-07-03）
+
+| 切片 | 最终状态 |
+|------|------|
+| repo-governance 边界 | **阻断生效**：历史 task-contract / migration / diagnosis 文档只允许位于 `docs/archive/**`；历史脚本只允许位于 `scripts/archive/**`；`docs/superpowers/plans/**` 仅作计划记录，不得充当 live authority |
+| dev asset generation | **阻断生效**：活动脚本 `scripts/generate-smartguard-icons.py` 不得再生成 `lib\SmartGuard.ico` 或 `lib\SmartGuard.Settings.xaml`；若需保留旧产物描述，必须位于 archive 路径 |
+| gate 豁免机制 | **阻断生效**：Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按 `PHASE-`、`MIGRATION`、日期、单文件名做豁免 |
