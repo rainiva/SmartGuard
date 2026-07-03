@@ -268,4 +268,36 @@ Tray integration: 2/2
 
 ## 结论（第十轮）
 
-第三轮 live entry/source 收口完成：`SmartGuard.iss` 活跃 exe/task literal 已迁至 `InnoDistributionManifestWriter` 生成的 Constants/Run include；`LegacyScheduledTaskCatalog` 成为唯一 live 旧任务名真源；历史 cleanup 脚本已移至 `scripts/archive/**`。
+第三轮 live entry/source 收口完成：`SmartGuard.iss` 活跃 exe/task literal 已迁至 `InnoDistributionManifestWriter` 生成的 Constants/Run include；`LegacyScheduledTaskCatalog` 成为唯一 live 旧任务名真源；历史 cleanup 脚本已移至 `scripts/archive/**`。但截至 2026-07-03 最终收口前，`StopSmartGuardProcesses()` 仍残留手写 engine exe literal、tray 仍使用 `SystemIcons.Shield` fallback、truth gate 仍可能误伤 docs/tests 合法断言文本——见第十一轮。
+
+## 第十一轮最终收口（2026-07-03）
+
+| 切片 | 最终状态 |
+|------|------|
+| final inno stop closeout | **阻断生效**：`StopSmartGuardProcesses()` 只消费 `{#EngineExeName}`，不再手写 `SmartGuard.Engine.exe` |
+| final tray icon closeout | **阻断生效**：`TrayIconLoader` 不再使用 `SystemIcons.Shield`；runtime brand icon 仅 embedded chain |
+| final truth gate closeout | **阻断生效**：implementation-path grep 与 docs/tests contract gate 分离，验收口径与 live repo 一致 |
+| final implementation-path grep | **阻断生效**：只扫描 `installer/`、`src/`、活动 `scripts/`（排除 `scripts/archive/**`）中的 live residual；不得再把 docs/tests 的合法断言文本当作 runtime 命中 |
+| docs/tests mention policy | **阻断生效**：docs/tests may mention retired literals only as assertions or contract text；retired literal 在 `docs/archive/**` 中可作为历史快照保留；在 live docs/tests 中仅允许作为负断言、契约文本、gate 说明出现，不得宣称它仍是 live truth |
+| icon chain consumer rule | **阻断生效**：允许的 Windows consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=Tray.exe`；它们不得指向 loose `.ico` 或系统 shield fallback |
+
+## 结论（第十一轮）
+
+最终收口完成：Inno stop chain 消费 generated `{#EngineExeName}`；tray/WPF icon chain embedded-only 且 fail-fast；Pester Phase 8 以 **implementation-path grep** 阻断 live residual，同时允许 docs/tests 以契约/断言形式提及 retired literals。
+
+## 终验输出（第十一轮）
+
+```
+PASSED=81 FAILED=0 TOTAL=81
+Pester: 79/79
+Architecture: 205/205
+Engine: 104/104
+Configuration: 103/103
+Cli: 1/1
+Packaging: 14/14
+Tray: 59/59
+LogView: 36/36
+Settings: 268/268
+Tray integration: 2/2
+（SMARTGUARD_SKIP_INSTALLER_TESTS=1，2026-07-03）
+```

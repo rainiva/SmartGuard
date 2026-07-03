@@ -134,6 +134,14 @@ function Invoke-SmartGuardDotNetTestJobs {
     foreach ($project in $ProjectPaths) {
         $jobs += Start-Job -ScriptBlock {
             param($ProjectPath, $Filter, $NoBuild)
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+            $OutputEncoding = [System.Text.Encoding]::UTF8
+            $env:DOTNET_CONSOLE_ENCODING = 'utf-8'
+            if ((chcp) -notmatch '65001') {
+                chcp 65001 | Out-Null
+            }
+
             $args = @('test', $ProjectPath, '--nologo', '-v', 'q')
             if ($Filter) {
                 $args += @('--filter', $Filter)

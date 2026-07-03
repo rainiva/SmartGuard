@@ -32,6 +32,17 @@ public class DesktopShellRegistrationTests
   }
 
   [Fact]
+  public void Shell_shortcuts_continue_to_consume_tray_exe_icon_not_loose_ico_path()
+  {
+    var root = @"D:\Apps\SmartGuard";
+    var start = DesktopShellRegistration.GetStartMenuShortcuts(root).Single();
+    var desktop = DesktopShellRegistration.GetDesktopShortcut(root);
+
+    start.IconLocation.Should().Be($"{SmartGuardPaths.TrayExe(root)},0");
+    desktop.IconLocation.Should().Be($"{SmartGuardPaths.TrayExe(root)},0");
+  }
+
+  [Fact]
   public void Delete_directory_tree_removes_legacy_shortcuts_with_unicode_names()
   {
     var root = Path.Combine(Path.GetTempPath(), "sg-shell-delete-" + Guid.NewGuid().ToString("N"));

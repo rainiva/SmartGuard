@@ -43,4 +43,20 @@ public class BrandIconLoaderArchitectureTests
     project.Should().Contain(@"..\..\assets\branding\SmartGuard.ico");
     project.Should().Contain("EmbeddedResource Include=");
   }
+
+  [Fact]
+  public void TrayIconLoader_must_not_keep_system_shield_fallback()
+  {
+    var tray = SourceScanHelper.ReadSource("src/SmartGuard.Tray/Infrastructure.cs");
+    tray.Should().Contain("BrandIconLoader.LoadWinFormsIcon()");
+    tray.Should().NotContain("SystemIcons.Shield");
+  }
+
+  [Fact]
+  public void BrandIconLoader_must_not_accept_caller_supplied_fallback_icons()
+  {
+    var loader = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/BrandIconLoader.cs");
+    loader.Should().NotContain("LoadWinFormsIcon(DrawIcon fallback)");
+    loader.Should().NotContain("return (DrawIcon)fallback.Clone()");
+  }
 }

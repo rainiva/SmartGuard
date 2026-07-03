@@ -13,15 +13,17 @@
 7. Log entry is settings-only: `SmartGuard.Settings.exe --page logs` is the only live user entry; `SmartGuard.LogViewer.exe` must not return as a product artifact.
 8. Shell damage or legacy residue must be repaired only by install/repair. Tray runtime and notifier runtime are not allowed to write shell state back.
 9. Historical task-contract, migration, diagnosis, and support-plan docs live only under `docs/archive/**`. `scripts/archive/**` and `docs/superpowers/plans/**` are the only other paths that may retain superseded narratives; they are never live authority.
-10. Inno live exe/task file names are generated-only: `SmartGuard.iss` consumes `generated/SmartGuard.Distribution.Constants.iss.inc` and `generated/SmartGuard.Distribution.Run.iss.inc`; handwritten `MyAppExeName`, `UninstallDisplayIcon` exe literals, or `[Run]` Engine/Cli/schtasks lines are forbidden.
+10. Inno live exe/task file names are generated-only: `SmartGuard.iss` consumes `generated/SmartGuard.Distribution.Constants.iss.inc` and `generated/SmartGuard.Distribution.Run.iss.inc`; handwritten `MyAppExeName`, `UninstallDisplayIcon` exe literals, `[Run]` Engine/Cli/schtasks lines, or stop-procedure `SmartGuard.Engine.exe` literals are forbidden.
 11. Legacy SmartPowerPlan task cleanup names live only in `LegacyScheduledTaskCatalog`; live `scripts/` must not host manual cleanup entrypoints or duplicate name lists.
+12. Windows consumers are allowed only when they point back to canonical exe or embedded icon chain: `ApplicationIcon`, `window.Icon`, shortcut `Tray.exe,0`, and AUMID `IconUri=Tray.exe`. They must not bind loose `.ico` paths, `installRoot\lib\SmartGuard.ico`, or `SystemIcons.Shield` fallbacks.
+13. Repo truth gates use **implementation-path grep** on `installer/`, `src/`, and active `scripts/` only (excluding `scripts/archive/**`). Live `docs/` and `Tests/` may mention retired literals only as negative assertions, contract text, or gate descriptions—not as live truth.
 
 ## Canonical Owners
 
 | Concern | Canonical owner | Forbidden second owner |
 | --- | --- | --- |
 | shell owner | `InstallCommands -> DesktopShellRegistration` → one live start-menu shortcut `SmartGuard.lnk`; optional desktop `SmartGuard.lnk` | Tray runtime self-registration, `[Icons]`, dedicated settings/logs shortcuts, marker self-healing |
-| xaml/icon true source | embedded `SmartGuard.Settings.xaml` and project-consumed `assets/branding/SmartGuard.ico` | loose `lib` assets, runtime file reads |
+| xaml/icon true source | embedded `SmartGuard.Settings.xaml` and project-consumed `assets/branding/SmartGuard.ico` | loose `lib` assets, runtime file reads, `SystemIcons.Shield`, caller-supplied icon fallbacks |
 | distribution manifest | `DesktopDistributionManifest` + `InnoDistributionManifestWriter` generated includes | duplicated project/file/process lists in staging, installer, tests; handwritten Inno `[Run]` exe/task literals |
 | logs entry | `SmartGuard.Settings.exe --page logs` | no dedicated shell shortcut; no `SmartGuard.LogViewer` product identity |
 | legacy cleanup | `LegacyScheduledTaskCatalog` via `LegacyTaskCleaner` / `InstallCommands` | live `scripts/*.ps1` duplicate task names or manual unregister entrypoints |

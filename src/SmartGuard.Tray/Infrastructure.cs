@@ -17,5 +17,5 @@ public static class TrayIconLoader
   internal static void ResetCacheForTests() => BrandIconLoader.ResetCacheForTests();
 
   public static Icon Load()
-    => BrandIconLoader.LoadWinFormsIcon(SystemIcons.Shield);
+    => BrandIconLoader.LoadWinFormsIcon();
 }

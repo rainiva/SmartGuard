@@ -26,21 +26,18 @@ public static class BrandIconLoader
     WinFormsLoadCountForTests = 0;
   }
 
-  public static DrawIcon LoadWinFormsIcon(DrawIcon fallback)
+  public static DrawIcon LoadWinFormsIcon()
   {
     if (_cachedWinFormsIcon is not null)
       return (DrawIcon)_cachedWinFormsIcon.Clone();
 
     WinFormsLoadCountForTests++;
-    var icon = LoadEmbeddedWinFormsIcon();
-    if (icon is not null)
-    {
-      _cachedWinFormsIcon?.Dispose();
-      _cachedWinFormsIcon = icon;
-      return (DrawIcon)icon.Clone();
-    }
+    var icon = LoadEmbeddedWinFormsIcon()
+      ?? throw new InvalidOperationException("Embedded SmartGuard brand icon is missing.");
 
-    return (DrawIcon)fallback.Clone();
+    _cachedWinFormsIcon?.Dispose();
+    _cachedWinFormsIcon = icon;
+    return (DrawIcon)icon.Clone();
   }
 
   public static ImageSource? LoadWpfImageSource()

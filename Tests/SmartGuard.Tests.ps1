@@ -717,8 +717,35 @@
             $iss | Should -Not -Match 'SmartGuard Guardian'
             $writer | Should -Match 'ScheduledTaskRegistrar\.GuardianTaskName'
             $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
-            $stopBlock | Should -Match 'SmartGuard\.Engine\.exe'
+            $stopBlock | Should -Match '\\bin\\\{#EngineExeName\}'
+            $stopBlock | Should -Not -Match 'SmartGuard\.Engine\.exe'
             $stopBlock | Should -Match '--uninstall'
+        }
+
+        It 'installer stop procedure consumes EngineExeName define instead of engine literal' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
+            $stop = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses\(\);.*?end;').Value
+            $stop | Should -Match '\\bin\\\{#EngineExeName\}'
+            $stop | Should -Not -Match 'SmartGuard\.Engine\.exe'
+        }
+
+        It 'closeout docs describe implementation-path grep instead of fake full-repo silence' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $contract = Get-Content -LiteralPath (Join-Path $root 'docs\ARCHITECTURE-CONTRACT.md') -Raw -Encoding UTF8
+            $acceptance = Get-Content -LiteralPath (Join-Path $root 'docs\MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md') -Raw -Encoding UTF8
+            $overview = Get-Content -LiteralPath (Join-Path $root 'docs\architecture\single-entry-single-source.md') -Raw -Encoding UTF8
+
+            $contract | Should -Match 'implementation-path grep'
+            $acceptance | Should -Match 'docs/tests may mention retired literals only as assertions or contract text'
+            $overview | Should -Match 'Windows consumers are allowed only when they point back to canonical exe or embedded icon chain'
+        }
+
+        It 'implementation-path grep blocks live literals and fallback icons without scanning docs/tests' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $hits = @(rg -n "RootPath \+ '\\bin\\SmartGuard\.Engine\.exe'|LoadWinFormsIcon\(SystemIcons\.Shield\)|SystemIcons\.Shield|SmartGuardPaths\.BrandIcon|lib\\SmartGuard\.ico" `
+                (Join-Path $root 'installer') (Join-Path $root 'src') (Join-Path $root 'scripts') --glob '!scripts/archive/**' 2>$null)
+            $hits.Count | Should -Be 0 -Because ($hits -join [Environment]::NewLine)
         }
     }
 
@@ -786,6 +813,17 @@
             $helper | Should -Match 'dotnet build'
             $helper | Should -Match '--no-restore'
             $helper | Should -Match '--no-build'
+        }
+
+        It 'parallel dotnet test jobs pin UTF-8 encoding inside the background PowerShell process' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $helper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
+            $jobBlock = [regex]::Match($helper, '(?s)Start-Job\s+-ScriptBlock\s+\{.*?\}\s+-ArgumentList').Value
+            $jobBlock | Should -Match '\[Console\]::OutputEncoding\s*=\s*\[System\.Text\.Encoding\]::UTF8'
+            $jobBlock | Should -Match '\[Console\]::InputEncoding\s*=\s*\[System\.Text\.Encoding\]::UTF8'
+            $jobBlock | Should -Match '\$OutputEncoding\s*=\s*\[System\.Text\.Encoding\]::UTF8'
+            $jobBlock | Should -Match "DOTNET_CONSOLE_ENCODING\s*=\s*'utf-8'"
+            $jobBlock | Should -Match "chcp\)\s*-notmatch\s*'65001'"
         }
 
         It 'InstallerUserFlow.Tests.ps1 re-resolves repo root in BeforeAll when script scope is empty' {

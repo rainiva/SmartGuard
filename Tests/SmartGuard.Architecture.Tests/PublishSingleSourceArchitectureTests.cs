@@ -76,6 +76,13 @@ public class PublishSingleSourceArchitectureTests
   }
 
   [Fact]
+  public void Installer_iss_must_not_keep_live_engine_literal_outside_run_section_either()
+  {
+    var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+    iss.Should().NotContain(@"RootPath + '\bin\SmartGuard.Engine.exe'");
+  }
+
+  [Fact]
   public void Contract_docs_must_record_that_inno_live_exe_and_task_literals_are_generated_not_handwritten()
   {
     var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");

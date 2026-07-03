@@ -136,7 +136,7 @@ begin
   if RootPath = '' then
     Exit;
 
-  EngineExe := RootPath + '\bin\SmartGuard.Engine.exe';
+  EngineExe := RootPath + '\bin\{#EngineExeName}';
   if not FileExists(EngineExe) then
     Exit;
 

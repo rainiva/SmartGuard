@@ -19,7 +19,7 @@
 | 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `CliExe` | 注册、shell、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
 | 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
 | Settings XAML | `src/SmartGuard.Settings/SmartGuard.Settings.xaml`（编译嵌入/BAML） | `SettingsXamlLoader.TryLoadEmbeddedWindow` | Settings 项目源文件 | runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` |
-| 品牌图标 | `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标 | 资产源文件 + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico` |
+| 品牌图标 | `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标；允许的 Windows consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=Tray.exe` | 资产源文件 + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico`；`SystemIcons.Shield` 或 caller-supplied fallback |
 | 初始化标记 | `SmartGuardPaths.InitMarkerFile(root)` | Engine 首次运行 | Engine | `".SmartGuard.initialized"` 字面量散落 |
 | 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
 | 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威）→ `InnoDistributionManifestWriter` 生成 `installer/generated/SmartGuard.Distribution.Constants.iss.inc` | ps1/Inno | — | 脚本与 Inno 硬编码文件名；`SmartGuard.iss` 手写 live exe/task literal |
@@ -98,8 +98,10 @@
 9. 不得在 publisher/staging/installer 各自维护第二份项目/文件/进程清单（唯一真源 = `DesktopDistributionManifest`）。
 10. 不得重新引入 `SmartGuard.LogViewer.exe` 作为 live product artifact、进程清单或用户入口。
 11. Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按日期、`PHASE-`、`MIGRATION`、单文件名做豁免。
-12. 不得在 `installer/SmartGuard.iss` 手写 live exe/task file-name literal（`MyAppExeName`、`UninstallDisplayIcon` 直写 exe、`[Run]` 内 Engine/Cli/schtasks）；必须消费 `InnoDistributionManifestWriter` 生成的 Constants/Run include。
+12. 不得在 `installer/SmartGuard.iss` 手写 live exe/task file-name literal（`MyAppExeName`、`UninstallDisplayIcon` 直写 exe、`[Run]` 内 Engine/Cli/schtasks）；必须消费 `InnoDistributionManifestWriter` 生成的 Constants/Run include；`StopSmartGuardProcesses()` 亦不得手写 `SmartGuard.Engine.exe`，只能消费 `{#EngineExeName}`。
 13. 不得在 live `scripts/` 保留 legacy cleanup 入口或第二份 `SmartPowerPlan Guardian/Tray` 名单；唯一 live 真源 = `LegacyScheduledTaskCatalog`；历史脚本仅允许 `scripts/archive/**`。
+14. 不得在 runtime 使用 `SystemIcons.Shield`、caller-supplied fallback icon 或 `SmartGuardPaths.BrandIcon` 作为品牌图标第二显示入口；`BrandIconLoader` 必须 embedded-only，缺失时 fail-fast。
+15. Repo **implementation-path grep** 只扫描 `installer/`、`src/`、活动 `scripts/`（排除 `scripts/archive/**`）中的 live residual；不得把 `docs/`、`Tests/` 的合法断言/契约文本当作 runtime 命中。`docs/tests may mention retired literals only as assertions or contract text`。
 
 ---
 
@@ -294,3 +296,15 @@
 | INNO-LIVE | **阻断** | `SmartGuard.iss` 不得手写 live exe/task literal；只能消费 `generated/SmartGuard.Distribution.Constants.iss.inc` 与 `generated/SmartGuard.Distribution.Run.iss.inc` |
 | LEGACY-CLEANUP | **阻断** | `LegacyScheduledTaskCatalog.TaskNames` 是唯一 live 旧任务名真源；`scripts/archive/**` 保留历史人工脚本 |
 | DOC-07 | **已关闭** | 本文档 §1/§4/§14 + `MULTI-SOURCE-GOVERNANCE-ACCEPTANCE` 第十轮终验 |
+
+---
+
+## 15. 最终收口（2026-07-03 — final closeout checklist）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| INNO-STOP | **阻断** | `StopSmartGuardProcesses()` 只消费 `{#EngineExeName}`，不得手写 `SmartGuard.Engine.exe` |
+| ICON-EMBED | **阻断** | `TrayIconLoader` / `BrandIconLoader.LoadWinFormsIcon()` embedded-only；禁止 `SystemIcons.Shield` 与 caller-supplied fallback |
+| TRUTH-GATE | **阻断** | **implementation-path grep** 只扫 `installer/`、`src/`、活动 `scripts/`；`docs/tests may mention retired literals only as assertions or contract text` |
+| ICON-CONSUMER | **阻断** | 允许的 Windows icon consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=Tray.exe`；不得指向 loose `.ico` 或系统 shield fallback |
+| DOC-08 | **已关闭** | 本文档 §1/§4/§15 + `MULTI-SOURCE-GOVERNANCE-ACCEPTANCE` 最终收口终验 |
