@@ -20,6 +20,7 @@ public class RunTestsOptimizationArchitectureTests
     helper.Should().Contain("Start-Job");
     helper.Should().Contain("Get-SmartGuardParallelDotNetTestProjectPaths");
     helper.Should().Contain("Get-SmartGuardSerialDotNetTestProjectPaths");
+    helper.Should().Contain("--no-restore");
     helper.Should().Contain("--no-build");
     helper.Should().Contain("Ensure-SmartGuardDotNetTestBuild");
   }
@@ -89,6 +90,10 @@ public class RunTestsOptimizationArchitectureTests
     fnMatch.Success.Should().BeTrue();
     fnMatch.Value.Should().Contain("HandedOff = $true");
     fnMatch.Value.Should().Contain("exit `$LASTEXITCODE");
+    elevation.Should().Contain("function Get-WindowsPowerShellExePath");
+    fnMatch.Value.Should().Contain("$powershellExe = Get-WindowsPowerShellExePath");
+    fnMatch.Value.Should().Contain("Start-Process -FilePath $powershellExe -Verb RunAs");
+    fnMatch.Value.Should().Contain("Unable to launch elevated Windows PowerShell");
     runTests.Should().MatchRegex(@"if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode");
   }
 
@@ -111,5 +116,19 @@ public class RunTestsOptimizationArchitectureTests
     fnMatch.Value.Should().Contain("Test-IsProcessElevated");
     fnMatch.Value.Should().NotMatchRegex(
       @"if\s*\(\s*\$Tier\s*-eq\s*'nightly'\s*\)\s*\{\s*return\s+\$true\s*\}");
+  }
+
+  [Fact]
+  public void Invoke_InstallerUserFlowSingleElevation_must_use_explicit_windows_powershell_and_surface_launch_failures()
+  {
+    var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
+    var fnMatch = System.Text.RegularExpressions.Regex.Match(
+      elevation,
+      @"(?s)function Invoke-InstallerUserFlowSingleElevation.*?(?=\r?\nfunction |\z)");
+    fnMatch.Success.Should().BeTrue();
+    elevation.Should().Contain("function Get-WindowsPowerShellExePath");
+    fnMatch.Value.Should().Contain("$powershellExe = Get-WindowsPowerShellExePath");
+    fnMatch.Value.Should().Contain("Start-Process -FilePath $powershellExe -Verb RunAs");
+    fnMatch.Value.Should().Contain("Unable to launch elevated Windows PowerShell");
   }
 }

@@ -92,7 +92,7 @@ function Ensure-SmartGuardDotNetTestBuild {
             throw "Missing test project: $project"
         }
 
-        $output = dotnet build $project --nologo -v q 2>&1
+        $output = dotnet build $project --no-restore --nologo -v q 2>&1
         $output | Write-Host
         if ($LASTEXITCODE -ne 0) {
             throw "dotnet build failed for $project"

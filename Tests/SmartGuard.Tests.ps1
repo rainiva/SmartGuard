@@ -668,6 +668,10 @@
             $fn = [regex]::Match($elevation, '(?s)function Invoke-RunTestsSingleElevation.*?(?=\r?\nfunction |\z)').Value
             $fn | Should -Match 'HandedOff\s*=\s*\$true'
             $fn | Should -Match 'LASTEXITCODE'
+            $elevation | Should -Match 'function Get-WindowsPowerShellExePath'
+            $fn | Should -Match '\$powershellExe\s*=\s*Get-WindowsPowerShellExePath'
+            $fn | Should -Match 'Start-Process\s+-FilePath\s+\$powershellExe\s+-Verb\s+RunAs'
+            $fn | Should -Match 'Unable to launch elevated Windows PowerShell'
             $runTests | Should -Match 'if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode'
         }
 
@@ -686,9 +690,20 @@
             $elevation | Should -Match 'function Invoke-InstallerUserFlowSingleElevation'
             $elevation | Should -Match 'Invoke-Pester\s+-Path'
             $elevation | Should -Match 'SMARTGUARD_ELEVATED_RUN'
+            $elevation | Should -Match '\$powershellExe\s*=\s*Get-WindowsPowerShellExePath'
+            $elevation | Should -Match 'Start-Process\s+-FilePath\s+\$powershellExe\s+-Verb\s+RunAs'
+            $elevation | Should -Match 'Unable to launch elevated Windows PowerShell'
             $flow | Should -Match 'Invoke-InstallerUserFlowSingleElevation'
             $flow | Should -Match '\$PSCommandPath'
             $flow | Should -Match '\$installerFlowHandoff\.HandedOff'
+        }
+
+        It 'dotnet test helper builds with no-restore before no-build test fanout' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $helper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
+            $helper | Should -Match 'dotnet build'
+            $helper | Should -Match '--no-restore'
+            $helper | Should -Match '--no-build'
         }
 
         It 'InstallerUserFlow.Tests.ps1 re-resolves repo root in BeforeAll when script scope is empty' {

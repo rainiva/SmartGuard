@@ -9,6 +9,15 @@ function Get-ElevationDeclinedMarkerPath {
     return Join-Path $RepoRoot '.SmartGuard.elevation-declined'
 }
 
+function Get-WindowsPowerShellExePath {
+    $command = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    if ($command -and -not [string]::IsNullOrWhiteSpace($command.Source)) {
+        return $command.Source
+    }
+
+    return Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+}
+
 function Test-RunTestsNeedsInstallerElevation {
     param([string]$RepoRoot)
 
@@ -41,12 +50,18 @@ function Invoke-RunTestsSingleElevation {
     Write-Host 'SmartGuard: requesting one-time UAC elevation for the full test suite...' -ForegroundColor Cyan
     $escaped = $RunTestsScript.Replace("'", "''")
     $command = "& { `$env:SMARTGUARD_ELEVATED_RUN='1'; & '$escaped'; exit `$LASTEXITCODE }"
-    $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @(
-        '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-Command',
-        $command
-    )
+    $powershellExe = Get-WindowsPowerShellExePath
+    try {
+        $proc = Start-Process -FilePath $powershellExe -Verb RunAs -Wait -PassThru -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-Command',
+            $command
+        )
+    }
+    catch {
+        throw "Unable to launch elevated Windows PowerShell ($powershellExe): $($_.Exception.Message)"
+    }
 
     if ($null -eq $proc) {
         Write-Host 'UAC elevation was cancelled; skipping installer tests this session.' -ForegroundColor Yellow
@@ -121,12 +136,18 @@ function Invoke-InstallerUserFlowSingleElevation {
     exit 0
 }
 "@
-    $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @(
-        '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-Command',
-        $command
-    )
+    $powershellExe = Get-WindowsPowerShellExePath
+    try {
+        $proc = Start-Process -FilePath $powershellExe -Verb RunAs -Wait -PassThru -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-Command',
+            $command
+        )
+    }
+    catch {
+        throw "Unable to launch elevated Windows PowerShell ($powershellExe): $($_.Exception.Message)"
+    }
 
     if ($null -eq $proc) {
         Write-Host 'UAC elevation was cancelled; skipping installer integration this session.' -ForegroundColor Yellow
