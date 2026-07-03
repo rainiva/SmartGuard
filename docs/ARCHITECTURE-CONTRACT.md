@@ -35,6 +35,7 @@
 | 运维子命令 | `SmartGuard.Cli` 薄路由 | dev cmd 单行转发、README | `Configuration` 操作真源 | Cli 内嵌 `schtasks`/`taskkill`/spawn 逻辑 |
 | GitHub Token（内存） | `GuardConfig.GitHubToken` | Settings 更新检查（`SettingsUpdateCheckCoordinator`） | `GuardConfigRepository.Save`（经 Settings 关于页 `SettingsGitHubTokenCoordinator` 或策略保存透传） | Engine/Tray 读取；磁盘明文 `GitHubToken` |
 | GitHub Token（磁盘） | `SmartGuard.config.json` 字段 `GitHubTokenProtected`（DPAPI `CurrentUser`，经 `GitHubTokenProtector`） | `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save` | 明文 `GitHubToken` 写入；诊断包导出须剔除 `GitHubToken` 与 `GitHubTokenProtected` |
+| 历史文档/脚本边界 | `docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**` | 人类只读历史快照 | — | 仅允许保留 superseded snapshots；不得作为 live authority；禁止通过 `PHASE-`、`MIGRATION`、日期、单文件名白名单继续豁免旧真相 |
 
 ---
 
@@ -92,6 +93,7 @@
 8. 不得在 runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` 或 `installRoot\\lib\\SmartGuard.ico` 作为真源。
 9. 不得在 publisher/staging/installer 各自维护第二份项目/文件/进程清单（唯一真源 = `DesktopDistributionManifest`）。
 10. 不得重新引入 `SmartGuard.LogViewer.exe` 作为 live product artifact、进程清单或用户入口。
+11. Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按日期、`PHASE-`、`MIGRATION`、单文件名做豁免。
 
 ---
 
@@ -271,6 +273,7 @@
 | 发布单源 | `PublishSingleSourceArchitectureTests`、`DesktopSuitePublisherTests` |
 | 状态报告 | `StatusReporterArchitectureTests` |
 | 第七轮文档契约 | `ArchitectureContractSeventhRoundTests` |
+| Archive 边界 | `ArchiveBoundaryArchitectureTests` |
 | GitHub Token 保护 | `GitHubTokenArchitectureTests`、`GitHubTokenProtectorTests`、`GuardConfigRepositoryTokenTests` |
 | 诊断包导出脱敏 | `DiagnosticBundleExporterArchitectureTests`、`DiagnosticBundleExporterTests`、`SettingsDiagnosticExportCoordinatorTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |

@@ -184,29 +184,13 @@
     }
 
     Describe 'Phase 7.6 documentation sync' {
-        It 'README documents build.cmd and Phase 7 contract' {
+        It 'README documents build.cmd and canonical architecture docs' {
             $root = Split-Path -Parent $PSScriptRoot
             $readme = Get-Content -LiteralPath (Join-Path $root 'README.md') -Raw -Encoding UTF8
             $readme | Should -Match 'build\.cmd'
-            $readme | Should -Match 'PHASE-7-TASK-CONTRACT'
+            $readme | Should -Match 'ARCHITECTURE-CONTRACT'
             $readme | Should -Not -Match 'Publish-Engine\.ps1'
-        }
-
-        It 'MIGRATION reflects Phase 7 complete and current test counts' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $md = Get-Content -LiteralPath (Join-Path $root 'docs\MIGRATION.md') -Raw -Encoding UTF8
-            $md | Should -Match '\*\*7\.6\*\*.*\*\*已完成\*\*'
-            $md | Should -Match 'Phase 7 \*\*7\.1–7\.6 已完成\*\*'
-            $md | Should -Match '\|\s*Pester.*\|\s*39\s*\|'
-            $md | Should -Match 'build\.cmd'
-            $md | Should -Not -Match 'scripts/Publish-Engine\.ps1'
-        }
-
-        It 'INNO contract Build-Staging uses build.cmd not Xaml generator' {
-            $root = Split-Path -Parent $PSScriptRoot
-            $contract = Get-Content -LiteralPath (Join-Path $root 'docs\INNO-INSTALLER-TASK-CONTRACT.md') -Raw -Encoding UTF8
-            $contract | Should -Match 'build\.cmd'
-            $contract | Should -Not -Match 'Write-SmartGuardSettingsXaml'
+            $readme | Should -Not -Match 'docs/PHASE-7-TASK-CONTRACT'
         }
     }
 
@@ -515,6 +499,44 @@
     }
 
     Describe 'Phase 8 architecture single source of truth' {
+        It 'active scripts do not advertise retired lib icon outputs' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $script = Get-Content -LiteralPath (Join-Path $root 'scripts\generate-smartguard-icons.py') -Raw -Encoding UTF8
+            $script | Should -Not -Match 'save_ico\(LIB_DIR / "SmartGuard\.ico"'
+            $script | Should -Not -Match 'lib/SmartGuard\.ico'
+        }
+
+        It 'historical task-contract and diagnosis docs live under docs/archive instead of top-level docs' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $historical = @(
+                '2026-06-18-powershell-cleanup-design.md',
+                '2026-06-26-log-view-idle-and-follow-plan.md',
+                '2026-07-02-taskbar-icon-small-diagnosis.md',
+                'INNO-INSTALLER-TASK-CONTRACT.md',
+                'MIGRATION.md',
+                'PHASE-2.1-TASK-CONTRACT.md',
+                'PHASE-3-TASK-CONTRACT.md',
+                'PHASE-4-TASK-CONTRACT.md',
+                'PHASE-6-TASK-CONTRACT.md',
+                'PHASE-7-TASK-CONTRACT.md',
+                'SETTINGS-SUPPORT-PLAN.md'
+            )
+
+            foreach ($name in $historical) {
+                Test-Path -LiteralPath (Join-Path $root "docs\$name") | Should -Be $false
+                Test-Path -LiteralPath (Join-Path $root "docs\archive\$name") | Should -Be $true
+            }
+        }
+
+        It 'archive README declares that canonical docs override historical snapshots' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $readme = Get-Content -LiteralPath (Join-Path $root 'docs\archive\README.md') -Raw -Encoding UTF8
+            $readme | Should -Match 'historical'
+            $readme | Should -Match 'ARCHITECTURE-CONTRACT'
+            $readme | Should -Match 'MULTI-SOURCE-GOVERNANCE-ACCEPTANCE'
+            $readme | Should -Match 'single-entry-single-source'
+        }
+
         It 'ARCHITECTURE-CONTRACT.md exists with governance sections' {
             $root = Split-Path -Parent $PSScriptRoot
             $contract = Join-Path $root 'docs\ARCHITECTURE-CONTRACT.md'
@@ -604,10 +626,34 @@
             $liveStartMenu | Should -Not -Match 'SmartGuard 设置\.lnk'
             $liveStartMenu | Should -Not -Match 'SmartGuard 日志\.lnk'
 
-            $docHits = @(rg -n 'SmartGuard\.LogViewer\.Tests|SmartGuard 日志\.lnk|SmartGuard 设置\.lnk|SmartGuard 托盘\.lnk' (Join-Path $root 'docs') 2>$null | Where-Object {
-                $_ -notmatch 'PHASE-|MIGRATION|INNO-INSTALLER-TASK-CONTRACT|2026-06-|2026-07-02'
+            # Repo truth gates exempt only docs/archive/, scripts/archive/, and docs/superpowers/plans/.
+            $docHits = @(rg -n 'SmartGuard\.LogViewer\.Tests|SmartGuard 日志\.lnk|SmartGuard 设置\.lnk|SmartGuard 托盘\.lnk|lib\\SmartGuard\.ico|lib\\SmartGuard\.Settings\.xaml|\[Icons\].*日志|SmartGuard\.LogViewer\.exe' (Join-Path $root 'docs') 2>$null | Where-Object {
+                ($_ -notmatch 'docs[\\/]+archive[\\/]') `
+                    -and ($_ -notmatch 'docs[\\/]+superpowers[\\/]+plans[\\/]') `
+                    -and ($_ -notmatch 'docs[\\/]+ARCHITECTURE-CONTRACT\.md') `
+                    -and ($_ -notmatch 'docs[\\/]+MULTI-SOURCE-GOVERNANCE-ACCEPTANCE\.md') `
+                    -and ($_ -notmatch 'docs[\\/]+architecture[\\/]+single-entry-single-source\.md')
             })
             $docHits.Count | Should -Be 0 -Because ($docHits -join [Environment]::NewLine)
+
+            $scriptHits = @(rg -n 'lib\\SmartGuard\.ico|lib\\SmartGuard\.Settings\.xaml' (Join-Path $root 'scripts') 2>$null | Where-Object {
+                $_ -notmatch 'scripts[\\/]+archive[\\/]'
+            })
+            $scriptHits.Count | Should -Be 0 -Because ($scriptHits -join [Environment]::NewLine)
+        }
+
+        It 'repo truth gates exempt only archive and plan paths, never filename heuristics' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $suite = Get-Content -LiteralPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') -Raw -Encoding UTF8
+            $docGate = if ($suite -match '(?s)# Repo truth gates exempt.*?\$docHits\.Count') { $Matches[0] } else { '' }
+            $docGate | Should -Match 'docs/archive/'
+            $docGate | Should -Match 'docs/superpowers/plans/'
+            $docGate | Should -Not -Match "PHASE-\|MIGRATION"
+            $docGate | Should -Not -Match '2026-06-'
+            $docGate | Should -Not -Match '2026-07-02'
+
+            $scriptGate = if ($suite -match '(?s)\$scriptHits = @\(rg.*?\$scriptHits\.Count') { $Matches[0] } else { '' }
+            $scriptGate | Should -Match 'scripts.*archive'
         }
 
         It 'installer does not package or advertise SmartGuard.LogViewer.exe as a live entry' {
