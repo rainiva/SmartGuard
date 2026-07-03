@@ -337,6 +337,65 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void Log_page_more_flyout_does_not_expand_search_row_when_opened()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardLogMoreLayout_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            File.WriteAllText(Path.Combine(tempRoot, "SmartGuard.log"), "[INFO] 2026-07-04 06:00:00 ok\n");
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                if (!window.IsVisible)
+                    WpfStaTestHost.ShowAndWait(window);
+
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                var logSearchFilterHost = window.FindName("logSearchFilterHost") as FrameworkElement;
+                var btnLogMore = window.FindName("btnLogMore") as Button;
+                var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
+                var logViewportBorder = window.FindName("logViewportBorder") as FrameworkElement;
+
+                logSearchFilterHost.Should().NotBeNull();
+                btnLogMore.Should().NotBeNull();
+                logMoreFlyout.Should().NotBeNull();
+                logViewportBorder.Should().NotBeNull();
+
+                var searchBorder = FindAncestor<Border>(logSearchFilterHost!);
+                searchBorder.Should().NotBeNull();
+
+                window.UpdateLayout();
+                var searchHeightBefore = searchBorder!.ActualHeight;
+                var viewportTopBefore = logViewportBorder!.TranslatePoint(new Point(0, 0), window).Y;
+
+                btnLogMore!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                logMoreFlyout!.Visibility.Should().Be(Visibility.Visible);
+                searchBorder.ActualHeight.Should().BeApproximately(searchHeightBefore, 0.5,
+                    "opening the more flyout should not stretch the search row");
+                logViewportBorder.TranslatePoint(new Point(0, 0), window).Y.Should().BeApproximately(viewportTopBefore, 0.5,
+                    "opening the more flyout should not push the log viewport downward");
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void Log_page_shows_custom_range_inputs_only_for_custom_mode()
     {
         RunOnSta(() =>
@@ -1753,6 +1812,19 @@ public class SettingsWindowControllerTests
         var scrollViewer = scrollViewerField!.GetValue(GetLogPageHost(controller)) as ScrollViewer;
         scrollViewer.Should().NotBeNull();
         return scrollViewer!;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
+    {
+        var node = current;
+        while (true)
+        {
+            node = VisualTreeHelper.GetParent(node);
+            if (node is null)
+                return null;
+            if (node is T match)
+                return match;
+        }
     }
 
     private static SettingsLogSearchCoordinator GetLogSearchCoordinator(SettingsWindowController controller)

@@ -18,6 +18,7 @@ internal static class SettingsLogPageHostWiring
     Action forceRefreshLogView)
   {
     var btnLogMore = window.FindName("btnLogMore") as Button;
+    var logMoreFlyoutLayer = window.FindName("logMoreFlyoutLayer") as Canvas;
     var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
     var btnLogMoreCopy = window.FindName("btnLogMoreCopy") as Button;
     var btnLogMoreExport = window.FindName("btnLogMoreExport") as Button;
@@ -26,10 +27,31 @@ internal static class SettingsLogPageHostWiring
     var btnLogScrollBottom = window.FindName("btnLogScrollBottom") as Button;
     var btnLogRefresh = window.FindName("btnLogRefresh") as Button;
 
+    void PositionLogMoreFlyout()
+    {
+      if (btnLogMore is null || logMoreFlyout is null || logMoreFlyoutLayer is null)
+        return;
+
+      logMoreFlyout.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+      var anchor = btnLogMore.TranslatePoint(
+        new Point(btnLogMore.ActualWidth, btnLogMore.ActualHeight + 8),
+        logMoreFlyoutLayer);
+      var left = Math.Max(0, anchor.X - logMoreFlyout.DesiredSize.Width);
+      Canvas.SetLeft(logMoreFlyout, left);
+      Canvas.SetTop(logMoreFlyout, Math.Max(0, anchor.Y));
+    }
+
     void SetLogMoreFlyoutOpen(bool isOpen)
     {
       if (logMoreFlyout is not null)
+      {
         logMoreFlyout.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (isOpen)
+        {
+          logMoreFlyout.UpdateLayout();
+          PositionLogMoreFlyout();
+        }
+      }
     }
 
     if (btnLogMore is not null && logMoreFlyout is not null)
@@ -37,6 +59,12 @@ internal static class SettingsLogPageHostWiring
       btnLogMore.Click += (_, _) =>
       {
         SetLogMoreFlyoutOpen(logMoreFlyout.Visibility != Visibility.Visible);
+      };
+
+      window.SizeChanged += (_, _) =>
+      {
+        if (logMoreFlyout.Visibility == Visibility.Visible)
+          PositionLogMoreFlyout();
       };
 
       window.PreviewMouseDown += (_, e) =>

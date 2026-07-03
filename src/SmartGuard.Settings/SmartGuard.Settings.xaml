@@ -1178,40 +1178,41 @@
                     <Button x:Name="btnLogMore" Content="&#x66F4;&#x591A;" Style="{StaticResource LogToolbarCompactButton}"/>
                   </StackPanel>
 
-                  <Border x:Name="logMoreFlyout"
-                          Visibility="Collapsed"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Top"
-                          Margin="0,40,0,0"
-                          Background="{DynamicResource NumberBoxBackground}"
-                          BorderBrush="{DynamicResource NumberBoxBorderBrush}"
-                          BorderThickness="1"
-                          CornerRadius="6"
-                          Padding="6"
+                  <Canvas x:Name="logMoreFlyoutLayer"
                           Panel.ZIndex="20">
-                    <StackPanel>
-                      <Button x:Name="btnLogMoreCopy"
-                              Content="&#x590D;&#x5236;&#x53EF;&#x89C1;"
-                              Style="{StaticResource SecondaryButton}"
-                              MinWidth="128"
-                              Padding="12,8"
-                              HorizontalContentAlignment="Left"
-                              Margin="0,0,0,6"/>
-                      <Button x:Name="btnLogMoreExport"
-                              Content="&#x5BFC;&#x51FA;"
-                              Style="{StaticResource SecondaryButton}"
-                              MinWidth="128"
-                              Padding="12,8"
-                              HorizontalContentAlignment="Left"
-                              Margin="0,0,0,6"/>
-                      <Button x:Name="btnLogMoreOpenFolder"
-                              Content="&#x6253;&#x5F00;&#x76EE;&#x5F55;"
-                              Style="{StaticResource SecondaryButton}"
-                              MinWidth="128"
-                              Padding="12,8"
-                              HorizontalContentAlignment="Left"/>
-                    </StackPanel>
-                  </Border>
+                    <Border x:Name="logMoreFlyout"
+                            Visibility="Collapsed"
+                            Background="{DynamicResource NumberBoxBackground}"
+                            BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="6"
+                            Canvas.Left="0"
+                            Canvas.Top="40">
+                      <StackPanel>
+                        <Button x:Name="btnLogMoreCopy"
+                                Content="&#x590D;&#x5236;&#x53EF;&#x89C1;"
+                                Style="{StaticResource SecondaryButton}"
+                                MinWidth="128"
+                                Padding="12,8"
+                                HorizontalContentAlignment="Left"
+                                Margin="0,0,0,6"/>
+                        <Button x:Name="btnLogMoreExport"
+                                Content="&#x5BFC;&#x51FA;"
+                                Style="{StaticResource SecondaryButton}"
+                                MinWidth="128"
+                                Padding="12,8"
+                                HorizontalContentAlignment="Left"
+                                Margin="0,0,0,6"/>
+                        <Button x:Name="btnLogMoreOpenFolder"
+                                Content="&#x6253;&#x5F00;&#x76EE;&#x5F55;"
+                                Style="{StaticResource SecondaryButton}"
+                                MinWidth="128"
+                                Padding="12,8"
+                                HorizontalContentAlignment="Left"/>
+                      </StackPanel>
+                    </Border>
+                  </Canvas>
                 </Grid>
               </Grid>
 

@@ -22,12 +22,16 @@ public class LogToolbarLayoutTests
         xaml.Should().NotContain("<ContextMenu");
         xaml.Should().NotContain("<Button.ContextMenu>");
         xaml.Should().Contain("x:Name=\"logMoreFlyout\"");
+        xaml.Should().Contain("x:Name=\"logMoreFlyoutLayer\"");
         xaml.Should().Contain("x:Name=\"btnLogMoreCopy\"");
         xaml.Should().Contain("x:Name=\"btnLogMoreExport\"");
         xaml.Should().Contain("x:Name=\"btnLogMoreOpenFolder\"");
         xaml.Should().MatchRegex(
             "x:Name=\"logSearchFilterHost\"[\\s\\S]{0,500}x:Name=\"btnLogRefresh\"[\\s\\S]{0,240}x:Name=\"btnLogMore\"[\\s\\S]{0,500}x:Name=\"logMoreFlyout\"",
             "search should share the top action row with refresh and overflow actions");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logMoreFlyoutLayer\"[\\s\\S]{0,240}x:Name=\"logMoreFlyout\"",
+            "more flyout should live inside a dedicated overlay layer so it can float without affecting header layout");
         var statusIndex = xaml.IndexOf("x:Name=\"lblLogStatus\"", StringComparison.Ordinal);
         var viewportIndex = xaml.IndexOf("x:Name=\"logViewportBorder\"", StringComparison.Ordinal);
         var followTailIndex = xaml.IndexOf("x:Name=\"chkLogFollowTail\"", StringComparison.Ordinal);
