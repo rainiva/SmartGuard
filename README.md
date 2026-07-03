@@ -128,7 +128,10 @@ Run-Tests.cmd
 
 ## 文档
 
-- [Phase 7 开发机去 PS](docs/PHASE-7-TASK-CONTRACT.md)
+- [架构契约（真源注册表）](docs/ARCHITECTURE-CONTRACT.md)
+- [多真源治理验收](docs/MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md)
+- [单入口单真源规则](docs/architecture/single-entry-single-source.md)
+- 历史 task-contract / migration / diagnosis 见 [docs/archive/](docs/archive/README.md)
 
 ## 故障恢复
 
