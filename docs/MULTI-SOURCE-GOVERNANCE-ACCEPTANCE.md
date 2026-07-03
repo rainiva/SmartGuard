@@ -200,10 +200,10 @@ Tray integration: 2/2
 
 | 切片 | 最终状态 |
 |------|------|
-| shell owner | **阻断生效**：`InstallCommands -> DesktopShellRegistration` 是唯一 shell owner；Tray / Notifier 不得 runtime 自注册或自愈 AUMID |
+| shell owner | **阻断生效**：`InstallCommands -> DesktopShellRegistration` 是唯一 shell owner；live shell surface 仅为开始菜单 `SmartGuard.lnk` 与可选桌面 `SmartGuard.lnk`；Tray / Notifier 不得 runtime 自注册或自愈 AUMID |
 | xaml/icon 真源 | **阻断生效**：`SmartGuard.Settings.xaml` 只允许项目内 embedded source；`assets/branding/SmartGuard.ico` 是唯一品牌图标真源；`installRoot\lib` 不再承载 runtime 真源 |
 | distribution manifest | **阻断生效**：发布项目、payload、installer 进程与 legacy cleanup 只允许来自 `DesktopDistributionManifest`；Inno 仅消费生成的 include |
-| LogViewer 退场 | **阻断生效**：`SmartGuard.LogViewer.exe` 不再是 live product artifact、用户入口或进程清单成员；日志入口永久收口到 `SmartGuard.Settings.exe --page logs` |
+| LogViewer 退场 | **阻断生效**：`SmartGuard.LogViewer.exe` 与 `SmartGuard.LogViewer` 命名空间/测试项目身份不再是 live product artifact；日志功能仅保留 `SmartGuard.Settings.LogView` 内部身份与 `SmartGuard.Settings.exe --page logs` 运行时入口 |
 
 ## 终验输出（第八轮）
 
@@ -231,4 +231,4 @@ Installer rebuild output: dist\SmartGuard-Setup-1.1.7-x64.exe
 
 截至 2026-07-03，E-10、E-11、E-11b、R7-INNO、R7-PUBLISH 都必须被视为当前阻断规则，而不是历史上已关闭的例外：shell user entry 只能由 `DesktopShellRegistration` 落地，提升后的 install/uninstall 只能经 `InstallCommands`，Inno 不得再拥有 `[Icons]` 用户快捷方式，分发清单只能来自 `DesktopDistributionManifest`。
 
-同一轮绝对收口还要求：runtime 不得继续自愈 shell/AUMID，不得再把 `installRoot\lib\SmartGuard.Settings.xaml` 或 `installRoot\lib\SmartGuard.ico` 当作真源，`SmartGuard.LogViewer.exe` 不得再作为 live product artifact、用户入口或进程清单成员；所有遗留物只能在 install/repair 期间清理。
+同一轮绝对收口还要求：runtime 不得继续自愈 shell/AUMID，不得再把 `installRoot\lib\SmartGuard.Settings.xaml` 或 `installRoot\lib\SmartGuard.ico` 当作真源，shell surface 只能是一个开始菜单主入口加可选桌面入口，`SmartGuard.LogViewer` 产品身份不得残留（`LegacyCleanupPaths` 仅用于升级清理旧 `SmartGuard.LogViewer.*` 文件）；所有遗留物只能在 install/repair 期间清理。

@@ -47,12 +47,12 @@
 | 启动 Tray（生产） | 计划任务 `SmartGuard Tray` | 登录时自动；dev `Cli start tray` / `restart tray`（仅 dev 例外，生产入口受 **E-10 阻断**） |
 | 停止 Engine（卸载） | `EngineLifecycle.StopForUninstall` | Engine/Cli `uninstall`、Inno、集成测试共用 |
 | 暂停/恢复守护 | `ConfigMutationService.SetPaused` | Tray 菜单、Settings `tglPaused` 均经此 API |
-| 打开设置 | `SettingsMainPageLauncher.Open` | Tray、`Cli open settings`、Inno 快捷方式均委托此 API |
-| 打开日志 | `SettingsLogsPageLauncher.Open` | Tray、`Cli open logs`、Inno 快捷方式均委托此 API |
+| 打开设置 | `SettingsMainPageLauncher.Open` | Tray、`Cli open settings` 均委托此 API；无独立开始菜单快捷方式 |
+| 打开日志 | `SettingsLogsPageLauncher.Open` | Tray、`Cli open logs` 均委托此 API；运行时入口为 `SmartGuard.Settings.exe --page logs`；无独立开始菜单快捷方式 |
 | 打开托盘 | `TrayLauncher.Start` | `Cli open tray`、Inno postinstall |
 | 查看状态 | `StatusReporter.FormatStatus` | `SmartGuard.Cli status` |
 | 发布桌面套件 | `DesktopSuitePublisher.Publish` | `SmartGuard.Cli publish`、`build.cmd` 转发 |
-| 开始菜单/桌面快捷方式 | `DesktopShellRegistration` → `SmartGuard.Tray.exe` / `SmartGuard.Settings.exe --page logs` | 仅 install/repair 写入；shell 损坏必须经 install/repair 恢复，Tray runtime 禁止补写 |
+| 开始菜单/桌面快捷方式 | `DesktopShellRegistration` → 开始菜单仅 `SmartGuard.lnk`（`SmartGuard.Tray.exe --root`）；桌面可选 `SmartGuard.lnk` | 仅 install/repair 写入；禁止 `SmartGuard 托盘/设置/日志.lnk` 等第二 shell surface；shell 损坏必须经 install/repair 恢复，Tray runtime 禁止补写 |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
 ---

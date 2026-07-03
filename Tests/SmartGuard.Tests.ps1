@@ -579,6 +579,37 @@
             $iss | Should -Not -Match 'DisableProgramGroupPage='
         }
 
+        It 'DesktopShellRegistration publishes one start menu shortcut not three legacy entries' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $shellOwner = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Shell\DesktopShellRegistration.cs') -Raw -Encoding UTF8
+            $liveStartMenu = if ($shellOwner -match '(?s)GetStartMenuShortcuts\(string root\)\s*\{(.*?)\n  \}') { $Matches[1] } else { '' }
+            $liveStartMenu | Should -Match 'SmartGuard\.lnk'
+            $liveStartMenu | Should -Not -Match 'SmartGuard 托盘\.lnk'
+            $liveStartMenu | Should -Not -Match 'SmartGuard 设置\.lnk'
+            $liveStartMenu | Should -Not -Match 'SmartGuard 日志\.lnk'
+            $liveStartMenu | Should -Not -Match '--page logs'
+        }
+
+        It 'solution and docs do not reference SmartGuard.LogViewer.Tests or three live shell entries' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $slnx = Get-Content -LiteralPath (Join-Path $root 'SmartGuard.slnx') -Raw -Encoding UTF8
+            $settingsProject = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Settings\SmartGuard.Settings.csproj') -Raw -Encoding UTF8
+            $slnx | Should -Not -Match 'SmartGuard\.LogViewer\.Tests'
+            $settingsProject | Should -Not -Match 'InternalsVisibleTo Include="SmartGuard\.LogViewer\.Tests"'
+
+            $shellOwner = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Shell\DesktopShellRegistration.cs') -Raw -Encoding UTF8
+            $liveStartMenu = if ($shellOwner -match '(?s)GetStartMenuShortcuts\(string root\)\s*\{(.*?)\n  \}') { $Matches[1] } else { '' }
+            $liveStartMenu | Should -Match 'SmartGuard\.lnk'
+            $liveStartMenu | Should -Not -Match 'SmartGuard 托盘\.lnk'
+            $liveStartMenu | Should -Not -Match 'SmartGuard 设置\.lnk'
+            $liveStartMenu | Should -Not -Match 'SmartGuard 日志\.lnk'
+
+            $docHits = @(rg -n 'SmartGuard\.LogViewer\.Tests|SmartGuard 日志\.lnk|SmartGuard 设置\.lnk|SmartGuard 托盘\.lnk' (Join-Path $root 'docs') 2>$null | Where-Object {
+                $_ -notmatch 'PHASE-|MIGRATION|INNO-INSTALLER-TASK-CONTRACT|2026-06-|2026-07-02'
+            })
+            $docHits.Count | Should -Be 0 -Because ($docHits -join [Environment]::NewLine)
+        }
+
         It 'installer does not package or advertise SmartGuard.LogViewer.exe as a live entry' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
