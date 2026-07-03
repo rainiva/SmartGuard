@@ -190,7 +190,7 @@
             $readme | Should -Match 'build\.cmd'
             $readme | Should -Match 'ARCHITECTURE-CONTRACT'
             $readme | Should -Not -Match 'Publish-Engine\.ps1'
-            $readme | Should -Not -Match 'docs/PHASE-7-TASK-CONTRACT'
+            $readme | Should -Match 'docs/archive/README\.md'
         }
     }
 
@@ -508,23 +508,15 @@
 
         It 'historical task-contract and diagnosis docs live under docs/archive instead of top-level docs' {
             $root = Split-Path -Parent $PSScriptRoot
-            $historical = @(
-                '2026-06-18-powershell-cleanup-design.md',
-                '2026-06-26-log-view-idle-and-follow-plan.md',
-                '2026-07-02-taskbar-icon-small-diagnosis.md',
-                'INNO-INSTALLER-TASK-CONTRACT.md',
-                'MIGRATION.md',
-                'PHASE-2.1-TASK-CONTRACT.md',
-                'PHASE-3-TASK-CONTRACT.md',
-                'PHASE-4-TASK-CONTRACT.md',
-                'PHASE-6-TASK-CONTRACT.md',
-                'PHASE-7-TASK-CONTRACT.md',
-                'SETTINGS-SUPPORT-PLAN.md'
-            )
+            $archiveRoot = Join-Path $root 'docs\archive'
+            $historical = @(Get-ChildItem -LiteralPath $archiveRoot -File -Filter '*.md' | Where-Object {
+                $_.BaseName -ne 'README'
+            })
+            $historical.Count | Should -BeGreaterThan 0
 
-            foreach ($name in $historical) {
-                Test-Path -LiteralPath (Join-Path $root "docs\$name") | Should -Be $false
-                Test-Path -LiteralPath (Join-Path $root "docs\archive\$name") | Should -Be $true
+            foreach ($doc in $historical) {
+                Test-Path -LiteralPath (Join-Path $root ('docs\' + $doc.Name)) | Should -Be $false
+                Test-Path -LiteralPath $doc.FullName | Should -Be $true
             }
         }
 
@@ -645,12 +637,14 @@
         It 'repo truth gates exempt only archive and plan paths, never filename heuristics' {
             $root = Split-Path -Parent $PSScriptRoot
             $suite = Get-Content -LiteralPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') -Raw -Encoding UTF8
+            $historyGate = if ($suite -match "(?s)It 'historical task-contract and diagnosis docs live under docs/archive instead of top-level docs' \{(.*?)\r?\n        \}\r?\n\r?\n        It 'archive README declares that canonical docs override historical snapshots'") { $Matches[1] } else { '' }
+            $historyGate | Should -Match 'Get-ChildItem'
+            $historyGate | Should -Not -Match "'[A-Za-z0-9][^']*\.md'"
+
             $docGate = if ($suite -match '(?s)# Repo truth gates exempt.*?\$docHits\.Count') { $Matches[0] } else { '' }
             $docGate | Should -Match 'docs/archive/'
             $docGate | Should -Match 'docs/superpowers/plans/'
-            $docGate | Should -Not -Match "PHASE-\|MIGRATION"
-            $docGate | Should -Not -Match '2026-06-'
-            $docGate | Should -Not -Match '2026-07-02'
+            $docGate | Should -Not -Match '\d{4}-\d{2}-\d{2}'
 
             $scriptGate = if ($suite -match '(?s)\$scriptHits = @\(rg.*?\$scriptHits\.Count') { $Matches[0] } else { '' }
             $scriptGate | Should -Match 'scripts.*archive'
