@@ -177,6 +177,8 @@ public sealed class SettingsWindowController
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
 
+    ScrollViewerSmoothScroll.Attach(Require<ScrollViewer>(window, "contentScrollViewer"));
+
     var navList = Require<ListBox>(window, "navList");
     navigationShell.Wire(
       navList,
@@ -239,7 +241,9 @@ public sealed class SettingsWindowController
 
   internal void AddLogTagFilter(string tag) => _logPageHost.AddLogTagFilter(tag);
 
-  internal void EnsureLogScrollViewerHooked() => _logPageHost.EnsureLogScrollViewerHooked();
+    internal void EnsureLogScrollViewerHooked() => _logPageHost.EnsureLogScrollViewerHooked();
+
+    internal void ForceRefreshLogView() => _logPageHost.ForceRefreshLogView();
 
   internal void OnPauseToggled() => _policyCoordinator.OnPauseToggled();
 

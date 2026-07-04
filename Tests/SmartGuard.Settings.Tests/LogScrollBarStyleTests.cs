@@ -12,7 +12,7 @@ public class LogScrollBarStyleTests
         xaml.Should().Contain("x:Key=\"SettingsLogListBox\"");
         xaml.Should().MatchRegex(
             "x:Name=\"lstLogView\"[\\s\\S]{0,220}Style=\"\\{StaticResource SettingsLogListBox\\}\"",
-            "log list should reuse the same styled scroll viewer as settings pages");
+            "log list should reuse the styled scroll viewer template");
         xaml.Should().MatchRegex(
             "x:Key=\"SettingsLogListBox\"[\\s\\S]{0,700}Style=\"\\{StaticResource SettingsScrollViewer\\}\"",
             "log list template should host the settings scroll viewer style");

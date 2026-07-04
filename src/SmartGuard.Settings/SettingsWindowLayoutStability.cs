@@ -29,6 +29,10 @@ public static class SettingsWindowLayoutStability
 
     public static void StabilizeContentLayout(Window window)
     {
+        if (window.FindName("pageLogs") is not FrameworkElement pageLogs ||
+            pageLogs.Visibility != Visibility.Visible)
+            return;
+
         if (window.Content is not FrameworkElement root)
             return;
 
@@ -36,14 +40,14 @@ public static class SettingsWindowLayoutStability
         root.InvalidateArrange();
         root.UpdateLayout();
 
-        if (window.FindName("lstLogView") is ListBox listBox)
-        {
-            var scrollViewer = LogViewListPresenter.FindScrollViewer(listBox);
-            scrollViewer?.InvalidateMeasure();
-            scrollViewer?.InvalidateArrange();
-            scrollViewer?.UpdateLayout();
-            if (scrollViewer is not null)
-                ScrollBarAutoHide.NotifyContentChanged(scrollViewer);
-        }
+        if (window.FindName("lstLogView") is not ListBox listBox)
+            return;
+
+        var scrollViewer = LogViewListPresenter.FindScrollViewer(listBox);
+        scrollViewer?.InvalidateMeasure();
+        scrollViewer?.InvalidateArrange();
+        scrollViewer?.UpdateLayout();
+        if (scrollViewer is not null)
+            ScrollBarAutoHide.NotifyContentChanged(scrollViewer);
     }
 }

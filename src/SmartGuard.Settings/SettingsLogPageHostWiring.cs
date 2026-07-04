@@ -33,12 +33,22 @@ internal static class SettingsLogPageHostWiring
         return;
 
       logMoreFlyout.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+      var buttonTopLeft = btnLogMore.TranslatePoint(new Point(0, 0), logMoreFlyoutLayer);
       var anchor = btnLogMore.TranslatePoint(
         new Point(btnLogMore.ActualWidth, btnLogMore.ActualHeight + 8),
         logMoreFlyoutLayer);
-      var left = Math.Max(0, anchor.X - logMoreFlyout.DesiredSize.Width);
+      var maxLeft = Math.Max(0, logMoreFlyoutLayer.ActualWidth - logMoreFlyout.DesiredSize.Width);
+      var left = Math.Max(0, Math.Min(anchor.X - logMoreFlyout.DesiredSize.Width, maxLeft));
+      var maxTop = Math.Max(0, logMoreFlyoutLayer.ActualHeight - logMoreFlyout.DesiredSize.Height);
+      var top = anchor.Y;
+      if (top > maxTop)
+      {
+        var aboveButtonTop = buttonTopLeft.Y - 8 - logMoreFlyout.DesiredSize.Height;
+        top = Math.Max(0, aboveButtonTop);
+      }
+
       Canvas.SetLeft(logMoreFlyout, left);
-      Canvas.SetTop(logMoreFlyout, Math.Max(0, anchor.Y));
+      Canvas.SetTop(logMoreFlyout, Math.Max(0, Math.Min(top, maxTop)));
     }
 
     void SetLogMoreFlyoutOpen(bool isOpen)
@@ -46,6 +56,8 @@ internal static class SettingsLogPageHostWiring
       if (logMoreFlyout is not null)
       {
         logMoreFlyout.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (logMoreFlyoutLayer is not null)
+          logMoreFlyoutLayer.IsHitTestVisible = isOpen;
         if (isOpen)
         {
           logMoreFlyout.UpdateLayout();

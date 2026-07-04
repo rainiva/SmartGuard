@@ -16,9 +16,5 @@ public static class AppBrandIcon
         var icon = LoadImageSource();
         if (icon is not null)
             window.Icon = icon;
-
-        var image = window.FindName("imgAppIcon") as System.Windows.Controls.Image;
-        if (image is not null && icon is not null)
-            image.Source = icon;
     }
 }

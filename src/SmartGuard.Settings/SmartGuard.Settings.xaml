@@ -407,6 +407,12 @@
                       </Style.Triggers>
                     </Style>
                   </Track.Style>
+                  <Track.DecreaseRepeatButton>
+                    <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/>
+                  </Track.DecreaseRepeatButton>
+                  <Track.IncreaseRepeatButton>
+                    <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/>
+                  </Track.IncreaseRepeatButton>
                   <Track.Thumb>
                     <Thumb>
                       <Thumb.Template>
@@ -424,6 +430,7 @@
         <Style.Triggers>
           <Trigger Property="Orientation" Value="Horizontal">
             <Setter Property="Width" Value="Auto"/>
+            <Setter Property="MinWidth" Value="0"/>
             <Setter Property="Height" Value="8"/>
             <Setter Property="MinHeight" Value="8"/>
           </Trigger>
@@ -469,6 +476,11 @@
             </ControlTemplate>
           </Setter.Value>
         </Setter>
+      </Style>
+
+      <Style x:Key="SettingsContentScrollViewer" TargetType="ScrollViewer" BasedOn="{StaticResource SettingsScrollViewer}">
+        <Setter Property="VerticalScrollBarVisibility" Value="Visible"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
       </Style>
 
       <Style x:Key="SettingsLogListBox" TargetType="ListBox">
@@ -719,7 +731,7 @@
       <TextBlock x:Name="txtPageTitle" Grid.Row="0" Text="常规设置" Style="{StaticResource SectionTitle}"/>
 
       <!-- Content Pages -->
-      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Style="{StaticResource SettingsScrollViewer}" HorizontalContentAlignment="Stretch">
+      <ScrollViewer x:Name="contentScrollViewer" Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Style="{StaticResource SettingsContentScrollViewer}" HorizontalContentAlignment="Stretch">
         <StackPanel HorizontalAlignment="Stretch">
 
           <!-- General Page -->
@@ -1172,47 +1184,12 @@
                   </Grid>
                 </Border>
 
-                <Grid Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right">
+                <Grid Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right"
+                      Panel.ZIndex="10">
                   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="btnLogRefresh" Content="&#x5237;&#x65B0;" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
                     <Button x:Name="btnLogMore" Content="&#x66F4;&#x591A;" Style="{StaticResource LogToolbarCompactButton}"/>
                   </StackPanel>
-
-                  <Canvas x:Name="logMoreFlyoutLayer"
-                          Panel.ZIndex="20">
-                    <Border x:Name="logMoreFlyout"
-                            Visibility="Collapsed"
-                            Background="{DynamicResource NumberBoxBackground}"
-                            BorderBrush="{DynamicResource NumberBoxBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="6"
-                            Canvas.Left="0"
-                            Canvas.Top="40">
-                      <StackPanel>
-                        <Button x:Name="btnLogMoreCopy"
-                                Content="&#x590D;&#x5236;&#x53EF;&#x89C1;"
-                                Style="{StaticResource SecondaryButton}"
-                                MinWidth="128"
-                                Padding="12,8"
-                                HorizontalContentAlignment="Left"
-                                Margin="0,0,0,6"/>
-                        <Button x:Name="btnLogMoreExport"
-                                Content="&#x5BFC;&#x51FA;"
-                                Style="{StaticResource SecondaryButton}"
-                                MinWidth="128"
-                                Padding="12,8"
-                                HorizontalContentAlignment="Left"
-                                Margin="0,0,0,6"/>
-                        <Button x:Name="btnLogMoreOpenFolder"
-                                Content="&#x6253;&#x5F00;&#x76EE;&#x5F55;"
-                                Style="{StaticResource SecondaryButton}"
-                                MinWidth="128"
-                                Padding="12,8"
-                                HorizontalContentAlignment="Left"/>
-                      </StackPanel>
-                    </Border>
-                  </Canvas>
                 </Grid>
               </Grid>
 
@@ -1277,6 +1254,44 @@
                 <Button x:Name="btnLogScrollBottom" Content="&#x5E95;&#x90E8;" Style="{StaticResource LogToolbarCompactButton}"/>
               </WrapPanel>
             </Grid>
+
+            <Canvas x:Name="logMoreFlyoutLayer"
+                    Grid.RowSpan="3"
+                    Panel.ZIndex="30"
+                    IsHitTestVisible="False">
+              <Border x:Name="logMoreFlyout"
+                      Visibility="Collapsed"
+                      Background="{DynamicResource NumberBoxBackground}"
+                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                      BorderThickness="1"
+                      CornerRadius="6"
+                      Padding="6"
+                      Canvas.Left="0"
+                      Canvas.Top="40">
+                <StackPanel>
+                  <Button x:Name="btnLogMoreCopy"
+                          Content="&#x590D;&#x5236;&#x53EF;&#x89C1;"
+                          Style="{StaticResource SecondaryButton}"
+                          MinWidth="128"
+                          Padding="12,8"
+                          HorizontalContentAlignment="Left"
+                          Margin="0,0,0,6"/>
+                  <Button x:Name="btnLogMoreExport"
+                          Content="&#x5BFC;&#x51FA;"
+                          Style="{StaticResource SecondaryButton}"
+                          MinWidth="128"
+                          Padding="12,8"
+                          HorizontalContentAlignment="Left"
+                          Margin="0,0,0,6"/>
+                  <Button x:Name="btnLogMoreOpenFolder"
+                          Content="&#x6253;&#x5F00;&#x76EE;&#x5F55;"
+                          Style="{StaticResource SecondaryButton}"
+                          MinWidth="128"
+                          Padding="12,8"
+                          HorizontalContentAlignment="Left"/>
+                </StackPanel>
+              </Border>
+            </Canvas>
           </Grid>
         </Border>
       </Grid>

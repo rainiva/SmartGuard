@@ -53,9 +53,13 @@ public class SettingsContentLayoutTests
     }
 
     [Fact]
-    public void Settings_scroll_viewer_template_honors_padding()
+    public void Content_scroll_viewer_uses_content_style_with_visible_vertical_bar()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+        xaml.Should().Contain("x:Key=\"SettingsContentScrollViewer\"");
+        xaml.Should().MatchRegex(
+            "x:Key=\"SettingsContentScrollViewer\"[\\s\\S]{0,260}VerticalScrollBarVisibility\" Value=\"Visible\"",
+            "content scroll viewer should keep the vertical scrollbar visible to avoid layout reflow while scrolling");
         xaml.Should().MatchRegex(
             "ScrollContentPresenter[\\s\\S]{0,120}Margin=\"\\{TemplateBinding Padding\\}\"",
             "scroll content presenter should honor padding inside the scroll viewer template");

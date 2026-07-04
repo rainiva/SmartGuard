@@ -32,9 +32,9 @@ public class SettingsUiConsistencyTests
   }
 
   [Fact]
-  public void Settings_xaml_shows_legacy_app_icon_in_header()
+  public void Settings_xaml_removes_legacy_app_icon_from_header()
   {
     var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
-    xaml.Should().Contain("x:Name=\"imgAppIcon\"");
+    xaml.Should().NotContain("x:Name=\"imgAppIcon\"");
   }
 }

@@ -396,6 +396,64 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void Log_page_more_flyout_keeps_bottom_action_clickable_above_lower_content()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardLogMoreOcclusion_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            File.WriteAllText(Path.Combine(tempRoot, "SmartGuard.log"), "[INFO] 2026-07-04 06:00:00 ok\n");
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                window.Width = 600;
+                window.Height = 500;
+                if (!window.IsVisible)
+                    WpfStaTestHost.ShowAndWait(window);
+
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                var btnLogMore = window.FindName("btnLogMore") as Button;
+                var btnLogMoreOpenFolder = window.FindName("btnLogMoreOpenFolder") as Button;
+                var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
+
+                btnLogMore.Should().NotBeNull();
+                btnLogMoreOpenFolder.Should().NotBeNull();
+                logMoreFlyout.Should().NotBeNull();
+
+                btnLogMore!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                logMoreFlyout!.Visibility.Should().Be(Visibility.Visible);
+
+                var samplePoint = btnLogMoreOpenFolder!.TranslatePoint(
+                    new Point(btnLogMoreOpenFolder.ActualWidth / 2, Math.Max(1, btnLogMoreOpenFolder.ActualHeight - 4)),
+                    window);
+                var hit = window.InputHitTest(samplePoint) as DependencyObject;
+                hit.Should().NotBeNull();
+
+                var hitButton = hit as Button ?? FindAncestor<Button>(hit!);
+                hitButton.Should().BeSameAs(btnLogMoreOpenFolder,
+                    "the bottom overflow action should stay on top of lower log content instead of being covered");
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void Log_page_shows_custom_range_inputs_only_for_custom_mode()
     {
         RunOnSta(() =>
@@ -817,6 +875,62 @@ public class SettingsWindowControllerTests
 
                 LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
                 chkLogFollowTail.IsChecked.Should().BeFalse();
+            }
+            finally
+            {
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_dragging_logs_page_scrollbar_thumb_can_reach_both_vertical_bounds()
+    {
+        RunOnSta(() =>
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsLogThumb_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            var logPath = Path.Combine(tempRoot, "SmartGuard.log");
+            var builder = new System.Text.StringBuilder();
+            for (var i = 0; i < 180; i++)
+                builder.AppendLine($"[INFO] 2026-06-21 09:{i % 60:D2}:{i % 60:D2} thumb line {i}");
+            File.WriteAllText(logPath, builder.ToString());
+
+            try
+            {
+                var configPath = Path.Combine(tempRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(tempRoot);
+
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var navList = window.FindName("navList") as ListBox;
+                navList!.SelectedIndex = 3;
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                var scrollViewer = GetLogScrollViewer(window, controller!);
+                scrollViewer.ScrollableHeight.Should().BeGreaterThan(0);
+
+                var verticalScrollBar = FindScrollViewerVerticalScrollBar(scrollViewer);
+                verticalScrollBar.Should().NotBeNull();
+
+                GenuineVerticalThumbDrag(window, verticalScrollBar!, toBottom: true);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                scrollViewer.VerticalOffset.Should().BeApproximately(
+                    scrollViewer.ScrollableHeight,
+                    1.0,
+                    "dragging the logs scrollbar to the bottom should reach the latest visible row");
+
+                GenuineVerticalThumbDrag(window, verticalScrollBar!, toBottom: false);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                scrollViewer.VerticalOffset.Should().BeApproximately(
+                    0,
+                    1.0,
+                    "dragging the logs scrollbar back to the top should reach the first visible row");
             }
             finally
             {
@@ -1647,8 +1761,8 @@ public class SettingsWindowControllerTests
                 txtVersion.Should().NotBeNull("About page must show version info");
                 txtVersion!.Text.Should().NotBe("1.0.0",
                     "Displayed version must be synced with the actual assembly version, not a hard-coded placeholder");
-                txtVersion.Text.Should().MatchRegex(@"^\d+\.\d+(\.\d+)?$",
-                    "Displayed version should be a valid version string");
+                txtVersion.Text.Should().MatchRegex(@"^\d+\.\d+\.\d+$",
+                    "Displayed version should be a full major.minor.patch string");
 
                 lnkRepo.Should().NotBeNull("About page must have repository link");
                 lnkRepo!.NavigateUri.Should().NotBeNull();
@@ -1812,6 +1926,42 @@ public class SettingsWindowControllerTests
         var scrollViewer = scrollViewerField!.GetValue(GetLogPageHost(controller)) as ScrollViewer;
         scrollViewer.Should().NotBeNull();
         return scrollViewer!;
+    }
+
+    private static void GenuineVerticalThumbDrag(Window window, System.Windows.Controls.Primitives.ScrollBar scrollBar, bool toBottom)
+    {
+        scrollBar.ApplyTemplate();
+        var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as System.Windows.Controls.Primitives.Track;
+        track.Should().NotBeNull();
+        var thumb = track!.Thumb;
+        var delta = toBottom ? 200.0 : -200.0;
+
+        thumb.RaiseEvent(new System.Windows.Controls.Primitives.DragStartedEventArgs(0, 0)
+        {
+            RoutedEvent = System.Windows.Controls.Primitives.Thumb.DragStartedEvent,
+        });
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        for (var i = 0; i < 20; i++)
+        {
+            thumb.RaiseEvent(new System.Windows.Controls.Primitives.DragDeltaEventArgs(0, delta)
+            {
+                RoutedEvent = System.Windows.Controls.Primitives.Thumb.DragDeltaEvent,
+            });
+            window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
+
+        thumb.RaiseEvent(new System.Windows.Controls.Primitives.DragCompletedEventArgs(0, delta * 20, false)
+        {
+            RoutedEvent = System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
+        });
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    private static System.Windows.Controls.Primitives.ScrollBar? FindScrollViewerVerticalScrollBar(ScrollViewer scrollViewer)
+    {
+        scrollViewer.ApplyTemplate();
+        return scrollViewer.Template?.FindName("PART_VerticalScrollBar", scrollViewer)
+            as System.Windows.Controls.Primitives.ScrollBar;
     }
 
     private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject

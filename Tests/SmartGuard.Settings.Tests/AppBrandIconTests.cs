@@ -65,11 +65,14 @@ public class AppBrandIconTests
     }
 
     [Fact]
-    public void ApplyTo_sets_a_full_size_big_taskbar_icon_for_the_window_handle()
+    public void ApplyTo_preserves_the_canonical_big_taskbar_icon_shape_for_the_window_handle()
     {
         RunOnSta(() =>
         {
             EnsureApplication();
+            var expectedSource = AppBrandIcon.LoadImageSource() as BitmapSource;
+            expectedSource.Should().NotBeNull();
+            var expectedCoverage = MeasureOpaqueCoverage(expectedSource!);
 
             var window = new Window
             {
@@ -95,14 +98,17 @@ public class AppBrandIconTests
 
             var source = Imaging.CreateBitmapSourceFromHIcon(bigIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             source.PixelWidth.Should().BeGreaterThanOrEqualTo(64);
-            MeasureOpaqueWidthPercentage(source).Should().BeGreaterThanOrEqualTo(88.0,
-                "the taskbar should receive a full-size big icon frame instead of a centered 32px bitmap inside a 64px canvas");
+            var actualCoverage = MeasureOpaqueCoverage(source);
+            actualCoverage.WidthPct.Should().BeApproximately(expectedCoverage.WidthPct, 2.0,
+                "the taskbar big icon should preserve the canonical embedded icon silhouette instead of falling back to a smaller centered bitmap");
+            actualCoverage.HeightPct.Should().BeApproximately(expectedCoverage.HeightPct, 2.0,
+                "the taskbar big icon should preserve the canonical embedded icon vertical bounds");
         });
     }
 
     private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 
-    private static double MeasureOpaqueWidthPercentage(BitmapSource source)
+    private static (double WidthPct, double HeightPct) MeasureOpaqueCoverage(BitmapSource source)
     {
         var bgra = source.Format == PixelFormats.Bgra32
             ? source
@@ -114,6 +120,8 @@ public class AppBrandIconTests
 
         var minX = bgra.PixelWidth;
         var maxX = -1;
+        var minY = bgra.PixelHeight;
+        var maxY = -1;
         for (var y = 0; y < bgra.PixelHeight; y++)
         {
             for (var x = 0; x < bgra.PixelWidth; x++)
@@ -124,11 +132,16 @@ public class AppBrandIconTests
 
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
             }
         }
 
         maxX.Should().BeGreaterThanOrEqualTo(minX);
-        return (maxX - minX + 1d) / bgra.PixelWidth * 100d;
+        maxY.Should().BeGreaterThanOrEqualTo(minY);
+        return (
+            (maxX - minX + 1d) / bgra.PixelWidth * 100d,
+            (maxY - minY + 1d) / bgra.PixelHeight * 100d);
     }
 
     private static class Win32IconProbe

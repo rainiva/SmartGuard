@@ -65,9 +65,17 @@ internal sealed class SettingsNavigationShell
 
       if (isLogsPage)
         stabilizeLayout();
+      else if (contentScrollViewer is ScrollViewer scrollViewer)
+        ResetContentScroll(scrollViewer);
 
       setLogPageActive(isLogsPage);
     };
+  }
+
+  private static void ResetContentScroll(ScrollViewer scrollViewer)
+  {
+    scrollViewer.UpdateLayout();
+    scrollViewer.ScrollToVerticalOffset(0);
   }
 
   internal void AttachLayoutTheme(Func<bool> isDarkThemeProvider, Action stabilizeLayout)
