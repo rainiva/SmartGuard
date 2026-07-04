@@ -8,6 +8,7 @@ using SmartGuard.Settings;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class ScrollBarAutoHideTests
 {
     [Fact]
@@ -21,13 +22,14 @@ public class ScrollBarAutoHideTests
     }
 
     [Fact]
-    public void Settings_content_scroll_viewer_enables_auto_hide_scrollbars_in_xaml()
+    public void Settings_content_scroll_viewer_uses_standard_scrollbars_in_xaml()
     {
         var xaml = ReadSettingsXaml();
 
-        xaml.Should().MatchRegex(
+        xaml.Should().Contain("x:Name=\"contentScrollViewer\"");
+        xaml.Should().NotMatchRegex(
             "x:Name=\"contentScrollViewer\"[\\s\\S]{0,260}ScrollBarAutoHide\\.IsEnabled=\"True\"",
-            "settings pages should hide scrollbars until the user scrolls");
+            "general settings pages should avoid scroll hot-path chrome so scrolling stays smooth and natural");
     }
 
     [Fact]
@@ -86,6 +88,12 @@ public class ScrollBarAutoHideTests
 
                 scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
                 ScrollBarAutoHide.IsScrollBarVisible(scrollViewer, vertical: false).Should().BeTrue();
+
+                var horizontalScrollBar = FindHorizontalScrollBar(scrollViewer);
+                horizontalScrollBar.Should().NotBeNull();
+                horizontalScrollBar!.ActualWidth.Should().BeGreaterThan(
+                    scrollViewer.ActualWidth * 0.5,
+                    "horizontal scrollbar track should span the log viewport width");
             }
             finally
             {
@@ -150,13 +158,7 @@ public class ScrollBarAutoHideTests
     }
 
     private static string ReadSettingsXaml()
-    {
-        var assemblyLocation = typeof(SettingsWindowController).Assembly.Location;
-        var repoRoot = Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(assemblyLocation)!,
-            "..", "..", "..", "..", ".."));
-        return File.ReadAllText(Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml"));
-    }
+        => SettingsSourcePaths.ReadSettingsXamlSource();
 
     private static Style LoadSettingsScrollViewerStyle()
     {
@@ -165,9 +167,7 @@ public class ScrollBarAutoHideTests
             new Uri("/SmartGuard.Settings;component/SmartGuard.Settings.xaml", UriKind.Relative));
         try
         {
-            var styled = templateWindow.FindName("contentScrollViewer") as ScrollViewer;
-            styled.Should().NotBeNull();
-            return styled!.Style!;
+            return (Style)templateWindow.FindResource("SettingsScrollViewer");
         }
         finally
         {

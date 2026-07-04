@@ -10,4 +10,5 @@ public enum EngineCommandMode
 public sealed record ParsedCommandLine(
   EngineCommandMode Mode,
   string? Root,
-  bool SkipPublish);
+  bool SkipPublish,
+  bool CreateDesktopShortcut);

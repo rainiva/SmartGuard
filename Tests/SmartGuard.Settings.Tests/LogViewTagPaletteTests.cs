@@ -1,5 +1,5 @@
 using System.Windows.Media;
-using SmartGuard.LogViewer;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
 

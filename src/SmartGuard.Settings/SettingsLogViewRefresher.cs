@@ -36,7 +36,8 @@ internal static class SettingsLogViewRefresher
     }
 
     var scrollViewer = resolveScrollViewer();
-    var savedOffset = scrollViewer?.VerticalOffset ?? 0;
+    var savedVerticalOffset = scrollViewer?.VerticalOffset ?? 0;
+    var savedHorizontalOffset = scrollViewer?.HorizontalOffset ?? 0;
     var wasAtTail = scrollViewer is null || LogViewScrollState.IsAtTail(scrollViewer);
     var scrollToTail = controller.FollowTail && wasAtTail;
 
@@ -47,6 +48,7 @@ internal static class SettingsLogViewRefresher
     if (scrollToTail)
     {
       followTailCoordinator.ApplyScrollIfEnabled();
+      RestoreHorizontalOffset(scrollViewer, savedHorizontalOffset);
       return;
     }
 
@@ -55,6 +57,26 @@ internal static class SettingsLogViewRefresher
 
     scrollViewer.UpdateLayout();
     if (!wasAtTail)
-      scrollViewer.ScrollToVerticalOffset(savedOffset);
+      scrollViewer.ScrollToVerticalOffset(savedVerticalOffset);
+
+    RestoreHorizontalOffset(scrollViewer, savedHorizontalOffset);
+  }
+
+  private static void RestoreHorizontalOffset(ScrollViewer? scrollViewer, double savedHorizontalOffset)
+  {
+    if (scrollViewer is null || savedHorizontalOffset <= 0)
+      return;
+
+    scrollViewer.Dispatcher.BeginInvoke(
+      () =>
+      {
+        scrollViewer.UpdateLayout();
+        if (scrollViewer.ScrollableWidth <= 0)
+          return;
+
+        var restored = Math.Min(savedHorizontalOffset, scrollViewer.ScrollableWidth);
+        scrollViewer.ScrollToHorizontalOffset(restored);
+      },
+      System.Windows.Threading.DispatcherPriority.ApplicationIdle);
   }
 }

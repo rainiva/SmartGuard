@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SmartGuard.Configuration.Build;
 using SmartGuard.Packaging.Runtime;
 using SmartGuard.Packaging.Staging;
 using SmartGuard.Packaging.Versioning;
@@ -25,9 +26,6 @@ public class StageCommand
             ? Path.Combine(root, "installer", "staging")
             : Path.GetFullPath(options.StagingDir);
 
-        if (!File.Exists(Path.Combine(root, "lib", "SmartGuard.ico")))
-            throw new FileNotFoundException("Missing required asset: SmartGuard.ico");
-
         if (!options.SkipPublish)
         {
             var exit = (_publishRunner ?? DefaultPublishRunner)(root, options.Configuration);
@@ -51,20 +49,7 @@ public class StageCommand
     }
 
     private static int DefaultPublishRunner(string root, string configuration)
-    {
-        var psi = new ProcessStartInfo("cmd.exe")
-        {
-            WorkingDirectory = root,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        psi.ArgumentList.Add("/c");
-        psi.ArgumentList.Add(Path.Combine(root, "build.cmd"));
-        psi.ArgumentList.Add(configuration);
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start build.cmd");
-        p.WaitForExit();
-        return p.ExitCode;
-    }
+        => DesktopSuitePublisher.Publish(root, configuration);
 
     private static void ResetStaging(string stagingDir)
     {

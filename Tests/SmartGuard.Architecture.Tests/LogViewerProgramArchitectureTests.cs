@@ -5,19 +5,23 @@ namespace SmartGuard.Architecture.Tests;
 public class LogViewerProgramArchitectureTests
 {
   [Fact]
-  public void LogViewer_main_must_redirect_to_settings_logs_page()
+  public void Product_must_not_ship_a_LogViewer_host_executable()
   {
-    var program = SourceScanHelper.ReadSource("src/SmartGuard.LogViewer/Program.cs");
-    program.Should().NotContain("Application.Run(form");
-    program.Should().NotContain("new LogViewerForm");
-    program.Should().Contain("LogViewerEntryRedirect.LaunchSettingsLogsPage");
-
-    var redirect = SourceScanHelper.ReadSource("src/SmartGuard.LogViewer/LogViewerEntryRedirect.cs");
-    redirect.Should().Contain("SettingsLogsPageLauncher.Open");
-
-    var launcher = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SettingsLogsPageLauncher.cs");
-    launcher.Should().Contain("SmartGuardPaths.SettingsExe");
-    launcher.Should().Contain("--page logs");
+    File.Exists(Path.Combine(
+      SourceScanHelper.RepoRoot,
+      "src",
+      "SmartGuard.LogViewer",
+      "SmartGuard.LogViewer.csproj")).Should().BeFalse();
+    File.Exists(Path.Combine(
+      SourceScanHelper.RepoRoot,
+      "src",
+      "SmartGuard.LogViewer",
+      "Program.cs")).Should().BeFalse();
+    File.Exists(Path.Combine(
+      SourceScanHelper.RepoRoot,
+      "src",
+      "SmartGuard.LogViewer",
+      "LogViewerEntryRedirect.cs")).Should().BeFalse();
   }
 
   [Fact]
@@ -27,5 +31,20 @@ public class LogViewerProgramArchitectureTests
     source.Should().Contain("ParseStartPage");
     source.Should().Contain("SetInitialPage");
     source.Should().Contain("--page");
+  }
+
+  [Fact]
+  public void Product_must_not_keep_LogViewer_test_or_namespace_identity()
+  {
+    var slnx = SourceScanHelper.ReadSource("SmartGuard.slnx");
+    var settingsProject = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SmartGuard.Settings.csproj");
+    var source = string.Join(
+      Environment.NewLine,
+      Directory.EnumerateFiles(Path.Combine(SourceScanHelper.RepoRoot, "src"), "*.cs", SearchOption.AllDirectories)
+        .Select(File.ReadAllText));
+
+    slnx.Should().NotContain("SmartGuard.LogViewer.Tests");
+    settingsProject.Should().NotContain("InternalsVisibleTo Include=\"SmartGuard.LogViewer.Tests\"");
+    source.Should().NotContain("namespace SmartGuard.LogViewer");
   }
 }

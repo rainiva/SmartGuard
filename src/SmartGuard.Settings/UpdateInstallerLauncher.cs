@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
@@ -42,10 +42,6 @@ public sealed class UpdateInstallerLauncher
 
     public static void StartInstaller(string installerPath)
     {
-        Process.Start(new ProcessStartInfo(installerPath, "/SILENT")
-        {
-            UseShellExecute = true,
-            Verb = "runas"
-        });
+        ElevationHelper.StartElevated(installerPath, "/SILENT");
     }
 }

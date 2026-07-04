@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace SmartGuard.Settings.Tests;
 
 [CollectionDefinition("WpfUiTests", DisableParallelization = true)]

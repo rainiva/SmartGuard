@@ -32,7 +32,23 @@ public class InstallerVersionResolverTests : IDisposable
     public void BumpPatchVersion_increments_patch()
     {
         InstallerVersionResolver.BumpPatchVersion("1.0.0").Should().Be("1.0.1");
-        InstallerVersionResolver.BumpPatchVersion("1.0.9").Should().Be("1.0.10");
+        InstallerVersionResolver.BumpPatchVersion("1.0.8").Should().Be("1.0.9");
+    }
+
+    [Fact]
+    public void BumpPatchVersion_carries_when_segment_exceeds_nine()
+    {
+        InstallerVersionResolver.BumpPatchVersion("1.0.9").Should().Be("1.1.0");
+        InstallerVersionResolver.BumpPatchVersion("1.9.9").Should().Be("2.0.0");
+        InstallerVersionResolver.BumpPatchVersion("9.9.9").Should().Be("10.0.0");
+        InstallerVersionResolver.BumpPatchVersion("1.0.8", 2).Should().Be("1.1.0");
+    }
+
+    [Fact]
+    public void BumpPatchVersion_rejects_segment_above_nine()
+    {
+        Action act = () => InstallerVersionResolver.BumpPatchVersion("1.0.10");
+        act.Should().Throw<ArgumentException>();
     }
 
     [Fact]

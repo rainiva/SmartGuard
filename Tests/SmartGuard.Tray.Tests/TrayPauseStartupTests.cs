@@ -19,9 +19,6 @@ public class TrayPauseStartupTests
     var statusPath = Path.Combine(root, "SmartGuard.status.json");
     File.WriteAllText(statusPath, JsonSerializer.Serialize(new StatusPayload { paused = false }));
 
-    ToastAumidRegistrar.ResetForTests();
-    ToastAumidRegistrar.StartMenuShortcutWriterForTests = _ => true;
-
     try
     {
       StaTestHost.Run(() =>
@@ -36,7 +33,6 @@ public class TrayPauseStartupTests
     }
     finally
     {
-      ToastAumidRegistrar.ResetForTests();
       try { Directory.Delete(root, true); } catch { }
     }
   }

@@ -20,7 +20,7 @@ public static class ScheduledTaskRegistrar
 
   public static ScheduledTaskLaunchSpec BuildGuardianLaunchSpec(string root)
   {
-    var engineExe = Path.Combine(root, "bin", "SmartGuard.Engine.exe");
+    var engineExe = SmartGuardPaths.EngineExe(root);
     if (!File.Exists(engineExe))
     {
       throw new FileNotFoundException(
@@ -33,7 +33,7 @@ public static class ScheduledTaskRegistrar
 
   public static ScheduledTaskLaunchSpec BuildTrayLaunchSpec(string root)
   {
-    var trayExe = Path.Combine(root, "bin", "SmartGuard.Tray.exe");
+    var trayExe = SmartGuardPaths.TrayExe(root);
     if (!File.Exists(trayExe))
     {
       throw new FileNotFoundException(

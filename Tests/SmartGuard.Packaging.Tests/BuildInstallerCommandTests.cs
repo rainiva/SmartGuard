@@ -1,4 +1,6 @@
 using FluentAssertions;
+using SmartGuard.Configuration;
+using SmartGuard.Configuration.Distribution;
 using SmartGuard.Packaging.Commands;
 using SmartGuard.Packaging.Runtime;
 using SmartGuard.Packaging.Staging;
@@ -16,23 +18,41 @@ public class BuildInstallerCommandTests : IDisposable
     }
 
     [Fact]
-    public void Run_bumps_version_and_invokes_stage()
+    public void Run_bumps_version_and_generates_manifest_includes_before_iscc()
     {
         var root = CreateFakeRepo();
         var staging = Path.Combine(root, "installer", "staging");
         var fakeDownloader = new FakeDownloader("windowsdesktop-runtime-8.0.18-win-x64.exe");
-        var stageRan = false;
+        var generatedFiles = Path.Combine(root, "installer", "generated");
         var cmd = new BuildInstallerCommand(
             _ => { },
-            (r, c) => { stageRan = true; return 0; },
+            (r, c) => 0,
             fakeDownloader,
             _ => 0);
 
         var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: true));
 
         exit.Should().Be(0);
-        stageRan.Should().BeTrue();
-        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.25");
+        var filesIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Files.iss.inc");
+        var processesIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Processes.iss.inc");
+        var constantsIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Constants.iss.inc");
+        var runIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Run.iss.inc");
+        File.Exists(filesIncludePath).Should().BeTrue();
+        File.Exists(processesIncludePath).Should().BeTrue();
+        File.Exists(constantsIncludePath).Should().BeTrue();
+        File.Exists(runIncludePath).Should().BeTrue();
+        File.ReadAllText(filesIncludePath).Should().NotContain("SmartGuard.LogViewer.exe");
+        File.ReadAllText(processesIncludePath).Should().NotContain("SmartGuard.LogViewer.exe");
+        var constantsInclude = File.ReadAllText(constantsIncludePath);
+        constantsInclude.Should().Contain($"#define TrayExeName \"{SmartGuardPaths.TrayExeFileName}\"");
+        constantsInclude.Should().Contain($"#define EngineExeName \"{SmartGuardPaths.EngineExeFileName}\"");
+        constantsInclude.Should().Contain($"#define CliExeName \"{SmartGuardPaths.CliExeFileName}\"");
+        constantsInclude.Should().Contain($"#define GuardianTaskName \"{ScheduledTaskRegistrar.GuardianTaskName}\"");
+        var runInclude = File.ReadAllText(runIncludePath);
+        runInclude.Should().Contain("{#EngineExeName}");
+        runInclude.Should().Contain("{#CliExeName}");
+        runInclude.Should().Contain("{#GuardianTaskName}");
+        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.5");
     }
 
     [Fact]
@@ -55,21 +75,23 @@ public class BuildInstallerCommandTests : IDisposable
         var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: false));
 
         exit.Should().Be(0);
-        versionAtStageTime.Should().Be("1.0.26", "version must be bumped before the publish/stage step reads it");
-        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.26");
+        versionAtStageTime.Should().Be("1.0.6", "version must be bumped before the publish/stage step reads it");
+        File.ReadAllText(Path.Combine(root, "installer", "version.txt")).Trim().Should().Be("1.0.6");
     }
 
     private string CreateFakeRepo()
     {
         Directory.CreateDirectory(Path.Combine(_tempDir, "bin"));
-        foreach (var f in new[] { "SmartGuard.Engine.exe", "SmartGuard.Tray.exe", "SmartGuard.LogViewer.exe", "SmartGuard.Settings.exe" })
-            File.WriteAllText(Path.Combine(_tempDir, "bin", f), "exe");
-        Directory.CreateDirectory(Path.Combine(_tempDir, "lib"));
-        File.WriteAllText(Path.Combine(_tempDir, "lib", "SmartGuard.ico"), "ico");
-        File.WriteAllText(Path.Combine(_tempDir, "lib", "SmartGuard.Settings.xaml"), "xaml");
+        foreach (var project in DesktopDistributionManifest.PublishedProjects)
+            File.WriteAllText(Path.Combine(_tempDir, "bin", project.OutputFileName), "exe");
         Directory.CreateDirectory(Path.Combine(_tempDir, "installer"));
-        File.WriteAllText(Path.Combine(_tempDir, "installer", "version.txt"), "1.0.25");
-        File.WriteAllText(Path.Combine(_tempDir, "installer", "license_zh-CN.txt"), "license");
+        File.WriteAllText(Path.Combine(_tempDir, "installer", "version.txt"), "1.0.5");
+        foreach (var payload in DesktopDistributionManifest.PayloadEntries)
+        {
+            var sourcePath = Path.Combine(_tempDir, payload.SourceRelativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+            File.WriteAllText(sourcePath, "payload");
+        }
         return _tempDir;
     }
 

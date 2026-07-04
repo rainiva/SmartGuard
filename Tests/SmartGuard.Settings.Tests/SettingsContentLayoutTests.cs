@@ -1,22 +1,12 @@
 using System.IO;
-using System.Reflection;
-
 namespace SmartGuard.Settings.Tests;
 
 public class SettingsContentLayoutTests
 {
-    private static string RepoXamlPath()
-    {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-        return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
-    }
-
     [Fact]
     public void Right_content_root_uses_shared_margin_like_logs_page()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("x:Key=\"SettingsContentPageMargin\"");
         xaml.Should().MatchRegex(
@@ -28,9 +18,9 @@ public class SettingsContentLayoutTests
     }
 
     [Fact]
-    public void Page_titles_use_shared_header_row_aligned_with_navigation_brand()
+    public void Page_titles_use_shared_header_row_without_duplicate_sidebar_brand_heading()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("x:Name=\"txtPageTitle\"");
         xaml.Should().MatchRegex(
@@ -43,27 +33,33 @@ public class SettingsContentLayoutTests
             "pageGeneral[\\s\\S]{0,160}Text=\"常规设置\"[\\s\\S]{0,80}SectionTitle",
             "page titles should not be duplicated inside scrollable page content");
         xaml.Should().Contain("<Thickness x:Key=\"SettingsContentPageMargin\">24,24,24,12</Thickness>");
-        xaml.Should().MatchRegex(
-            "Margin=\"20,24,20,16\"[\\s\\S]{0,200}imgAppIcon",
-            "left app title block uses 24px top margin");
-    }
-
-    [Fact]
-    public void Sidebar_brand_uses_single_title_without_settings_subtitle()
-    {
-        var xaml = File.ReadAllText(RepoXamlPath());
-
-        xaml.Should().Contain("x:Name=\"imgAppIcon\"");
-        xaml.Should().Contain("Text=\"智能电源守护\"");
         xaml.Should().NotMatchRegex(
-            "x:Name=\"imgAppIcon\"[\\s\\S]{0,400}Text=\"设置\"",
-            "sidebar brand should not repeat the window title with a separate 设置 subtitle");
+            "<!-- Left Navigation Panel -->[\\s\\S]{0,260}RowDefinition Height=\"Auto\"",
+            "the sidebar should no longer reserve a dedicated brand header row");
+        xaml.Should().MatchRegex(
+            "x:Name=\"navList\"[\\s\\S]{0,220}Margin=\"8,16,8,0\"",
+            "navigation should keep a light top inset after removing the duplicate brand heading");
     }
 
     [Fact]
-    public void Settings_scroll_viewer_template_honors_padding()
+    public void Sidebar_does_not_repeat_product_name_that_is_already_in_the_window_title()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+
+        xaml.Should().NotContain("x:Name=\"imgAppIcon\"");
+        xaml.Should().NotMatchRegex(
+            "<!-- Left Navigation Panel -->[\\s\\S]{0,420}Text=\"智能电源守护\"[\\s\\S]{0,120}FontSize=\"18\"",
+            "the sidebar should rely on the window title and page title instead of repeating the product name");
+    }
+
+    [Fact]
+    public void Content_scroll_viewer_uses_content_style_with_visible_vertical_bar()
+    {
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+        xaml.Should().Contain("x:Key=\"SettingsContentScrollViewer\"");
+        xaml.Should().MatchRegex(
+            "x:Key=\"SettingsContentScrollViewer\"[\\s\\S]{0,260}VerticalScrollBarVisibility\" Value=\"Visible\"",
+            "content scroll viewer should keep the vertical scrollbar visible to avoid layout reflow while scrolling");
         xaml.Should().MatchRegex(
             "ScrollContentPresenter[\\s\\S]{0,120}Margin=\"\\{TemplateBinding Padding\\}\"",
             "scroll content presenter should honor padding inside the scroll viewer template");
@@ -72,7 +68,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Single_row_system_card_does_not_show_trailing_divider()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().MatchRegex(
             "Text=\"管理开机启动和基本系统行为\"[\\s\\S]{0,120}Border Style=\"\\{StaticResource SettingsItemRow\\}\" BorderThickness=\"0\"",
@@ -82,7 +78,7 @@ public class SettingsContentLayoutTests
     [Fact]
     public void Log_viewport_border_wraps_scroll_viewer_not_log_content()
     {
-        var xaml = File.ReadAllText(RepoXamlPath());
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().MatchRegex(
             "x:Name=\"logViewportBorder\"[\\s\\S]{0,420}x:Name=\"lstLogView\"",

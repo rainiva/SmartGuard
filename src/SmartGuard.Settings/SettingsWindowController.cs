@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using SmartGuard.Configuration;
@@ -62,16 +61,11 @@ public sealed class SettingsWindowController
       var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var embeddedError);
       if (window is null)
       {
-        var xamlPath = Path.Combine(root, "lib", "SmartGuard.Settings.xaml");
-        window = SettingsXamlLoader.TryLoadLooseWindowFromFile(xamlPath, out var fileError);
-        if (window is null)
-        {
-          loadError = fileError ?? embeddedError ?? "Unknown settings layout load failure.";
-          return null;
-        }
+        loadError = embeddedError ?? "Unknown settings layout load failure.";
+        return null;
       }
 
-      AppBrandIcon.ApplyTo(window, root);
+      AppBrandIcon.ApplyTo(window);
       return BuildController(root, repository, config, window);
     }
     catch (Exception ex)
@@ -167,8 +161,23 @@ public sealed class SettingsWindowController
       Require<TextBlock>(window, "txtVersion"),
       () => policyCoordinator.ReadConfigFromUi().GitHubToken);
 
+    var gitHubTokenCoordinator = new SettingsGitHubTokenCoordinator(
+      repository,
+      () => policyCoordinator.ReadConfigFromUi(),
+      policyCoordinator.CommitSavedConfig,
+      (message, isError) => toastService.Show(message, isError));
+    gitHubTokenCoordinator.WireAboutPage(window);
+
+    var diagnosticExportCoordinator = new SettingsDiagnosticExportCoordinator(
+      root,
+      SettingsAboutCoordinator.GetDisplayVersion,
+      (message, isError) => toastService.Show(message, isError));
+    diagnosticExportCoordinator.WireAboutPage(window);
+
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
+
+    ScrollViewerSmoothScroll.Attach(Require<ScrollViewer>(window, "contentScrollViewer"));
 
     var navList = Require<ListBox>(window, "navList");
     navigationShell.Wire(
@@ -217,7 +226,7 @@ public sealed class SettingsWindowController
   {
     _window.Dispatcher.Invoke(() =>
     {
-      AppBrandIcon.ApplyTo(_window, _root);
+      AppBrandIcon.ApplyTo(_window);
       if (!_window.IsVisible)
         _window.Show();
       _window.WindowState = WindowState.Normal;
@@ -232,7 +241,9 @@ public sealed class SettingsWindowController
 
   internal void AddLogTagFilter(string tag) => _logPageHost.AddLogTagFilter(tag);
 
-  internal void EnsureLogScrollViewerHooked() => _logPageHost.EnsureLogScrollViewerHooked();
+    internal void EnsureLogScrollViewerHooked() => _logPageHost.EnsureLogScrollViewerHooked();
+
+    internal void ForceRefreshLogView() => _logPageHost.ForceRefreshLogView();
 
   internal void OnPauseToggled() => _policyCoordinator.OnPauseToggled();
 

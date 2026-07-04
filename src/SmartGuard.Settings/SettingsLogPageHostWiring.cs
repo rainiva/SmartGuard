@@ -1,5 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Media3D;
 
 namespace SmartGuard.Settings;
 
@@ -14,16 +17,101 @@ internal static class SettingsLogPageHostWiring
     Action openLogFolder,
     Action forceRefreshLogView)
   {
-    var btnLogCopy = window.FindName("btnLogCopy") as Button;
-    var btnLogExport = window.FindName("btnLogExport") as Button;
-    var btnLogOpenFolder = window.FindName("btnLogOpenFolder") as Button;
+    var btnLogMore = window.FindName("btnLogMore") as Button;
+    var logMoreFlyoutLayer = window.FindName("logMoreFlyoutLayer") as Canvas;
+    var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
+    var btnLogMoreCopy = window.FindName("btnLogMoreCopy") as Button;
+    var btnLogMoreExport = window.FindName("btnLogMoreExport") as Button;
+    var btnLogMoreOpenFolder = window.FindName("btnLogMoreOpenFolder") as Button;
     var btnLogScrollTop = window.FindName("btnLogScrollTop") as Button;
     var btnLogScrollBottom = window.FindName("btnLogScrollBottom") as Button;
     var btnLogRefresh = window.FindName("btnLogRefresh") as Button;
 
-    if (btnLogCopy is not null) btnLogCopy.Click += (_, _) => copyVisibleLog();
-    if (btnLogExport is not null) btnLogExport.Click += (_, _) => exportVisibleLog();
-    if (btnLogOpenFolder is not null) btnLogOpenFolder.Click += (_, _) => openLogFolder();
+    void PositionLogMoreFlyout()
+    {
+      if (btnLogMore is null || logMoreFlyout is null || logMoreFlyoutLayer is null)
+        return;
+
+      logMoreFlyout.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+      var buttonTopLeft = btnLogMore.TranslatePoint(new Point(0, 0), logMoreFlyoutLayer);
+      var anchor = btnLogMore.TranslatePoint(
+        new Point(btnLogMore.ActualWidth, btnLogMore.ActualHeight + 8),
+        logMoreFlyoutLayer);
+      var maxLeft = Math.Max(0, logMoreFlyoutLayer.ActualWidth - logMoreFlyout.DesiredSize.Width);
+      var left = Math.Max(0, Math.Min(anchor.X - logMoreFlyout.DesiredSize.Width, maxLeft));
+      var maxTop = Math.Max(0, logMoreFlyoutLayer.ActualHeight - logMoreFlyout.DesiredSize.Height);
+      var top = anchor.Y;
+      if (top > maxTop)
+      {
+        var aboveButtonTop = buttonTopLeft.Y - 8 - logMoreFlyout.DesiredSize.Height;
+        top = Math.Max(0, aboveButtonTop);
+      }
+
+      Canvas.SetLeft(logMoreFlyout, left);
+      Canvas.SetTop(logMoreFlyout, Math.Max(0, Math.Min(top, maxTop)));
+    }
+
+    void SetLogMoreFlyoutOpen(bool isOpen)
+    {
+      if (logMoreFlyout is not null)
+      {
+        logMoreFlyout.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (logMoreFlyoutLayer is not null)
+          logMoreFlyoutLayer.IsHitTestVisible = isOpen;
+        if (isOpen)
+        {
+          logMoreFlyout.UpdateLayout();
+          PositionLogMoreFlyout();
+        }
+      }
+    }
+
+    if (btnLogMore is not null && logMoreFlyout is not null)
+    {
+      btnLogMore.Click += (_, _) =>
+      {
+        SetLogMoreFlyoutOpen(logMoreFlyout.Visibility != Visibility.Visible);
+      };
+
+      window.SizeChanged += (_, _) =>
+      {
+        if (logMoreFlyout.Visibility == Visibility.Visible)
+          PositionLogMoreFlyout();
+      };
+
+      window.PreviewMouseDown += (_, e) =>
+      {
+        if (logMoreFlyout.Visibility != Visibility.Visible)
+          return;
+
+        var source = e.OriginalSource as DependencyObject;
+        if (IsInSubtree(source, btnLogMore) || IsInSubtree(source, logMoreFlyout))
+          return;
+
+        SetLogMoreFlyoutOpen(false);
+      };
+      window.PreviewKeyDown += (_, e) =>
+      {
+        if (e.Key == Key.Escape)
+          SetLogMoreFlyoutOpen(false);
+      };
+    }
+
+    if (btnLogMoreCopy is not null) btnLogMoreCopy.Click += (_, _) =>
+    {
+      SetLogMoreFlyoutOpen(false);
+      copyVisibleLog();
+    };
+    if (btnLogMoreExport is not null) btnLogMoreExport.Click += (_, _) =>
+    {
+      SetLogMoreFlyoutOpen(false);
+      exportVisibleLog();
+    };
+    if (btnLogMoreOpenFolder is not null) btnLogMoreOpenFolder.Click += (_, _) =>
+    {
+      SetLogMoreFlyoutOpen(false);
+      openLogFolder();
+    };
     if (btnLogScrollTop is not null) btnLogScrollTop.Click += (_, _) => followTailCoordinator.ScrollToTop();
     if (btnLogScrollBottom is not null) btnLogScrollBottom.Click += (_, _) => followTailCoordinator.ScrollToBottom();
     if (btnLogRefresh is not null) btnLogRefresh.Click += (_, _) => forceRefreshLogView();
@@ -32,6 +120,25 @@ internal static class SettingsLogPageHostWiring
       followTailCheckBox.Checked += (_, _) => followTailCoordinator.SetFollowTail(true);
       followTailCheckBox.Unchecked += (_, _) => followTailCoordinator.SetFollowTail(false);
     }
+  }
+
+  private static bool IsInSubtree(DependencyObject? source, DependencyObject ancestor)
+  {
+    var current = source;
+    while (current is not null)
+    {
+      if (ReferenceEquals(current, ancestor))
+        return true;
+
+      current = current switch
+      {
+        Visual or Visual3D => VisualTreeHelper.GetParent(current),
+        FrameworkContentElement contentElement => contentElement.Parent,
+        _ => null,
+      };
+    }
+
+    return false;
   }
 
   internal static void WireSearchAndFilterEvents(

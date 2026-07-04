@@ -103,7 +103,7 @@ function Invoke-RemoveFiles {
 }
 
 function Test-SmartGuardProcessRunning {
-    $names = @('SmartGuard.Engine', 'SmartGuard.Tray', 'SmartGuard.Settings', 'SmartGuard.LogViewer')
+    $names = @('SmartGuard.Engine', 'SmartGuard.Tray', 'SmartGuard.Settings')
     foreach ($name in $names) {
         if (Get-Process -Name $name -ErrorAction SilentlyContinue) { return $true }
     }

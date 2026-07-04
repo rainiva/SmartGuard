@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SmartGuard.Cli</RootNamespace>
+    <AssemblyName>SmartGuard.Cli</AssemblyName>
+    <ApplicationIcon>..\..\assets\branding\SmartGuard.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmartGuard.Configuration\SmartGuard.Configuration.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartGuard.Cli.Tests" />
+  </ItemGroup>
+
+</Project>

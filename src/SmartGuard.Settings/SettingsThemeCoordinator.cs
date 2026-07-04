@@ -181,7 +181,7 @@ public sealed class SettingsThemeCoordinator
         resources,
         isDark,
         FinishThemeApply,
-        onMidpoint: () => WindowTitleBarTheme.Apply(window, isDark));
+        () => WindowTitleBarTheme.Apply(window, isDark));
     }
     catch (InvalidOperationException)
     {

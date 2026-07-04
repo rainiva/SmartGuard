@@ -4,11 +4,13 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>SmartGuard.Settings</RootNamespace>
     <AssemblyName>SmartGuard.Settings</AssemblyName>
-    <ApplicationIcon>..\..\lib\SmartGuard.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\branding\SmartGuard.ico</ApplicationIcon>
     <InstallerVersionFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '..\..\installer\version.txt'))</InstallerVersionFile>
     <Version>$([System.IO.File]::ReadAllText('$(InstallerVersionFile)').Trim())</Version>
   </PropertyGroup>
@@ -19,14 +21,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="..\..\lib\SmartGuard.ico" Link="Assets\SmartGuard.ico" />
-    <Page Include="..\..\lib\SmartGuard.Settings.xaml" Link="SmartGuard.Settings.xaml" />
-    <Page Include="..\..\lib\Themes\Light.xaml" Link="Themes\Light.xaml" />
-    <Page Include="..\..\lib\Themes\Dark.xaml" Link="Themes\Dark.xaml" />
+    <Page Include="SmartGuard.Settings.xaml" />
+    <Page Include="Themes\Light.xaml" />
+    <Page Include="Themes\Dark.xaml" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SmartGuard.LogViewer\SmartGuard.LogViewer.csproj" />
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,6 +37,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="SmartGuard.Settings.Tests" />
+    <InternalsVisibleTo Include="SmartGuard.Settings.LogView.Tests" />
   </ItemGroup>
 
 </Project>

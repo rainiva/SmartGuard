@@ -51,9 +51,6 @@ Describe 'Tray core user flow (integration)' {
             $payload = Wait-StatusFile -StatusPath $statusPath
             $payload | Should -Not -BeNullOrEmpty
             $payload.currentPlan | Should -Not -BeNullOrEmpty
-
-            dotnet test (Join-Path $global:SG_TestRepoRoot 'Tests\SmartGuard.Tray.Tests\SmartGuard.Tray.Tests.csproj') --filter "TrayReadinessTests" --nologo -v q | Out-Null
-            $LASTEXITCODE | Should -Be 0
         }
         finally {
             Stop-EngineTree -ProcessId $proc.Id -InstallRoot $installRoot

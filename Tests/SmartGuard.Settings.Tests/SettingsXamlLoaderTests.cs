@@ -1,70 +1,49 @@
 using System.IO;
-using System.Reflection;
 using System.Windows;
-using System.Windows.Markup;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsXamlLoaderTests
 {
-    private static string RepoXamlPath()
-    {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-        return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
-    }
-
     private static void EnsureApplication() => WpfStaTestHost.EnsureApplication();
 
     [Fact]
-    public void PrepareLooseXamlForParse_qualifies_local_assembly()
+    public void Project_settings_xaml_lives_inside_settings_project()
     {
-        const string raw = "<Window xmlns:local=\"clr-namespace:SmartGuard.Settings\" />";
-        SettingsXamlLoader.PrepareLooseXamlForParse(raw)
-            .Should().Contain("assembly=SmartGuard.Settings");
+        var xamlPath = SettingsSourcePaths.ProjectSettingsXamlPath();
+        File.Exists(xamlPath).Should().BeTrue();
+        File.ReadAllText(xamlPath).Should().Contain("x:Name=\"navList\"");
     }
 
     [Fact]
-    public void LoadLooseWindow_parses_committed_settings_xaml()
+    public void TryLoadEmbeddedWindow_loads_compiled_settings_xaml()
     {
         RunOnSta(() =>
         {
             EnsureApplication();
 
-            var xamlPath = RepoXamlPath();
-            File.Exists(xamlPath).Should().BeTrue();
-
-            var window = SettingsXamlLoader.LoadLooseWindow(File.ReadAllText(xamlPath));
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
             window.Should().NotBeNull();
             window!.FindName("navList").Should().NotBeNull();
+            error.Should().BeNull();
         });
     }
 
     [Fact]
-    public void LoadLooseWindow_requires_assembly_qualifier_for_local_controls()
+    public void SettingsXamlLoader_does_not_expose_loose_runtime_loading_paths()
     {
-        RunOnSta(() =>
-        {
-            EnsureApplication();
-
-            const string raw = """
-                <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                        xmlns:local="clr-namespace:SmartGuard.Settings">
-                  <local:NumberBox Minimum="0" Maximum="10"/>
-                </Window>
-                """;
-
-            var act = () => XamlReader.Parse(raw);
-            act.Should().Throw<Exception>();
-
-            var fixedWindow = SettingsXamlLoader.LoadLooseWindow(raw);
-            fixedWindow.Should().NotBeNull();
-            fixedWindow!.Content.Should().BeOfType<NumberBox>();
-        });
+        var source = File.ReadAllText(Path.Combine(
+            SettingsSourcePaths.RepoRoot(),
+            "src",
+            "SmartGuard.Settings",
+            "SettingsXamlLoader.cs"));
+        source.Should().NotContain("TryLoadLooseWindowFromFile");
+        source.Should().NotContain("LoadLooseWindow(");
+        source.Should().NotContain("PrepareLooseXamlForParse");
+        source.Should().NotContain("File.ReadAllText");
     }
 
     private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);

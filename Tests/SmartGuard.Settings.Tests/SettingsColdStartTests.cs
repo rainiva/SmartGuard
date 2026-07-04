@@ -1,12 +1,13 @@
 using System.Windows;
 using System.Windows.Controls;
 using SmartGuard.Configuration;
-using SmartGuard.LogViewer;
+using SmartGuard.Settings.LogView;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsColdStartTests
 {
     [Fact]

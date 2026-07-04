@@ -2,12 +2,14 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class SettingsWindowResizeStabilityTests
 {
     [Fact]
@@ -32,6 +34,15 @@ public class SettingsWindowResizeStabilityTests
         xaml.Should().MatchRegex(
             "x:Name=\"pageLogs\"[\\s\\S]{0,220}VerticalAlignment=\"Stretch\"",
             "logs page should stretch when the window is resized");
+    }
+
+    [Fact]
+    public void Layout_stability_is_scoped_to_visible_log_page()
+    {
+        var source = File.ReadAllText(RepoLayoutStabilityPath());
+
+        source.Should().Contain("window.FindName(\"pageLogs\") is not FrameworkElement pageLogs");
+        source.Should().Contain("pageLogs.Visibility != Visibility.Visible");
     }
 
     [Fact]
@@ -142,6 +153,288 @@ public class SettingsWindowResizeStabilityTests
     }
 
     [Fact]
+    public void User_scrolling_about_page_can_reach_both_vertical_bounds_after_resize()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller);
+                try
+                {
+                    window.Width = 760;
+                    window.Height = 520;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("about");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    window.Width = 920;
+                    window.Height = 680;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    window.Width = 760;
+                    window.Height = 520;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+                    contentScrollViewer.Should().NotBeNull();
+                    contentScrollViewer!.ScrollableHeight.Should().BeGreaterThan(0);
+
+                    for (var i = 0; i < 160; i++)
+                        contentScrollViewer.LineDown();
+
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    contentScrollViewer.VerticalOffset.Should().BeApproximately(
+                        contentScrollViewer.ScrollableHeight,
+                        1.0,
+                        "mouse-wheel style downward scrolling should still reach the last row after resize churn");
+
+                    for (var i = 0; i < 160; i++)
+                        contentScrollViewer.LineUp();
+
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    contentScrollViewer.VerticalOffset.Should().BeApproximately(
+                        0,
+                        1.0,
+                        "mouse-wheel style upward scrolling should still return to the very top");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void User_dragging_about_page_scrollbar_thumb_can_reach_both_vertical_bounds_after_resize()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller);
+                try
+                {
+                    window.Width = 760;
+                    window.Height = 520;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("about");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    window.Width = 920;
+                    window.Height = 680;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    window.Width = 760;
+                    window.Height = 520;
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+                    contentScrollViewer.Should().NotBeNull();
+                    contentScrollViewer!.ScrollableHeight.Should().BeGreaterThan(0);
+
+                    var verticalScrollBar = FindVerticalScrollBar(contentScrollViewer);
+                    verticalScrollBar.Should().NotBeNull();
+
+                    verticalScrollBar!.Maximum.Should().BeApproximately(
+                        contentScrollViewer.ScrollableHeight,
+                        1.0,
+                        "the visual scrollbar range should stay synced with the real scrollable height after resize churn");
+
+                    GenuineVerticalThumbDrag(window, verticalScrollBar, toBottom: true);
+                    contentScrollViewer.VerticalOffset.Should().BeApproximately(
+                        contentScrollViewer.ScrollableHeight,
+                        1.0,
+                        "dragging the thumb to the bottom should reach the true bottom");
+
+                    GenuineVerticalThumbDrag(window, verticalScrollBar, toBottom: false);
+                    contentScrollViewer.VerticalOffset.Should().BeApproximately(
+                        0,
+                        1.0,
+                        "dragging the thumb back to the top should reach the true top");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void User_navigating_from_scrolled_advanced_to_about_starts_at_top()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller);
+                try
+                {
+                    window.Width = 760;
+                    window.Height = 520;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("advanced");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+                    contentScrollViewer.Should().NotBeNull();
+                    contentScrollViewer!.ScrollableHeight.Should().BeGreaterThan(0);
+
+                    for (var i = 0; i < 120; i++)
+                        contentScrollViewer.LineDown();
+
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    contentScrollViewer.VerticalOffset.Should().BeGreaterThan(0,
+                        "advanced page should be scrolled away from the top before switching pages");
+
+                    controller.NavigateTo("about");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    contentScrollViewer.VerticalOffset.Should().BeApproximately(
+                        0,
+                        1.0,
+                        "navigating to about should reset the shared content scroll viewer to the top");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void User_returning_from_logs_to_about_starts_at_top()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            File.WriteAllText(Path.Combine(installRoot, "SmartGuard.log"), "[INFO] 2026-07-04 06:00:00 ok\n");
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller);
+                try
+                {
+                    window.Width = 760;
+                    window.Height = 520;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("about");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    var contentScrollViewer = window.FindName("contentScrollViewer") as ScrollViewer;
+                    contentScrollViewer.Should().NotBeNull();
+                    contentScrollViewer!.ScrollableHeight.Should().BeGreaterThan(0);
+
+                    for (var i = 0; i < 120; i++)
+                        contentScrollViewer.LineDown();
+
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    contentScrollViewer.VerticalOffset.Should().BeGreaterThan(0,
+                        "about page should be scrolled away from the top before visiting logs");
+
+                    controller.NavigateTo("logs");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    controller.NavigateTo("about");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(
+                        () => { },
+                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                    contentScrollViewer.VerticalOffset.Should().BeApproximately(
+                        0,
+                        1.0,
+                        "returning from logs to about should reset the shared content scroll viewer to the top");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void User_maximizes_window_reapplies_dark_title_bar_request()
     {
         RunOnSta(() =>
@@ -169,12 +462,38 @@ public class SettingsWindowResizeStabilityTests
         });
     }
 
-    private static string RepoXamlPath()
+    private static string RepoXamlPath() => SettingsSourcePaths.ProjectSettingsXamlPath();
+
+    private static string RepoLayoutStabilityPath()
+        => Path.Combine(SettingsSourcePaths.RepoRoot(), "src", "SmartGuard.Settings", "SettingsWindowLayoutStability.cs");
+
+    private static void GenuineVerticalThumbDrag(Window window, ScrollBar scrollBar, bool toBottom)
     {
-        var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-        var testProjectDir = Path.GetDirectoryName(assemblyLocation)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testProjectDir, "..", "..", "..", "..", ".."));
-        return Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml");
+        scrollBar.ApplyTemplate();
+        var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as Track;
+        track.Should().NotBeNull();
+        var thumb = track!.Thumb;
+        var delta = toBottom ? 200.0 : -200.0;
+
+        thumb.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+        Pump(window);
+        for (var i = 0; i < 20; i++)
+        {
+            thumb.RaiseEvent(new DragDeltaEventArgs(0, delta) { RoutedEvent = Thumb.DragDeltaEvent });
+            Pump(window);
+        }
+
+        thumb.RaiseEvent(new DragCompletedEventArgs(0, delta * 20, false) { RoutedEvent = Thumb.DragCompletedEvent });
+        Pump(window);
+    }
+
+    private static void Pump(Window window)
+        => window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+    private static ScrollBar? FindVerticalScrollBar(ScrollViewer scrollViewer)
+    {
+        scrollViewer.ApplyTemplate();
+        return scrollViewer.Template?.FindName("PART_VerticalScrollBar", scrollViewer) as ScrollBar;
     }
 
     private static SettingsWindowController? CreateController(string installRoot)

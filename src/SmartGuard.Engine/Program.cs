@@ -1,4 +1,5 @@
 ﻿using SmartGuard.Configuration;
+using SmartGuard.Configuration.Cli;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Cli;
 using SmartGuard.Engine.Worker;
@@ -13,12 +14,12 @@ public static class Program
     var root = InstallRootResolver.Resolve(parsed.Root, args);
     var configPath = SmartGuardPaths.ConfigFile(root);
     var statusPath = SmartGuardPaths.StatusFile(root);
-    var initMarker = Path.Combine(root, ".SmartGuard.initialized");
+    var initMarker = SmartGuardPaths.InitMarkerFile(root);
     var fallbackLog = SmartGuardPaths.StartupLogFile(root);
 
     return parsed.Mode switch
     {
-      EngineCommandMode.Install => InstallCommands.RunInstall(root, parsed.SkipPublish),
+      EngineCommandMode.Install => InstallCommands.RunInstall(root, parsed.SkipPublish, parsed.CreateDesktopShortcut),
       EngineCommandMode.Uninstall => InstallCommands.RunUninstall(root),
       _ => RunGuardian(root, configPath, statusPath, initMarker, fallbackLog),
     };

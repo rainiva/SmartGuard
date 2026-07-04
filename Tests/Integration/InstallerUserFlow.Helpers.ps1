@@ -123,3 +123,35 @@ function Invoke-SmartGuardSilentUninstall {
         LogPath  = $log
     }
 }
+
+function Get-SmartGuardProgramsDirectory {
+    Join-Path ([Environment]::GetFolderPath([System.Environment+SpecialFolder]::ApplicationData)) 'Microsoft\Windows\Start Menu\Programs'
+}
+
+function Get-SmartGuardProgramsShortcuts {
+    Get-ChildItem -LiteralPath (Get-SmartGuardProgramsDirectory) -Filter 'SmartGuard*.lnk' -ErrorAction SilentlyContinue |
+        Sort-Object Name
+}
+
+function New-ShortcutFixture {
+    param(
+        [string]$Directory,
+        [string]$Name
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($Directory)) {
+        [System.IO.Directory]::CreateDirectory($Directory) | Out-Null
+    }
+
+    [System.IO.File]::WriteAllBytes((Join-Path $Directory $Name), [byte[]]@())
+}
+
+function Invoke-SmartGuardRepair {
+    param(
+        [string]$SetupExe,
+        [string]$InstallRoot
+    )
+
+    Stop-SmartGuardForInstallerTest
+    return Invoke-SmartGuardSilentInstall -SetupExe $SetupExe -InstallRoot $InstallRoot -PreserveExisting
+}

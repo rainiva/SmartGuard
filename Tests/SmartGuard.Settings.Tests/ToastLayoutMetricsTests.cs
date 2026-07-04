@@ -5,6 +5,7 @@ using System.Windows.Media;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class ToastLayoutMetricsTests
 {
     [Fact]
@@ -56,11 +57,22 @@ public class ToastLayoutMetricsTests
     }
 
     [Fact]
+    public void Toast_container_top_margin_sits_above_first_card_border()
+    {
+        var cardTop = ToastLayoutMetrics.ContentPageTopMargin + ToastLayoutMetrics.SectionTitleBlockHeight;
+        var toastBottom = ToastLayoutMetrics.ToastContainerTopMargin + ToastLayoutMetrics.ToastEstimatedHeight;
+        toastBottom.Should().BeApproximately(
+            cardTop - ToastLayoutMetrics.ToastAboveCardGap,
+            0.5,
+            "toast bottom edge should sit just above the first card border");
+    }
+
+    [Fact]
     public void Toast_container_top_margin_clears_section_title_block()
     {
-        ToastLayoutMetrics.ToastContainerTopMargin.Should().BeGreaterThanOrEqualTo(
+        ToastLayoutMetrics.ToastContainerTopMargin.Should().BeLessThan(
             ToastLayoutMetrics.ContentPageTopMargin + ToastLayoutMetrics.SectionTitleBlockHeight,
-            "toast should sit below the page title, not overlap the first card");
+            "toast should overlap the title row on the right, not sit below the first card");
     }
 
     [Fact]
@@ -129,11 +141,5 @@ public class ToastLayoutMetricsTests
     private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
 
     private static string ReadSettingsXaml()
-    {
-        var assemblyLocation = typeof(SettingsWindowController).Assembly.Location;
-        var repoRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(
-            System.IO.Path.GetDirectoryName(assemblyLocation)!,
-            "..", "..", "..", "..", ".."));
-        return System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot, "lib", "SmartGuard.Settings.xaml"));
-    }
+        => SettingsSourcePaths.ReadSettingsXamlSource();
 }

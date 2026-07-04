@@ -4,14 +4,6 @@ namespace SmartGuard.Configuration;
 
 public static class EngineLifecycle
 {
-  private static readonly string[] ProcessImageNames =
-  [
-    "SmartGuard.Tray.exe",
-    "SmartGuard.Engine.exe",
-    "SmartGuard.LogViewer.exe",
-    "SmartGuard.Settings.exe",
-  ];
-
   public static void EndAndDisableScheduledTasks()
   {
     foreach (var taskName in ScheduledTaskRegistrar.TaskNames)
@@ -23,8 +15,9 @@ public static class EngineLifecycle
 
   public static void StopProcesses()
   {
-    foreach (var processName in ProcessImageNames)
-      TryKillProcess(processName);
+    var currentProcessId = Environment.ProcessId;
+    foreach (var processName in SmartGuardPaths.ProcessImageNames)
+      TryKillProcess(processName, currentProcessId);
   }
 
   public static void DeleteScheduledTasks()
@@ -43,11 +36,13 @@ public static class EngineLifecycle
 
   public static bool AnySmartGuardProcessRunning()
   {
-    foreach (var processName in ProcessImageNames)
+    var currentProcessId = Environment.ProcessId;
+    foreach (var processName in SmartGuardPaths.ProcessImageNames)
     {
       try
       {
-        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName)).Length > 0)
+        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName))
+                   .Any(process => process.Id != currentProcessId))
           return true;
       }
       catch
@@ -70,21 +65,25 @@ public static class EngineLifecycle
     }
   }
 
-  private static void TryKillProcess(string processName)
+  private static void TryKillProcess(string processName, int currentProcessId)
   {
     try
     {
       var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName));
       foreach (var process in processes)
       {
+        if (process.Id == currentProcessId)
+          continue;
+
         try
         {
-          process.Kill();
-          process.WaitForExit(5000);
+          process.Kill(entireProcessTree: true);
+          if (!process.WaitForExit(5000))
+            TryForceKillProcessById(process.Id);
         }
         catch
         {
-          // ignore individual process kill failures
+          TryForceKillProcessById(process.Id);
         }
       }
     }
@@ -97,13 +96,19 @@ public static class EngineLifecycle
   private static void TryDeleteScheduledTask(string taskName)
     => TryRunSchtasks($"/Delete /TN \"{taskName}\" /F");
 
+  private static void TryForceKillProcessById(int processId)
+    => TryRunProcess("taskkill.exe", $"/F /T /PID {processId}");
+
   private static void TryRunSchtasks(string arguments)
+    => TryRunProcess("schtasks.exe", arguments);
+
+  private static void TryRunProcess(string fileName, string arguments)
   {
     try
     {
       using var proc = Process.Start(new ProcessStartInfo
       {
-        FileName = "schtasks.exe",
+        FileName = fileName,
         Arguments = arguments,
         UseShellExecute = false,
         CreateNoWindow = true,

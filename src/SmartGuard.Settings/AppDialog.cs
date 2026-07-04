@@ -82,7 +82,8 @@ public static class AppDialog
 
     if (showCancel)
     {
-      var cancelButton = AppDialogButtonFactory.CreateTextButton("取消", owner);
+      var cancelButton = AppDialogButtonFactory.CreateSecondaryButton("取消", owner);
+      cancelButton.Margin = new Thickness(0, 0, 8, 0);
       cancelButton.Click += (_, _) =>
       {
         onClose?.Invoke(false);

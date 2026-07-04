@@ -44,13 +44,17 @@ public sealed class GuardConfigRepository
       }
 
       _readCache = node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
-      if (_readCache is not null && node is JsonObject obj)
+      GuardConfig? result = _readCache;
+      if (result is not null && node is JsonObject obj)
       {
-        ApplyNotificationMigration(_readCache, obj);
-        ApplyThemeMigration(_readCache, obj);
+        ApplyNotificationMigration(result, obj);
+        ApplyThemeMigration(result, obj);
+        result.GitHubToken = ReadGitHubTokenFromNode(obj) ?? string.Empty;
+        MigrateLegacyGitHubTokenIfNeeded(obj, result);
       }
-      _readCacheWriteTimeUtc = writeTimeUtc;
-      return _readCache;
+      _readCache = result;
+      _readCacheWriteTimeUtc = File.GetLastWriteTimeUtc(_configPath);
+      return result;
     }
     catch
     {
@@ -144,7 +148,7 @@ public sealed class GuardConfigRepository
     node["AutoStartEnabled"] = config.AutoStartEnabled;
     node["ThemeFollowSystem"] = config.ThemeFollowSystem;
     node["ThemeIsDark"] = config.ThemeIsDark;
-    node["GitHubToken"] = config.GitHubToken;
+    ApplyGitHubTokenToNode(node, config);
     if (config.ManualHighPerformanceUntil is { } until)
       node["ManualHighPerformanceUntil"] = until.ToString("o");
     else
@@ -165,5 +169,62 @@ public sealed class GuardConfigRepository
   {
     _readCache = null;
     _readCacheWriteTimeUtc = DateTime.MinValue;
+  }
+
+  internal static string? ReadGitHubTokenFromNode(JsonObject node)
+  {
+    if (node.TryGetPropertyValue(GitHubTokenProtector.ProtectedFieldName, out var protectedNode)
+        && protectedNode is JsonValue protectedValue)
+    {
+      var protectedText = protectedValue.GetValue<string?>();
+      var token = GitHubTokenProtector.TryUnprotect(protectedText);
+      if (!string.IsNullOrEmpty(token))
+        return token;
+    }
+
+    if (node.TryGetPropertyValue(GitHubTokenProtector.LegacyFieldName, out var legacyNode)
+        && legacyNode is JsonValue legacyValue)
+    {
+      var legacy = legacyValue.GetValue<string?>();
+      if (!string.IsNullOrWhiteSpace(legacy))
+        return legacy.Trim();
+    }
+
+    return string.Empty;
+  }
+
+  internal static void ApplyGitHubTokenToNode(JsonObject node, GuardConfig config)
+  {
+    node.Remove(GitHubTokenProtector.LegacyFieldName);
+
+    if (string.IsNullOrWhiteSpace(config.GitHubToken))
+    {
+      node.Remove(GitHubTokenProtector.ProtectedFieldName);
+      return;
+    }
+
+    var protectedValue = GitHubTokenProtector.Protect(config.GitHubToken);
+    if (protectedValue is not null)
+      node[GitHubTokenProtector.ProtectedFieldName] = protectedValue;
+    else
+      node.Remove(GitHubTokenProtector.ProtectedFieldName);
+  }
+
+  private void MigrateLegacyGitHubTokenIfNeeded(JsonObject node, GuardConfig config)
+  {
+    if (node.ContainsKey(GitHubTokenProtector.ProtectedFieldName))
+      return;
+    if (!node.ContainsKey(GitHubTokenProtector.LegacyFieldName))
+      return;
+
+    ApplyGitHubTokenToNode(node, config);
+    WriteNodeWithoutCacheInvalidation(node.ToJsonString(WriteOptions));
+  }
+
+  private void WriteNodeWithoutCacheInvalidation(string content)
+  {
+    var dir = Path.GetDirectoryName(_configPath);
+    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+    GuardConfigAtomicFileWriter.WriteAllText(_configPath, content);
   }
 }

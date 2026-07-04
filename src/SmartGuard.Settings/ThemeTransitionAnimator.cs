@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -15,11 +16,14 @@ internal static class ThemeTransitionAnimator
     }
 
     internal static Storyboard? ActiveStoryboard { get; private set; }
+    private static DispatcherTimer? ActiveTimerTransition { get; set; }
 
     internal static void ResetForTests()
     {
         ActiveStoryboard?.Stop();
         ActiveStoryboard = null;
+        ActiveTimerTransition?.Stop();
+        ActiveTimerTransition = null;
         ThemeTransitionProfile.TotalDuration = TimeSpan.FromMilliseconds(760);
     }
 
@@ -54,6 +58,8 @@ internal static class ThemeTransitionAnimator
     {
         ActiveStoryboard?.Stop();
         ActiveStoryboard = null;
+        ActiveTimerTransition?.Stop();
+        ActiveTimerTransition = null;
 
         EnsureMutableBrushes(resources);
         ApplyPalette(resources, ThemePalette.GetColors(isDark));
@@ -118,7 +124,19 @@ internal static class ThemeTransitionAnimator
         };
 
         ActiveStoryboard = storyboard;
-        storyboard.Begin();
+        ActiveTimerTransition?.Stop();
+        ActiveTimerTransition = null;
+
+        try
+        {
+            storyboard.Begin();
+        }
+        catch (InvalidOperationException)
+        {
+            ActiveStoryboard = null;
+            midpointTimer?.Stop();
+            StartTimerDrivenTransition(window, resources, targetPalette, easing, onCompleted, onMidpoint);
+        }
     }
 
     private static void AddOverlayPulse(Window window, bool isDark, Storyboard storyboard)
@@ -171,6 +189,93 @@ internal static class ThemeTransitionAnimator
         return timer;
     }
 
+    private static void StartTimerDrivenTransition(
+        Window window,
+        ResourceDictionary resources,
+        IReadOnlyDictionary<string, Color> targetPalette,
+        IEasingFunction easing,
+        Action? onCompleted,
+        Action? onMidpoint)
+    {
+        var startPalette = targetPalette.Keys
+            .Where(resources.Contains)
+            .ToDictionary(key => key, key => GetBrushColor(resources, key, targetPalette[key]));
+
+        var overlay = FindOverlay(window);
+        if (overlay is not null)
+        {
+            overlay.Background = new SolidColorBrush(targetPalette["WindowBackground"].R < 0x60
+                ? Color.FromArgb(0x55, 0x00, 0x00, 0x00)
+                : Color.FromArgb(0x44, 0xFF, 0xFF, 0xFF));
+            overlay.Opacity = 0;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        var midpointApplied = false;
+        var timer = new DispatcherTimer(DispatcherPriority.Render, window.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+
+        timer.Tick += (_, _) =>
+        {
+            var elapsed = stopwatch.Elapsed;
+            if (!midpointApplied && elapsed >= ThemeTransitionProfile.TitleBarApplyAt)
+            {
+                midpointApplied = true;
+                onMidpoint?.Invoke();
+            }
+
+            foreach (var layer in ThemeTransitionProfile.Layers)
+            {
+                var layerBegin = TimeSpan.FromMilliseconds(layer.BeginMilliseconds);
+                var layerDuration = TimeSpan.FromMilliseconds(layer.DurationMilliseconds);
+                var layerProgress = Math.Clamp(
+                    (elapsed - layerBegin).TotalMilliseconds / Math.Max(1, layerDuration.TotalMilliseconds),
+                    0,
+                    1);
+                var easedProgress = easing.Ease(layerProgress);
+
+                foreach (var key in layer.Keys)
+                {
+                    if (!targetPalette.TryGetValue(key, out var targetColor) || !startPalette.TryGetValue(key, out var startColor))
+                        continue;
+
+                    ApplyInterpolatedColor(resources, key, InterpolateColor(startColor, targetColor, easedProgress));
+                }
+            }
+
+            if (overlay is not null)
+                overlay.Opacity = ComputeOverlayOpacity(elapsed);
+
+            if (elapsed < ThemeTransitionProfile.TotalDuration)
+                return;
+
+            timer.Stop();
+            ActiveTimerTransition = null;
+
+            if (!midpointApplied)
+                onMidpoint?.Invoke();
+
+            HideOverlay(window);
+            ApplyPalette(resources, targetPalette);
+            onCompleted?.Invoke();
+        };
+
+        ActiveTimerTransition = timer;
+        timer.Start();
+    }
+
+    private static double ComputeOverlayOpacity(TimeSpan elapsed)
+    {
+        var total = Math.Max(1, ThemeTransitionProfile.TotalDuration.TotalMilliseconds);
+        var progress = Math.Clamp(elapsed.TotalMilliseconds / total, 0, 1);
+        if (progress <= 0.34)
+            return 0.16 * (progress / 0.34);
+
+        return 0.16 * (1 - ((progress - 0.34) / 0.66));
+    }
+
     private static void ApplyPalette(ResourceDictionary resources, IReadOnlyDictionary<string, Color> palette)
     {
         foreach (var (key, color) in palette)
@@ -188,23 +293,61 @@ internal static class ThemeTransitionAnimator
         }
     }
 
+    private static void ApplyInterpolatedColor(ResourceDictionary resources, string key, Color color)
+    {
+        if (!resources.Contains(key))
+            return;
+
+        if (resources[key] is SolidColorBrush brush && !brush.IsFrozen)
+        {
+            brush.Color = color;
+            return;
+        }
+
+        resources[key] = new SolidColorBrush(color);
+    }
+
     private static SolidColorBrush ResolveAnimatableBrush(
         ResourceDictionary resources,
         string key,
         Color targetColor)
     {
-        var mutableBrush = resources[key] switch
+        var currentColor = resources[key] switch
         {
-            SolidColorBrush brush when !brush.IsFrozen => brush,
-            SolidColorBrush brush => new SolidColorBrush(brush.Color),
-            Color color => new SolidColorBrush(color),
-            _ => new SolidColorBrush(targetColor),
+            SolidColorBrush brush => brush.Color,
+            Color color => color,
+            _ => targetColor,
         };
 
-        if (!ReferenceEquals(resources[key], mutableBrush))
-            resources[key] = mutableBrush;
+        // Real Settings resources can end up sealed/frozen by the time the runtime
+        // animation begins. Swap in a fresh mutable brush for each animated key so
+        // the storyboard always targets an animatable instance.
+        var mutableBrush = new SolidColorBrush(currentColor);
+        resources[key] = mutableBrush;
 
         return mutableBrush;
+    }
+
+    private static Color GetBrushColor(ResourceDictionary resources, string key, Color fallback)
+    {
+        return resources[key] switch
+        {
+            SolidColorBrush brush => brush.Color,
+            Color color => color,
+            _ => fallback,
+        };
+    }
+
+    private static Color InterpolateColor(Color from, Color to, double progress)
+    {
+        byte Lerp(byte start, byte end)
+            => (byte)Math.Round(start + ((end - start) * progress));
+
+        return Color.FromArgb(
+            Lerp(from.A, to.A),
+            Lerp(from.R, to.R),
+            Lerp(from.G, to.G),
+            Lerp(from.B, to.B));
     }
 
     private static SolidColorBrush ToMutableBrush(object resource)

@@ -81,6 +81,21 @@
 | 全部 Slice 完成但未做文档终验即宣告完成 | 违规 |
 | 终验发现缺口未开新 Slice 继续推进 | 违规 |
 
+## Release 发布规范
+
+### 远程仓库 Release 说明语言（阻断项）
+
+- GitHub Releases 面向用户的发布文案（标题、正文、安装说明、环境要求等）**必须使用简体中文**。
+- 禁止将英文 Release note 直接发布到远程仓库。
+- 草稿真源：`.work/release-notes/v{version}.md`；发布时全文粘贴为 GitHub Release body。
+- 模板：`.work/release-notes/TEMPLATE.md`、`.github/release_template.md`（新建 Release 时 GitHub 会自动预填）。
+- 例外：Git commit / PR 文案、源码与架构文档不受此限；专有名词（GitHub Releases、.NET 8 等）可保留英文。
+
+| 行为 | 判定 |
+|------|------|
+| 远程 Release body 为英文或未翻译 | 违规，改中文后再发布 |
+| 跳过 `.work/release-notes/` 直接在 GitHub 写英文 | 违规 |
+
 ## 本地磁盘卫生
 
 - 全量 `Run-Tests.ps1` / `build.cmd` / 打安装包后，工作区出现 **数百 MB～约 1 GB** 的 `bin/`、`obj/`、`installer/staging/`、`dist/` 等本地产物属正常现象（均已 `.gitignore`，不入库）。

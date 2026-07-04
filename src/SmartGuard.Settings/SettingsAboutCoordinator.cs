@@ -12,9 +12,7 @@ internal sealed class SettingsAboutCoordinator
   {
     var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
     if (version is null) return "1.0.0";
-    if (version.Build > 0)
-      return $"{version.Major}.{version.Minor}.{version.Build}";
-    return $"{version.Major}.{version.Minor}";
+    return $"{version.Major}.{version.Minor}.{version.Build}";
   }
 
   internal void WireAboutPage(Window window, TextBlock txtVersion, Func<string?> getGitHubToken)

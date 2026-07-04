@@ -20,10 +20,4 @@ public class GuardianRecoveryTests
       .Should().Be(@"D:\SmartGuard\bin\SmartGuard.Engine.exe");
   }
 
-  [Fact]
-  public void BuildSchTasksRunArguments_targets_guardian_task()
-  {
-    GuardianRecovery.BuildSchTasksRunArguments()
-      .Should().Be("/Run /TN \"SmartGuard Guardian\"");
-  }
 }

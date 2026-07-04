@@ -6,6 +6,7 @@ using System.Windows.Media.Effects;
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
 public class AppDialogTests
 {
     [Fact]
@@ -159,7 +160,7 @@ public class AppDialogTests
                 cancel.ApplyTemplate();
 
                 cancel.Template!.FindName("bd", cancel).Should().BeOfType<Border>(
-                    "cancel button should use AppDialog text button template");
+                    "cancel button should use secondary button template");
                 var triggers = cancel.Template.Triggers.OfType<Trigger>().ToList();
                 triggers.Should().Contain(t => t.Property == UIElement.IsMouseOverProperty);
                 triggers.Should().Contain(t => t.Property == Button.IsPressedProperty);
@@ -172,7 +173,46 @@ public class AppDialogTests
     }
 
     [Fact]
-    public void Confirm_cancel_button_keeps_text_style()
+    public void Confirm_cancel_button_uses_secondary_style_when_owner_has_resources()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var owner = CreateStyledOwnerWindow();
+            try
+            {
+                var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Warning, showCancel: true);
+                var cancel = GetActionButtons(dialog)[0];
+                cancel.Style.Should().BeSameAs(owner.TryFindResource("SecondaryButton") as Style);
+                cancel.BorderThickness.Left.Should().Be(1);
+            }
+            finally
+            {
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Confirm_primary_button_uses_primary_style_when_owner_has_resources()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var owner = CreateStyledOwnerWindow();
+            try
+            {
+                var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Warning, showCancel: true);
+                var primary = GetActionButtons(dialog)[1];
+                primary.Style.Should().BeSameAs(owner.TryFindResource("PrimaryButton") as Style);
+            }
+            finally
+            {
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Confirm_cancel_button_keeps_secondary_style()
     {
         WpfStaTestHost.Run(() =>
         {
@@ -182,7 +222,8 @@ public class AppDialogTests
                 var dialog = AppDialog.CreateDialogWindow(owner, "Title", "Body", AppDialogSeverity.Warning, showCancel: true);
                 var buttons = GetActionButtons(dialog);
                 buttons.Should().HaveCount(2);
-                IsTransparentBackground(buttons[0].Background).Should().BeTrue();
+                IsFilledBackground(buttons[0].Background).Should().BeTrue();
+                buttons[0].BorderThickness.Left.Should().Be(1);
                 IsFilledBackground(buttons[1].Background).Should().BeTrue();
             }
             finally
@@ -222,6 +263,14 @@ public class AppDialogTests
         };
         WpfStaTestHost.ShowAndWait(owner);
         return owner;
+    }
+
+    private static Window CreateStyledOwnerWindow()
+    {
+        var owner = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+        owner.Should().NotBeNull(error);
+        WpfStaTestHost.ShowAndWait(owner!);
+        return owner!;
     }
 
     private static List<Button> GetActionButtons(Window dialog)

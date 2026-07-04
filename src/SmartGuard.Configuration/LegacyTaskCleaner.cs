@@ -5,16 +5,10 @@ namespace SmartGuard.Configuration;
 
 public static class LegacyTaskCleaner
 {
-    private static readonly string[] LegacyTaskNames =
-    {
-        "SmartPowerPlan Guardian",
-        "SmartPowerPlan Tray"
-    };
-
     public static void CleanLegacyTasks()
     {
         StopLegacyProcesses();
-        foreach (var name in LegacyTaskNames)
+        foreach (var name in LegacyScheduledTaskCatalog.TaskNames)
         {
             TryDeleteTask(name);
         }

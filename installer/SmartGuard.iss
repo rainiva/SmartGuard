@@ -11,11 +11,17 @@
   #define RuntimeInstallerFile "windowsdesktop-runtime-8.0.18-win-x64.exe"
 #endif
 
+#include "generated\SmartGuard.Distribution.Constants.iss.inc"
+
 #define MyAppName "SmartGuard"
 #define MyAppPublisher "rainiva"
 #define MyAppURL "https://github.com/rainiva/SmartGuard"
-#define MyAppExeName "SmartGuard.Tray.exe"
-#define MySetupIcon "..\lib\SmartGuard.ico"
+#define MySetupIcon "..\assets\branding\SmartGuard.ico"
+#define ConfigFileName "SmartGuard.config.json"
+#define StatusFileName "SmartGuard.status.json"
+#define DefaultLogFileName "SmartGuard.log"
+#define StartupLogFileName "SmartGuard.startup.log"
+#define InitMarkerFileName ".SmartGuard.initialized"
 
 [Setup]
 AppId={{8F3C2A1B-4D5E-6F70-8A9B-0C1D2E3F4A5B}
@@ -24,8 +30,6 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
-DefaultGroupName={#MyAppName}
-DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
 DisableDirPage=auto
 LicenseFile={#StagingDir}\license_zh-CN.txt
@@ -40,7 +44,7 @@ CloseApplications=no
 RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\lib\SmartGuard.ico
+UninstallDisplayIcon={app}\bin\{#TrayExeName}
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
@@ -50,35 +54,25 @@ Name: "desktopicon"; Description: "创建桌面快捷方式（托盘）"; GroupD
 Name: "launchtray"; Description: "安装完成后启动托盘"; GroupDescription: "安装后:"; Flags: checkedonce
 
 [Files]
-Source: "{#StagingDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
-Source: "{#StagingDir}\lib\SmartGuard.ico"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "{#StagingDir}\lib\SmartGuard.Settings.xaml"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "{#StagingDir}\license_zh-CN.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+#include "generated\SmartGuard.Distribution.Files.iss.inc"
 Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestName: "{#RuntimeInstallerFile}"; Flags: deleteafterinstall; Check: ShouldInstallDotNet
 
-[Icons]
-Name: "{group}\{#MyAppName} 托盘"; Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""
-Name: "{group}\{#MyAppName} 设置"; Filename: "{app}\bin\SmartGuard.Settings.exe"; Parameters: "--root ""{app}"""
-Name: "{group}\{#MyAppName} 日志"; Filename: "{app}\bin\SmartGuard.Settings.exe"; Parameters: "--root ""{app}"" --page logs"
-Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Tasks: desktopicon
+[InstallDelete]
+#include "generated\SmartGuard.Distribution.LegacyCleanup.iss.inc"
 
 [Run]
-Filename: "{tmp}\{#RuntimeInstallerFile}"; Parameters: "/install /quiet /norestart"; StatusMsg: "正在安装 .NET 8 桌面运行时..."; Check: ShouldInstallDotNet; Flags: waituntilterminated
-Filename: "{app}\bin\SmartGuard.Engine.exe"; Parameters: "--root ""{app}"" --install --skip-publish"; StatusMsg: "正在注册计划任务..."; Flags: waituntilterminated
-Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""SmartGuard Guardian"""; StatusMsg: "正在启动核心服务..."; Flags: runhidden waituntilterminated
-Filename: "{app}\bin\{#MyAppExeName}"; Parameters: "--root ""{app}"""; Description: "启动 {#MyAppName} 托盘"; Flags: nowait postinstall skipifsilent; Tasks: launchtray
+#include "generated\SmartGuard.Distribution.Run.iss.inc"
 
 [UninstallDelete]
 ; Program files (always deleted)
-Type: files; Name: "{app}\.SmartGuard.initialized"
+Type: files; Name: "{app}\{#InitMarkerFileName}"
 Type: filesandordirs; Name: "{app}\bin"
-Type: filesandordirs; Name: "{app}\lib"
+#include "generated\SmartGuard.Distribution.LegacyCleanup.iss.inc"
 ; User data (optional, based on user choice)
-Type: files; Name: "{app}\SmartGuard.config.json"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\SmartGuard.log"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\SmartGuard.startup.log"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\SmartGuard.status.json"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#ConfigFileName}"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#DefaultLogFileName}"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#StartupLogFileName}"; Check: ShouldDeleteUserData
+Type: files; Name: "{app}\{#StatusFileName}"; Check: ShouldDeleteUserData
 
 [Code]
 var
@@ -105,10 +99,7 @@ begin
     if LoadStringFromFile(OutputFile, Output) then
     begin
       Result :=
-        (Pos('SmartGuard.Tray.exe', Output) > 0) or
-        (Pos('SmartGuard.Engine.exe', Output) > 0) or
-        (Pos('SmartGuard.LogViewer.exe', Output) > 0) or
-        (Pos('SmartGuard.Settings.exe', Output) > 0);
+#include "generated\SmartGuard.Distribution.Processes.iss.inc"
     end;
   end;
   DeleteFile(OutputFile);
@@ -145,7 +136,7 @@ begin
   if RootPath = '' then
     Exit;
 
-  EngineExe := RootPath + '\bin\SmartGuard.Engine.exe';
+  EngineExe := RootPath + '\bin\{#EngineExeName}';
   if not FileExists(EngineExe) then
     Exit;
 
@@ -266,13 +257,13 @@ var
   FindRec: TFindRec;
   LogPattern: String;
 begin
-  DeleteFile(ExpandConstant('{app}\SmartGuard.config.json'));
-  DeleteFile(ExpandConstant('{app}\SmartGuard.log'));
-  DeleteFile(ExpandConstant('{app}\SmartGuard.startup.log'));
-  DeleteFile(ExpandConstant('{app}\SmartGuard.status.json'));
+  DeleteFile(ExpandConstant('{app}\{#ConfigFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#DefaultLogFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#StartupLogFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#StatusFileName}'));
 
   { Also remove rotated log backups such as SmartGuard.log.20260619.bak }
-  LogPattern := ExpandConstant('{app}\SmartGuard.log.*.bak');
+  LogPattern := ExpandConstant('{app}\{#DefaultLogFileName}.*.bak');
   if FindFirst(LogPattern, FindRec) then
   begin
     try
@@ -306,10 +297,10 @@ begin
       stop processes one last time and delete them. This covers cases where
       the engine was restarted between usUninstall and usPostUninstall. }
     if DeleteUserData and
-       (FileExists(ExpandConstant('{app}\SmartGuard.config.json')) or
-        FileExists(ExpandConstant('{app}\SmartGuard.log')) or
-        FileExists(ExpandConstant('{app}\SmartGuard.startup.log')) or
-        FileExists(ExpandConstant('{app}\SmartGuard.status.json'))) then
+       (FileExists(ExpandConstant('{app}\{#ConfigFileName}')) or
+        FileExists(ExpandConstant('{app}\{#DefaultLogFileName}')) or
+        FileExists(ExpandConstant('{app}\{#StartupLogFileName}')) or
+        FileExists(ExpandConstant('{app}\{#StatusFileName}'))) then
     begin
       TryStopSmartGuardProcesses();
       DeleteUserDataFiles;

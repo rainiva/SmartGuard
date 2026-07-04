@@ -1,4 +1,5 @@
 using FluentAssertions;
+using SmartGuard.Configuration.Distribution;
 using SmartGuard.Packaging.Commands;
 using SmartGuard.Packaging.Runtime;
 
@@ -17,20 +18,25 @@ public class StageCommandTests : IDisposable
     }
 
     [Fact]
-    public void Run_creates_valid_staging_with_fake_dependencies()
+    public void Run_creates_valid_staging_from_distribution_manifest()
     {
-        // Arrange: fake repo with bin + lib + installer/version + license
+        // Arrange: fake repo with published outputs + manifest-owned payload files
+        DesktopDistributionManifest.PublishedProjects
+            .Select(project => project.OutputFileName)
+            .Should()
+            .NotContain("SmartGuard.LogViewer.exe");
         Directory.CreateDirectory(Path.Combine(_repoRoot, "bin"));
-        File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.Engine.exe"), "exe");
-        File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.Tray.exe"), "exe");
-        File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.LogViewer.exe"), "exe");
-        File.WriteAllText(Path.Combine(_repoRoot, "bin", "SmartGuard.Settings.exe"), "exe");
-        Directory.CreateDirectory(Path.Combine(_repoRoot, "lib"));
-        File.WriteAllText(Path.Combine(_repoRoot, "lib", "SmartGuard.ico"), "ico");
-        File.WriteAllText(Path.Combine(_repoRoot, "lib", "SmartGuard.Settings.xaml"), "xaml");
+        foreach (var project in DesktopDistributionManifest.PublishedProjects)
+            File.WriteAllText(Path.Combine(_repoRoot, "bin", project.OutputFileName), "exe");
+
         Directory.CreateDirectory(Path.Combine(_repoRoot, "installer"));
         File.WriteAllText(Path.Combine(_repoRoot, "installer", "version.txt"), "1.0.25");
-        File.WriteAllText(Path.Combine(_repoRoot, "installer", "license_zh-CN.txt"), "license");
+        foreach (var payload in DesktopDistributionManifest.PayloadEntries)
+        {
+            var sourcePath = Path.Combine(_repoRoot, payload.SourceRelativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+            File.WriteAllText(sourcePath, "payload");
+        }
 
         var staging = Path.Combine(_repoRoot, "installer", "staging");
         var publishCalls = new List<(string root, string cfg)>();
@@ -43,8 +49,10 @@ public class StageCommandTests : IDisposable
         // Assert
         exit.Should().Be(0);
         publishCalls.Should().ContainSingle();
-        File.Exists(Path.Combine(staging, "bin", "SmartGuard.Engine.exe")).Should().BeTrue();
-        File.Exists(Path.Combine(staging, "lib", "SmartGuard.ico")).Should().BeTrue();
+        foreach (var requiredPath in DesktopDistributionManifest.RequiredStagingPaths)
+            File.Exists(Path.Combine(staging, requiredPath)).Should().BeTrue(requiredPath);
+        Directory.Exists(Path.Combine(staging, "lib")).Should().BeFalse();
+        File.Exists(Path.Combine(staging, "bin", "SmartGuard.LogViewer.exe")).Should().BeFalse();
         File.ReadAllText(Path.Combine(staging, "VERSION.txt")).Should().Be("1.0.25");
         File.ReadAllText(Path.Combine(staging, "redist", "runtime-installer.txt")).Should().Be("windowsdesktop-runtime-8.0.18-win-x64.exe");
         fakeDownloader.Calls.Should().ContainSingle();

@@ -2,16 +2,8 @@
 chcp 65001 >nul
 setlocal EnableExtensions
 cd /d "%~dp0"
-title SmartGuard Tray
-
 REM Dev helper: starts Tray directly. Production uses scheduled task SmartGuard Tray.
-if not exist "%~dp0bin\SmartGuard.Tray.exe" (
-    echo.
-    echo ERROR: SmartGuard.Tray.exe not found.
-    echo Run build.cmd or reinstall SmartGuard.
-    echo.
-    pause
-    exit /b 1
-)
-
-start "" "%~dp0bin\SmartGuard.Tray.exe" --root "%~dp0"
+"%~dp0bin\SmartGuard.Cli.exe" start tray --root "%~dp0"
+set ERR=%ERRORLEVEL%
+if %ERR% neq 0 pause
+exit /b %ERR%

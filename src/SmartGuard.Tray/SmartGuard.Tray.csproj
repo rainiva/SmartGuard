@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>SmartGuard.Tray</RootNamespace>
     <AssemblyName>SmartGuard.Tray</AssemblyName>
-    <ApplicationIcon>..\..\lib\SmartGuard.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\branding\SmartGuard.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

@@ -15,12 +15,12 @@ public sealed class GuardianLoop
   private readonly BrightnessService _brightness = new();
   private readonly HashSet<string> _tickLogFingerprints = new(StringComparer.OrdinalIgnoreCase);
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
-  private readonly Dictionary<string, int> _exceptionCounts = new();
   private readonly StatusPublisher _publisher;
   private readonly GuardConfigRepository _configRepository;
   private readonly GuardianLoopIterationState _iterationState = new();
   private readonly GuardianIterationRunner _iterationRunner;
-  private DateTime _exceptionWindowStart = DateTime.MinValue;
+  private readonly GuardianFirstRunInitializer _firstRunInitializer;
+  private readonly GuardianExceptionStormHandler _exceptionStormHandler;
   private bool _powerCfgBrightnessSupported = true;
 
   public GuardianLoop(
@@ -48,6 +48,8 @@ public sealed class GuardianLoop
     _publisher = new StatusPublisher(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
     _powerCfgBrightnessSupported = powerCfgBrightnessSupported;
+    _firstRunInitializer = new GuardianFirstRunInitializer(_initMarkerPath, _brightness, WriteLog);
+    _exceptionStormHandler = new GuardianExceptionStormHandler(_iterationState, WriteLog);
     _iterationRunner = new GuardianIterationRunner(
       _idleTracker,
       _brightness,
@@ -64,7 +66,7 @@ public sealed class GuardianLoop
   {
     EnsureConfigExists();
     var config = LoadConfig();
-    InitializeIfNeeded(config);
+    _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
     WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{config.LogFile}");
 
     using var powerListener = new PowerEventWakeListener(HandlePowerEvent);
@@ -81,7 +83,7 @@ public sealed class GuardianLoop
         try
         {
           var cfg = LoadConfig();
-          TrackAndLogException(ex, cfg);
+          _exceptionStormHandler.TrackAndLogException(ex, cfg);
         }
         catch
         {
@@ -116,34 +118,6 @@ public sealed class GuardianLoop
     while (_wakeSignal.Wait(0, cancellationToken)) { }
   }
 
-  private void InitializeIfNeeded(GuardConfig config)
-  {
-    if (File.Exists(_initMarkerPath)) return;
-    WriteLog(config, LogLevel.Info, "INIT: 开始首次初始化...");
-    _powerCfgBrightnessSupported = PowerCfgExecutor.IsBrightnessSupported(config.BalancedPlanGuid);
-    if (_powerCfgBrightnessSupported)
-    {
-      foreach (var g in new[] { config.ActivePlanGuid, config.BalancedPlanGuid, config.PowerSaverPlanGuid })
-        PowerCfgExecutor.DisableAdaptiveBrightness(g);
-
-      var b = _brightness.GetBrightness();
-      if (b >= 0)
-      {
-        foreach (var g in new[] { config.ActivePlanGuid, config.BalancedPlanGuid, config.PowerSaverPlanGuid })
-          PowerCfgExecutor.SyncPlanBrightness(g, b);
-        WriteLog(config, LogLevel.Info, $"INIT: powercfg 三计划亮度对齐为 {b}%");
-      }
-    }
-    else
-    {
-      WriteLog(config, LogLevel.Info, "INIT: 本机不支持 powercfg 亮度项，已切换为 WMI-only 模式（切计划后写回亮度）");
-    }
-
-    WriteLog(config, LogLevel.Info, "INIT: 请手动关闭 CABC 与节电模式降亮度");
-    File.WriteAllText(_initMarkerPath, DateTime.Now.ToString("s"));
-    WriteLog(config, LogLevel.Info, "INIT: 首次初始化完成");
-  }
-
   private GuardConfig LoadConfig() => _configRepository.LoadOrDefault(_rootPath);
 
   private void EnsureConfigExists()
@@ -164,34 +138,6 @@ public sealed class GuardianLoop
     catch
     {
       FileLogger.Write(LogLevel.Warn, _fallbackLogPath, $"[LOG-FALLBACK] {message}", long.MaxValue);
-    }
-  }
-
-  private void TrackAndLogException(Exception ex, GuardConfig cfg)
-  {
-    const int windowSeconds = 120;
-    const int threshold = 5;
-    var key = ex.GetType().Name;
-    var now = DateTime.UtcNow;
-    if (now - _exceptionWindowStart > TimeSpan.FromSeconds(windowSeconds))
-    {
-      _exceptionWindowStart = now;
-      _exceptionCounts.Clear();
-    }
-
-    _exceptionCounts[key] = _exceptionCounts.GetValueOrDefault(key) + 1;
-    var count = _exceptionCounts[key];
-    var suffix = count >= threshold
-      ? $" (同类异常 {count} 次，将重新初始化状态以恢复)"
-      : string.Empty;
-    WriteLog(cfg, LogLevel.Error, ex.Message + suffix);
-    if (count >= threshold)
-    {
-      _iterationState.LastKnownGuid = null;
-      _iterationState.LastBrightness = null;
-      _iterationState.ScriptJustSwitched = false;
-      _exceptionWindowStart = DateTime.MinValue;
-      _exceptionCounts.Clear();
     }
   }
 }

@@ -32,6 +32,24 @@ public class EngineLifecycleTests
     killProcessIndex.Should().BeLessThan(deleteTaskIndex);
   }
 
+  [Fact]
+  public void StopProcesses_source_skips_the_current_uninstall_process()
+  {
+    var source = ReadEngineLifecycleSource();
+
+    source.Should().Contain("Environment.ProcessId");
+    source.Should().Contain("process.Id == currentProcessId");
+  }
+
+  [Fact]
+  public void StopProcesses_source_uses_taskkill_fallback_inside_engine_lifecycle()
+  {
+    var source = ReadEngineLifecycleSource();
+
+    source.Should().Contain("taskkill.exe");
+    source.Should().Contain("/F /T /PID");
+  }
+
   private static string ReadEngineLifecycleSource()
   {
     var root = Path.GetFullPath(AppContext.BaseDirectory);

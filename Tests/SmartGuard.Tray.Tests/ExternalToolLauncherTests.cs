@@ -36,7 +36,7 @@ public class ExternalToolLauncherTests
   }
 
   [Fact]
-  public void OpenLogViewer_tries_activate_settings_before_starting_process()
+  public void OpenLogsPage_tries_activate_settings_before_starting_process()
   {
     var launcher = File.ReadAllText(
       Path.GetFullPath(Path.Combine(
@@ -64,14 +64,15 @@ public class ExternalToolLauncherTests
   }
 
   [Fact]
-  public void OpenLogViewer_launches_settings_with_log_page_argument()
+  public void OpenLogsPage_launches_settings_with_log_page_argument()
   {
     var tray = File.ReadAllText(
       Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory,
         "..", "..", "..", "..", "..",
         "src", "SmartGuard.Tray", "Infrastructure.cs")));
-    tray.Should().Contain("SettingsLogsPageLauncher.Open");
+    tray.Should().Contain("OpenLogsPage");
+    tray.Should().NotContain("OpenLogViewer");
 
     var launcher = File.ReadAllText(
       Path.GetFullPath(Path.Combine(
@@ -83,7 +84,7 @@ public class ExternalToolLauncherTests
   }
 
   [Fact]
-  public void OpenLogViewer_does_not_fall_back_to_powershell_scripts()
+  public void OpenLogsPage_does_not_fall_back_to_powershell_scripts()
   {
     var source = File.ReadAllText(
       Path.GetFullPath(Path.Combine(

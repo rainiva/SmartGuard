@@ -99,7 +99,10 @@ public sealed class LogViewListPresenter
     {
         ScrollViewer = FindScrollViewer(listBox);
         if (ScrollViewer is not null)
+        {
             ScrollBarAutoHide.Attach(ScrollViewer);
+            ScrollViewerSmoothScroll.Attach(ScrollViewer);
+        }
     }
 
     private LogViewApplyResult AppendTail(LogViewUpdatePlan plan)

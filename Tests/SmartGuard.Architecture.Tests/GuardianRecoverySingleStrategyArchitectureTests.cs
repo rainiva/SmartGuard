@@ -10,6 +10,6 @@ public class GuardianRecoverySingleStrategyArchitectureTests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/GuardianRecovery.cs");
     source.Should().NotContain("TryLaunchEngine");
     source.Should().NotContain("GetEngineExecutablePath(root)");
-    source.Should().Contain("schtasks.exe");
+    source.Should().NotContain("schtasks.exe");
   }
 }

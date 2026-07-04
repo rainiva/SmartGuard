@@ -20,21 +20,22 @@ public class SettingsLogsPageLauncherArchitectureTests
   }
 
   [Fact]
-  public void LogViewer_and_Tray_must_delegate_to_SettingsLogsPageLauncher()
+  public void Tray_and_cli_must_delegate_to_SettingsLogsPageLauncher_without_legacy_LogViewer_entrypoints()
   {
-    var redirect = SourceScanHelper.ReadSource("src/SmartGuard.LogViewer/LogViewerEntryRedirect.cs");
-    redirect.Should().Contain("SettingsLogsPageLauncher");
-    redirect.Should().NotContain("Process.Start");
-
     var tray = SourceScanHelper.ReadSource("src/SmartGuard.Tray/Infrastructure.cs");
-    var openLogViewer = ExtractOpenLogViewerMethod(tray);
-    openLogViewer.Should().Contain("SettingsLogsPageLauncher");
-    openLogViewer.Should().NotContain("Process.Start");
+    tray.Should().NotContain("OpenLogViewer");
+    var openLogsPage = ExtractOpenLogsPageMethod(tray);
+    openLogsPage.Should().Contain("SettingsLogsPageLauncher");
+    openLogsPage.Should().NotContain("Process.Start");
+
+    var cli = SourceScanHelper.ReadSource("src/SmartGuard.Cli/CliOpenHandlers.cs");
+    cli.Should().Contain("SettingsLogsPageLauncher.Open(root)");
+    cli.Should().NotContain("SmartGuard.LogViewer");
   }
 
-  private static string ExtractOpenLogViewerMethod(string source)
+  private static string ExtractOpenLogsPageMethod(string source)
   {
-    const string marker = "public static void OpenLogViewer";
+    const string marker = "public static void OpenLogsPage";
     var start = source.IndexOf(marker, StringComparison.Ordinal);
     start.Should().BeGreaterThanOrEqualTo(0);
     var brace = source.IndexOf('{', start);
@@ -50,6 +51,6 @@ public class SettingsLogsPageLauncherArchitectureTests
       }
     }
 
-    throw new InvalidOperationException("Could not extract OpenLogViewer method");
+    throw new InvalidOperationException("Could not extract OpenLogsPage method");
   }
 }

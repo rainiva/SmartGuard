@@ -4,6 +4,7 @@ using SmartGuard.Configuration;
 namespace SmartGuard.Configuration.Tests;
 
 [Collection("PowerPlanCatalogProvider")]
+[Trait("Category", "Live")]
 public class LiveCatalogProbeTests
 {
   [Fact]

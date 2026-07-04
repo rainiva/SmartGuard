@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using SmartGuard.LogViewer;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
 

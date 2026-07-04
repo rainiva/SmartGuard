@@ -4,6 +4,7 @@ using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.PerformanceTests;
 
+[Trait("Category", "Performance")]
 public class EnginePerformanceTests : IDisposable
 {
     private readonly string _repoRoot;

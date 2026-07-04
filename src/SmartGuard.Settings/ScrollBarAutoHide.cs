@@ -18,6 +18,16 @@ public static class ScrollBarAutoHide
         typeof(DispatcherTimer),
         typeof(ScrollBarAutoHide));
 
+    private static readonly DependencyProperty VerticalScrollBarProperty = DependencyProperty.RegisterAttached(
+        "VerticalScrollBar",
+        typeof(ScrollBar),
+        typeof(ScrollBarAutoHide));
+
+    private static readonly DependencyProperty HorizontalScrollBarProperty = DependencyProperty.RegisterAttached(
+        "HorizontalScrollBar",
+        typeof(ScrollBar),
+        typeof(ScrollBarAutoHide));
+
     internal static TimeSpan HideDelay { get; set; } = TimeSpan.FromMilliseconds(800);
 
     public static bool GetIsEnabled(DependencyObject element) => (bool)element.GetValue(IsEnabledProperty);
@@ -103,7 +113,7 @@ public static class ScrollBarAutoHide
 
     private static void InitializeScrollBars(ScrollViewer scrollViewer)
     {
-        scrollViewer.ApplyTemplate();
+        CacheScrollBars(scrollViewer);
         HideScrollBars(scrollViewer);
         RefreshHorizontalScrollBar(scrollViewer);
     }
@@ -133,10 +143,43 @@ public static class ScrollBarAutoHide
 
     private static ScrollBar? FindScrollBar(ScrollViewer scrollViewer, bool vertical)
     {
-        scrollViewer.ApplyTemplate();
-        var partName = vertical ? "PART_VerticalScrollBar" : "PART_HorizontalScrollBar";
-        return scrollViewer.Template?.FindName(partName, scrollViewer) as ScrollBar;
+        if (vertical)
+        {
+            var verticalScrollBar = scrollViewer.GetValue(VerticalScrollBarProperty) as ScrollBar;
+            if (verticalScrollBar is not null)
+                return verticalScrollBar;
+        }
+        else
+        {
+            var horizontalScrollBar = scrollViewer.GetValue(HorizontalScrollBarProperty) as ScrollBar;
+            if (horizontalScrollBar is not null)
+                return horizontalScrollBar;
+        }
+
+        CacheScrollBars(scrollViewer);
+        return vertical
+            ? scrollViewer.GetValue(VerticalScrollBarProperty) as ScrollBar
+            : scrollViewer.GetValue(HorizontalScrollBarProperty) as ScrollBar;
     }
+
+    private static void CacheScrollBars(ScrollViewer scrollViewer)
+    {
+        scrollViewer.ApplyTemplate();
+        SetCachedScrollBar(
+            scrollViewer,
+            VerticalScrollBarProperty,
+            scrollViewer.Template?.FindName("PART_VerticalScrollBar", scrollViewer) as ScrollBar);
+        SetCachedScrollBar(
+            scrollViewer,
+            HorizontalScrollBarProperty,
+            scrollViewer.Template?.FindName("PART_HorizontalScrollBar", scrollViewer) as ScrollBar);
+    }
+
+    private static void SetCachedScrollBar(
+        ScrollViewer scrollViewer,
+        DependencyProperty property,
+        ScrollBar? scrollBar)
+        => scrollViewer.SetValue(property, scrollBar);
 
     private static void RestartHideTimer(ScrollViewer scrollViewer)
     {

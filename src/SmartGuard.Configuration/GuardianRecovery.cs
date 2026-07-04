@@ -12,9 +12,6 @@ public static class GuardianRecovery
   public static string GetEngineExecutablePath(string root)
     => SmartGuardPaths.EngineExe(root);
 
-  public static string BuildSchTasksRunArguments()
-    => $"/Run /TN \"{ScheduledTaskRegistrar.GuardianTaskName}\"";
-
   public static bool ShouldSkipScheduledTaskRecovery(int enginePid)
   {
     if (enginePid <= 0)
@@ -49,25 +46,6 @@ public static class GuardianRecovery
     if (ShouldSkipScheduledTaskRecovery(root))
       return;
 
-    TryRunScheduledTask();
-  }
-
-  private static void TryRunScheduledTask()
-  {
-    try
-    {
-      using var process = Process.Start(new ProcessStartInfo
-      {
-        FileName = "schtasks.exe",
-        Arguments = BuildSchTasksRunArguments(),
-        UseShellExecute = false,
-        CreateNoWindow = true,
-      });
-      process?.WaitForExit();
-    }
-    catch
-    {
-      // tray recovery is best-effort
-    }
+    GuardianTaskRunner.Run();
   }
 }
