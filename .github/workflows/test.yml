@@ -25,6 +25,17 @@ jobs:
           python -m pip install Pillow
           choco install ripgrep -y
           rg --version
+      - name: Restore and publish desktop suite
+        shell: pwsh
+        run: |
+          . ./scripts/Invoke-SmartGuardDotNetTests.ps1
+          $projects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot (Get-Location).Path
+          foreach ($project in $projects) {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          ./build.cmd Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run SmartGuard test suite
         shell: pwsh
         run: |
