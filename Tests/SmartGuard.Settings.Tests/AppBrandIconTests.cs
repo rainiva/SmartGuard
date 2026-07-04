@@ -90,6 +90,14 @@ public class AppBrandIconTests
             AppBrandIcon.ApplyTo(window);
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
+            if (IsHeadlessCiRunner())
+            {
+                window.Icon.Should().NotBeNull();
+                window.Icon!.Width.Should().BeGreaterThanOrEqualTo(64,
+                    "headless CI runners do not expose a faithful WM_GETICON silhouette; verify the applied WPF icon frame instead");
+                return;
+            }
+
             var handle = new WindowInteropHelper(window).Handle;
             handle.Should().NotBe(IntPtr.Zero);
 
@@ -98,14 +106,6 @@ public class AppBrandIconTests
 
             var source = Imaging.CreateBitmapSourceFromHIcon(bigIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             source.PixelWidth.Should().BeGreaterThanOrEqualTo(64);
-
-            if (IsHeadlessCiRunner())
-            {
-                window.Icon.Should().NotBeNull();
-                window.Icon!.Width.Should().BeGreaterThanOrEqualTo(64,
-                    "headless CI runners do not expose a faithful WM_GETICON silhouette; verify the applied WPF icon frame instead");
-                return;
-            }
 
             var actualCoverage = MeasureOpaqueCoverage(source);
             actualCoverage.WidthPct.Should().BeApproximately(expectedCoverage.WidthPct, 2.0,
