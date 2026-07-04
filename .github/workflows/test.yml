@@ -15,6 +15,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CI dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install Pillow
+          choco install ripgrep -y
+          rg --version
       - name: Run SmartGuard test suite
         shell: pwsh
         run: |
