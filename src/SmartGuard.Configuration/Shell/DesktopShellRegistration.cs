@@ -59,9 +59,7 @@ public static class DesktopShellRegistration
 
   private static DesktopShellShortcut CreateShortcut(string shortcutPath, string targetPath, string arguments)
   {
-    var iconLocation = File.Exists(targetPath)
-      ? $"{targetPath},0"
-      : targetPath;
+    var iconLocation = $"{targetPath},0";
     return new DesktopShellShortcut(
       shortcutPath,
       targetPath,
