@@ -138,8 +138,13 @@ function Invoke-SmartGuardDotNetTestJobs {
             [Console]::InputEncoding = [System.Text.Encoding]::UTF8
             $OutputEncoding = [System.Text.Encoding]::UTF8
             $env:DOTNET_CONSOLE_ENCODING = 'utf-8'
-            if ((chcp) -notmatch '65001') {
-                chcp 65001 | Out-Null
+            try {
+                if ((chcp) -notmatch '65001') {
+                    chcp 65001 | Out-Null
+                }
+            }
+            catch {
+                # Background jobs on CI runners may not have an interactive console for chcp.
             }
 
             $args = @('test', $ProjectPath, '--nologo', '-v', 'q')
