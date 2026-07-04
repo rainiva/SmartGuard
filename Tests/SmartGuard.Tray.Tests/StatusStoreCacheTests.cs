@@ -48,6 +48,7 @@ public class StatusStoreCacheTests
             var store = new StatusStore(path);
             store.Read()!.currentPlan.Should().Be("平衡");
 
+            Thread.Sleep(100);
             File.WriteAllText(path, JsonSerializer.Serialize(new StatusPayload { currentPlan = "节能" }));
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
             StatusPayload? updated = null;
