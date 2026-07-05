@@ -10,6 +10,7 @@ namespace SmartGuard.Configuration;
 public static class BrandIconLoader
 {
   private const string EmbeddedResourceName = "SmartGuard.Configuration.Assets.Branding.SmartGuard.ico";
+  private const string EmbeddedToastResourceName = "SmartGuard.Configuration.Assets.Branding.SmartGuard-toast.png";
   private const int WinFormsTaskbarIconFrameSize = 32;
   private const int WpfWindowIconFrameSize = 64;
 
@@ -55,14 +56,12 @@ public static class BrandIconLoader
 
   public static void SaveEmbeddedIconToFile(string path)
   {
-    var directory = Path.GetDirectoryName(path);
-    if (!string.IsNullOrEmpty(directory))
-      Directory.CreateDirectory(directory);
+    SaveEmbeddedFileToFile(path, OpenEmbeddedIconStream(), "Embedded SmartGuard brand icon is missing.");
+  }
 
-    using var stream = OpenEmbeddedIconStream()
-      ?? throw new InvalidOperationException("Embedded SmartGuard brand icon is missing.");
-    using var fileStream = File.Create(path);
-    stream.CopyTo(fileStream);
+  public static void SaveEmbeddedToastIconToFile(string path)
+  {
+    SaveEmbeddedFileToFile(path, OpenEmbeddedToastIconStream(), "Embedded SmartGuard toast icon is missing.");
   }
 
   private static DrawIcon? LoadEmbeddedWinFormsIcon()
@@ -84,6 +83,21 @@ public static class BrandIconLoader
 
   private static Stream? OpenEmbeddedIconStream()
     => typeof(BrandIconLoader).Assembly.GetManifestResourceStream(EmbeddedResourceName);
+
+  private static Stream? OpenEmbeddedToastIconStream()
+    => typeof(BrandIconLoader).Assembly.GetManifestResourceStream(EmbeddedToastResourceName);
+
+  private static void SaveEmbeddedFileToFile(string path, Stream? stream, string missingMessage)
+  {
+    var directory = Path.GetDirectoryName(path);
+    if (!string.IsNullOrEmpty(directory))
+      Directory.CreateDirectory(directory);
+
+    using var sourceStream = stream
+      ?? throw new InvalidOperationException(missingMessage);
+    using var fileStream = File.Create(path);
+    sourceStream.CopyTo(fileStream);
+  }
 
   private static ImageSource? TryLoadBestWpfFrame(Stream stream)
   {

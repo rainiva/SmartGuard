@@ -54,35 +54,35 @@ public class ToastAppLogoArchitectureTests
   }
 
   [Fact]
-  public void SmartGuardPaths_must_not_define_retired_toast_png_path()
+  public void SmartGuardPaths_must_define_dedicated_toast_png_path()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SmartGuardPaths.cs");
-    source.Should().NotContain("BrandToastIconFileName",
-      "the retired toast PNG file-name constant must be removed");
-    source.Should().NotContain("BrandToastIconFile",
-      "the retired BrandToastIconFile(root) method must be removed");
-    source.Should().NotContain("SmartGuard-toast.png",
-      "the retired toast PNG literal must not remain in SmartGuardPaths");
+    source.Should().Contain("BrandToastIconFileName",
+      "SmartGuardPaths must declare a dedicated toast PNG file name so AUMID IconUri can point at a high-quality raster asset");
+    source.Should().Contain("BrandToastIconFile(",
+      "SmartGuardPaths must expose a dedicated toast PNG path helper for install-time shell registration");
+    source.Should().Contain("SmartGuard-toast.png",
+      "the dedicated toast PNG file name must stay stable for installer-owned deployment");
   }
 
   [Fact]
-  public void BrandIconLoader_must_not_provide_retired_toast_png_deploy_method()
+  public void BrandIconLoader_must_provide_toast_png_deploy_method()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/BrandIconLoader.cs");
-    source.Should().NotContain("SaveEmbeddedToastIconToFile",
-      "the retired SaveEmbeddedToastIconToFile method must be removed");
-    source.Should().NotContain("EmbeddedToastResourceName",
-      "the retired toast PNG embedded-resource constant must be removed");
-    source.Should().NotContain("OpenEmbeddedToastIconStream",
-      "the retired toast PNG stream opener must be removed");
+    source.Should().Contain("SaveEmbeddedToastIconToFile",
+      "BrandIconLoader must deploy the dedicated toast PNG during installer-owned shell registration");
+    source.Should().Contain("EmbeddedToastResourceName",
+      "BrandIconLoader must embed a dedicated toast PNG resource for IconUri deployment");
+    source.Should().Contain("OpenEmbeddedToastIconStream",
+      "BrandIconLoader must provide a dedicated toast PNG stream opener");
   }
 
   [Fact]
-  public void Configuration_csproj_must_not_embed_retired_toast_png_resource()
+  public void Configuration_csproj_must_embed_dedicated_toast_png_resource()
   {
     var csproj = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SmartGuard.Configuration.csproj");
-    csproj.Should().NotContain("SmartGuard-toast.png",
-      "the retired toast PNG EmbeddedResource must be removed from the Configuration project");
+    csproj.Should().Contain("SmartGuard-toast.png",
+      "the Configuration project must embed the dedicated toast PNG resource used by AUMID IconUri");
   }
 
   [Fact]
@@ -96,13 +96,13 @@ public class ToastAppLogoArchitectureTests
   }
 
   [Fact]
-  public void DesktopShellRegistration_must_use_brand_icon_file_for_iconUri()
+  public void DesktopShellRegistration_must_use_dedicated_toast_png_for_iconUri()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Shell/DesktopShellRegistration.cs");
-    source.Should().Contain("BrandIconFile",
-      "AUMID IconUri must point to the deployed .ico file, not the .exe");
-    source.Should().Contain("SaveEmbeddedIconToFile",
-      "the .ico consumed by AUMID IconUri must be deployed via BrandIconLoader.SaveEmbeddedIconToFile");
+    source.Should().Contain("BrandToastIconFile",
+      "AUMID IconUri must point to the dedicated deployed toast PNG, not the tray EXE or the generic .ico");
+    source.Should().Contain("SaveEmbeddedToastIconToFile",
+      "the dedicated toast PNG consumed by AUMID IconUri must be deployed via BrandIconLoader.SaveEmbeddedToastIconToFile");
     source.Should().Contain("IconUri",
       "RegisterAppUserModelId must set the IconUri registry value (the real title-bar icon source)");
     source.Should().NotContain("TrayExe(root)\";\n    if (File.Exists(iconTarget))\n      key.SetValue(\"IconUri\"",
@@ -125,5 +125,7 @@ public class ToastAppLogoArchitectureTests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/BrandIconLoader.cs");
     source.Should().Contain("SaveEmbeddedIconToFile",
       "BrandIconLoader must provide SaveEmbeddedIconToFile for install-time .ico deployment");
+    source.Should().Contain("SaveEmbeddedToastIconToFile",
+      "BrandIconLoader must also provide SaveEmbeddedToastIconToFile for install-time toast IconUri deployment");
   }
 }

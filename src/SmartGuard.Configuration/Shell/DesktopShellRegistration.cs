@@ -79,8 +79,10 @@ public static class DesktopShellRegistration
 
     var iconPath = SmartGuardPaths.BrandIconFile(root);
     BrandIconLoader.SaveEmbeddedIconToFile(iconPath);
-    if (File.Exists(iconPath))
-      key.SetValue("IconUri", iconPath, RegistryValueKind.String);
+    var toastIconPath = SmartGuardPaths.BrandToastIconFile(root);
+    BrandIconLoader.SaveEmbeddedToastIconToFile(toastIconPath);
+    if (File.Exists(toastIconPath))
+      key.SetValue("IconUri", toastIconPath, RegistryValueKind.String);
   }
 
   private static void UnregisterAppUserModelId()
