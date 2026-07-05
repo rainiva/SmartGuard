@@ -7,8 +7,9 @@ internal static class ShellLinkAppUserModelId
 {
   private const uint StgmReadWrite = 0x00000002;
 
+  // PKEY_AppUserModel_ID from the Windows property schema.
   private static readonly PropertyKey AppUserModelIdKey = new(
-    new Guid("9F4C2855-9F59-4B38-AC27-8B953B3F3C28"), 5);
+    new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
 
   public static bool Apply(string shortcutPath, string appUserModelId)
   {
