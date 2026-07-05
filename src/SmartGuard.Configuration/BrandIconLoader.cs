@@ -10,7 +10,6 @@ namespace SmartGuard.Configuration;
 public static class BrandIconLoader
 {
   private const string EmbeddedResourceName = "SmartGuard.Configuration.Assets.Branding.SmartGuard.ico";
-  private const string EmbeddedToastResourceName = "SmartGuard.Configuration.Assets.Branding.SmartGuard-toast.png";
   private const int WinFormsTaskbarIconFrameSize = 32;
   private const int WpfWindowIconFrameSize = 64;
 
@@ -66,18 +65,6 @@ public static class BrandIconLoader
     stream.CopyTo(fileStream);
   }
 
-  public static void SaveEmbeddedToastIconToFile(string path)
-  {
-    var directory = Path.GetDirectoryName(path);
-    if (!string.IsNullOrEmpty(directory))
-      Directory.CreateDirectory(directory);
-
-    using var stream = OpenEmbeddedToastIconStream()
-      ?? throw new InvalidOperationException("Embedded SmartGuard toast brand icon is missing.");
-    using var fileStream = File.Create(path);
-    stream.CopyTo(fileStream);
-  }
-
   private static DrawIcon? LoadEmbeddedWinFormsIcon()
   {
     try
@@ -97,9 +84,6 @@ public static class BrandIconLoader
 
   private static Stream? OpenEmbeddedIconStream()
     => typeof(BrandIconLoader).Assembly.GetManifestResourceStream(EmbeddedResourceName);
-
-  private static Stream? OpenEmbeddedToastIconStream()
-    => typeof(BrandIconLoader).Assembly.GetManifestResourceStream(EmbeddedToastResourceName);
 
   private static ImageSource? TryLoadBestWpfFrame(Stream stream)
   {

@@ -13,7 +13,6 @@ public static class SmartGuardPaths
   public const string InitMarkerFileName = ".SmartGuard.initialized";
   public const string ElevationDeclinedMarkerFileName = ".SmartGuard.elevation-declined";
   public const string BrandIconFileName = "SmartGuard.ico";
-  public const string BrandToastIconFileName = "SmartGuard-toast.png";
 
   public static IReadOnlyList<string> ProcessImageNames { get; } =
   [
@@ -33,7 +32,6 @@ public static class SmartGuardPaths
   public static string InitMarkerFile(string root) => Path.Combine(root, InitMarkerFileName);
   public static string ElevationDeclinedMarkerFile(string root) => Path.Combine(root, ElevationDeclinedMarkerFileName);
   public static string BrandIconFile(string root) => Path.Combine(root, "bin", BrandIconFileName);
-  public static string BrandToastIconFile(string root) => Path.Combine(root, "bin", BrandToastIconFileName);
 
   public static string ResolveLogFile(GuardConfig config, string root)
     => string.IsNullOrWhiteSpace(config.LogFile) ? DefaultLogFile(root) : config.LogFile;

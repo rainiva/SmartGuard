@@ -19,7 +19,7 @@
 | 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `CliExe` | 注册、shell、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
 | 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
 | Settings XAML | `src/SmartGuard.Settings/SmartGuard.Settings.xaml`（编译嵌入/BAML） | `SettingsXamlLoader.TryLoadEmbeddedWindow` | Settings 项目源文件 | runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` |
-| 品牌图标 | `assets/branding/official/*.png` 官方源帧 -> `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标；允许的 Windows consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=SmartGuard.ico`（安装时经 `BrandIconLoader.SaveEmbeddedIconToFile` 部署到 `{root}/bin/SmartGuard.ico`）、`appLogoOverride=SmartGuard.ico`（toast XML `<image>` 元素） | official 源帧 + canonical `.ico` + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico`；`IconUri=Tray.exe`（.exe 不被 toast 识别）；`SystemIcons.Shield`、caller-supplied fallback，或 live `assets/icon/**` 草稿树 |
+| 品牌图标 | `assets/branding/official/*.png` 官方源帧 -> `assets/branding/SmartGuard.ico`（经项目嵌入资源消费） | `BrandIconLoader`、`AppBrandIcon`、Tray 图标；允许的 Windows consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=SmartGuard.ico`（安装时经 `BrandIconLoader.SaveEmbeddedIconToFile` 部署到 `{root}/bin/SmartGuard.ico`，为 Toast 标题栏图标真源）；Toast XML 不得含 `appLogoOverride`/`<image>` | official 源帧 + canonical `.ico` + csproj 引用 | runtime 读取 `installRoot\\lib\\SmartGuard.ico`；`IconUri=Tray.exe`（.exe 不被 toast 识别）；`SystemIcons.Shield`、caller-supplied fallback，或 live `assets/icon/**` 草稿树 |
 | 初始化标记 | `SmartGuardPaths.InitMarkerFile(root)` | Engine 首次运行 | Engine | `".SmartGuard.initialized"` 字面量散落 |
 | 提升拒绝标记 | `SmartGuardPaths.ElevationDeclinedMarkerFile(root)` | Engine install/uninstall | `ElevationDeclinedMarker` | `".SmartGuard.elevation-declined"` 字面量散落 |
 | 脚本/Inno 文件名 | `SmartGuardPaths.*FileName`（C# 权威）→ `InnoDistributionManifestWriter` 生成 `installer/generated/SmartGuard.Distribution.Constants.iss.inc` | ps1/Inno | — | 脚本与 Inno 硬编码文件名；`SmartGuard.iss` 手写 live exe/task literal |
@@ -82,7 +82,7 @@
 | `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`） |
 | `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
 | `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
-| `BrandIconLoader.SaveEmbeddedIconToFile` | `SmartGuard.Configuration` | 安装时将嵌入 .ico 提取到 `{root}/bin/SmartGuard.ico`，供 AUMID `IconUri` 与 toast `appLogoOverride` 消费 |
+| `BrandIconLoader.SaveEmbeddedIconToFile` | `SmartGuard.Configuration` | 安装时将嵌入 .ico 提取到 `{root}/bin/SmartGuard.ico`，供 AUMID `IconUri`（Toast 标题栏图标真源）消费 |
 
 ---
 
@@ -308,7 +308,7 @@
 | INNO-STOP | **阻断** | `StopSmartGuardProcesses()` 只消费 `{#EngineExeName}`，不得手写 `SmartGuard.Engine.exe` |
 | ICON-EMBED | **阻断** | `TrayIconLoader` / `BrandIconLoader.LoadWinFormsIcon()` embedded-only；禁止 `SystemIcons.Shield` 与 caller-supplied fallback |
 | TRUTH-GATE | **阻断** | **implementation-path grep** 只扫 `installer/`、`src/`、活动 `scripts/`；`docs/tests may mention retired literals only as assertions or contract text` |
-| ICON-CONSUMER | **阻断** | 允许的 Windows icon consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=SmartGuard.ico`（安装时部署）、`appLogoOverride=SmartGuard-toast.png`（toast XML）；不得使用 `IconUri=Tray.exe`（.exe 不被 toast 识别）、不得指向 runtime loose `.ico` 或系统 shield fallback |
+| ICON-CONSUMER | **阻断** | 允许的 Windows icon consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=SmartGuard.ico`（安装时部署到 `{root}/bin/SmartGuard.ico`，Toast 标题栏图标真源）；Toast XML 不得包含 `appLogoOverride`/`<image>`（内容区大图，Windows 11+ 不替代标题栏图标，位置错误）；不得使用 `IconUri=Tray.exe`（.exe 不被 toast 识别）、不得指向 runtime loose `.ico` 或系统 shield fallback |
 | DOC-08 | **已关闭** | 本文档 §1/§4/§15 + `MULTI-SOURCE-GOVERNANCE-ACCEPTANCE` 最终收口终验 |
 
 ---
@@ -317,5 +317,5 @@
 
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
-| TOAST-LOGO | **已关闭** | `appLogoOverride=SmartGuard-toast.png`（安装时经 `BrandIconLoader.SaveEmbeddedToastIconToFile` 部署到 `{root}/bin/SmartGuard-toast.png`）+ toast XML `appLogoOverride` image 元素；`IconUri=Tray.exe` 废弃（.exe 不被 toast 识别） |
+| TOAST-LOGO | **已关闭** | Toast 标题栏图标由 AUMID 注册表 `IconUri` 提供（安装时 `DesktopShellRegistration.RegisterAppUserModelId` 经 `BrandIconLoader.SaveEmbeddedIconToFile` 部署 `SmartGuard.ico` 到 `{root}/bin/SmartGuard.ico`，Windows Shell 自动渲染）；Toast XML 只含 `<text>`，不含 `appLogoOverride`/`<image>`（内容区大图，位置错误，已移除）；`appLogoOverride=SmartGuard-toast.png`、`SaveEmbeddedToastIconToFile`、`BrandToastIconFile` 已废弃删除 |
 | DOC-09 | **已关闭** | 本文档 §1/§3/§15 + `ToastAppLogoArchitectureTests` 终验 |

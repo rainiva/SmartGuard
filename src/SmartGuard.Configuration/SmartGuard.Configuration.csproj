@@ -22,9 +22,6 @@
     <EmbeddedResource Include="..\..\assets\branding\SmartGuard.ico">
       <LogicalName>SmartGuard.Configuration.Assets.Branding.SmartGuard.ico</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="..\..\assets\branding\SmartGuard-toast.png">
-      <LogicalName>SmartGuard.Configuration.Assets.Branding.SmartGuard-toast.png</LogicalName>
-    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

@@ -77,9 +77,10 @@ public static class DesktopShellRegistration
       ?? throw new InvalidOperationException($"Unable to open registry key: {regPath}");
     key.SetValue("DisplayName", SmartGuardToastAppId.DisplayName, RegistryValueKind.String);
 
-    var iconTarget = SmartGuardPaths.TrayExe(root);
-    if (File.Exists(iconTarget))
-      key.SetValue("IconUri", new Uri(iconTarget).AbsoluteUri, RegistryValueKind.String);
+    var iconPath = SmartGuardPaths.BrandIconFile(root);
+    BrandIconLoader.SaveEmbeddedIconToFile(iconPath);
+    if (File.Exists(iconPath))
+      key.SetValue("IconUri", new Uri(iconPath).AbsoluteUri, RegistryValueKind.String);
   }
 
   private static void UnregisterAppUserModelId()

@@ -18,4 +18,14 @@ public class ToastNotificationXmlBuilderTests
     xml.Should().Contain("A &amp; B");
     xml.Should().Contain("C &lt; D");
   }
+
+  [Fact]
+  public void Build_does_not_include_appLogoOverride_or_any_image_element()
+  {
+    var xml = ToastNotificationXmlBuilder.Build("标题", "正文");
+    xml.Should().NotContain("appLogoOverride",
+      "the title-bar icon is provided by the AUMID IconUri registry value, not the toast XML");
+    xml.Should().NotContain("<image",
+      "toast XML must contain only <text> elements, no <image>");
+  }
 }
