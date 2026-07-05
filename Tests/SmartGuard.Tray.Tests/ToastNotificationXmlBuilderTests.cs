@@ -28,4 +28,12 @@ public class ToastNotificationXmlBuilderTests
     xml.Should().NotContain("<image",
       "toast XML must contain only <text> elements, no <image>");
   }
+
+  [Fact]
+  public void Build_does_not_include_activation_attribute()
+  {
+    var xml = ToastNotificationXmlBuilder.Build("标题", "正文");
+    xml.Should().NotContain("activation=",
+      "toast XML must not contain non-standard activation attribute on <toast> element");
+  }
 }

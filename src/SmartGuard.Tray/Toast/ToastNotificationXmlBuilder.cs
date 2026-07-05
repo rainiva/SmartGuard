@@ -9,7 +9,7 @@ public static class ToastNotificationXmlBuilder
     var safeTitle = SecurityElement.Escape(title) ?? string.Empty;
     var safeBody = SecurityElement.Escape(body) ?? string.Empty;
     return $"""
-<toast activation="protocol">
+<toast>
   <visual>
     <binding template="ToastGeneric">
       <text hint-maxLines="1">{safeTitle}</text>

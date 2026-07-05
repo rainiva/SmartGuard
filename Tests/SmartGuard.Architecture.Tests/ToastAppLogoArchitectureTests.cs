@@ -110,6 +110,16 @@ public class ToastAppLogoArchitectureTests
   }
 
   [Fact]
+  public void DesktopShellRegistration_must_set_IconUri_with_raw_path_not_file_uri()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Shell/DesktopShellRegistration.cs");
+    source.Should().NotContain("new Uri(iconPath).AbsoluteUri",
+      "IconUri must be set to the raw file path, not a file:/// URI; Windows Shell expects a plain path");
+    source.Should().NotContain("AbsoluteUri",
+      "IconUri registry value must not use Uri.AbsoluteUri conversion");
+  }
+
+  [Fact]
   public void BrandIconLoader_must_provide_save_to_file_for_install_time_deployment()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/BrandIconLoader.cs");

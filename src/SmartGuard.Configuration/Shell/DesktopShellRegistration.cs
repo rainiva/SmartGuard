@@ -80,7 +80,7 @@ public static class DesktopShellRegistration
     var iconPath = SmartGuardPaths.BrandIconFile(root);
     BrandIconLoader.SaveEmbeddedIconToFile(iconPath);
     if (File.Exists(iconPath))
-      key.SetValue("IconUri", new Uri(iconPath).AbsoluteUri, RegistryValueKind.String);
+      key.SetValue("IconUri", iconPath, RegistryValueKind.String);
   }
 
   private static void UnregisterAppUserModelId()

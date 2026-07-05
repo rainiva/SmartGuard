@@ -1,0 +1,67 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="dca51119-1def-42a1-9846-f422497ce9b0" name="coxte@RAINPC 2026-07-04 06:42:05" runUser="RAINPC\coxte" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-07-04T06:42:05.2095760+08:00" queuing="2026-07-04T06:42:05.2095764+08:00" start="2026-07-04T06:42:03.9725192+08:00" finish="2026-07-04T06:42:05.2135078+08:00" />
+  <TestSettings name="default" id="f17827bb-9aca-4eaa-abf6-a838bbf4a4e3">
+    <Deployment runDeploymentRoot="coxte_RAINPC_2026-07-04_06_42_05" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="c2c61628-6afe-4913-9f5b-345a60b9e3d4" testId="f7f61dfb-85a3-720b-97b1-3d340da0e473" testName="SmartGuard.Settings.Tests.SettingsWindowControllerTests.Log_page_controls_exist" computerName="RAINPC" duration="00:00:00.0164461" startTime="2026-07-04T06:42:04.9963367+08:00" endTime="2026-07-04T06:42:04.9963373+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c2c61628-6afe-4913-9f5b-345a60b9e3d4" />
+    <UnitTestResult executionId="ca2a7c43-b49c-4ad1-b1a1-0b39b4194604" testId="a6d7d6fd-a057-187a-8b1d-415519cd2075" testName="SmartGuard.Settings.Tests.SettingsContentLayoutTests.Sidebar_does_not_repeat_product_name_that_is_already_in_the_window_title" computerName="RAINPC" duration="00:00:00.0007038" startTime="2026-07-04T06:42:04.6163149+08:00" endTime="2026-07-04T06:42:04.6163149+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ca2a7c43-b49c-4ad1-b1a1-0b39b4194604" />
+    <UnitTestResult executionId="5a654426-b86f-423f-a752-0bf75f1b71ff" testId="a71dd754-0397-96d9-8e6f-5eeedbfb450f" testName="SmartGuard.Settings.Tests.SettingsWindowControllerTests.Log_page_more_button_toggles_in_window_actions_flyout" computerName="RAINPC" duration="00:00:00.3253796" startTime="2026-07-04T06:42:04.9797707+08:00" endTime="2026-07-04T06:42:04.9797710+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5a654426-b86f-423f-a752-0bf75f1b71ff" />
+    <UnitTestResult executionId="cdd51566-625c-4933-bf48-a7c2142f1745" testId="fbf77acd-d85a-459a-fd03-411be813f22d" testName="SmartGuard.Settings.Tests.LogToolbarLayoutTests.Log_page_uses_reader_style_header_instead_of_heavy_toolbar_card" computerName="RAINPC" duration="00:00:00.0140268" startTime="2026-07-04T06:42:04.6157844+08:00" endTime="2026-07-04T06:42:04.6157846+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cdd51566-625c-4933-bf48-a7c2142f1745" />
+    <UnitTestResult executionId="aa4d49fd-0794-4c07-ab4d-80fe606a390a" testId="9d747419-b86f-0f17-4d96-7d9800fc13bd" testName="SmartGuard.Settings.Tests.SettingsContentLayoutTests.Page_titles_use_shared_header_row_without_duplicate_sidebar_brand_heading" computerName="RAINPC" duration="00:00:00.0140821" startTime="2026-07-04T06:42:04.6141026+08:00" endTime="2026-07-04T06:42:04.6141171+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aa4d49fd-0794-4c07-ab4d-80fe606a390a" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SmartGuard.Settings.Tests.SettingsWindowControllerTests.Log_page_controls_exist" storage="d:\project\smartguard\tests\smartguard.settings.tests\bin\debug\net8.0-windows10.0.17763.0\smartguard.settings.tests.dll" id="f7f61dfb-85a3-720b-97b1-3d340da0e473">
+      <Execution id="c2c61628-6afe-4913-9f5b-345a60b9e3d4" />
+      <TestMethod codeBase="D:\Project\SmartGuard\Tests\SmartGuard.Settings.Tests\bin\Debug\net8.0-windows10.0.17763.0\SmartGuard.Settings.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SmartGuard.Settings.Tests.SettingsWindowControllerTests" name="Log_page_controls_exist" />
+    </UnitTest>
+    <UnitTest name="SmartGuard.Settings.Tests.SettingsWindowControllerTests.Log_page_more_button_toggles_in_window_actions_flyout" storage="d:\project\smartguard\tests\smartguard.settings.tests\bin\debug\net8.0-windows10.0.17763.0\smartguard.settings.tests.dll" id="a71dd754-0397-96d9-8e6f-5eeedbfb450f">
+      <Execution id="5a654426-b86f-423f-a752-0bf75f1b71ff" />
+      <TestMethod codeBase="D:\Project\SmartGuard\Tests\SmartGuard.Settings.Tests\bin\Debug\net8.0-windows10.0.17763.0\SmartGuard.Settings.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SmartGuard.Settings.Tests.SettingsWindowControllerTests" name="Log_page_more_button_toggles_in_window_actions_flyout" />
+    </UnitTest>
+    <UnitTest name="SmartGuard.Settings.Tests.SettingsContentLayoutTests.Sidebar_does_not_repeat_product_name_that_is_already_in_the_window_title" storage="d:\project\smartguard\tests\smartguard.settings.tests\bin\debug\net8.0-windows10.0.17763.0\smartguard.settings.tests.dll" id="a6d7d6fd-a057-187a-8b1d-415519cd2075">
+      <Execution id="ca2a7c43-b49c-4ad1-b1a1-0b39b4194604" />
+      <TestMethod codeBase="D:\Project\SmartGuard\Tests\SmartGuard.Settings.Tests\bin\Debug\net8.0-windows10.0.17763.0\SmartGuard.Settings.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SmartGuard.Settings.Tests.SettingsContentLayoutTests" name="Sidebar_does_not_repeat_product_name_that_is_already_in_the_window_title" />
+    </UnitTest>
+    <UnitTest name="SmartGuard.Settings.Tests.SettingsContentLayoutTests.Page_titles_use_shared_header_row_without_duplicate_sidebar_brand_heading" storage="d:\project\smartguard\tests\smartguard.settings.tests\bin\debug\net8.0-windows10.0.17763.0\smartguard.settings.tests.dll" id="9d747419-b86f-0f17-4d96-7d9800fc13bd">
+      <Execution id="aa4d49fd-0794-4c07-ab4d-80fe606a390a" />
+      <TestMethod codeBase="D:\Project\SmartGuard\Tests\SmartGuard.Settings.Tests\bin\Debug\net8.0-windows10.0.17763.0\SmartGuard.Settings.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SmartGuard.Settings.Tests.SettingsContentLayoutTests" name="Page_titles_use_shared_header_row_without_duplicate_sidebar_brand_heading" />
+    </UnitTest>
+    <UnitTest name="SmartGuard.Settings.Tests.LogToolbarLayoutTests.Log_page_uses_reader_style_header_instead_of_heavy_toolbar_card" storage="d:\project\smartguard\tests\smartguard.settings.tests\bin\debug\net8.0-windows10.0.17763.0\smartguard.settings.tests.dll" id="fbf77acd-d85a-459a-fd03-411be813f22d">
+      <Execution id="cdd51566-625c-4933-bf48-a7c2142f1745" />
+      <TestMethod codeBase="D:\Project\SmartGuard\Tests\SmartGuard.Settings.Tests\bin\Debug\net8.0-windows10.0.17763.0\SmartGuard.Settings.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SmartGuard.Settings.Tests.LogToolbarLayoutTests" name="Log_page_uses_reader_style_header_instead_of_heavy_toolbar_card" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="f7f61dfb-85a3-720b-97b1-3d340da0e473" executionId="c2c61628-6afe-4913-9f5b-345a60b9e3d4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a6d7d6fd-a057-187a-8b1d-415519cd2075" executionId="ca2a7c43-b49c-4ad1-b1a1-0b39b4194604" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a71dd754-0397-96d9-8e6f-5eeedbfb450f" executionId="5a654426-b86f-423f-a752-0bf75f1b71ff" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fbf77acd-d85a-459a-fd03-411be813f22d" executionId="cdd51566-625c-4933-bf48-a7c2142f1745" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9d747419-b86f-0f17-4d96-7d9800fc13bd" executionId="aa4d49fd-0794-4c07-ab4d-80fe606a390a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="5" executed="5" passed="5" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.27)&#xD;
+[xUnit.net 00:00:00.05]   Discovering: SmartGuard.Settings.Tests&#xD;
+[xUnit.net 00:00:00.11]   Discovered:  SmartGuard.Settings.Tests&#xD;
+[xUnit.net 00:00:00.11]   Starting:    SmartGuard.Settings.Tests&#xD;
+     Warning:&#xD;
+     The component "Fluent Assertions" is governed by the rules defined in the Xceed License Agreement and&#xD;
+     the Xceed Fluent Assertions Community License. You may use Fluent Assertions free of charge for&#xD;
+     non-commercial use only. An active subscription is required to use Fluent Assertions for commercial use.&#xD;
+     Please contact Xceed Sales mailto:sales@xceed.com to acquire a subscription at a very low cost.&#xD;
+     A paid commercial license supports the development and continued increasing support of&#xD;
+     Fluent Assertions users under both commercial and community licenses. Help us&#xD;
+     keep Fluent Assertions at the forefront of unit testing.&#xD;
+     For more information, visit https://xceed.com/products/unit-testing/fluent-assertions/&#xD;
+[xUnit.net 00:00:00.55]   Finished:    SmartGuard.Settings.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
