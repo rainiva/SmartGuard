@@ -30,7 +30,10 @@ public sealed class TrayApplicationContext : ApplicationContext
     var statusStore = new StatusStore(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
     _configMutations = new ConfigMutationService(_configRepository);
-    var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier());
+    var toastIconPath = SmartGuardPaths.BrandToastIconFile(_root);
+    if (!File.Exists(toastIconPath))
+      BrandIconLoader.SaveEmbeddedToastIconToFile(toastIconPath);
+    var notificationPresenter = new TrayNotificationPresenter(new WinRtToastNotifier(toastIconPath));
     var displaySettingsCache = new TrayDisplaySettingsCache(_configRepository, _root);
 
     _notifyIcon = new NotifyIcon
