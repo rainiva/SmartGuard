@@ -52,4 +52,63 @@ public class IdleTrackerTests
         tracker.Sample(() => 0, start.AddMinutes(21)).Should().Be(0u);
         tracker.Sample(() => 120, start.AddMinutes(23)).Should().Be(120u);
     }
+
+    [Fact]
+    public void Does_not_reset_wall_idle_when_api_drops_after_sleep_stall()
+    {
+        var start = new DateTime(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
+        var tracker = new IdleTracker();
+
+        tracker.Sample(() => 480u, start);
+        tracker.Sample(() => 480u, start.AddMinutes(48)).Should().Be(3360u);
+
+        // Wake: GetLastInputInfo often snaps back without real user input.
+        tracker.Sample(() => 30u, start.AddMinutes(48).AddSeconds(30))
+            .Should().BeGreaterThanOrEqualTo(3390u);
+    }
+
+    [Fact]
+    public void Resets_when_api_idle_drops_while_wall_idle_is_consistent()
+    {
+        var start = new DateTime(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
+        var tracker = new IdleTracker();
+
+        tracker.Sample(() => 100u, start);
+        tracker.Sample(() => 120u, start.AddSeconds(20)).Should().Be(120u);
+        tracker.Sample(() => 10u, start.AddSeconds(30)).Should().Be(10u);
+    }
+
+    [Theory]
+    [InlineData(0u, 100u, 100u, true)]
+    [InlineData(30u, 480u, 3360u, false)]
+    [InlineData(10u, 120u, 130u, true)]
+    [InlineData(50u, 100u, 100u, true)]
+    public void ShouldResetForActivity_distinguishes_real_input_from_sleep_recovery(
+        uint apiIdle,
+        uint previousApiIdle,
+        uint wallIdle,
+        bool expected)
+    {
+        IdleTracker.ShouldResetForActivity(apiIdle, previousApiIdle, wallIdle).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Monotonic_api_idle_reaches_balanced_threshold_without_reset()
+    {
+        var start = new DateTime(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
+        var tracker = new IdleTracker();
+        uint api = 0;
+        uint lastIdle = 0;
+
+        for (var i = 0; i < 25; i++)
+        {
+            api += 30;
+            var sampleAt = start.AddSeconds(i * 30);
+            var idle = tracker.Sample(() => api, sampleAt);
+            idle.Should().BeGreaterThanOrEqualTo(lastIdle);
+            lastIdle = idle;
+        }
+
+        lastIdle.Should().BeGreaterThanOrEqualTo(300u);
+    }
 }

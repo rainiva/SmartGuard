@@ -17,6 +17,16 @@ public class PolicyEngineTests
     };
 
     [Fact]
+    public void GetStatusLabel_is_active_below_balanced_threshold()
+    {
+        var cfg = TestConfig();
+        PolicyEngine.GetStatusLabel(92, cfg).Should().Be("活跃");
+        PolicyEngine.GetStatusLabel(299, cfg).Should().Be("活跃");
+        PolicyEngine.GetStatusLabel(300, cfg).Should().Be("空闲");
+        PolicyEngine.GetStatusLabel(900, cfg).Should().Be("深度空闲");
+    }
+
+    [Fact]
     public void Returns_null_when_paused()
     {
         var cfg = TestConfig();
