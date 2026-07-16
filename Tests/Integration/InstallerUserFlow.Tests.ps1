@@ -79,6 +79,34 @@ Describe 'Installer user flow (integration)' {
         }
     }
 
+    It 'silent uninstall keeps config and log by default' {
+        $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
+        $configPath = Join-Path $installRoot 'SmartGuard.config.json'
+        $logPath = Join-Path $installRoot 'SmartGuard.log'
+        try {
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install.ExitCode | Should -Be 0
+
+            Stop-SmartGuardForInstallerTest
+            [System.IO.File]::WriteAllText($configPath, '{"keep":true}', [System.Text.UTF8Encoding]::new($false))
+            [System.IO.File]::WriteAllText($logPath, 'keep-log', [System.Text.UTF8Encoding]::new($false))
+
+            $uninstall = Invoke-SmartGuardSilentUninstall -InstallRoot $installRoot
+            $uninstall.ExitCode | Should -Be 0 -Because "uninstall log: $($uninstall.LogPath)"
+
+            Test-Path -LiteralPath $configPath | Should -Be $true
+            Test-Path -LiteralPath $logPath | Should -Be $true
+            Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | Should -Match 'keep'
+            Get-Content -LiteralPath $logPath -Raw -Encoding UTF8 | Should -Match 'keep-log'
+        }
+        finally {
+            Stop-SmartGuardForInstallerTest
+            if (Test-Path -LiteralPath $installRoot) {
+                Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     It 'install registers guardian task with --root at install path' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         try {

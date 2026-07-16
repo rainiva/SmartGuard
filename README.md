@@ -111,7 +111,7 @@ dotnet run --project src\SmartGuard.Packaging -- stage --root . --configuration 
 dotnet run --project src\SmartGuard.Packaging -- installer --root . --configuration Release
 ```
 
-安装包默认安装到 `{autopf}\SmartGuard`；卸载默认保留配置与日志（可在卸载向导选择删除）。
+安装包默认安装到 `{autopf}\SmartGuard`；卸载时可选删除用户数据（配置与状态）与日志文件，两项默认均不勾选（静默卸载始终保留）。
 
 ## 测试
 

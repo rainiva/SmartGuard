@@ -68,20 +68,29 @@ Source: "{#StagingDir}\redist\{#RuntimeInstallerFile}"; DestDir: "{tmp}"; DestNa
 Type: files; Name: "{app}\{#InitMarkerFileName}"
 Type: filesandordirs; Name: "{app}\bin"
 #include "generated\SmartGuard.Distribution.LegacyCleanup.iss.inc"
-; User data (optional, based on user choice)
-Type: files; Name: "{app}\{#ConfigFileName}"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\{#DefaultLogFileName}"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\{#StartupLogFileName}"; Check: ShouldDeleteUserData
-Type: files; Name: "{app}\{#StatusFileName}"; Check: ShouldDeleteUserData
+; User config/status (optional)
+Type: files; Name: "{app}\{#ConfigFileName}"; Check: ShouldDeleteUserConfig
+Type: files; Name: "{app}\{#StatusFileName}"; Check: ShouldDeleteUserConfig
+; Logs (optional, default keep)
+Type: files; Name: "{app}\{#DefaultLogFileName}"; Check: ShouldDeleteUserLogs
+Type: files; Name: "{app}\{#StartupLogFileName}"; Check: ShouldDeleteUserLogs
 
 [Code]
 var
-  DeleteUserData: Boolean;
+  DeleteUserConfig: Boolean;
+  DeleteUserLogs: Boolean;
   SmartGuardStopCompleted: Boolean;
+  DeleteUserConfigCheckBox: TNewCheckBox;
+  DeleteUserLogsCheckBox: TNewCheckBox;
 
-function ShouldDeleteUserData: Boolean;
+function ShouldDeleteUserConfig: Boolean;
 begin
-  Result := DeleteUserData;
+  Result := DeleteUserConfig;
+end;
+
+function ShouldDeleteUserLogs: Boolean;
+begin
+  Result := DeleteUserLogs;
 end;
 
 function SmartGuardProcessesStillRunning(): Boolean;
@@ -193,27 +202,112 @@ end;
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
-  DeleteUserData := False;
+  DeleteUserConfig := False;
+  DeleteUserLogs := False;
   SmartGuardStopCompleted := False;
 end;
 
 procedure InitializeUninstallProgressForm();
 var
-  Choice: Integer;
+  Page: TNewNotebookPage;
+  InfoLabel: TNewStaticText;
+  PathLabel: TNewStaticText;
+  PathEdit: TNewEdit;
+  UninstallButton: TNewButton;
+  PageNameLabel: string;
+  PageDescriptionLabel: string;
+  CancelButtonEnabled: Boolean;
+  CancelButtonModalResult: Integer;
+  ModalResult: Integer;
 begin
-  { This runs after the standard "Are you sure you want to uninstall?" dialog,
-    so the user-data choice appears in the correct order. }
+  { After the standard "Are you sure?" dialog; silent keeps both flags False. }
   if UninstallSilent then
     Exit;
 
-  Choice := MsgBox(
-    '程序文件与计划任务将被移除。' + #13#10 + #13#10 +
-    '是否同时删除配置与日志文件？' + #13#10 +
-    '点击“是”删除这些数据；点击“否”保留配置与日志。',
-    mbConfirmation,
-    MB_YESNO);
+  PageNameLabel := UninstallProgressForm.PageNameLabel.Caption;
+  PageDescriptionLabel := UninstallProgressForm.PageDescriptionLabel.Caption;
+  CancelButtonEnabled := UninstallProgressForm.CancelButton.Enabled;
+  CancelButtonModalResult := UninstallProgressForm.CancelButton.ModalResult;
 
-  DeleteUserData := (Choice = IDYES);
+  UninstallButton := TNewButton.Create(UninstallProgressForm);
+  UninstallButton.Parent := UninstallProgressForm;
+  UninstallButton.Left :=
+    UninstallProgressForm.CancelButton.Left - UninstallProgressForm.CancelButton.Width - ScaleX(10);
+  UninstallButton.Top := UninstallProgressForm.CancelButton.Top;
+  UninstallButton.Width := UninstallProgressForm.CancelButton.Width;
+  UninstallButton.Height := UninstallProgressForm.CancelButton.Height;
+  UninstallButton.Caption := '卸载';
+  UninstallButton.ModalResult := mrOK;
+  UninstallProgressForm.CancelButton.Enabled := True;
+  UninstallProgressForm.CancelButton.ModalResult := mrCancel;
+  UninstallProgressForm.CancelButton.TabOrder := UninstallButton.TabOrder + 1;
+
+  Page := TNewNotebookPage.Create(UninstallProgressForm);
+  Page.Notebook := UninstallProgressForm.InnerNotebook;
+  Page.Parent := UninstallProgressForm.InnerNotebook;
+  Page.Align := alClient;
+  UninstallProgressForm.InnerNotebook.ActivePage := Page;
+
+  UninstallProgressForm.PageNameLabel.Caption := '卸载 SmartGuard';
+  UninstallProgressForm.PageDescriptionLabel.Caption := '从本机移除 SmartGuard';
+
+  InfoLabel := TNewStaticText.Create(UninstallProgressForm);
+  InfoLabel.Parent := Page;
+  InfoLabel.Left := UninstallProgressForm.StatusLabel.Left;
+  InfoLabel.Top := UninstallProgressForm.StatusLabel.Top;
+  InfoLabel.Width := UninstallProgressForm.StatusLabel.Width;
+  InfoLabel.Height := ScaleY(36);
+  InfoLabel.AutoSize := False;
+  InfoLabel.WordWrap := True;
+  InfoLabel.ShowAccelChar := False;
+  InfoLabel.Caption := 'SmartGuard 将从下列文件夹卸载。点击「卸载」开始。';
+
+  PathLabel := TNewStaticText.Create(UninstallProgressForm);
+  PathLabel.Parent := Page;
+  PathLabel.Left := InfoLabel.Left;
+  PathLabel.Top := InfoLabel.Top + InfoLabel.Height + ScaleY(8);
+  PathLabel.Width := InfoLabel.Width;
+  PathLabel.AutoSize := True;
+  PathLabel.Caption := '卸载位置：';
+
+  PathEdit := TNewEdit.Create(UninstallProgressForm);
+  PathEdit.Parent := Page;
+  PathEdit.Left := PathLabel.Left;
+  PathEdit.Top := PathLabel.Top + PathLabel.Height + ScaleY(4);
+  PathEdit.Width := InfoLabel.Width;
+  PathEdit.Text := ExpandConstant('{app}');
+  PathEdit.ReadOnly := True;
+  PathEdit.TabStop := False;
+
+  DeleteUserConfigCheckBox := TNewCheckBox.Create(UninstallProgressForm);
+  DeleteUserConfigCheckBox.Parent := Page;
+  DeleteUserConfigCheckBox.Left := PathEdit.Left;
+  DeleteUserConfigCheckBox.Top := PathEdit.Top + PathEdit.Height + ScaleY(16);
+  DeleteUserConfigCheckBox.Width := InfoLabel.Width;
+  DeleteUserConfigCheckBox.Caption := '删除用户数据（配置与状态）';
+  DeleteUserConfigCheckBox.Checked := False;
+
+  DeleteUserLogsCheckBox := TNewCheckBox.Create(UninstallProgressForm);
+  DeleteUserLogsCheckBox.Parent := Page;
+  DeleteUserLogsCheckBox.Left := DeleteUserConfigCheckBox.Left;
+  DeleteUserLogsCheckBox.Top := DeleteUserConfigCheckBox.Top + DeleteUserConfigCheckBox.Height + ScaleY(8);
+  DeleteUserLogsCheckBox.Width := InfoLabel.Width;
+  DeleteUserLogsCheckBox.Caption := '删除日志文件';
+  DeleteUserLogsCheckBox.Checked := False;
+
+  ModalResult := UninstallProgressForm.ShowModal;
+  if ModalResult = mrCancel then
+    Abort;
+
+  DeleteUserConfig := DeleteUserConfigCheckBox.Checked;
+  DeleteUserLogs := DeleteUserLogsCheckBox.Checked;
+
+  UninstallButton.Visible := False;
+  UninstallProgressForm.PageNameLabel.Caption := PageNameLabel;
+  UninstallProgressForm.PageDescriptionLabel.Caption := PageDescriptionLabel;
+  UninstallProgressForm.CancelButton.Enabled := CancelButtonEnabled;
+  UninstallProgressForm.CancelButton.ModalResult := CancelButtonModalResult;
+  UninstallProgressForm.InnerNotebook.ActivePage := UninstallProgressForm.InstallingPage;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -252,15 +346,19 @@ begin
   Result := True;
 end;
 
-procedure DeleteUserDataFiles;
+procedure DeleteUserConfigFiles;
+begin
+  DeleteFile(ExpandConstant('{app}\{#ConfigFileName}'));
+  DeleteFile(ExpandConstant('{app}\{#StatusFileName}'));
+end;
+
+procedure DeleteUserLogFiles;
 var
   FindRec: TFindRec;
   LogPattern: String;
 begin
-  DeleteFile(ExpandConstant('{app}\{#ConfigFileName}'));
   DeleteFile(ExpandConstant('{app}\{#DefaultLogFileName}'));
   DeleteFile(ExpandConstant('{app}\{#StartupLogFileName}'));
-  DeleteFile(ExpandConstant('{app}\{#StatusFileName}'));
 
   { Also remove rotated log backups such as SmartGuard.log.20260619.bak }
   LogPattern := ExpandConstant('{app}\{#DefaultLogFileName}.*.bak');
@@ -293,17 +391,19 @@ begin
   end
   else if CurUninstallStep = usPostUninstall then
   begin
-    { If the user chose to delete user data and the files are still present,
-      stop processes one last time and delete them. This covers cases where
-      the engine was restarted between usUninstall and usPostUninstall. }
-    if DeleteUserData and
-       (FileExists(ExpandConstant('{app}\{#ConfigFileName}')) or
-        FileExists(ExpandConstant('{app}\{#DefaultLogFileName}')) or
-        FileExists(ExpandConstant('{app}\{#StartupLogFileName}')) or
-        FileExists(ExpandConstant('{app}\{#StatusFileName}'))) then
+    { Retry optional deletes if files remain (e.g. engine restarted mid-uninstall). }
+    if (DeleteUserConfig and
+        (FileExists(ExpandConstant('{app}\{#ConfigFileName}')) or
+         FileExists(ExpandConstant('{app}\{#StatusFileName}')))) or
+       (DeleteUserLogs and
+        (FileExists(ExpandConstant('{app}\{#DefaultLogFileName}')) or
+         FileExists(ExpandConstant('{app}\{#StartupLogFileName}')))) then
     begin
       TryStopSmartGuardProcesses();
-      DeleteUserDataFiles;
+      if DeleteUserConfig then
+        DeleteUserConfigFiles;
+      if DeleteUserLogs then
+        DeleteUserLogFiles;
     end;
 
     { Remove program directories that may still contain files after [UninstallDelete] }
