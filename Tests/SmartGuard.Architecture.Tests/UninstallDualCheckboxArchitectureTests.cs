@@ -20,4 +20,16 @@ public class UninstallDualCheckboxArchitectureTests
     iss.Should().NotContain("是否同时删除配置与日志文件");
     iss.Should().NotContain("说明：不勾选时保留上述文件");
   }
+
+  [Fact]
+  public void Iss_sets_explicit_scaled_height_on_uninstall_checkboxes_to_avoid_clipping()
+  {
+    var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
+
+    // Chinese captions clip when TNewCheckBox keeps a too-small default Height.
+    iss.Should().MatchRegex(
+      @"DeleteUserConfigCheckBox\.Height\s*:=\s*ScaleY\(\d+\)");
+    iss.Should().MatchRegex(
+      @"DeleteUserLogsCheckBox\.Height\s*:=\s*ScaleY\(\d+\)");
+  }
 }

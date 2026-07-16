@@ -275,6 +275,7 @@ begin
   PathEdit.Left := PathLabel.Left;
   PathEdit.Top := PathLabel.Top + PathLabel.Height + ScaleY(4);
   PathEdit.Width := InfoLabel.Width;
+  PathEdit.Height := ScaleY(21);
   PathEdit.Text := ExpandConstant('{app}');
   PathEdit.ReadOnly := True;
   PathEdit.TabStop := False;
@@ -282,16 +283,19 @@ begin
   DeleteUserConfigCheckBox := TNewCheckBox.Create(UninstallProgressForm);
   DeleteUserConfigCheckBox.Parent := Page;
   DeleteUserConfigCheckBox.Left := PathEdit.Left;
-  DeleteUserConfigCheckBox.Top := PathEdit.Top + PathEdit.Height + ScaleY(16);
+  DeleteUserConfigCheckBox.Top := PathEdit.Top + PathEdit.Height + ScaleY(20);
   DeleteUserConfigCheckBox.Width := InfoLabel.Width;
+  { Default Height clips Chinese captions on scaled DPI; give room for the glyph. }
+  DeleteUserConfigCheckBox.Height := ScaleY(22);
   DeleteUserConfigCheckBox.Caption := '删除用户数据（配置与状态）';
   DeleteUserConfigCheckBox.Checked := False;
 
   DeleteUserLogsCheckBox := TNewCheckBox.Create(UninstallProgressForm);
   DeleteUserLogsCheckBox.Parent := Page;
   DeleteUserLogsCheckBox.Left := DeleteUserConfigCheckBox.Left;
-  DeleteUserLogsCheckBox.Top := DeleteUserConfigCheckBox.Top + DeleteUserConfigCheckBox.Height + ScaleY(8);
+  DeleteUserLogsCheckBox.Top := DeleteUserConfigCheckBox.Top + ScaleY(28);
   DeleteUserLogsCheckBox.Width := InfoLabel.Width;
+  DeleteUserLogsCheckBox.Height := ScaleY(22);
   DeleteUserLogsCheckBox.Caption := '删除日志文件';
   DeleteUserLogsCheckBox.Checked := False;
 
