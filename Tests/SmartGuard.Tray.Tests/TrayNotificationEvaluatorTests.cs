@@ -20,6 +20,33 @@ public class TrayNotificationEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_skips_plan_switch_when_notify_on_plan_change_is_false()
+    {
+        var status = new StatusPayload
+        {
+            currentPlan = "高性能",
+            notificationEvent = new NotificationEvent
+            {
+                id = "evt-switch",
+                kind = NotificationKinds.PlanSwitch,
+                title = "电源计划已切换",
+                body = "已切换至 [高性能] (亮度 36%)",
+            },
+        };
+        var prefs = new TrayNotificationPreferences(
+            NotifyOnPlanChange: false,
+            NotifyOnExternalChange: true);
+
+        var (decision, next) = TrayNotificationEvaluator.Evaluate(
+            status,
+            prefs,
+            TrayNotificationDedupeState.Empty);
+
+        decision.Should().BeNull();
+        next.Should().Be(TrayNotificationDedupeState.Empty);
+    }
+
+    [Fact]
     public void Evaluate_emits_structured_event_for_plan_switch()
     {
         var status = new StatusPayload

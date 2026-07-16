@@ -15,4 +15,13 @@ public class GuardianIterationRunnerArchitectureTests
       Path.Combine(SourceScanHelper.RepoRoot, "src/SmartGuard.Engine/Worker/GuardianLoop.cs")).Length;
     lineCount.Should().BeLessThan(200);
   }
+
+  [Fact]
+  public void GuardianIterationRunner_composes_notifications_via_NotificationEventComposer()
+  {
+    var runner = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs");
+    runner.Should().Contain("NotificationEventComposer.Compose");
+    runner.Should().Contain("NotifyOnPlanChange");
+    runner.Should().Contain("NotificationEventComposer.ApplyCooldown");
+  }
 }

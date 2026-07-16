@@ -14,6 +14,8 @@ internal sealed class GuardianLoopIterationState
   public bool ScriptJustSwitched;
   public int? LastBrightness;
   public NotificationEventRetentionState NotificationRetention;
+  public NotificationEvent? LastEmittedNotification;
+  public DateTime LastEmittedNotificationAt = DateTime.MinValue;
 }
 
 internal sealed class GuardianIterationRunner(
@@ -34,13 +36,14 @@ internal sealed class GuardianIterationRunner(
     var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
     var current = activePlanInfo?.Guid;
     var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);
-    NotificationEvent? notifyEvent = null;
+    var externalChangeDetected = PolicyEngine.IsExternalPlanChange(
+      state.LastKnownGuid, current, state.ScriptJustSwitched);
+    string? externalPlanNameForNotify = null;
 
-    if (PolicyEngine.IsExternalPlanChange(state.LastKnownGuid, current, state.ScriptJustSwitched))
+    if (externalChangeDetected)
     {
-      var name = ResolvePlanName(current, config, planCatalog, activePlanInfo);
-      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {name} ({current}) | 下轮纠偏");
-      notifyEvent = CreateExternalNotification(name);
+      externalPlanNameForNotify = ResolvePlanName(current, config, planCatalog, activePlanInfo);
+      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {externalPlanNameForNotify} ({current}) | 下轮纠偏");
     }
     state.ScriptJustSwitched = false;
 
@@ -48,26 +51,33 @@ internal sealed class GuardianIterationRunner(
     var bright = brightness.GetBrightness();
     LogBrightnessChangeIfNeeded(config, bright, state, writeLog);
 
+    var planSwitched = false;
+    string? switchedPlanName = null;
+    var switchBrightnessAfter = bright;
+    var switchBrightnessBefore = bright;
+
     if (expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
       var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, cancellationToken);
       state.ScriptJustSwitched = true;
+      planSwitched = true;
+      switchBrightnessBefore = result.Before;
+      switchBrightnessAfter = result.After;
       activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
       current = activePlanInfo?.Guid;
       var pwr = isOnAc ? "插电" : "电池";
-      var planName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
+      switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
       if (bright >= 0)
       {
-        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {planName} | 电量{batteryPercent}% {pwr}");
+        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}");
         if (result.After != result.Before)
           writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次");
       }
       else
       {
-        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {planName} | 亮度WMI不支持");
+        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持");
       }
       state.LastStatusLabel = label;
-      notifyEvent = CreatePlanSwitchNotification(planName, result.After, result.Before);
     }
     else if (state.LastStatusLabel != label)
     {
@@ -86,10 +96,32 @@ internal sealed class GuardianIterationRunner(
       state.LastHeartbeat = DateTime.Now;
     }
 
+    var now = DateTime.Now;
+    var notifyEvent = NotificationEventComposer.Compose(
+      externalChangeDetected,
+      planSwitched,
+      config.NotifyOnPlanChange,
+      config.NotifyOnExternalChange,
+      createPlanSwitch: () => CreatePlanSwitchNotification(
+        switchedPlanName ?? string.Empty, switchBrightnessAfter, switchBrightnessBefore),
+      createExternal: () => CreateExternalNotification(externalPlanNameForNotify ?? string.Empty));
+
+    notifyEvent = NotificationEventComposer.ApplyCooldown(
+      notifyEvent,
+      state.LastEmittedNotification,
+      state.LastEmittedNotificationAt,
+      now);
+
+    if (notifyEvent is not null)
+    {
+      state.LastEmittedNotification = notifyEvent;
+      state.LastEmittedNotificationAt = now;
+    }
+
     state.NotificationRetention = NotificationEventRetention.Advance(
       notifyEvent,
       state.NotificationRetention,
-      DateTime.Now);
+      now);
 
     publisher.Publish(new StatusPayload
     {
