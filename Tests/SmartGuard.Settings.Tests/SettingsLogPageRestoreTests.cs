@@ -29,7 +29,7 @@ public class SettingsLogPageRestoreTests
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                DrainDispatcher(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
 
                 SettingsWindowController.ResetTestMetricsForTests();
                 controller.SetLogPageActive(false);
@@ -64,7 +64,7 @@ public class SettingsLogPageRestoreTests
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                DrainDispatcher(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
 
                 var lstLogView = window.FindName("lstLogView") as ListBox;
                 lstLogView.Should().NotBeNull();
@@ -103,7 +103,7 @@ public class SettingsLogPageRestoreTests
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                DrainDispatcher(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
 
                 SettingsWindowController.ForceRefreshLogViewCountForTests.Should().BeGreaterThan(0,
                     "first navigation to logs should load log content");

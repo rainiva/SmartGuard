@@ -104,10 +104,7 @@ public class SettingsWindowResizeStabilityTests
                     WpfStaTestHost.ShowAndWait(window);
                     controller!.NavigateTo("logs");
                     window.UpdateLayout();
-
-                    window.Dispatcher.Invoke(
-                        () => { },
-                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
 
                     SettingsWindowLayoutStability.StabilizeContentLayout(window);
                     window.UpdateLayout();
@@ -407,9 +404,7 @@ public class SettingsWindowResizeStabilityTests
 
                     controller.NavigateTo("logs");
                     window.UpdateLayout();
-                    window.Dispatcher.Invoke(
-                        () => { },
-                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
 
                     controller.NavigateTo("about");
                     window.UpdateLayout();

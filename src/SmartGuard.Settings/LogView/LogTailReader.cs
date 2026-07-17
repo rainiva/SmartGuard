@@ -26,6 +26,7 @@ public static class LogTailReader
 
   public static LogFileSlice ReadFromOffset(string path, long startOffset)
   {
+    LogTailReaderTestMetrics.MaybeDelayForTests();
     LogTailReaderTestMetrics.RecordReadFromOffset();
 
     if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -53,6 +54,8 @@ public static class LogTailReader
 
   public static LogFileSlice ReadRecentTail(string path, int maxBytes = 262_144)
   {
+    LogTailReaderTestMetrics.MaybeDelayForTests();
+
     if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
       return new LogFileSlice(0, string.Empty);
 

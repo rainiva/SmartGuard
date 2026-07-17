@@ -347,7 +347,7 @@ public class SettingsContentScrollHotPathTests
         controller!.NavigateTo("logs");
         window.UpdateLayout();
         controller.EnsureLogScrollViewerHooked();
-        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
 
         scrollViewer = GetLogScrollViewer(window, controller);
         return ctx;

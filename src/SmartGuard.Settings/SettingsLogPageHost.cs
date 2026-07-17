@@ -6,6 +6,9 @@ namespace SmartGuard.Settings;
 
 internal sealed class SettingsLogPageHost
 {
+  internal const string LoadingStatusText = "正在加载日志…";
+  private const string StillLoadingToastText = "日志仍在加载，请稍后再试";
+
   private readonly Window _window;
   private readonly string _root;
   private readonly ToastNotificationService _toastService;
@@ -33,8 +36,17 @@ internal sealed class SettingsLogPageHost
   private CheckBox? _chkLogSearchCaseSensitive;
   private bool _logViewInitialized;
   private bool _logScrollHooked;
+  private bool _logPageActive;
+
+  private int _refreshGeneration;
+  private bool _refreshInFlight;
+  private bool _pendingRefresh;
+  private bool _pendingForceRefresh;
+  private bool _pendingForceRedraw;
 
   internal bool IsLogViewInitializedForTests => _logViewInitialized;
+
+  internal bool IsRefreshInFlightForTests => _refreshInFlight;
 
   internal static int ForceRefreshLogViewCountForTests { get; private set; }
 
@@ -74,11 +86,13 @@ internal sealed class SettingsLogPageHost
   {
     if (!active)
     {
+      _logPageActive = false;
       _logTimer?.Stop();
       _followTailCoordinator.PendingFollowTailInitialScroll = false;
       return;
     }
 
+    _logPageActive = true;
     EnsureLogViewInitialized();
     if (_logTimer is null)
       return;
@@ -94,8 +108,14 @@ internal sealed class SettingsLogPageHost
       return;
     }
 
-    RefreshLogView(forceRedraw: true);
-    _followTailCoordinator.ApplyScrollIfEnabled();
+    var isFirstVisit = _lastDisplayedLines.Count == 0;
+    if (isFirstVisit && _lblLogStatus is not null)
+      _lblLogStatus.Text = LoadingStatusText;
+
+    // First visit: force full redraw once content arrives. Revisit: keep list, incremental apply.
+    ScheduleLogRefresh(forceRefresh: false, forceRedraw: isFirstVisit);
+    if (!isFirstVisit)
+      _followTailCoordinator.ApplyScrollIfEnabled();
   }
 
   internal void EnsureLogScrollViewerHooked()
@@ -117,10 +137,11 @@ internal sealed class SettingsLogPageHost
     _logScrollHooked = true;
   }
 
-  internal void RefreshLogViewForThemeChange() => RefreshLogView(forceRedraw: true);
+  internal void RefreshLogViewForThemeChange() => ScheduleLogRefresh(forceRefresh: false, forceRedraw: true);
 
   internal void Dispose()
   {
+    _logPageActive = false;
     _logTimer?.Stop();
     _searchCoordinator.Dispose();
   }
@@ -191,11 +212,85 @@ internal sealed class SettingsLogPageHost
   }
 
   internal void RefreshLogView(bool forceRedraw = false)
-  {
-    if (_logController is null || _logListPresenter is null || _lblLogStatus is null) return;
+    => ScheduleLogRefresh(forceRefresh: false, forceRedraw: forceRedraw);
 
-    var snapshot = BuildLogSnapshot();
-    if (snapshot is null) return;
+  private void ScheduleLogRefresh(bool forceRefresh, bool forceRedraw)
+  {
+    if (_logController is null || _logListPresenter is null || _lblLogStatus is null)
+      return;
+
+    Interlocked.Increment(ref _refreshGeneration);
+
+    if (_refreshInFlight)
+    {
+      _pendingRefresh = true;
+      _pendingForceRefresh |= forceRefresh;
+      _pendingForceRedraw |= forceRedraw;
+      return;
+    }
+
+    StartRefreshFlight(forceRefresh, forceRedraw);
+  }
+
+  private void StartRefreshFlight(bool forceRefresh, bool forceRedraw)
+  {
+    if (_logController is null || _logListPresenter is null || _lblLogStatus is null)
+      return;
+
+    _refreshInFlight = true;
+    var generation = Volatile.Read(ref _refreshGeneration);
+    var controller = _logController;
+
+    SettingsLogSearchCoordinator.ApplyFilters(
+      controller,
+      _logSearchFilterBar,
+      _chkLogSearchCaseSensitive,
+      _cmbLogTimeRange,
+      _txtLogRangeStart,
+      _txtLogRangeEnd);
+
+    _ = Task.Run(() =>
+      {
+        if (forceRefresh)
+          controller.ForceRefresh();
+        else
+          controller.RefreshFromDisk();
+        return controller.GetSnapshot();
+      })
+      .ContinueWith(task =>
+      {
+        _window.Dispatcher.BeginInvoke(() =>
+        {
+          try
+          {
+            var currentGeneration = Volatile.Read(ref _refreshGeneration);
+            if (task.IsFaulted || generation != currentGeneration || !_logPageActive)
+              return;
+
+            ApplySnapshot(task.Result, forceRedraw);
+            _followTailCoordinator.ApplyScrollIfEnabled();
+          }
+          finally
+          {
+            _refreshInFlight = false;
+            if (_pendingRefresh || Volatile.Read(ref _refreshGeneration) != generation)
+            {
+              var nextForceRefresh = _pendingForceRefresh;
+              var nextForceRedraw = _pendingForceRedraw;
+              _pendingRefresh = false;
+              _pendingForceRefresh = false;
+              _pendingForceRedraw = false;
+              StartRefreshFlight(nextForceRefresh, nextForceRedraw);
+            }
+          }
+        });
+      }, TaskScheduler.Default);
+  }
+
+  private void ApplySnapshot(LogViewSnapshot snapshot, bool forceRedraw)
+  {
+    if (_logController is null || _logListPresenter is null || _lblLogStatus is null)
+      return;
 
     var forceCount = ForceRefreshLogViewCountForTests;
     SettingsLogViewRefresher.Apply(
@@ -227,7 +322,7 @@ internal sealed class SettingsLogPageHost
     return _logScrollViewer;
   }
 
-  private LogViewSnapshot? BuildLogSnapshot()
+  private LogViewSnapshot? BuildLogSnapshotForExport()
   {
     if (_logController is null) return null;
 
@@ -244,28 +339,47 @@ internal sealed class SettingsLogPageHost
 
   internal void ForceRefreshLogView()
   {
-    _logController?.ForceRefresh();
     _lastDisplayedLines = Array.Empty<string>();
-    RefreshLogView(forceRedraw: true);
+    if (_lblLogStatus is not null)
+      _lblLogStatus.Text = LoadingStatusText;
+    ScheduleLogRefresh(forceRefresh: true, forceRedraw: true);
   }
 
   private void CopyVisibleLog()
   {
-    var snapshot = BuildLogSnapshot();
+    if (_refreshInFlight)
+    {
+      _toastService.Show(StillLoadingToastText, isError: false);
+      return;
+    }
+
+    var snapshot = BuildLogSnapshotForExport();
     if (snapshot is null) return;
     SettingsLogExportActions.CopyVisible(snapshot, _toastService);
   }
 
   private void ExportVisibleLog()
   {
-    var snapshot = BuildLogSnapshot();
+    if (_refreshInFlight)
+    {
+      _toastService.Show(StillLoadingToastText, isError: false);
+      return;
+    }
+
+    var snapshot = BuildLogSnapshotForExport();
     if (snapshot is null) return;
     SettingsLogExportActions.ExportVisible(snapshot, _window, _toastService, ExportVisibleLogToPath);
   }
 
   internal void ExportVisibleLogToPath(string destinationPath)
   {
-    var snapshot = BuildLogSnapshot();
+    if (_refreshInFlight)
+    {
+      _toastService.Show(StillLoadingToastText, isError: false);
+      return;
+    }
+
+    var snapshot = BuildLogSnapshotForExport();
     if (snapshot is null) return;
     SettingsLogExportActions.ExportToPath(snapshot, destinationPath, _toastService);
   }

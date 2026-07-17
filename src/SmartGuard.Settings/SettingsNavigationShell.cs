@@ -64,7 +64,7 @@ internal sealed class SettingsNavigationShell
       }
 
       if (isLogsPage)
-        stabilizeLayout();
+        QueueLayoutStabilization();
       else if (contentScrollViewer is ScrollViewer scrollViewer)
         ResetContentScroll(scrollViewer);
 
