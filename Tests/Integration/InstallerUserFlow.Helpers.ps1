@@ -57,6 +57,7 @@ function Ensure-InstallerBuilt {
 }
 
 . (Join-Path $PSScriptRoot 'SmartGuardStop.ps1')
+. (Join-Path $PSScriptRoot 'Restore-SmartGuardScheduledTasks.ps1')
 
 function Stop-SmartGuardForInstallerTest {
     Stop-SmartGuardForIntegrationTest
@@ -66,7 +67,9 @@ function Invoke-SmartGuardSilentInstall {
     param(
         [string]$SetupExe,
         [string]$InstallRoot,
-        [switch]$PreserveExisting
+        [switch]$PreserveExisting,
+        [bool]$SkipScheduledTasks = $true,
+        $TaskSnapshot = $null
     )
 
     if (-not $PreserveExisting.IsPresent) {
@@ -91,11 +94,58 @@ function Invoke-SmartGuardSilentInstall {
         "/LOG=$log"
     )
 
-    $proc = Start-Process -FilePath $SetupExe -ArgumentList $args -PassThru -Wait
-    return [PSCustomObject]@{
-        ExitCode = $proc.ExitCode
-        LogPath  = $log
-        Root     = $InstallRoot
+    # Prior It's finally Restore may have re-registered production tasks. Disable/end them and
+    # kill processes so Inno PrepareToInstall does not call Engine --uninstall while Guardian is live
+    # (schtasks /End can stall and freeze Setup forever).
+    Stop-SmartGuardForInstallerTest
+    foreach ($taskName in @('SmartGuard Guardian', 'SmartGuard Tray')) {
+        # /End has no /F; swallow missing-task noise (tasks often already deleted by Stop).
+        cmd.exe /c "schtasks.exe /End /TN `"$taskName`" 2>nul" | Out-Null
+        cmd.exe /c "schtasks.exe /Change /TN `"$taskName`" /Disable 2>nul" | Out-Null
+    }
+    Stop-SmartGuardProcessesWithoutElevation
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline) {
+        $alive = Get-Process -Name 'SmartGuard.Engine', 'SmartGuard.Tray', 'SmartGuard.Settings' -ErrorAction SilentlyContinue
+        if (-not $alive) { break }
+        $alive | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 200
+    }
+
+    $prev = $env:SMARTGUARD_SKIP_SCHEDULED_TASKS
+    try {
+        if ($SkipScheduledTasks) {
+            $env:SMARTGUARD_SKIP_SCHEDULED_TASKS = '1'
+        }
+        else {
+            Remove-Item Env:SMARTGUARD_SKIP_SCHEDULED_TASKS -ErrorAction SilentlyContinue
+        }
+
+        $proc = Start-Process -FilePath $SetupExe -ArgumentList $args -PassThru
+        if (-not $proc.WaitForExit(300000)) {
+            try { $proc.Kill() } catch { /* ignore */ }
+            throw "Silent install timed out after 300s for root '$InstallRoot'. log=$log"
+        }
+        $result = [PSCustomObject]@{
+            ExitCode = $proc.ExitCode
+            LogPath  = $log
+            Root     = $InstallRoot
+        }
+
+        # Only assert skip isolation when install actually completed (Engine --install ran).
+        if ($SkipScheduledTasks -and $result.ExitCode -eq 0) {
+            Assert-SmartGuardSkipInstallHonored -InstallRoot $InstallRoot -Snapshot $TaskSnapshot
+        }
+
+        return $result
+    }
+    finally {
+        if ($null -eq $prev) {
+            Remove-Item Env:SMARTGUARD_SKIP_SCHEDULED_TASKS -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:SMARTGUARD_SKIP_SCHEDULED_TASKS = $prev
+        }
     }
 }
 
@@ -149,9 +199,11 @@ function New-ShortcutFixture {
 function Invoke-SmartGuardRepair {
     param(
         [string]$SetupExe,
-        [string]$InstallRoot
+        [string]$InstallRoot,
+        [bool]$SkipScheduledTasks = $true,
+        $TaskSnapshot = $null
     )
 
     Stop-SmartGuardForInstallerTest
-    return Invoke-SmartGuardSilentInstall -SetupExe $SetupExe -InstallRoot $InstallRoot -PreserveExisting
+    return Invoke-SmartGuardSilentInstall -SetupExe $SetupExe -InstallRoot $InstallRoot -PreserveExisting -SkipScheduledTasks:$SkipScheduledTasks -TaskSnapshot $TaskSnapshot
 }

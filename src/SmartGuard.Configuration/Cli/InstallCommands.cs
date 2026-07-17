@@ -33,7 +33,7 @@ public static class ElevationDeclinedMarker
 
 public static class InstallCommands
 {
-  public static int RunInstall(string root, bool skipPublish, bool createDesktopShortcut = false)
+  public static int RunInstall(string root, bool skipPublish, bool createDesktopShortcut = false, bool skipScheduledTasks = false)
   {
     var startupLog = SmartGuardPaths.StartupLogFile(root);
     if (!IsAdministrator())
@@ -49,7 +49,8 @@ public static class InstallCommands
         "--install",
         startupLog,
         skipPublish ? "--skip-publish" : null,
-        createDesktopShortcut ? "--create-desktop-shortcut" : null);
+        createDesktopShortcut ? "--create-desktop-shortcut" : null,
+        skipScheduledTasks ? "--skip-scheduled-tasks" : null);
     }
 
     try
@@ -60,6 +61,15 @@ public static class InstallCommands
       {
         WriteStartupLog(startupLog,
           $"WARN: Engine exe not found at {engineExe}. Run build.cmd, or pass --skip-publish.");
+      }
+
+      if (ScheduledTaskInstallGate.ShouldSkipFromEnvironment(skipScheduledTasks))
+      {
+        WriteStartupLog(startupLog,
+          "Install: skipping scheduled task registration and desktop shell (SMARTGUARD_SKIP_SCHEDULED_TASKS / --skip-scheduled-tasks).");
+        WriteStartupLog(startupLog, "Install: completed successfully.");
+        Console.WriteLine("SmartGuard install completed (scheduled tasks and desktop shell skipped).");
+        return 0;
       }
 
       WriteStartupLog(startupLog, "Install: registering SmartGuard Guardian...");

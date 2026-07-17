@@ -43,6 +43,9 @@ Describe 'Installer user flow (integration)' {
             return ((Test-Path -LiteralPath $Path) -eq $ShouldExist)
         }
 
+        . (Join-Path $PSScriptRoot 'Restore-SmartGuardScheduledTasks.ps1')
+        $script:TaskSnapshot = Capture-SmartGuardScheduledTasks
+
         . (Join-Path $PSScriptRoot 'InstallerUserFlow.Helpers.ps1')
         if ([string]::IsNullOrWhiteSpace($script:InstallerUserFlowRepoRoot)) {
             $script:InstallerUserFlowRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -56,13 +59,14 @@ Describe 'Installer user flow (integration)' {
     }
 
     AfterAll {
-        Stop-SmartGuardForInstallerTest
+        # Full restore: re-register production tasks and start Guardian/Tray for the machine.
+        Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$true
     }
 
     It 'silent install then silent uninstall exits 0' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0 -Because "install log: $($install.LogPath)"
 
             Test-Path -LiteralPath (Join-Path $installRoot 'bin\SmartGuard.Engine.exe') | Should -Be $true
@@ -76,6 +80,7 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
@@ -84,7 +89,7 @@ Describe 'Installer user flow (integration)' {
         $configPath = Join-Path $installRoot 'SmartGuard.config.json'
         $logPath = Join-Path $installRoot 'SmartGuard.log'
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0
 
             Stop-SmartGuardForInstallerTest
@@ -104,13 +109,14 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
     It 'install registers guardian task with --root at install path' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -SkipScheduledTasks:$false -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0
 
             $xml = schtasks /Query /TN 'SmartGuard Guardian' /XML 2>&1 | Out-String
@@ -125,13 +131,14 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
     It 'install payload does not ship Register ps1 scripts' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0
 
             Test-Path -LiteralPath (Join-Path $installRoot 'Register-SmartGuardTask.ps1') | Should -Be $false
@@ -146,13 +153,14 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
     It 'install registers tray task with --root at install path' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -SkipScheduledTasks:$false -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0
 
             $xml = schtasks /Query /TN 'SmartGuard Tray' /XML 2>&1 | Out-String
@@ -168,6 +176,7 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
@@ -175,20 +184,23 @@ Describe 'Installer user flow (integration)' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         $markerPath = Join-Path $installRoot '.sg-upgrade-marker'
         try {
-            $first = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $first = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -TaskSnapshot $script:TaskSnapshot
             $first.ExitCode | Should -Be 0
 
             $configPath = Join-Path $installRoot 'SmartGuard.config.json'
-            $deadline = (Get-Date).AddSeconds(45)
-            while (-not (Test-Path -LiteralPath $configPath) -and (Get-Date) -lt $deadline) {
-                Start-Sleep -Seconds 1
+            # Skip-isolated silent install does not start Engine, so config may be absent until we seed user data.
+            if (-not (Test-Path -LiteralPath $configPath)) {
+                [System.IO.File]::WriteAllText(
+                    $configPath,
+                    '{"ActivePlanGUID":"8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c","LogFile":""}',
+                    [System.Text.UTF8Encoding]::new($false))
             }
             Test-Path -LiteralPath $configPath | Should -Be $true
 
             'keep-me-on-upgrade' | Set-Content -LiteralPath $markerPath -Encoding UTF8
             Stop-SmartGuardForInstallerTest
 
-            $second = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -PreserveExisting
+            $second = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -PreserveExisting -TaskSnapshot $script:TaskSnapshot
             $second.ExitCode | Should -Be 0
 
             Test-Path -LiteralPath $configPath | Should -Be $true
@@ -202,13 +214,14 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
     It 'install creates exactly one start menu shortcut and no dedicated settings or logs shortcut' {
         $installRoot = Join-Path $env:TEMP ('sg-installer-ui-' + [Guid]::NewGuid().ToString('N'))
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -SkipScheduledTasks:$false -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0
 
             ($script:ProgramsDir | Get-ChildItem -Filter 'SmartGuard*.lnk' -ErrorAction SilentlyContinue |
@@ -226,6 +239,7 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
@@ -235,14 +249,14 @@ Describe 'Installer user flow (integration)' {
         $settingsShortcutName = "SmartGuard $([char]0x8BBE)$([char]0x7F6E).lnk"
         $logsShortcutName = "SmartGuard $([char]0x65E5)$([char]0x5FD7).lnk"
         try {
-            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $install = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -TaskSnapshot $script:TaskSnapshot
             $install.ExitCode | Should -Be 0
 
             foreach ($name in @($trayShortcutName, $settingsShortcutName, $logsShortcutName)) {
                 New-ShortcutFixture -Directory $script:ProgramsDir -Name $name
             }
 
-            $repair = Invoke-SmartGuardRepair -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $repair = Invoke-SmartGuardRepair -SetupExe $script:SetupExe -InstallRoot $installRoot -SkipScheduledTasks:$false -TaskSnapshot $script:TaskSnapshot
             $repair.ExitCode | Should -Be 0
 
             (Get-SmartGuardProgramsShortcuts | Select-Object -ExpandProperty Name) | Should -Be @('SmartGuard.lnk')
@@ -258,6 +272,7 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 
@@ -283,7 +298,7 @@ Describe 'Installer user flow (integration)' {
             (Join-Path $legacyGroupDir $legacyUninstallShortcutName)
         )
         try {
-            $first = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot
+            $first = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -TaskSnapshot $script:TaskSnapshot
             $first.ExitCode | Should -Be 0
 
             [System.IO.Directory]::CreateDirectory($legacyLib) | Out-Null
@@ -316,7 +331,7 @@ Describe 'Installer user flow (integration)' {
             Remove-Item -LiteralPath $canonicalShortcut -Force -ErrorAction SilentlyContinue
             Stop-SmartGuardForInstallerTest
 
-            $repair = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -PreserveExisting
+            $repair = Invoke-SmartGuardSilentInstall -SetupExe $script:SetupExe -InstallRoot $installRoot -PreserveExisting -SkipScheduledTasks:$false -TaskSnapshot $script:TaskSnapshot
             $repair.ExitCode | Should -Be 0
 
             Test-Path -LiteralPath $legacyLib | Should -Be $false
@@ -346,6 +361,7 @@ Describe 'Installer user flow (integration)' {
             if (Test-Path -LiteralPath $installRoot) {
                 Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
+            Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$false
         }
     }
 }

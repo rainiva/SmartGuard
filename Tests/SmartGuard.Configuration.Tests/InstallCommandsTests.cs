@@ -5,6 +5,43 @@ namespace SmartGuard.Configuration.Tests;
 
 public class InstallCommandsTests
 {
+  private static string FindRepoFile(params string[] segments)
+  {
+    var root = Path.GetFullPath(AppContext.BaseDirectory);
+    var projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", ".."));
+    var path = Path.Combine(new[] { projectRoot }.Concat(segments).ToArray());
+    if (!File.Exists(path))
+    {
+      projectRoot = Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", ".."));
+      path = Path.Combine(new[] { projectRoot }.Concat(segments).ToArray());
+    }
+
+    File.Exists(path).Should().BeTrue($"Source file must exist at {path}");
+    return path;
+  }
+
+  [Fact]
+  public void RunInstall_source_skips_register_and_shell_when_gate_true()
+  {
+    var path = FindRepoFile("src", "SmartGuard.Configuration", "Cli", "InstallCommands.cs");
+    var source = File.ReadAllText(path);
+    source.Should().Contain("ScheduledTaskInstallGate");
+    source.Should().Contain("skipping scheduled task registration and desktop shell");
+    var gateIdx = source.IndexOf("ShouldSkipFromEnvironment", StringComparison.Ordinal);
+    var registerIdx = source.IndexOf("RegisterGuardian", StringComparison.Ordinal);
+    gateIdx.Should().BeGreaterThan(-1);
+    registerIdx.Should().BeGreaterThan(gateIdx);
+  }
+
+  [Fact]
+  public void RunInstall_source_forwards_skip_scheduled_tasks_on_elevation()
+  {
+    var path = FindRepoFile("src", "SmartGuard.Configuration", "Cli", "InstallCommands.cs");
+    var source = File.ReadAllText(path);
+    source.Should().Contain("--skip-scheduled-tasks");
+    source.Should().Contain("skipScheduledTasks");
+  }
+
   [Fact]
   public void Uninstall_code_kills_processes_before_deleting_tasks()
   {

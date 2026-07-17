@@ -67,7 +67,8 @@ public sealed class GuardianLoop
     EnsureConfigExists();
     var config = LoadConfig();
     _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
-    WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{config.LogFile}");
+    var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
+    WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}");
 
     using var powerListener = new PowerEventWakeListener(HandlePowerEvent);
 
@@ -133,7 +134,8 @@ public sealed class GuardianLoop
     if (!_tickLogFingerprints.Add(fp)) return;
     try
     {
-      FileLogger.Write(level, config.LogFile, message, config.LogMaxBytes);
+      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
+      FileLogger.Write(level, logPath, message, config.LogMaxBytes);
     }
     catch
     {

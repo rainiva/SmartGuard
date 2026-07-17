@@ -50,6 +50,19 @@ public class EngineLifecycleTests
     source.Should().Contain("/F /T /PID");
   }
 
+  [Fact]
+  public void TryRunProcess_source_bounds_WaitForExit_so_schtasks_end_cannot_hang_forever()
+  {
+    var source = ReadEngineLifecycleSource();
+    var tryRunIndex = source.IndexOf("private static void TryRunProcess", StringComparison.Ordinal);
+    tryRunIndex.Should().BeGreaterThan(-1);
+
+    var tryRun = source[tryRunIndex..];
+    // Infinite WaitForExit() hangs Installer PrepareToInstall when schtasks /End stalls.
+    tryRun.Should().NotContain("WaitForExit()");
+    tryRun.Should().MatchRegex(@"WaitForExit\s*\(\s*\d+\s*\)");
+  }
+
   private static string ReadEngineLifecycleSource()
   {
     var root = Path.GetFullPath(AppContext.BaseDirectory);

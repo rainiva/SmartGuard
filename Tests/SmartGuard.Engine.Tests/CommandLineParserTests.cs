@@ -34,4 +34,12 @@ public class CommandLineParserTests
   {
     CommandLineParser.Parse(new[] { "--install", "--create-desktop-shortcut" }).CreateDesktopShortcut.Should().BeTrue();
   }
+
+  [Fact]
+  public void Parse_reads_skip_scheduled_tasks_flag()
+  {
+    CommandLineParser.Parse(new[] { "--install", "--skip-scheduled-tasks" })
+      .SkipScheduledTasks.Should().BeTrue();
+    CommandLineParser.Parse(new[] { "--install" }).SkipScheduledTasks.Should().BeFalse();
+  }
 }

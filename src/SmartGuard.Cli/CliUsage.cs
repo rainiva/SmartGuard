@@ -15,7 +15,7 @@ internal static class CliUsage
   {
     var usage = new StringBuilder();
     usage.AppendLine("SmartGuard.Cli usage:");
-    usage.AppendLine("  install [--skip-publish] [--root <dir>]");
+    usage.AppendLine("  install [--skip-publish] [--skip-scheduled-tasks] [--root <dir>]");
     usage.AppendLine("  uninstall [--root <dir>]");
     usage.AppendLine("  start guardian|engine|tray [--root <dir>]");
     usage.AppendLine("  restart tray [--root <dir>]");

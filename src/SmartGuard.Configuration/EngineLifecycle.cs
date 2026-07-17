@@ -113,7 +113,11 @@ public static class EngineLifecycle
         UseShellExecute = false,
         CreateNoWindow = true,
       });
-      proc?.WaitForExit();
+      // Bound wait: schtasks /End can stall indefinitely when a task process ignores stop.
+      if (proc is not null && !proc.WaitForExit(15000))
+      {
+        try { proc.Kill(entireProcessTree: true); } catch { /* ignore */ }
+      }
     }
     catch
     {

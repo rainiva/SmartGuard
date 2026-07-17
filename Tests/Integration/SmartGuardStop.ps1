@@ -60,12 +60,34 @@ function Stop-SmartGuardProcesses {
     }
 
     if ($EngineExe -and (Test-Path -LiteralPath $EngineExe)) {
+        # Always kill live processes first. Engine --uninstall can race with a still-running
+        # Guardian/Tray (and Start-Process -Wait callers appear hung when uninstall stalls).
+        Stop-SmartGuardProcessesWithoutElevation -ProcessId $ProcessId
+
         $arguments = @()
         if ($Root) {
             $arguments += @('--root', $Root)
         }
         $arguments += '--uninstall'
-        & $EngineExe @arguments 2>$null | Out-Null
+
+        $stdoutPath = [System.IO.Path]::GetTempFileName()
+        $stderrPath = [System.IO.Path]::GetTempFileName()
+        try {
+            $proc = Start-Process -FilePath $EngineExe `
+                -ArgumentList $arguments `
+                -PassThru `
+                -NoNewWindow `
+                -RedirectStandardOutput $stdoutPath `
+                -RedirectStandardError $stderrPath
+            if (-not $proc.WaitForExit(120000)) {
+                try { $proc.Kill() } catch { /* ignore */ }
+                throw "SmartGuard Engine --uninstall timed out after 120s (exe='$EngineExe')."
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+        }
+
         Wait-SmartGuardEngineExit -ProcessId $ProcessId | Out-Null
         return
     }

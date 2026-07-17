@@ -35,4 +35,11 @@ public class GuardianLoopArchitectureTests
         "Worker",
         "GuardianLoop.cs")).Length.Should().BeLessThan(300);
   }
+
+  [Fact]
+  public void GuardianLoop_WriteLog_uses_ResolveLogFile()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("ResolveLogFile");
+  }
 }

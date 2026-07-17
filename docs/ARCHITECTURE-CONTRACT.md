@@ -30,6 +30,7 @@
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
+| 计划任务安装跳过 | `ScheduledTaskInstallGate`；`InstallCommands` 读 `SMARTGUARD_SKIP_SCHEDULED_TASKS` / `--skip-scheduled-tasks` | Engine `--install`、Cli `install`、Inno 集成测试 | `ScheduledTaskInstallGate` | skip 时仍调用 `RegisterGuardian`/`RegisterTray`/`DesktopShellRegistration.Apply` |
 | 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
 | UAC 提升 | `ElevationHelper` + `CliAdminRunner` | `InstallCommands`、`UpdateInstallerLauncher`、`SmartGuard.Cli` | — | 内联 `Verb = "runas"` / VBS 散落 |
 | shell 集成 | `DesktopShellRegistration` | Installer / repair | `DesktopShellRegistration.Apply`、`DesktopShellRegistration.Remove` | Tray runtime 自注册、marker 自愈、Inno `[Icons]` 用户快捷方式 |
@@ -46,6 +47,7 @@
 | 用户操作 | 唯一推荐入口 | 说明 |
 |----------|--------------|------|
 | 注册计划任务 | `SmartGuard.Engine.exe --install` 或 `SmartGuard.Cli.exe install` | Inno / `Register-AllTasks.cmd` 委托 Cli；实现真源 `InstallCommands` |
+| 测试隔离 install（无 live 任务/shell） | `InstallCommands.RunInstall(..., skipScheduledTasks)` + `SMARTGUARD_SKIP_SCHEDULED_TASKS=1` 或 `--skip-scheduled-tasks` | Inno/Pester 默认 skip；skip 时不得 Register 任务或 Apply shell |
 | 启动 Engine（生产） | 计划任务 `SmartGuard Guardian` | `SmartGuard.Cli start guardian` → `GuardianTaskRunner`；dev 前台 `Cli start engine` |
 | 启动 Tray（生产） | 计划任务 `SmartGuard Tray` | 登录时自动；dev `Cli start tray` / `restart tray`（仅 dev 例外，生产入口受 **E-10 阻断**） |
 | 停止 Engine（卸载） | `EngineLifecycle.StopForUninstall` | Engine/Cli `uninstall`、Inno、集成测试共用 |
@@ -70,6 +72,7 @@
 | `ConfigMutationService` | `SmartGuard.Configuration` | 原子局部写：Paused、ManualHighPerformanceUntil |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `ScheduledTaskRegistrar` | `SmartGuard.Configuration` | 任务名与 XML 唯一源 |
+| `ScheduledTaskInstallGate` | `SmartGuard.Configuration` | 安装时跳过计划任务/shell 注册（CLI `--skip-scheduled-tasks` 或 env `SMARTGUARD_SKIP_SCHEDULED_TASKS`） |
 | `EngineLifecycle` | `SmartGuard.Configuration` | 停止进程与任务顺序 |
 | `ElevationHelper` | `SmartGuard.Configuration` | C# UAC `runas` 单源 |
 | `InstallCommands` | `SmartGuard.Configuration.Cli` | 计划任务 install/uninstall |
@@ -288,6 +291,8 @@
 | 诊断包导出脱敏 | `DiagnosticBundleExporterArchitectureTests`、`DiagnosticBundleExporterTests`、`SettingsDiagnosticExportCoordinatorTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
 | Toast 品牌 Logo | `ToastAppLogoArchitectureTests`、`ToastNotificationXmlBuilderTests` |
+| 计划任务安装跳过 | `InstallCommandsSkipArchitectureTests` |
+| 计划任务测试隔离契约 | `ArchitectureContractScheduledTaskIsolationTests` |
 
 ---
 
@@ -319,3 +324,13 @@
 |----|------|-----------|
 | TOAST-LOGO | **已关闭** | Toast 标题栏图标由 AUMID 注册表 `IconUri` 提供（安装时 `DesktopShellRegistration.RegisterAppUserModelId` 经 `BrandIconLoader.SaveEmbeddedIconToFile` 部署 `SmartGuard.ico` 到 `{root}/bin/SmartGuard.ico`，Windows Shell 自动渲染）；Toast XML 只含 `<text>`，不含 `appLogoOverride`/`<image>`（内容区大图，位置错误，已移除）；`appLogoOverride=SmartGuard-toast.png`、`SaveEmbeddedToastIconToFile`、`BrandToastIconFile` 已废弃删除 |
 | DOC-09 | **已关闭** | 本文档 §1/§3/§15 + `ToastAppLogoArchitectureTests` 终验 |
+
+---
+
+## 17. 计划任务测试隔离（2026-07-17）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| TASK-SKIP | **阻断** | `ScheduledTaskInstallGate` + `InstallCommands`：当 `SMARTGUARD_SKIP_SCHEDULED_TASKS` 或 `--skip-scheduled-tasks` 生效时，不得 `RegisterGuardian`/`RegisterTray`/`DesktopShellRegistration.Apply` |
+| INT-TASK-CAPTURE | **阻断** | Inno 安装/卸载集成测试须 `Capture-SmartGuardScheduledTasks` 于 `Stop` 前，`finally`/`AfterAll` 中 `Restore-SmartGuardScheduledTasks`；默认测试安装须 `SMARTGUARD_SKIP_SCHEDULED_TASKS=1`（`Invoke-SmartGuardSilentInstall` 默认 `$SkipScheduledTasks = $true`） |
+| DOC-10 | **已关闭** | 本文档 §1/§2/§3/§6/§17 + `InstallCommandsSkipArchitectureTests`、`ArchitectureContractScheduledTaskIsolationTests` 终验 |

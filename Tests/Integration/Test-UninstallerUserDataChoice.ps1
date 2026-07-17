@@ -8,6 +8,10 @@
     "Are you sure?" confirmation, the custom uninstall page must appear with
     both "删除用户数据（配置与状态）" and "删除日志文件" checkbox captions.
     The watcher leaves both unchecked and clicks "卸载".
+
+    Run this script from an elevated PowerShell session so
+    Restore-SmartGuardScheduledTasks can re-point global Guardian/Tray tasks
+    after the test. Restore throws if not elevated.
 #>
 [CmdletBinding()]
 param(
@@ -18,6 +22,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'Restore-SmartGuardScheduledTasks.ps1')
 
 function Remove-TestDirectory {
     param([string]$Path)
@@ -201,80 +207,164 @@ function Wait-ForWindowClosed {
     }
 }
 
-# ---------------------------------------------------------------------------
-# 1. Clean and install
-# ---------------------------------------------------------------------------
-Remove-TestDirectory -Path $InstallDir
+function New-DefaultShapedGuardConfigJson {
+    param([string]$InstallRoot)
 
-# Stop any live Guardian/Tray so PrepareToInstall can succeed.
-schtasks /End /TN 'SmartGuard Guardian' 2>$null | Out-Null
-schtasks /End /TN 'SmartGuard Tray' 2>$null | Out-Null
-Get-Process -Name 'SmartGuard.Engine', 'SmartGuard.Tray', 'SmartGuard.Settings' -ErrorAction SilentlyContinue |
-    Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
+    $logFile = Join-Path $InstallRoot 'SmartGuard.log'
+    $config = [ordered]@{
+        ActivePlanGUID         = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+        BalancedPlanGUID       = '381b4222-f694-41f0-9685-ff5bb260df2e'
+        PowerSaverPlanGUID     = 'a1841308-3541-4fab-bc81-f71556f20b4a'
+        BalancedThresholdSec   = 300
+        PowerSaverThresholdSec = 900
+        LowBatteryPercent      = 30
+        CheckIntervalSec       = 15
+        BrightnessRestoreMs    = 300
+        LogFile                = $logFile
+        Paused                 = $false
+        LogMaxBytes            = 1048576
+        BrightnessRetryCount   = 3
+        BrightnessRetryDelayMs = 100
+        NotifyOnPlanChange     = $true
+        NotifyOnExternalChange = $true
+        HeartbeatIntervalMin   = 10
+        AutoStartEnabled       = $true
+    }
 
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-$installLog = Join-Path $InstallDir 'install-ui-test.log'
-Write-Host "Installing SmartGuard to $InstallDir ..."
-$installProc = Start-Process -FilePath $InstallerPath -ArgumentList @(
-    "/DIR=$InstallDir",
-    '/VERYSILENT',
-    '/SUPPRESSMSGBOXES',
-    '/NORESTART',
-    '/NOCANCEL',
-    '/SP-',
-    '/CLOSEAPPLICATIONS=off',
-    "/LOG=$installLog"
-) -PassThru -Wait
-
-if ($installProc.ExitCode -ne 0 -or -not (Test-Path "$InstallDir\unins000.exe")) {
-    $tail = if (Test-Path $installLog) { Get-Content $installLog -Tail 20 | Out-String } else { '(no log)' }
-    throw "Installation failed (exit=$($installProc.ExitCode)): unins000.exe not found.`n$tail"
+    return ($config | ConvertTo-Json -Compress)
 }
 
-$configPath = "$InstallDir\SmartGuard.config.json"
-$statusPath = "$InstallDir\SmartGuard.status.json"
-$logPath = "$InstallDir\SmartGuard.log"
-[System.IO.File]::WriteAllText($configPath, '{"Test": true}', [System.Text.UTF8Encoding]::new($false))
-[System.IO.File]::WriteAllText($statusPath, '{"paused":false}', [System.Text.UTF8Encoding]::new($false))
-[System.IO.File]::WriteAllText($logPath, 'test log', [System.Text.UTF8Encoding]::new($false))
+function Set-SyntheticUserDataForUninstallTest {
+    param([string]$InstallRoot)
 
-# ---------------------------------------------------------------------------
-# 2. Launch uninstaller interactively
-# ---------------------------------------------------------------------------
-Write-Host "Launching interactive uninstaller..."
-$proc = Start-Process -FilePath "$InstallDir\unins000.exe" -PassThru -WindowStyle Normal
+    $configPath = Join-Path $InstallRoot 'SmartGuard.config.json'
+    $statusPath = Join-Path $InstallRoot 'SmartGuard.status.json'
+    $logPath = Join-Path $InstallRoot 'SmartGuard.log'
+    $logFile = Join-Path $InstallRoot 'SmartGuard.log'
 
-$confirmBox = Wait-ForWindow -Pattern '*SmartGuard*' -TimeoutSeconds 15
-if ($confirmBox -eq [IntPtr]::Zero) {
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    throw "Standard uninstall confirmation dialog was not detected."
-}
-Write-Host "Detected standard uninstall confirmation; pressing Yes..."
-Send-YesToMessageBox -hWnd $confirmBox
-Wait-ForWindowClosed -hWnd $confirmBox -TimeoutSeconds 10
+    if (Test-Path -LiteralPath $configPath) {
+        $cfg = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $cfg.LogFile = $logFile
+        [System.IO.File]::WriteAllText(
+            $configPath,
+            ($cfg | ConvertTo-Json -Compress),
+            [System.Text.UTF8Encoding]::new($false))
+    }
+    else {
+        [System.IO.File]::WriteAllText(
+            $configPath,
+            (New-DefaultShapedGuardConfigJson -InstallRoot $InstallRoot),
+            [System.Text.UTF8Encoding]::new($false))
+    }
 
-$choicePage = Wait-ForUninstallConfirmPage -TimeoutSeconds 20
-if ($choicePage -eq [IntPtr]::Zero) {
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    throw "Dual-checkbox uninstall confirm page was not detected after confirming uninstall."
-}
-Write-Host "Detected dual-checkbox page (hWnd=$choicePage); leaving both unchecked and clicking uninstall..."
-Click-ChildButtonByCaption -Parent $choicePage -Caption $script:CaptionUninstall
+    [System.IO.File]::WriteAllText(
+        $statusPath,
+        '{"paused":false}',
+        [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText(
+        $logPath,
+        'test log',
+        [System.Text.UTF8Encoding]::new($false))
 
-$finished = $proc.WaitForExit(60000)
-if (-not $finished) {
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    throw "Uninstaller did not exit within 60 seconds."
-}
-
-# Default: both unchecked => user data/logs should remain (unless engine lock quirks)
-$configKept = Test-Path $configPath
-$logKept = Test-Path $logPath
-if ($configKept -and $logKept) {
-    Write-Host "Config and log were retained with both checkboxes unchecked (expected)."
-} else {
-    Write-Warning "Config/log retention unexpected (config=$configKept log=$logKept). May be elevation/process lock related."
+    return [PSCustomObject]@{
+        ConfigPath = $configPath
+        StatusPath = $statusPath
+        LogPath    = $logPath
+    }
 }
 
-Write-Host "SUCCESS: Dual-checkbox uninstall confirm page appeared after the standard confirmation."
+$snapshot = Capture-SmartGuardScheduledTasks
+try {
+    # ---------------------------------------------------------------------------
+    # 1. Clean and install (skip global scheduled-task registration)
+    # ---------------------------------------------------------------------------
+    Remove-TestDirectory -Path $InstallDir
+
+    # Stop any live Guardian/Tray so PrepareToInstall can succeed.
+    schtasks /End /TN 'SmartGuard Guardian' 2>$null | Out-Null
+    schtasks /End /TN 'SmartGuard Tray' 2>$null | Out-Null
+    Get-Process -Name 'SmartGuard.Engine', 'SmartGuard.Tray', 'SmartGuard.Settings' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+    $installLog = Join-Path $InstallDir 'install-ui-test.log'
+    Write-Host "Installing SmartGuard to $InstallDir ..."
+    $prevSkip = $env:SMARTGUARD_SKIP_SCHEDULED_TASKS
+    try {
+        $env:SMARTGUARD_SKIP_SCHEDULED_TASKS = '1'
+        $installProc = Start-Process -FilePath $InstallerPath -ArgumentList @(
+            "/DIR=$InstallDir",
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            '/NOCANCEL',
+            '/SP-',
+            '/CLOSEAPPLICATIONS=off',
+            "/LOG=$installLog"
+        ) -PassThru -Wait
+
+        if ($installProc.ExitCode -ne 0 -or -not (Test-Path "$InstallDir\unins000.exe")) {
+            $tail = if (Test-Path $installLog) { Get-Content $installLog -Tail 20 | Out-String } else { '(no log)' }
+            throw "Installation failed (exit=$($installProc.ExitCode)): unins000.exe not found.`n$tail"
+        }
+
+        Assert-SmartGuardSkipInstallHonored -InstallRoot $InstallDir -Snapshot $snapshot
+    }
+    finally {
+        if ($null -eq $prevSkip) {
+            Remove-Item Env:SMARTGUARD_SKIP_SCHEDULED_TASKS -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:SMARTGUARD_SKIP_SCHEDULED_TASKS = $prevSkip
+        }
+    }
+
+    $userData = Set-SyntheticUserDataForUninstallTest -InstallRoot $InstallDir
+    $configPath = $userData.ConfigPath
+    $logPath = $userData.LogPath
+
+    # ---------------------------------------------------------------------------
+    # 2. Launch uninstaller interactively
+    # ---------------------------------------------------------------------------
+    Write-Host "Launching interactive uninstaller..."
+    $proc = Start-Process -FilePath "$InstallDir\unins000.exe" -PassThru -WindowStyle Normal
+
+    $confirmBox = Wait-ForWindow -Pattern '*SmartGuard*' -TimeoutSeconds 15
+    if ($confirmBox -eq [IntPtr]::Zero) {
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        throw "Standard uninstall confirmation dialog was not detected."
+    }
+    Write-Host "Detected standard uninstall confirmation; pressing Yes..."
+    Send-YesToMessageBox -hWnd $confirmBox
+    Wait-ForWindowClosed -hWnd $confirmBox -TimeoutSeconds 10
+
+    $choicePage = Wait-ForUninstallConfirmPage -TimeoutSeconds 20
+    if ($choicePage -eq [IntPtr]::Zero) {
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        throw "Dual-checkbox uninstall confirm page was not detected after confirming uninstall."
+    }
+    Write-Host "Detected dual-checkbox page (hWnd=$choicePage); leaving both unchecked and clicking uninstall..."
+    Click-ChildButtonByCaption -Parent $choicePage -Caption $script:CaptionUninstall
+
+    $finished = $proc.WaitForExit(60000)
+    if (-not $finished) {
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        throw "Uninstaller did not exit within 60 seconds."
+    }
+
+    # Default: both unchecked => user data/logs should remain (unless engine lock quirks)
+    $configKept = Test-Path $configPath
+    $logKept = Test-Path $logPath
+    if ($configKept -and $logKept) {
+        Write-Host "Config and log were retained with both checkboxes unchecked (expected)."
+    }
+    else {
+        Write-Warning "Config/log retention unexpected (config=$configKept log=$logKept). May be elevation/process lock related."
+    }
+
+    Write-Host "SUCCESS: Dual-checkbox uninstall confirm page appeared after the standard confirmation."
+}
+finally {
+    Restore-SmartGuardScheduledTasks -Snapshot $snapshot
+}

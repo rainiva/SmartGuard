@@ -8,6 +8,7 @@ public static class CommandLineParser
     string? root = null;
     var skipPublish = false;
     var createDesktopShortcut = false;
+    var skipScheduledTasks = false;
 
     for (var i = 0; i < args.Length; i++)
     {
@@ -26,12 +27,15 @@ public static class CommandLineParser
         case "--create-desktop-shortcut" or "/create-desktop-shortcut":
           createDesktopShortcut = true;
           break;
+        case "--skip-scheduled-tasks" or "/skip-scheduled-tasks":
+          skipScheduledTasks = true;
+          break;
         case "--root" or "-r" when i + 1 < args.Length:
           root = args[++i];
           break;
       }
     }
 
-    return new ParsedCommandLine(mode, root, skipPublish, createDesktopShortcut);
+    return new ParsedCommandLine(mode, root, skipPublish, createDesktopShortcut, skipScheduledTasks);
   }
 }
