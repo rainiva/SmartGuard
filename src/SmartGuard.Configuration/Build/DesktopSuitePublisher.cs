@@ -24,6 +24,7 @@ public static class DesktopSuitePublisher
         return exit;
     }
 
+    SystemEventsRidAssetGuard.EnsureAligned(outputDir);
     return 0;
   }
 

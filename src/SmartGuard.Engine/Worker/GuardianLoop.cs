@@ -70,7 +70,9 @@ public sealed class GuardianLoop
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
     WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}");
 
-    using var powerListener = new PowerEventWakeListener(HandlePowerEvent);
+    using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
+    if (!powerListener.IsEnabled)
+      WriteLog(config, LogLevel.Warn, "电源事件监听不可用（SystemEvents），将仅按轮询间隔工作");
 
     while (!cancellationToken.IsCancellationRequested)
     {

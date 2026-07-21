@@ -86,6 +86,19 @@ public class PublishSingleSourceArchitectureTests
   }
 
   [Fact]
+  public void Publish_and_staging_must_use_SystemEventsRidAssetGuard()
+  {
+    var publisher = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/Build/DesktopSuitePublisher.cs");
+    publisher.Should().Contain("SystemEventsRidAssetGuard.EnsureAligned");
+
+    var stagingValidator = SourceScanHelper.ReadSource("src/SmartGuard.Packaging/Staging/StagingLayoutValidator.cs");
+    stagingValidator.Should().Contain("SystemEventsRidAssetGuard.Validate");
+
+    var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
+    contract.Should().Contain("SystemEventsRidAssetGuard");
+  }
+
+  [Fact]
   public void Contract_docs_must_record_that_inno_live_exe_and_task_literals_are_generated_not_handwritten()
   {
     var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");

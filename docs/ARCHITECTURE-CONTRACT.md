@@ -56,7 +56,7 @@
 | 打开日志 | `SettingsLogsPageLauncher.Open` | Tray、`Cli open logs` 均委托此 API；运行时入口为 `SmartGuard.Settings.exe --page logs`；无独立开始菜单快捷方式 |
 | 打开托盘 | `TrayLauncher.Start` | `Cli open tray`、Inno postinstall |
 | 查看状态 | `StatusReporter.FormatStatus` | `SmartGuard.Cli status` |
-| 发布桌面套件 | `DesktopSuitePublisher.Publish` | `SmartGuard.Cli publish`、`build.cmd` 转发 |
+| 发布桌面套件 | `DesktopSuitePublisher.Publish`（末尾 `SystemEventsRidAssetGuard.EnsureAligned`） | `SmartGuard.Cli publish`、`build.cmd` 转发；禁止根目录留下 NuGet `lib` stub 的 `Microsoft.Win32.SystemEvents.dll` |
 | 开始菜单/桌面快捷方式 | `DesktopShellRegistration` → 开始菜单仅 `SmartGuard.lnk`（`SmartGuard.Tray.exe --root`）；桌面可选 `SmartGuard.lnk` | 仅 install/repair 写入；禁止 `SmartGuard 托盘/设置/日志.lnk` 等第二 shell surface；shell 损坏必须经 install/repair 恢复，Tray runtime 禁止补写 |
 | 保存设置 | `SettingsSaveCoordinator.Save` | 含主题；禁止 `SaveThemePreferences` 旁路 |
 
@@ -82,7 +82,8 @@
 | `DesktopDistributionManifest` | `SmartGuard.Configuration.Distribution` | 发布项目、payload、installer 进程、legacy cleanup 唯一真源 |
 | `InnoDistributionManifestWriter` | `SmartGuard.Packaging.Inno` | Inno generated include（Constants/Run/Files/Processes/LegacyCleanup） |
 | `LegacyScheduledTaskCatalog` | `SmartGuard.Configuration` | 旧 SmartPowerPlan 计划任务名唯一 live 名单 |
-| `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`） |
+| `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`）；publish 结束后调用 `SystemEventsRidAssetGuard.EnsureAligned` |
+| `SystemEventsRidAssetGuard` | `SmartGuard.Configuration.Build` | 确保 `bin/Microsoft.Win32.SystemEvents.dll` 与 `runtimes/win/lib/net8.0/` 同名文件 SHA256 一致；`StagingLayoutValidator` 复用 `Validate` |
 | `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
 | `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
 | `BrandIconLoader.SaveEmbeddedIconToFile` | `SmartGuard.Configuration` | 安装时将嵌入 .ico 提取到 `{root}/bin/SmartGuard.ico`，供 AUMID `IconUri`（Toast 标题栏图标真源）消费 |
@@ -106,6 +107,7 @@
 13. 不得在 live `scripts/` 保留 legacy cleanup 入口或第二份 `SmartPowerPlan Guardian/Tray` 名单；唯一 live 真源 = `LegacyScheduledTaskCatalog`；历史脚本仅允许 `scripts/archive/**`。
 14. 不得在 runtime 使用 `SystemIcons.Shield`、caller-supplied fallback icon 或 `SmartGuardPaths.BrandIcon` 作为品牌图标第二显示入口；`BrandIconLoader` 必须 embedded-only，缺失时 fail-fast。
 15. Repo **implementation-path grep** 只扫描 `installer/`、`src/`、活动 `scripts/`（排除 `scripts/archive/**`）中的 live residual；不得把 `docs/`、`Tests/` 的合法断言/契约文本当作 runtime 命中。`docs/tests may mention retired literals only as assertions or contract text`。
+16. `DesktopSuitePublisher.Publish` 结束必须调用 `SystemEventsRidAssetGuard.EnsureAligned`；`StagingLayoutValidator.Validate` 必须复用 `SystemEventsRidAssetGuard.Validate`；禁止第二套 SystemEvents stub 检测逻辑。
 
 ---
 

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using FluentAssertions;
 using SmartGuard.Configuration.Build;
 
 namespace SmartGuard.Configuration.Tests;
@@ -50,6 +51,36 @@ public class DesktopSuitePublisherTests
     {
       DesktopSuitePublisher.RunProcessForTests = null;
       Directory.Delete(root, true);
+    }
+  }
+
+  [Fact]
+  public void Publish_ensures_SystemEvents_root_matches_win_rid_asset()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "sg-publish-sysevents-" + Guid.NewGuid().ToString("N"));
+    var bin = Path.Combine(root, "bin");
+    var ridDir = Path.Combine(bin, "runtimes", "win", "lib", "net8.0");
+    Directory.CreateDirectory(ridDir);
+
+    var ridBytes = new byte[] { 1, 2, 3, 4, 5, 6 };
+    var stubBytes = new byte[] { 9, 9 };
+    File.WriteAllBytes(Path.Combine(ridDir, "Microsoft.Win32.SystemEvents.dll"), ridBytes);
+    File.WriteAllBytes(Path.Combine(bin, "Microsoft.Win32.SystemEvents.dll"), stubBytes);
+
+    DesktopSuitePublisher.RunProcessForTests = _ => 0;
+
+    try
+    {
+      var exit = DesktopSuitePublisher.Publish(root, "Release");
+
+      exit.Should().Be(0);
+      File.ReadAllBytes(Path.Combine(bin, "Microsoft.Win32.SystemEvents.dll"))
+        .Should().Equal(ridBytes);
+    }
+    finally
+    {
+      DesktopSuitePublisher.RunProcessForTests = null;
+      try { Directory.Delete(root, true); } catch { /* ignore */ }
     }
   }
 }

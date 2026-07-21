@@ -1,3 +1,5 @@
+using SmartGuard.Configuration.Build;
+
 namespace SmartGuard.Packaging.Staging;
 
 public static class StagingLayoutValidator
@@ -23,6 +25,7 @@ public static class StagingLayoutValidator
                 missing.Add(@"redist\runtime-installer.txt");
         }
 
+        missing.AddRange(SystemEventsRidAssetGuard.Validate(Path.Combine(stagingDir, "bin")));
         return missing;
     }
 }
