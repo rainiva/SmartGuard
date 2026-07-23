@@ -431,6 +431,7 @@ print(json.dumps(result))" $icon $officialDir
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
             $manifest = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Configuration\Distribution\DesktopDistributionManifest.cs') -Raw -Encoding UTF8
             $iss | Should -Match 'CloseApplications=no'
+            $iss | Should -Match 'RestartIfNeededByRun=no'
             $iss | Should -Match 'EnsureSmartGuardStopped'
             $iss | Should -Match '\[InstallDelete\]'
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.LegacyCleanup\.iss\.inc'
@@ -441,6 +442,8 @@ print(json.dumps(result))" $icon $officialDir
             $iss | Should -Match 'tasklist /NH'
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Processes\.iss\.inc'
             $iss | Should -Not -Match "Pos\('SmartGuard\.Tray\.exe'"
+            $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
+            $writer | Should -Not -Match 'restartreplace'
             $manifest | Should -Match 'SmartGuardPaths\.EngineExeFileName'
             $manifest | Should -Match 'SmartGuardPaths\.TrayExeFileName'
             $manifest | Should -Match 'SmartGuardPaths\.SettingsExeFileName'

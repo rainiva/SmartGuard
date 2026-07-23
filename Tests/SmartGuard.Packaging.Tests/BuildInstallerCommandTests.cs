@@ -42,6 +42,9 @@ public class BuildInstallerCommandTests : IDisposable
         File.Exists(constantsIncludePath).Should().BeTrue();
         File.Exists(runIncludePath).Should().BeTrue();
         File.ReadAllText(filesIncludePath).Should().NotContain("SmartGuard.LogViewer.exe");
+        File.ReadAllText(filesIncludePath).Should().NotContain(
+            "restartreplace",
+            "upgrade must overwrite bin files in-place; restartreplace schedules a reboot prompt");
         File.ReadAllText(processesIncludePath).Should().NotContain("SmartGuard.LogViewer.exe");
         var constantsInclude = File.ReadAllText(constantsIncludePath);
         constantsInclude.Should().Contain($"#define TrayExeName \"{SmartGuardPaths.TrayExeFileName}\"");

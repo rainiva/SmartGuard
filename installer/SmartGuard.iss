@@ -42,6 +42,7 @@ WizardStyle=modern
 PrivilegesRequired=admin
 CloseApplications=no
 RestartApplications=no
+RestartIfNeededByRun=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\bin\{#TrayExeName}
@@ -155,6 +156,8 @@ begin
 end;
 
 function TryStopSmartGuardProcesses(): Boolean;
+var
+  Deadline: DWORD;
 begin
   if not SmartGuardProcessesStillRunning() then
   begin
@@ -163,6 +166,11 @@ begin
   end;
 
   StopSmartGuardProcesses();
+
+  { Give EngineLifecycle a moment to release file handles before overwrite. }
+  Deadline := GetTickCount + 5000;
+  while SmartGuardProcessesStillRunning() and (GetTickCount < Deadline) do
+    Sleep(200);
 
   Result := not SmartGuardProcessesStillRunning();
 end;
