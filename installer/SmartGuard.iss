@@ -157,7 +157,7 @@ end;
 
 function TryStopSmartGuardProcesses(): Boolean;
 var
-  Deadline: DWORD;
+  Attempt: Integer;
 begin
   if not SmartGuardProcessesStillRunning() then
   begin
@@ -168,11 +168,17 @@ begin
   StopSmartGuardProcesses();
 
   { Give EngineLifecycle a moment to release file handles before overwrite. }
-  Deadline := GetTickCount + 5000;
-  while SmartGuardProcessesStillRunning() and (GetTickCount < Deadline) do
+  for Attempt := 1 to 25 do
+  begin
+    if not SmartGuardProcessesStillRunning() then
+    begin
+      Result := True;
+      Exit;
+    end;
     Sleep(200);
+  end;
 
-  Result := not SmartGuardProcessesStillRunning();
+  Result := False;
 end;
 
 function EnsureSmartGuardStopped(): Boolean;
