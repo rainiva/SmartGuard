@@ -43,8 +43,8 @@ public class ConfigMutationServiceTests
       mutations.SetPaused(false, dir, SmartGuardPaths.StartupLogFile(dir));
 
       var log = File.ReadAllText(logPath);
-      log.Should().Contain("暂停守护已开启");
-      log.Should().Contain("暂停守护已关闭");
+      log.Should().Contain("暂停守护选项已开启");
+      log.Should().Contain("暂停守护选项已关闭");
       File.Exists(SmartGuardPaths.StartupLogFile(dir)).Should().BeFalse(
         "pause/resume must land in the settings log page file, not startup.log");
     }

@@ -6,14 +6,14 @@ public class PauseGuardMessagesTests
   public void GetLogMessage_returns_pause_text_when_enabling_pause()
   {
     PauseGuardMessages.GetLogMessage(false, true)
-      .Should().Be("暂停守护已开启（仅监控，不自动切换电源计划）");
+      .Should().Be("暂停守护选项已开启");
   }
 
   [Fact]
   public void GetLogMessage_returns_resume_text_when_disabling_pause()
   {
     PauseGuardMessages.GetLogMessage(true, false)
-      .Should().Be("暂停守护已关闭（守护已恢复）");
+      .Should().Be("暂停守护选项已关闭");
   }
 
   [Fact]
