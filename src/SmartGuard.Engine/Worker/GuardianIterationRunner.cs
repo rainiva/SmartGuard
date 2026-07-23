@@ -37,7 +37,7 @@ internal sealed class GuardianIterationRunner(
     var current = activePlanInfo?.Guid;
     var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);
     var externalChangeDetected = PolicyEngine.IsExternalPlanChange(
-      state.LastKnownGuid, current, state.ScriptJustSwitched);
+      state.LastKnownGuid, current, state.ScriptJustSwitched, expected);
     string? externalPlanNameForNotify = null;
 
     if (externalChangeDetected)

@@ -103,11 +103,12 @@ public sealed class GuardConfigRepository
     WriteNode(node);
   }
 
-  public void AppendInfoLog(string message, string fallbackLogPath)
+  public void AppendInfoLog(string message, string root, string? fallbackLogPath = null)
   {
-    var config = TryLoad();
-    var logPath = config?.LogFile;
-    if (string.IsNullOrWhiteSpace(logPath)) logPath = fallbackLogPath;
+    var config = LoadOrDefault(root);
+    var logPath = SmartGuardPaths.ResolveLogFile(config, root);
+    if (string.IsNullOrWhiteSpace(logPath))
+      logPath = fallbackLogPath ?? SmartGuardPaths.DefaultLogFile(root);
     var dir = Path.GetDirectoryName(logPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
     var line = $"[INFO] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}";

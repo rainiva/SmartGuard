@@ -84,6 +84,40 @@ public class PolicyEngineTests
     }
 
     [Fact]
+    public void IsExternalPlanChange_is_false_when_tray_owned_switch_lands_on_expected_plan()
+    {
+        var cfg = TestConfig();
+        var previous = cfg.BalancedPlanGuid;
+        var current = cfg.ActivePlanGuid;
+        var expected = cfg.ActivePlanGuid; // manual high-performance boost
+
+        PolicyEngine.IsExternalPlanChange(previous, current, scriptJustSwitched: false, expected)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsExternalPlanChange_is_true_when_plan_changes_away_from_expected()
+    {
+        var cfg = TestConfig();
+        var previous = cfg.ActivePlanGuid;
+        var current = cfg.BalancedPlanGuid;
+        var expected = cfg.ActivePlanGuid;
+
+        PolicyEngine.IsExternalPlanChange(previous, current, scriptJustSwitched: false, expected)
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsExternalPlanChange_is_false_when_script_just_switched()
+    {
+        var previous = Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e");
+        var current = Guid.Parse("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
+
+        PolicyEngine.IsExternalPlanChange(previous, current, scriptJustSwitched: true, expected: current)
+            .Should().BeFalse();
+    }
+
+    [Fact]
     public void Should_apply_switch_when_guids_differ()
     {
         PolicyEngine.ShouldApplyPowerPlanSwitch(

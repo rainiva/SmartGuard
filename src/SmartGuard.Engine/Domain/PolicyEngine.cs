@@ -30,11 +30,18 @@ public static class PolicyEngine
     return current.Value != target.Value;
   }
 
-  public static bool IsExternalPlanChange(Guid? previous, Guid? current, bool scriptJustSwitched)
+  public static bool IsExternalPlanChange(
+    Guid? previous,
+    Guid? current,
+    bool scriptJustSwitched,
+    Guid? expected = null)
   {
     if (scriptJustSwitched) return false;
     if (previous is null || current is null) return false;
-    return previous.Value != current.Value;
+    if (previous.Value == current.Value) return false;
+    // Tray / owned switches that land on the policy-expected plan are not external.
+    if (expected is not null && current.Value == expected.Value) return false;
+    return true;
   }
 
   public static string GetPlanDisplayName(
