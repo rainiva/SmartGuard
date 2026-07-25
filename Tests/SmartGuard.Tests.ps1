@@ -864,6 +864,45 @@ print(json.dumps(result))" $icon $officialDir
             $helper | Should -Match 'Invoke-SmartGuardDotNetTestProcesses\s+-ProjectPaths\s+@\(\$project\)'
         }
 
+        It 'dotnet test output reader tolerates a writer that releases after the old five second window' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-output-lock-' + [guid]::NewGuid().ToString('N'))
+            $path = Join-Path $tempDirectory 'stdout.log'
+            $readyPath = Join-Path $tempDirectory 'ready'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            [System.IO.File]::WriteAllText($path, 'completed output', [System.Text.UTF8Encoding]::new($false))
+            $holder = Start-Job -ScriptBlock {
+                param($lockedPath, $signalPath)
+                $stream = [System.IO.File]::Open(
+                    $lockedPath,
+                    [System.IO.FileMode]::Open,
+                    [System.IO.FileAccess]::ReadWrite,
+                    [System.IO.FileShare]::None)
+                try {
+                    [System.IO.File]::WriteAllText($signalPath, 'ready')
+                    Start-Sleep -Milliseconds 6500
+                }
+                finally {
+                    $stream.Dispose()
+                }
+            } -ArgumentList $path, $readyPath
+            try {
+                $deadline = [DateTime]::UtcNow.AddSeconds(5)
+                while (-not (Test-Path -LiteralPath $readyPath) -and [DateTime]::UtcNow -lt $deadline) {
+                    Start-Sleep -Milliseconds 25
+                }
+                Test-Path -LiteralPath $readyPath | Should -BeTrue
+
+                Read-SmartGuardTextFileWhenUnlocked -Path $path | Should -Be 'completed output'
+            }
+            finally {
+                Wait-Job -Job $holder -Timeout 10 | Out-Null
+                Remove-Job -Job $holder -Force
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'InstallerUserFlow.Tests.ps1 re-resolves repo root in BeforeAll when script scope is empty' {
             $root = Split-Path -Parent $PSScriptRoot
             $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Tests.ps1') -Raw -Encoding UTF8

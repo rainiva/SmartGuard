@@ -103,7 +103,7 @@ function Ensure-SmartGuardDotNetTestBuild {
 function Read-SmartGuardTextFileWhenUnlocked {
     param(
         [string]$Path,
-        [int]$TimeoutMilliseconds = 5000
+        [int]$TimeoutMilliseconds = 30000
     )
 
     $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
