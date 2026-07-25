@@ -14,6 +14,7 @@
 | 安装根 `{root}` | `InstallRootResolver` | 全部 exe | — | 各 exe 内私有 `RootResolver` |
 | 配置文件 | `{root}/SmartGuard.config.json` | 全部经 `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save`、`ConfigMutationService` | Engine 直调 `GuardConfig.LoadFromFile` |
 | 运行时状态 | `{root}/SmartGuard.status.json` | `StatusJsonReader` / `StatusStore` | `StatusPublisher`（Engine） | Settings/Tray 各自解析 JSON |
+| 电池与供电状态 | `BatteryInfoProvider`；Windows `GetSystemPowerStatus` 为主来源，WMI 仅作未知字段的可选补充 | Engine 轮询、电源事件、状态发布 | — | WMI 异常覆盖原生状态；独立采集入口；异常直接伪造 `100% / 插电` |
 | 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页 | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
 | 启动日志路径 | `SmartGuardPaths.StartupLogFile(root)` | Engine CLI、Settings/Tray 暂停回退 | — | `InstallCommands` 硬编码 `SmartGuard.startup.log` |
 | 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `CliExe` | 注册、shell、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
@@ -71,6 +72,7 @@
 | `GuardConfigRepository` | `SmartGuard.Configuration` | 读（含迁移）、全量 Save |
 | `ConfigMutationService` | `SmartGuard.Configuration` | 原子局部写：Paused、ManualHighPerformanceUntil |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
+| `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
 | `ScheduledTaskRegistrar` | `SmartGuard.Configuration` | 任务名与 XML 唯一源 |
 | `ScheduledTaskInstallGate` | `SmartGuard.Configuration` | 安装时跳过计划任务/shell 注册（CLI `--skip-scheduled-tasks` 或 env `SMARTGUARD_SKIP_SCHEDULED_TASKS`） |
 | `EngineLifecycle` | `SmartGuard.Configuration` | 停止进程与任务顺序 |
@@ -108,6 +110,7 @@
 14. 不得在 runtime 使用 `SystemIcons.Shield`、caller-supplied fallback icon 或 `SmartGuardPaths.BrandIcon` 作为品牌图标第二显示入口；`BrandIconLoader` 必须 embedded-only，缺失时 fail-fast。
 15. Repo **implementation-path grep** 只扫描 `installer/`、`src/`、活动 `scripts/`（排除 `scripts/archive/**`）中的 live residual；不得把 `docs/`、`Tests/` 的合法断言/契约文本当作 runtime 命中。`docs/tests may mention retired literals only as assertions or contract text`。
 16. `DesktopSuitePublisher.Publish` 结束必须调用 `SystemEventsRidAssetGuard.EnsureAligned`；`StagingLayoutValidator.Validate` 必须复用 `SystemEventsRidAssetGuard.Validate`；禁止第二套 SystemEvents stub 检测逻辑。
+17. `BatteryInfoProvider` 必须先保留 `GetSystemPowerStatus` 原生结果，再尝试 WMI 可选补充；WMI 查询失败不得把有效原生状态降级为 `100% / 插电`。
 
 ---
 
@@ -287,6 +290,7 @@
 | 发布单源 | `PublishSingleSourceArchitectureTests`、`DesktopSuitePublisherTests` |
 | legacy cleanup 单源 | `LegacyTaskCleanupArchitectureTests`、`LegacyTaskCleanerTests` |
 | 状态报告 | `StatusReporterArchitectureTests` |
+| 电池/供电状态真源 | `BatteryStatusSourceArchitectureTests`、`BatteryInfoProviderCacheTests` |
 | 第七轮文档契约 | `ArchitectureContractSeventhRoundTests` |
 | Archive 边界 | `ArchiveBoundaryArchitectureTests` |
 | GitHub Token 保护 | `GitHubTokenArchitectureTests`、`GitHubTokenProtectorTests`、`GuardConfigRepositoryTokenTests` |
