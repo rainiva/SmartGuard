@@ -42,6 +42,18 @@ internal sealed class SettingsLogFollowTailCoordinator
     SyncFollowTailToggle();
   }
 
+  internal void OnUserVerticalScroll()
+  {
+    PendingFollowTailInitialScroll = false;
+    SuppressFollowTailAutoSync = false;
+
+    var controller = _getController();
+    if (controller is not null)
+      controller.FollowTail = false;
+
+    SyncFollowTailToggle();
+  }
+
   internal void ScrollToTop()
   {
     SuppressFollowTailAutoSync = true;
@@ -126,10 +138,20 @@ internal sealed class SettingsLogFollowTailCoordinator
     _window.Dispatcher.BeginInvoke(
       () =>
       {
+        if (!IsFollowTailEnabled())
+          return;
+
         ScrollLogViewToTail();
         _window.Dispatcher.BeginInvoke(
           () =>
           {
+            if (!IsFollowTailEnabled())
+            {
+              PendingFollowTailInitialScroll = false;
+              ReleaseFollowTailAutoSyncSuppression();
+              return;
+            }
+
             var scrollViewer = _resolveScrollViewer();
             if (scrollViewer is not null && LogViewScrollState.IsAtTail(scrollViewer))
               PendingFollowTailInitialScroll = false;
@@ -169,9 +191,16 @@ internal sealed class SettingsLogFollowTailCoordinator
       return;
 
     _window.Dispatcher.BeginInvoke(
-      ScrollNow,
+      () =>
+      {
+        if (IsFollowTailEnabled())
+          ScrollNow();
+      },
       System.Windows.Threading.DispatcherPriority.Loaded);
   }
+
+  private bool IsFollowTailEnabled()
+    => _getController()?.FollowTail == true && _getFollowTailCheckBox()?.IsChecked == true;
 
   private void ReleaseFollowTailAutoSyncSuppression()
   {

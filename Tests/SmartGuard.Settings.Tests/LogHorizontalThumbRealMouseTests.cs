@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
@@ -37,14 +38,88 @@ public class LogHorizontalThumbRealMouseTests
         });
     }
 
+    [Fact]
+    public void Horizontal_thumb_track_survives_end_scroll_default_value()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out _);
+            using (ctx)
+            {
+                var scrollBar = FindScrollBar(scrollViewer, "PART_HorizontalScrollBar");
+                var target = Math.Min(scrollViewer.ScrollableWidth, 120);
+                target.Should().BeGreaterThan(10);
+
+                RaiseUserScrollSequence(scrollBar, target);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                scrollViewer.HorizontalOffset.Should().BeApproximately(
+                    target,
+                    1,
+                    "EndScroll may report its default value but must not reset the committed thumb position");
+            }
+        });
+    }
+
+    [Fact]
+    public void Vertical_thumb_track_disables_follow_tail_and_survives_end_scroll()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out _);
+            using (ctx)
+            {
+                scrollViewer.ScrollableHeight.Should().BeGreaterThan(10);
+                var followTail = window.FindName("chkLogFollowTail") as CheckBox;
+                followTail.Should().NotBeNull();
+                followTail!.IsChecked = true;
+                var scrollBar = FindScrollBar(scrollViewer, "PART_VerticalScrollBar");
+                var target = scrollViewer.ScrollableHeight / 2;
+
+                RaiseUserScrollSequence(scrollBar, target);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                followTail.IsChecked.Should().BeFalse(
+                    "manual vertical thumb movement must take precedence over follow-tail");
+                scrollViewer.VerticalOffset.Should().BeApproximately(
+                    target,
+                    1,
+                    "EndScroll must not return the log viewport to its default position");
+            }
+        });
+    }
+
+    private static ScrollBar FindScrollBar(ScrollViewer scrollViewer, string partName)
+    {
+        scrollViewer.ApplyTemplate();
+        var scrollBar = scrollViewer.Template?.FindName(partName, scrollViewer) as ScrollBar;
+        scrollBar.Should().NotBeNull();
+        return scrollBar!;
+    }
+
+    private static void RaiseUserScrollSequence(ScrollBar scrollBar, double target)
+    {
+        scrollBar.RaiseEvent(new ScrollEventArgs(ScrollEventType.ThumbTrack, target)
+        {
+            RoutedEvent = ScrollBar.ScrollEvent,
+        });
+        scrollBar.RaiseEvent(new ScrollEventArgs(ScrollEventType.EndScroll, 0)
+        {
+            RoutedEvent = ScrollBar.ScrollEvent,
+        });
+    }
+
     private static Scope CreateShownLogPageContext(out Window window, out ScrollViewer scrollViewer, out SettingsWindowController controller)
     {
         var installRoot = Path.Combine(Path.GetTempPath(), "sg-realmouse-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(installRoot);
         Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+        var log = new System.Text.StringBuilder();
+        for (var i = 0; i < 180; i++)
+            log.AppendLine($"[INFO] 2026-07-04 08:{i % 60:D2}:{i % 60:D2} line {i} " + new string('x', 600));
         File.WriteAllText(
             Path.Combine(installRoot, "SmartGuard.log"),
-            "[INFO] 2026-07-04 08:49:56 SmartGuard engine 启动。日志: " + new string('x', 600));
+            log.ToString());
 
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
         File.WriteAllText(
