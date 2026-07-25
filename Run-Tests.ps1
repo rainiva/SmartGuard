@@ -12,17 +12,6 @@ if ((chcp) -notmatch '65001') {
 
 . (Join-Path $PSScriptRoot 'scripts\Test-IsProcessElevated.ps1')
 . (Join-Path $PSScriptRoot 'scripts\Invoke-SmartGuardDotNetTests.ps1')
-if (Test-RunTestsNeedsInstallerElevation -RepoRoot $PSScriptRoot) {
-    $handoff = Invoke-RunTestsSingleElevation -RunTestsScript (Join-Path $PSScriptRoot 'Run-Tests.ps1')
-    if ($handoff.HandedOff) {
-        exit $handoff.ExitCode
-    }
-}
-
-if ($env:SMARTGUARD_ELEVATED_RUN -eq '1') {
-    $declinedMarker = Get-ElevationDeclinedMarkerPath -RepoRoot $PSScriptRoot
-    Remove-Item -LiteralPath $declinedMarker -Force -ErrorAction SilentlyContinue
-}
 
 $pester = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
 if (-not $pester -or $pester.Version -lt [version]'5.0.0') {
@@ -46,7 +35,7 @@ $tier = Get-SmartGuardTestTier
 Write-Host "SmartGuard test tier: $tier"
 
 $r = Invoke-Pester -Path $testPath -PassThru
-if ($r.FailedCount -gt 0) {
+if ($r.Result -ne 'Passed') {
     Write-Host "Pester FAILED=$($r.FailedCount)" -ForegroundColor Red
     exit 1
 }
@@ -61,7 +50,7 @@ $integration = Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Tests
 if ((Test-Path -LiteralPath $integration) -and (Test-SmartGuardTrayIntegrationEnabled -Tier $tier)) {
     Write-Host 'Running integration: Tray core user flow...'
     $integrationResult = Invoke-Pester -Path $integration -PassThru
-    if ($integrationResult.FailedCount -gt 0) {
+    if ($integrationResult.Result -ne 'Passed') {
         Write-Host "Integration FAILED=$($integrationResult.FailedCount)" -ForegroundColor Red
         exit 1
     }
@@ -75,7 +64,7 @@ if (Test-Path -LiteralPath $installerFlow) {
     if (Test-SmartGuardInstallerIntegrationEnabled -Tier $tier) {
         Write-Host 'Running integration: Installer user flow...'
         $installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru
-        if ($installerFlowResult.FailedCount -gt 0) {
+        if ($installerFlowResult.Result -ne 'Passed') {
             Write-Host "Installer integration FAILED=$($installerFlowResult.FailedCount)" -ForegroundColor Red
             exit 1
         }
@@ -86,9 +75,6 @@ if (Test-Path -LiteralPath $installerFlow) {
         }
         elseif ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
             'SMARTGUARD_SKIP_INSTALLER_TESTS=1'
-        }
-        elseif (-not (Test-IsProcessElevated)) {
-            'requires administrator (accept one UAC prompt or run elevated shell)'
         }
         else {
             'disabled'

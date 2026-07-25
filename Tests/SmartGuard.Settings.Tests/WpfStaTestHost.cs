@@ -24,6 +24,7 @@ internal static class WpfStaTestHost
             finally
             {
                 CloseAllWindows();
+                DrainBackgroundWork();
             }
         });
     }
@@ -69,6 +70,17 @@ internal static class WpfStaTestHost
             {
                 // Best-effort cleanup between automated UI tests.
             }
+        }
+    }
+
+    private static void DrainBackgroundWork()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            Thread.Sleep(5);
+            Dispatcher.CurrentDispatcher.Invoke(
+                () => { },
+                DispatcherPriority.Background);
         }
     }
 }

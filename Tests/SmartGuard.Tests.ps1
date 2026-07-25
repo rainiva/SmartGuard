@@ -137,7 +137,8 @@ print(json.dumps(result))" $icon $officialDir
             $copier | Should -Match 'DesktopDistributionManifest\.PayloadEntries'
             $layout | Should -Match 'DesktopDistributionManifest\.RequiredStagingPaths'
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Files\.iss\.inc'
-            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Processes\.iss\.inc'
+            $iss | Should -Match 'Exec\(EngineExe'
+            $iss | Should -Match '--uninstall'
             $iss | Should -Not -Match 'SmartGuard\.LogViewer\.exe'
             $slnx | Should -Not -Match 'src/SmartGuard\.LogViewer/SmartGuard\.LogViewer\.csproj'
             $settingsProject | Should -Not -Match 'SmartGuard\.LogViewer\.csproj'
@@ -417,7 +418,8 @@ print(json.dumps(result))" $icon $officialDir
             $iss | Should -Match '#define MyAppPublisher "rainiva"'
             $iss | Should -Match 'https://github.com/rainiva/SmartGuard'
             $iss | Should -Match 'SetupIconFile='
-            $iss | Should -Match 'ShouldDeleteUserData'
+            $iss | Should -Match 'ShouldDeleteUserConfig'
+            $iss | Should -Match 'ShouldDeleteUserLogs'
             $iss | Should -Match 'license_zh-CN\.txt'
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
             $writer | Should -Match '--skip-publish'
@@ -436,11 +438,11 @@ print(json.dumps(result))" $icon $officialDir
             $iss | Should -Match '\[InstallDelete\]'
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.LegacyCleanup\.iss\.inc'
             $iss | Should -Match 'function PrepareToInstall'
-            $iss | Should -Match 'procedure StopSmartGuardProcesses'
+            $iss | Should -Match 'function TryStopSmartGuardProcesses'
             $iss | Should -Match 'CurPageID = wpReady'
-            $iss | Should -Match 'if not SmartGuardProcessesStillRunning\(\) then'
-            $iss | Should -Match 'tasklist /NH'
-            $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Processes\.iss\.inc'
+            $iss | Should -Match 'Exec\(EngineExe'
+            $iss | Should -Match '\(ResultCode = 0\)'
+            $iss | Should -Not -Match 'tasklist'
             $iss | Should -Not -Match "Pos\('SmartGuard\.Tray\.exe'"
             $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
             $writer | Should -Not -Match 'restartreplace'
@@ -454,21 +456,24 @@ print(json.dumps(result))" $icon $officialDir
             $iss | Should -Not -Match 'CurStepChanged'
             $iss | Should -Match 'CurUninstallStepChanged'
             $iss | Should -Match 'SolidCompression=no'
-            $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
+            $stopBlock = [regex]::Match($iss, '(?s)function TryStopSmartGuardProcesses.*?end;').Value
+            $stopBlock | Should -Not -BeNullOrEmpty
             $stopBlock | Should -Not -Match 'schtasks /End'
             $stopBlock | Should -Not -Match 'taskkill\.exe'
         }
 
-        It 'uninstall user-data choice prompts in InitializeUninstall with a Yes/No message box' {
+        It 'uninstall user-data choice uses explicit unchecked config and log checkboxes' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
             $iss | Should -Match 'function InitializeUninstall\(\): Boolean'
-            $iss | Should -Match 'MsgBox\('
-            $iss | Should -Match 'MB_YESNO'
-            $iss | Should -Match '保留配置与日志'
-            $iss | Should -Match '删除配置与日志'
+            $iss | Should -Match 'procedure InitializeUninstallProgressForm'
             $iss | Should -Match 'UninstallSilent'
-            $iss | Should -Match 'DeleteUserData := \(Choice = IDYES\)'
+            $iss | Should -Match 'DeleteUserConfigCheckBox := TNewCheckBox\.Create'
+            $iss | Should -Match 'DeleteUserLogsCheckBox := TNewCheckBox\.Create'
+            $iss | Should -Match '删除用户数据（配置与状态）'
+            $iss | Should -Match '删除日志文件'
+            $iss | Should -Match 'DeleteUserConfigCheckBox\.Checked := False'
+            $iss | Should -Match 'DeleteUserLogsCheckBox\.Checked := False'
             $iss | Should -Not -Match 'CreateCustomPage'
             $iss | Should -Not -Match 'CreateCustomForm'
             $iss | Should -Not -Match 'Parent := WizardForm'
@@ -709,7 +714,11 @@ print(json.dumps(result))" $icon $officialDir
             $tray | Should -Match 'SmartGuardStop\.ps1'
             $installer | Should -Match 'SmartGuardStop\.ps1'
             $tray | Should -Not -Match 'schtasks /End'
-            $installer | Should -Not -Match 'schtasks /End'
+            $installerStop = [regex]::Match(
+                $installer,
+                '(?s)function Stop-SmartGuardForInstallerTest.*?(?=\r?\nfunction |\z)').Value
+            $installerStop | Should -Not -BeNullOrEmpty
+            $installerStop | Should -Not -Match 'schtasks /End'
         }
 
         It 'StatusReporter and Inno use registrar task names' {
@@ -721,16 +730,20 @@ print(json.dumps(result))" $icon $officialDir
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Constants\.iss\.inc'
             $iss | Should -Not -Match 'SmartGuard Guardian'
             $writer | Should -Match 'ScheduledTaskRegistrar\.GuardianTaskName'
-            $stopBlock = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses.*?end;').Value
+            $stopBlock = [regex]::Match(
+                $iss,
+                '(?s)function TryStopSmartGuardProcesses.*?(?=\r?\nfunction EnsureSmartGuardStopped)').Value
             $stopBlock | Should -Match '\\bin\\\{#EngineExeName\}'
             $stopBlock | Should -Not -Match 'SmartGuard\.Engine\.exe'
             $stopBlock | Should -Match '--uninstall'
         }
 
-        It 'installer stop procedure consumes EngineExeName define instead of engine literal' {
+        It 'installer stop function consumes EngineExeName define instead of engine literal' {
             $root = Split-Path -Parent $PSScriptRoot
             $iss = Get-Content -LiteralPath (Join-Path $root 'installer\SmartGuard.iss') -Raw -Encoding UTF8
-            $stop = [regex]::Match($iss, '(?s)procedure StopSmartGuardProcesses\(\);.*?end;').Value
+            $stop = [regex]::Match(
+                $iss,
+                '(?s)function TryStopSmartGuardProcesses.*?(?=\r?\nfunction EnsureSmartGuardStopped)').Value
             $stop | Should -Match '\\bin\\\{#EngineExeName\}'
             $stop | Should -Not -Match 'SmartGuard\.Engine\.exe'
         }
@@ -748,7 +761,7 @@ print(json.dumps(result))" $icon $officialDir
 
         It 'implementation-path grep blocks live literals and fallback icons without scanning docs/tests' {
             $root = Split-Path -Parent $PSScriptRoot
-            $hits = @(rg -n "RootPath \+ '\\bin\\SmartGuard\.Engine\.exe'|LoadWinFormsIcon\(SystemIcons\.Shield\)|SystemIcons\.Shield|SmartGuardPaths\.BrandIcon|lib\\SmartGuard\.ico" `
+            $hits = @(rg -n --pcre2 "RootPath \+ '\\bin\\SmartGuard\.Engine\.exe'|LoadWinFormsIcon\(SystemIcons\.Shield\)|SystemIcons\.Shield|SmartGuardPaths\.BrandIcon(?:\W|$)|lib\\SmartGuard\.ico" `
                 (Join-Path $root 'installer') (Join-Path $root 'src') (Join-Path $root 'scripts') --glob '!scripts/archive/**' 2>$null)
             $hits.Count | Should -Be 0 -Because ($hits -join [Environment]::NewLine)
         }
@@ -775,38 +788,51 @@ print(json.dumps(result))" $icon $officialDir
             $flow | Should -Not -Match 'dotnet test'
         }
 
-        It 'Invoke-RunTestsSingleElevation exits parent after successful UAC handoff' {
+        It 'Run-Tests leaves the normal suite in its original process and delegates only the installer flow' {
             $root = Split-Path -Parent $PSScriptRoot
-            $elevation = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-IsProcessElevated.ps1') -Raw -Encoding UTF8
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
-            $fn = [regex]::Match($elevation, '(?s)function Invoke-RunTestsSingleElevation.*?(?=\r?\nfunction |\z)').Value
-            $fn | Should -Match 'HandedOff\s*=\s*\$true'
-            $fn | Should -Match 'LASTEXITCODE'
-            $elevation | Should -Match 'function Get-WindowsPowerShellExePath'
-            $fn | Should -Match '\$powershellExe\s*=\s*Get-WindowsPowerShellExePath'
-            $fn | Should -Match 'Start-Process\s+-FilePath\s+\$powershellExe\s+-Verb\s+RunAs'
-            $fn | Should -Match 'Unable to launch elevated Windows PowerShell'
-            $runTests | Should -Match 'if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode'
+            $runTests | Should -Not -Match 'Test-RunTestsNeedsInstallerElevation'
+            $runTests | Should -Not -Match 'Invoke-RunTestsSingleElevation'
+            $runTests | Should -Match '\$installerFlowResult\s*=\s*Invoke-Pester\s+-Path\s+\$installerFlow'
         }
 
-        It 'Test-SmartGuardInstallerIntegrationEnabled requires elevation to avoid repeated UAC' {
+        It 'Run-Tests treats a Pester discovery failure as a failed integration run' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Match '\$installerFlowResult\.Result\s*-ne\s*''Passed'''
+            $runTests | Should -Match '\$integrationResult\.Result\s*-ne\s*''Passed'''
+        }
+
+        It 'Test-SmartGuardInstallerIntegrationEnabled permits the installer flow to own its single UAC hop' {
             $root = Split-Path -Parent $PSScriptRoot
             $helper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
             $fn = [regex]::Match($helper, '(?s)function Test-SmartGuardInstallerIntegrationEnabled.*?(?=\r?\nfunction |\z)').Value
-            $fn | Should -Match 'Test-IsProcessElevated'
+            $fn | Should -Not -Match 'Test-IsProcessElevated'
             $fn | Should -Not -Match "if\s*\(\s*\`$Tier\s*-eq\s*'nightly'\s*\)\s*\{\s*return\s+\`$true\s*\}"
         }
 
         It 'InstallerUserFlow.Tests.ps1 self-handoffs to one elevated Pester run when launched directly' {
             $root = Split-Path -Parent $PSScriptRoot
             $elevation = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-IsProcessElevated.ps1') -Raw -Encoding UTF8
+            $runnerPath = Join-Path $root 'scripts\Invoke-ElevatedInstallerUserFlow.ps1'
             $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Tests.ps1') -Raw -Encoding UTF8
             $elevation | Should -Match 'function Invoke-InstallerUserFlowSingleElevation'
-            $elevation | Should -Match 'Invoke-Pester\s+-Path'
             $elevation | Should -Match 'SMARTGUARD_ELEVATED_RUN'
             $elevation | Should -Match '\$powershellExe\s*=\s*Get-WindowsPowerShellExePath'
             $elevation | Should -Match 'Start-Process\s+-FilePath\s+\$powershellExe\s+-Verb\s+RunAs'
+            $elevation | Should -Not -Match 'Verb\s+RunAs\s+-Wait'
+            $elevation | Should -Match "'-File'"
+            $elevation | Should -Match 'Invoke-ElevatedInstallerUserFlow\.ps1'
+            $elevation | Should -Match "'-ResultPath'"
+            $elevation | Should -Match 'Start-Sleep\s+-Milliseconds'
+            $elevation | Should -Match 'ConvertFrom-Json'
             $elevation | Should -Match 'Unable to launch elevated Windows PowerShell'
+            Test-Path -LiteralPath $runnerPath | Should -BeTrue
+            $runner = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
+            $runner | Should -Match 'Start-Transcript'
+            $runner | Should -Match '\$result\.Result\s*-ne\s*''Passed'''
+            $runner | Should -Match '\[System\.IO\.File\]::WriteAllText'
+            $runner | Should -Match 'UTF8Encoding'
             $flow | Should -Match 'Invoke-InstallerUserFlowSingleElevation'
             $flow | Should -Match '\$PSCommandPath'
             $flow | Should -Match '\$installerFlowHandoff\.HandedOff'
@@ -820,15 +846,18 @@ print(json.dumps(result))" $icon $officialDir
             $helper | Should -Match '--no-build'
         }
 
-        It 'parallel dotnet test jobs pin UTF-8 encoding inside the background PowerShell process' {
+        It 'parallel dotnet test processes are polled and time out instead of blocking on background jobs' {
             $root = Split-Path -Parent $PSScriptRoot
             $helper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
-            $jobBlock = [regex]::Match($helper, '(?s)Start-Job\s+-ScriptBlock\s+\{.*?\}\s+-ArgumentList').Value
-            $jobBlock | Should -Match '\[Console\]::OutputEncoding\s*=\s*\[System\.Text\.Encoding\]::UTF8'
-            $jobBlock | Should -Match '\[Console\]::InputEncoding\s*=\s*\[System\.Text\.Encoding\]::UTF8'
-            $jobBlock | Should -Match '\$OutputEncoding\s*=\s*\[System\.Text\.Encoding\]::UTF8'
-            $jobBlock | Should -Match "DOTNET_CONSOLE_ENCODING\s*=\s*'utf-8'"
-            $jobBlock | Should -Match "chcp\)\s*-notmatch\s*'65001'"
+            $helper | Should -Match 'Start-Process\s+-FilePath\s+\$env:ComSpec'
+            $helper | Should -Match 'dotnet-test-\$runId\.stdout\.log'
+            $helper | Should -Match 'dotnet-test-\$runId\.exit'
+            $helper | Should -Match 'ReadAllText\(\$entry\.ExitPath'
+            $helper | Should -Match '2>&1'
+            $helper | Should -Match 'Stop-Process'
+            $helper | Should -Match 'Start-Sleep\s+-Milliseconds'
+            $helper | Should -Not -Match 'Wait-Job'
+            $helper | Should -Match 'Invoke-SmartGuardDotNetTestProcesses\s+-ProjectPaths\s+@\(\$project\)'
         }
 
         It 'InstallerUserFlow.Tests.ps1 re-resolves repo root in BeforeAll when script scope is empty' {

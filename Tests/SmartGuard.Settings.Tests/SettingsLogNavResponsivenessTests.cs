@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
 
@@ -136,8 +137,8 @@ public class SettingsLogNavResponsivenessTests
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            // Pump Background only — ApplicationIdle can hang forever while DispatcherTimer is active.
-            window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+            Thread.Sleep(1);
+            PumpDispatcher(window);
 
             var status = window.FindName("lblLogStatus") as TextBlock;
             if (status is not null && status.Text != LoadingStatusText)
@@ -152,13 +153,29 @@ public class SettingsLogNavResponsivenessTests
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+            Thread.Sleep(1);
+            PumpDispatcher(window);
 
             if (!controller.IsLogRefreshInFlightForTests)
                 return;
         }
 
         throw new TimeoutException("Timed out waiting for log refresh flight to finish.");
+    }
+
+    internal static void PumpDispatcher(Window window)
+    {
+        if (!window.Dispatcher.CheckAccess())
+        {
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+            return;
+        }
+
+        var frame = new DispatcherFrame();
+        _ = window.Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     private static void CloseControllerWindow(SettingsWindowController? controller)
@@ -205,9 +222,7 @@ public class SettingsLogNavResponsivenessTests
 
     private static void DrainDispatcher(Window window)
     {
-        window.Dispatcher.Invoke(
-            () => { },
-            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        PumpDispatcher(window);
     }
 
     private static void TryDelete(string path)

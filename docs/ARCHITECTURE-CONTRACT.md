@@ -29,7 +29,7 @@
 | 开机自启 UI | `config.AutoStartEnabled` | Settings | `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` | Settings 读 `schtasks`/`SyncFromTasks` 决定展示 |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
-| Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `StopSmartGuardProcesses`（委托 Engine `--uninstall`）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本 |
+| Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `TryStopSmartGuardProcesses`（委托 Engine `--uninstall`，以 `Exec` 成功且退出码 0 为准）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本；Inno 以 `tasklist` 探测结果跳过停止 |
 | 计划任务安装跳过 | `ScheduledTaskInstallGate`；`InstallCommands` 读 `SMARTGUARD_SKIP_SCHEDULED_TASKS` / `--skip-scheduled-tasks` | Engine `--install`、Cli `install`、Inno 集成测试 | `ScheduledTaskInstallGate` | skip 时仍调用 `RegisterGuardian`/`RegisterTray`/`DesktopShellRegistration.Apply` |
 | 日志页空闲秒数 | `LogViewIdleReader.TryRead` / `TryReadSeconds` | Settings 日志页 | — | Settings 内不得重复 `GetLastInputInfo` 计算 |
 | UAC 提升 | `ElevationHelper` + `CliAdminRunner` | `InstallCommands`、`UpdateInstallerLauncher`、`SmartGuard.Cli` | — | 内联 `Verb = "runas"` / VBS 散落 |
@@ -103,7 +103,7 @@
 9. 不得在 publisher/staging/installer 各自维护第二份项目/文件/进程清单（唯一真源 = `DesktopDistributionManifest`）。
 10. 不得重新引入 `SmartGuard.LogViewer.exe` 作为 live product artifact、进程清单或用户入口。
 11. Repo grep / contract gates 对旧真相的豁免只能按 path boundary（`docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**`），不得再按日期、`PHASE-`、`MIGRATION`、单文件名做豁免。
-12. 不得在 `installer/SmartGuard.iss` 手写 live exe/task file-name literal（`MyAppExeName`、`UninstallDisplayIcon` 直写 exe、`[Run]` 内 Engine/Cli/schtasks）；必须消费 `InnoDistributionManifestWriter` 生成的 Constants/Run include；`StopSmartGuardProcesses()` 亦不得手写 `SmartGuard.Engine.exe`，只能消费 `{#EngineExeName}`。
+12. 不得在 `installer/SmartGuard.iss` 手写 live exe/task file-name literal（`MyAppExeName`、`UninstallDisplayIcon` 直写 exe、`[Run]` 内 Engine/Cli/schtasks）；必须消费 `InnoDistributionManifestWriter` 生成的 Constants/Run include；`TryStopSmartGuardProcesses()` 亦不得手写 `SmartGuard.Engine.exe`，只能消费 `{#EngineExeName}`，并且不得用 `tasklist` 失败开放地绕过 `EngineLifecycle`。
 13. 不得在 live `scripts/` 保留 legacy cleanup 入口或第二份 `SmartPowerPlan Guardian/Tray` 名单；唯一 live 真源 = `LegacyScheduledTaskCatalog`；历史脚本仅允许 `scripts/archive/**`。
 14. 不得在 runtime 使用 `SystemIcons.Shield`、caller-supplied fallback icon 或 `SmartGuardPaths.BrandIcon` 作为品牌图标第二显示入口；`BrandIconLoader` 必须 embedded-only，缺失时 fail-fast。
 15. Repo **implementation-path grep** 只扫描 `installer/`、`src/`、活动 `scripts/`（排除 `scripts/archive/**`）中的 live residual；不得把 `docs/`、`Tests/` 的合法断言/契约文本当作 runtime 命中。`docs/tests may mention retired literals only as assertions or contract text`。
@@ -312,7 +312,7 @@
 
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
-| INNO-STOP | **阻断** | `StopSmartGuardProcesses()` 只消费 `{#EngineExeName}`，不得手写 `SmartGuard.Engine.exe` |
+| INNO-STOP | **阻断** | `TryStopSmartGuardProcesses()` 只消费 `{#EngineExeName}`，以 Engine `--uninstall` 退出码为停止结果；不得手写 `SmartGuard.Engine.exe` 或用 `tasklist` 作为停止门禁 |
 | ICON-EMBED | **阻断** | `TrayIconLoader` / `BrandIconLoader.LoadWinFormsIcon()` embedded-only；禁止 `SystemIcons.Shield` 与 caller-supplied fallback |
 | TRUTH-GATE | **阻断** | **implementation-path grep** 只扫 `installer/`、`src/`、活动 `scripts/`；`docs/tests may mention retired literals only as assertions or contract text` |
 | ICON-CONSUMER | **阻断** | 允许的 Windows icon consumers 仅 `ApplicationIcon`、`window.Icon`、`Tray.exe,0`、`IconUri=SmartGuard.ico`（安装时部署到 `{root}/bin/SmartGuard.ico`，Toast 标题栏图标真源）；Toast XML 不得包含 `appLogoOverride`/`<image>`（内容区大图，Windows 11+ 不替代标题栏图标，位置错误）；不得使用 `IconUri=Tray.exe`（.exe 不被 toast 识别）、不得指向 runtime loose `.ico` 或系统 shield fallback |

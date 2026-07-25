@@ -14,6 +14,7 @@ public static class BrandIconLoader
   private const int WinFormsTaskbarIconFrameSize = 32;
   private const int WpfWindowIconFrameSize = 64;
 
+  private static readonly object WinFormsIconSync = new();
   private static DrawIcon? _cachedWinFormsIcon;
   private static ImageSource? _cachedWpfImageSource;
 
@@ -21,24 +22,31 @@ public static class BrandIconLoader
 
   internal static void ResetCacheForTests()
   {
-    _cachedWinFormsIcon?.Dispose();
-    _cachedWinFormsIcon = null;
+    lock (WinFormsIconSync)
+    {
+      _cachedWinFormsIcon?.Dispose();
+      _cachedWinFormsIcon = null;
+      WinFormsLoadCountForTests = 0;
+    }
+
     _cachedWpfImageSource = null;
-    WinFormsLoadCountForTests = 0;
   }
 
   public static DrawIcon LoadWinFormsIcon()
   {
-    if (_cachedWinFormsIcon is not null)
-      return (DrawIcon)_cachedWinFormsIcon.Clone();
+    lock (WinFormsIconSync)
+    {
+      if (_cachedWinFormsIcon is not null)
+        return (DrawIcon)_cachedWinFormsIcon.Clone();
 
-    WinFormsLoadCountForTests++;
-    var icon = LoadEmbeddedWinFormsIcon()
-      ?? throw new InvalidOperationException("Embedded SmartGuard brand icon is missing.");
+      WinFormsLoadCountForTests++;
+      var icon = LoadEmbeddedWinFormsIcon()
+        ?? throw new InvalidOperationException("Embedded SmartGuard brand icon is missing.");
 
-    _cachedWinFormsIcon?.Dispose();
-    _cachedWinFormsIcon = icon;
-    return (DrawIcon)icon.Clone();
+      _cachedWinFormsIcon?.Dispose();
+      _cachedWinFormsIcon = icon;
+      return (DrawIcon)icon.Clone();
+    }
   }
 
   public static ImageSource? LoadWpfImageSource()

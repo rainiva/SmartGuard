@@ -16,6 +16,7 @@ public sealed class SettingsWindowController
   private readonly ToastNotificationService _toastService;
 
   private string? _initialPage;
+  private bool _disposed;
 
   internal bool IsDarkThemeEnabled => _themeCoordinator.IsDarkThemeEnabled;
 
@@ -253,6 +254,10 @@ public sealed class SettingsWindowController
 
   public void Dispose()
   {
+    if (_disposed)
+      return;
+
+    _disposed = true;
     _policyCoordinator.Dispose();
     _logPageHost.Dispose();
     _navigationShell.Dispose();

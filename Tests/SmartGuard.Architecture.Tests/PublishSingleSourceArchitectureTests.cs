@@ -53,7 +53,8 @@ public class PublishSingleSourceArchitectureTests
 
     var installer = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
     installer.Should().Contain(@"generated\SmartGuard.Distribution.Files.iss.inc");
-    installer.Should().Contain(@"generated\SmartGuard.Distribution.Processes.iss.inc");
+    installer.Should().Contain("Exec(EngineExe");
+    installer.Should().Contain("--uninstall");
     installer.Should().NotContain("SmartGuard.LogViewer.exe");
     installer.Should().NotContain("Source: \"{#StagingDir}\\\\bin\\\\*\"");
     installer.Should().NotContain("Pos('SmartGuard.Engine.exe'");

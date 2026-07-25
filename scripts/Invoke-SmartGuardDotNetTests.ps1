@@ -100,71 +100,71 @@ function Ensure-SmartGuardDotNetTestBuild {
     }
 }
 
-function Invoke-SmartGuardDotNetTestProject {
-    param(
-        [string]$ProjectPath,
-        [string]$Filter,
-        [switch]$NoBuild
-    )
-
-    $args = @('test', $ProjectPath, '--nologo', '-v', 'q')
-    if ($Filter) {
-        $args += @('--filter', $Filter)
-    }
-    if ($NoBuild) {
-        $args += '--no-build'
-    }
-
-    $output = dotnet @args 2>&1
-    return [pscustomobject]@{
-        Project  = $ProjectPath
-        ExitCode = $LASTEXITCODE
-        Output   = ($output | Out-String)
-    }
-}
-
-function Invoke-SmartGuardDotNetTestJobs {
+function Invoke-SmartGuardDotNetTestProcesses {
     param(
         [string[]]$ProjectPaths,
         [string]$Filter,
         [switch]$NoBuild
     )
 
-    $jobs = @()
+    $resultDirectory = Join-Path $PSScriptRoot '..\.work\test-results'
+    [void](New-Item -ItemType Directory -Path $resultDirectory -Force)
+    $processes = @()
     foreach ($project in $ProjectPaths) {
-        $jobs += Start-Job -ScriptBlock {
-            param($ProjectPath, $Filter, $NoBuild)
-            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            [Console]::InputEncoding = [System.Text.Encoding]::UTF8
-            $OutputEncoding = [System.Text.Encoding]::UTF8
-            $env:DOTNET_CONSOLE_ENCODING = 'utf-8'
-            try {
-                if ((chcp) -notmatch '65001') {
-                    chcp 65001 | Out-Null
-                }
-            }
-            catch {
-                # Background jobs on CI runners may not have an interactive console for chcp.
-            }
+        $arguments = @('test', $project, '--nologo', '-v', 'q')
+        if ($Filter) {
+            $arguments += @('--filter', $Filter)
+        }
+        if ($NoBuild) {
+            $arguments += '--no-build'
+        }
 
-            $args = @('test', $ProjectPath, '--nologo', '-v', 'q')
-            if ($Filter) {
-                $args += @('--filter', $Filter)
-            }
-            if ($NoBuild) {
-                $args += '--no-build'
-            }
-
-            $output = & dotnet @args 2>&1 | Out-String
-            [pscustomobject]@{
-                Project  = $ProjectPath
-                ExitCode = $LASTEXITCODE
-                Output   = $output
-            }
-        } -ArgumentList $project, $Filter, [bool]$NoBuild
+        $argumentText = (($arguments | ForEach-Object {
+            '"{0}"' -f $_.Replace('"', '\"')
+        }) -join ' ')
+        $runId = [guid]::NewGuid().ToString('N')
+        $stdoutPath = Join-Path $resultDirectory "dotnet-test-$runId.stdout.log"
+        $exitPath = Join-Path $resultDirectory "dotnet-test-$runId.exit"
+        $command = "dotnet $argumentText > `"$stdoutPath`" 2>&1 & echo %ERRORLEVEL% > `"$exitPath`""
+        $process = Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', $command) -PassThru
+        $processes += [pscustomobject]@{
+            Process = $process
+            Project = $project
+            StdoutPath = $stdoutPath
+            ExitPath = $exitPath
+        }
     }
 
-    return $jobs
+    $deadline = [DateTime]::UtcNow.AddMinutes(10)
+    $pending = @($processes)
+    $results = @()
+    while ($pending.Count -gt 0 -and [DateTime]::UtcNow -lt $deadline) {
+        $completed = @($pending | Where-Object { Test-Path -LiteralPath $_.ExitPath })
+        foreach ($entry in $completed) {
+            $exitCode = [int]([System.IO.File]::ReadAllText($entry.ExitPath, [System.Text.Encoding]::UTF8).Trim())
+            $output = [System.IO.File]::ReadAllText($entry.StdoutPath, [System.Text.Encoding]::UTF8)
+            $results += [pscustomobject]@{
+                Project = $entry.Project
+                ExitCode = $exitCode
+                Output = $output
+            }
+        }
+        $pending = @($pending | Where-Object { -not (Test-Path -LiteralPath $_.ExitPath) })
+        if ($pending.Count -gt 0) {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    foreach ($entry in $pending) {
+        Stop-Process -Id $entry.Process.Id -Force -ErrorAction SilentlyContinue
+        $results += [pscustomobject]@{
+            Project = $entry.Project
+            ExitCode = 1
+            Output = "dotnet test timed out after 10 minutes (PID $($entry.Process.Id))."
+        }
+    }
+
+    return $results
 }
 
 function Write-SmartGuardDotNetTestResults {
@@ -204,16 +204,14 @@ function Invoke-SmartGuardDotNetTestSuite {
     Ensure-SmartGuardEnginePublished -RepoRoot $RepoRoot
     Ensure-SmartGuardDotNetTestBuild -RepoRoot $RepoRoot -ProjectPaths $projects
 
-    $parallelJobs = Invoke-SmartGuardDotNetTestJobs -ProjectPaths $parallelProjects -Filter $filter -NoBuild
-    $parallelResults = $parallelJobs | Wait-Job | Receive-Job
-    $parallelJobs | Remove-Job -Force
+    $parallelResults = Invoke-SmartGuardDotNetTestProcesses -ProjectPaths $parallelProjects -Filter $filter -NoBuild
     if (-not (Write-SmartGuardDotNetTestResults -Results $parallelResults)) {
         return $false
     }
 
     $serialResults = @()
     foreach ($project in $serialProjects) {
-        $serialResults += Invoke-SmartGuardDotNetTestProject -ProjectPath $project -Filter $filter -NoBuild
+        $serialResults += Invoke-SmartGuardDotNetTestProcesses -ProjectPaths @($project) -Filter $filter -NoBuild
     }
 
     return Write-SmartGuardDotNetTestResults -Results $serialResults
@@ -233,10 +231,6 @@ function Test-SmartGuardInstallerIntegrationEnabled {
     }
 
     if ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
-        return $false
-    }
-
-    if (-not (Test-IsProcessElevated)) {
         return $false
     }
 

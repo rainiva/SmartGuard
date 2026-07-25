@@ -312,9 +312,7 @@ public class SettingsWindowControllerTests
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
-                var navList = window.FindName("navList") as ListBox;
-                navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                NavigateToLogsPage(controller!, window);
 
                 var btnLogMore = window.FindName("btnLogMore") as Button;
                 var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
@@ -403,6 +401,7 @@ public class SettingsWindowControllerTests
             var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardLogMoreOcclusion_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempRoot);
             File.WriteAllText(Path.Combine(tempRoot, "SmartGuard.log"), "[INFO] 2026-07-04 06:00:00 ok\n");
+            SettingsWindowController? controller = null;
 
             try
             {
@@ -410,7 +409,7 @@ public class SettingsWindowControllerTests
                 var repository = new GuardConfigRepository(configPath);
                 var config = repository.LoadOrDefault(tempRoot);
 
-                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
@@ -448,6 +447,7 @@ public class SettingsWindowControllerTests
             }
             finally
             {
+                controller?.Dispose();
                 try { Directory.Delete(tempRoot, true); } catch { }
             }
         });
@@ -803,6 +803,7 @@ public class SettingsWindowControllerTests
             Directory.CreateDirectory(tempRoot);
             var logPath = Path.Combine(tempRoot, "SmartGuard.log");
             File.WriteAllText(logPath, "[INFO] 2026-06-21 10:00:00 initial entry\n");
+            SettingsWindowController? controller = null;
 
             try
             {
@@ -810,7 +811,7 @@ public class SettingsWindowControllerTests
                 var repository = new GuardConfigRepository(configPath);
                 var config = repository.LoadOrDefault(tempRoot);
 
-                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
@@ -828,6 +829,7 @@ public class SettingsWindowControllerTests
             }
             finally
             {
+                controller?.Dispose();
                 try { Directory.Delete(tempRoot, true); } catch { }
             }
         });
@@ -1373,6 +1375,7 @@ public class SettingsWindowControllerTests
             Directory.CreateDirectory(tempRoot);
             var logPath = Path.Combine(tempRoot, "SmartGuard.log");
             File.WriteAllText(logPath, "[INFO] 2026-06-21 10:00:00 initial entry\n");
+            SettingsWindowController? controller = null;
 
             try
             {
@@ -1380,7 +1383,7 @@ public class SettingsWindowControllerTests
                 var repository = new GuardConfigRepository(configPath);
                 var config = repository.LoadOrDefault(tempRoot);
 
-                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
@@ -1398,6 +1401,7 @@ public class SettingsWindowControllerTests
             }
             finally
             {
+                controller?.Dispose();
                 try { Directory.Delete(tempRoot, true); } catch { }
             }
         });
@@ -1599,12 +1603,13 @@ public class SettingsWindowControllerTests
                 "[ERROR] Failed to switch plan\r\n" +
                 "[HEART] Monitoring active\r\n");
 
+            SettingsWindowController? controller = null;
             try
             {
                 var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(tempRoot));
                 var config = repository.LoadOrDefault(tempRoot);
 
-                var controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
+                controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller);
@@ -1616,11 +1621,18 @@ public class SettingsWindowControllerTests
                 filterBar.SetKeyword("Battery");
                 FlushLogSearchDebounce(controller!, window);
 
-                GetLogViewPlainText(controller!).Should().Contain("Battery low warning");
-                GetLogViewPlainText(controller!).Should().NotContain("System idle detected");
+                WaitUntilLogViewMatches(
+                    controller!,
+                    window,
+                    text => text.Contains("Battery low warning") && !text.Contains("System idle detected"));
             }
             finally
             {
+                if (controller is not null)
+                {
+                    controller.Dispose();
+                    GetWindowField(controller).Close();
+                }
                 DeleteDirectoryQuietly(tempRoot);
             }
         });
@@ -1899,6 +1911,25 @@ public class SettingsWindowControllerTests
     {
         var presenter = GetLogHostField<LogViewListPresenter>(controller, "_logListPresenter")!;
         return presenter.GetPlainText();
+    }
+
+    private static void WaitUntilLogViewMatches(
+        SettingsWindowController controller,
+        Window window,
+        Func<string, bool> predicate,
+        int timeoutMs = 10000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            SettingsLogNavResponsivenessTests.PumpDispatcher(window);
+            if (predicate(GetLogViewPlainText(controller)))
+                return;
+
+            Thread.Sleep(1);
+        }
+
+        throw new TimeoutException("Timed out waiting for the log view to apply the requested filter.");
     }
 
     private static ScrollViewer GetLogScrollViewer(Window window, SettingsWindowController controller)

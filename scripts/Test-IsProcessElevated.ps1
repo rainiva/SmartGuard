@@ -18,65 +18,6 @@ function Get-WindowsPowerShellExePath {
     return Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 }
 
-function Test-RunTestsNeedsInstallerElevation {
-    param([string]$RepoRoot)
-
-    if ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
-        return $false
-    }
-
-    if ($env:SMARTGUARD_ELEVATED_RUN -eq '1') {
-        return $false
-    }
-
-    if (Test-IsProcessElevated) {
-        return $false
-    }
-
-    $marker = Get-ElevationDeclinedMarkerPath -RepoRoot $RepoRoot
-    if (Test-Path -LiteralPath $marker) {
-        return $false
-    }
-
-    return Test-Path -LiteralPath (Join-Path $RepoRoot 'Tests\Integration\InstallerUserFlow.Tests.ps1')
-}
-
-function Invoke-RunTestsSingleElevation {
-    param([string]$RunTestsScript)
-
-    $repoRoot = Split-Path -Parent $RunTestsScript
-    $marker = Get-ElevationDeclinedMarkerPath -RepoRoot $repoRoot
-
-    Write-Host 'SmartGuard: requesting one-time UAC elevation for the full test suite...' -ForegroundColor Cyan
-    $escaped = $RunTestsScript.Replace("'", "''")
-    $command = "& { `$env:SMARTGUARD_ELEVATED_RUN='1'; & '$escaped'; exit `$LASTEXITCODE }"
-    $powershellExe = Get-WindowsPowerShellExePath
-    try {
-        $proc = Start-Process -FilePath $powershellExe -Verb RunAs -Wait -PassThru -ArgumentList @(
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-Command',
-            $command
-        )
-    }
-    catch {
-        throw "Unable to launch elevated Windows PowerShell ($powershellExe): $($_.Exception.Message)"
-    }
-
-    if ($null -eq $proc) {
-        Write-Host 'UAC elevation was cancelled; skipping installer tests this session.' -ForegroundColor Yellow
-        try {
-            [void](New-Item -ItemType File -Path $marker -Force -ErrorAction SilentlyContinue)
-        }
-        catch {
-            # marker creation is best-effort
-        }
-        return [PSCustomObject]@{ HandedOff = $false; ExitCode = 0 }
-    }
-
-    return [PSCustomObject]@{ HandedOff = $true; ExitCode = $proc.ExitCode }
-}
-
 function Invoke-InstallerUserFlowSingleElevation {
     param(
         [string]$RepoRoot,
@@ -121,28 +62,21 @@ function Invoke-InstallerUserFlowSingleElevation {
     }
 
     Write-Host 'SmartGuard: requesting one-time UAC elevation for installer integration tests...' -ForegroundColor Cyan
-    $escapedRepoRoot = $RepoRoot.Replace("'", "''")
-    $escapedMarker = $marker.Replace("'", "''")
-    $escapedTestPath = $TestScriptPath.Replace("'", "''")
-    $command = @"
-& {
-    Set-Location '$escapedRepoRoot'
-    `$env:SMARTGUARD_ELEVATED_RUN='1'
-    Remove-Item -LiteralPath '$escapedMarker' -Force -ErrorAction SilentlyContinue
-    Import-Module Pester -MinimumVersion 5.0 -Force
-    `$result = Invoke-Pester -Path '$escapedTestPath' -PassThru
-    if (`$null -eq `$result) { exit 1 }
-    if (`$result.FailedCount -gt 0) { exit 1 }
-    exit 0
-}
-"@
+    $runner = Join-Path $RepoRoot 'scripts\Invoke-ElevatedInstallerUserFlow.ps1'
+    $transcript = Join-Path $RepoRoot '.work\test-results\installer-user-flow-elevated.transcript.log'
+    $resultPath = Join-Path $RepoRoot '.work\test-results\installer-user-flow-elevated.result.json'
+    Remove-Item -LiteralPath $resultPath -Force -ErrorAction SilentlyContinue
     $powershellExe = Get-WindowsPowerShellExePath
     try {
-        $proc = Start-Process -FilePath $powershellExe -Verb RunAs -Wait -PassThru -ArgumentList @(
+        $proc = Start-Process -FilePath $powershellExe -Verb RunAs -PassThru -ArgumentList @(
             '-NoProfile',
             '-ExecutionPolicy', 'Bypass',
-            '-Command',
-            $command
+            '-File', $runner,
+            '-RepoRoot', $RepoRoot,
+            '-TestScriptPath', $TestScriptPath,
+            '-DeclinedMarkerPath', $marker,
+            '-TranscriptPath', $transcript,
+            '-ResultPath', $resultPath
         )
     }
     catch {
@@ -165,9 +99,29 @@ function Invoke-InstallerUserFlowSingleElevation {
         }
     }
 
+    $deadline = [DateTime]::UtcNow.AddMinutes(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $resultPath) {
+            try {
+                $result = [System.IO.File]::ReadAllText($resultPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                return [PSCustomObject]@{
+                    HandedOff  = $true
+                    ExitCode   = [int]$result.ExitCode
+                    ShouldSkip = $false
+                    SkipReason = $null
+                }
+            }
+            catch {
+                # The elevated writer may still be atomically finishing its result file.
+            }
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+
     return [PSCustomObject]@{
         HandedOff  = $true
-        ExitCode   = $proc.ExitCode
+        ExitCode   = 1
         ShouldSkip = $false
         SkipReason = $null
     }

@@ -14,10 +14,16 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Dotnet_test_helper_must_build_once_and_run_parallel_with_no_build()
+  public void Dotnet_test_helper_must_build_once_and_poll_parallel_processes_with_no_build()
   {
     var helper = SourceScanHelper.ReadSource("scripts/Invoke-SmartGuardDotNetTests.ps1");
-    helper.Should().Contain("Start-Job");
+    helper.Should().Contain("Start-Process -FilePath $env:ComSpec");
+    helper.Should().Contain("dotnet-test-$runId.stdout.log");
+    helper.Should().Contain("dotnet-test-$runId.exit");
+    helper.Should().Contain("ReadAllText($entry.ExitPath");
+    helper.Should().Contain("Stop-Process");
+    helper.Should().NotContain("Wait-Job");
+    helper.Should().Contain("Invoke-SmartGuardDotNetTestProcesses -ProjectPaths @($project)");
     helper.Should().Contain("Get-SmartGuardParallelDotNetTestProjectPaths");
     helper.Should().Contain("Get-SmartGuardSerialDotNetTestProjectPaths");
     helper.Should().Contain("--no-restore");
@@ -80,21 +86,12 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Invoke_RunTestsSingleElevation_must_exit_parent_after_successful_elevation_handoff()
+  public void Run_Tests_must_not_elevate_the_whole_suite()
   {
-    var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
     var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
-    var fnMatch = System.Text.RegularExpressions.Regex.Match(
-      elevation,
-      @"(?s)function Invoke-RunTestsSingleElevation.*?(?=\r?\nfunction |\z)");
-    fnMatch.Success.Should().BeTrue();
-    fnMatch.Value.Should().Contain("HandedOff = $true");
-    fnMatch.Value.Should().Contain("exit `$LASTEXITCODE");
-    elevation.Should().Contain("function Get-WindowsPowerShellExePath");
-    fnMatch.Value.Should().Contain("$powershellExe = Get-WindowsPowerShellExePath");
-    fnMatch.Value.Should().Contain("Start-Process -FilePath $powershellExe -Verb RunAs");
-    fnMatch.Value.Should().Contain("Unable to launch elevated Windows PowerShell");
-    runTests.Should().MatchRegex(@"if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode");
+    runTests.Should().NotContain("Test-RunTestsNeedsInstallerElevation");
+    runTests.Should().NotContain("Invoke-RunTestsSingleElevation");
+    runTests.Should().Contain("$installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru");
   }
 
   [Fact]
@@ -106,14 +103,14 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Installer_integration_gate_must_require_elevation_to_avoid_repeated_uac()
+  public void Installer_integration_gate_must_allow_the_flow_to_own_its_single_elevation()
   {
     var helper = SourceScanHelper.ReadSource("scripts/Invoke-SmartGuardDotNetTests.ps1");
     var fnMatch = System.Text.RegularExpressions.Regex.Match(
       helper,
       @"(?s)function Test-SmartGuardInstallerIntegrationEnabled.*?(?=\r?\nfunction |\z)");
     fnMatch.Success.Should().BeTrue();
-    fnMatch.Value.Should().Contain("Test-IsProcessElevated");
+    fnMatch.Value.Should().NotContain("Test-IsProcessElevated");
     fnMatch.Value.Should().NotMatchRegex(
       @"if\s*\(\s*\$Tier\s*-eq\s*'nightly'\s*\)\s*\{\s*return\s+\$true\s*\}");
   }
