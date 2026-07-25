@@ -21,6 +21,8 @@ public class RunTestsOptimizationArchitectureTests
     helper.Should().Contain("dotnet-test-$runId.stdout.log");
     helper.Should().Contain("dotnet-test-$runId.exit");
     helper.Should().Contain("ReadAllText($entry.ExitPath");
+    helper.Should().MatchRegex(
+      @"\$entry\.Process\.WaitForExit\(\)[\s\S]*ReadAllText\(\$entry\.StdoutPath");
     helper.Should().Contain("Stop-Process");
     helper.Should().NotContain("Wait-Job");
     helper.Should().Contain("Invoke-SmartGuardDotNetTestProcesses -ProjectPaths @($project)");

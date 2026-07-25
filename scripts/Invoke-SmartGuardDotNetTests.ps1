@@ -141,6 +141,7 @@ function Invoke-SmartGuardDotNetTestProcesses {
     while ($pending.Count -gt 0 -and [DateTime]::UtcNow -lt $deadline) {
         $completed = @($pending | Where-Object { Test-Path -LiteralPath $_.ExitPath })
         foreach ($entry in $completed) {
+            $entry.Process.WaitForExit()
             $exitCode = [int]([System.IO.File]::ReadAllText($entry.ExitPath, [System.Text.Encoding]::UTF8).Trim())
             $output = [System.IO.File]::ReadAllText($entry.StdoutPath, [System.Text.Encoding]::UTF8)
             $results += [pscustomobject]@{

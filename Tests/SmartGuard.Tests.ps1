@@ -853,6 +853,7 @@ print(json.dumps(result))" $icon $officialDir
             $helper | Should -Match 'dotnet-test-\$runId\.stdout\.log'
             $helper | Should -Match 'dotnet-test-\$runId\.exit'
             $helper | Should -Match 'ReadAllText\(\$entry\.ExitPath'
+            $helper | Should -Match '\$entry\.Process\.WaitForExit\(\)[\s\S]*ReadAllText\(\$entry\.StdoutPath'
             $helper | Should -Match '2>&1'
             $helper | Should -Match 'Stop-Process'
             $helper | Should -Match 'Start-Sleep\s+-Milliseconds'
