@@ -282,7 +282,7 @@ internal sealed class SettingsLogPageHost
       ref forceCount,
       _followTailCoordinator,
       () => _logScrollCoordinator.Resolve(_lstLogView, _logListPresenter),
-      forceRedraw);
+      _logScrollCoordinator.GetPreferredHorizontalOffset, forceRedraw);
     ForceRefreshLogViewCountForTests = forceCount;
   }
 

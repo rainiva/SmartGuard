@@ -62,6 +62,44 @@ public class LogHorizontalThumbRealMouseTests
     }
 
     [Fact]
+    public void Horizontal_thumb_drag_survives_follow_tail_refresh()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
+            using (ctx)
+            {
+                var scrollBar = FindScrollBar(scrollViewer, "PART_HorizontalScrollBar");
+                scrollBar.ApplyTemplate();
+                var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as Track;
+                track.Should().NotBeNull();
+
+                RaiseGenuineDrag(window, track!.Thumb, horizontalDelta: 30, verticalDelta: 0, steps: 4);
+                var target = scrollViewer.HorizontalOffset;
+                target.Should().BeGreaterThan(10);
+
+                scrollViewer.ScrollToHorizontalOffset(0);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                scrollViewer.HorizontalOffset.Should().BeApproximately(
+                    0,
+                    1,
+                    "the delayed native/default reset observed in the real window must be part of the regression");
+
+                controller.ForceRefreshLogView();
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                scrollViewer.HorizontalOffset.Should().BeApproximately(
+                    target,
+                    1,
+                    "refresh must restore the last committed user drag rather than preserving a delayed default zero");
+            }
+        });
+    }
+
+    [Fact]
     public void Vertical_thumb_track_disables_follow_tail_and_survives_end_scroll()
     {
         WpfStaTestHost.Run(() =>
@@ -107,6 +145,32 @@ public class LogHorizontalThumbRealMouseTests
         {
             RoutedEvent = ScrollBar.ScrollEvent,
         });
+    }
+
+    private static void RaiseGenuineDrag(
+        Window window,
+        Thumb thumb,
+        double horizontalDelta,
+        double verticalDelta,
+        int steps)
+    {
+        thumb.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+        for (var i = 0; i < steps; i++)
+        {
+            thumb.RaiseEvent(new DragDeltaEventArgs(horizontalDelta, verticalDelta)
+            {
+                RoutedEvent = Thumb.DragDeltaEvent,
+            });
+            window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
+        thumb.RaiseEvent(new DragCompletedEventArgs(
+            horizontalDelta * steps,
+            verticalDelta * steps,
+            canceled: false)
+        {
+            RoutedEvent = Thumb.DragCompletedEvent,
+        });
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     private static Scope CreateShownLogPageContext(out Window window, out ScrollViewer scrollViewer, out SettingsWindowController controller)

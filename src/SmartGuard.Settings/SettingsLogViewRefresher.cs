@@ -16,6 +16,7 @@ internal static class SettingsLogViewRefresher
     ref int forceRefreshCountForTests,
     SettingsLogFollowTailCoordinator followTailCoordinator,
     Func<ScrollViewer?> resolveScrollViewer,
+    Func<ScrollViewer?, double> resolveHorizontalOffset,
     bool forceRedraw)
   {
     if (forceRedraw)
@@ -37,7 +38,7 @@ internal static class SettingsLogViewRefresher
 
     var scrollViewer = resolveScrollViewer();
     var savedVerticalOffset = scrollViewer?.VerticalOffset ?? 0;
-    var savedHorizontalOffset = scrollViewer?.HorizontalOffset ?? 0;
+    var savedHorizontalOffset = resolveHorizontalOffset(scrollViewer);
     var wasAtTail = scrollViewer is null || LogViewScrollState.IsAtTail(scrollViewer);
     var scrollToTail = controller.FollowTail && wasAtTail;
 

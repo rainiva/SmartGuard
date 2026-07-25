@@ -15,6 +15,7 @@ internal sealed class SettingsLogScrollCoordinator
   private double _verticalLastStableOffset;
   private double _horizontalObservedOffset;
   private double _verticalObservedOffset;
+  private bool _hasHorizontalUserOffset;
   private bool _horizontalThumbHooked;
   private bool _verticalThumbHooked;
 
@@ -66,6 +67,8 @@ internal sealed class SettingsLogScrollCoordinator
     {
       _horizontalCommittedOffset = args.NewValue;
       _horizontalObservedOffset = args.NewValue;
+      _horizontalLastStableOffset = args.NewValue;
+      _hasHorizontalUserOffset = true;
       _horizontalThumbTrackObserved = true;
       _scrollViewer.ScrollToHorizontalOffset(args.NewValue);
       return;
@@ -174,6 +177,7 @@ internal sealed class SettingsLogScrollCoordinator
     {
       _horizontalCommittedOffset = target;
       _horizontalLastStableOffset = target;
+      _hasHorizontalUserOffset = true;
       _scrollViewer.ScrollToHorizontalOffset(target);
       return;
     }
@@ -243,4 +247,9 @@ internal sealed class SettingsLogScrollCoordinator
     _scrollViewer = listPresenter?.ScrollViewer ?? LogViewListPresenter.FindScrollViewer(listView);
     return _scrollViewer;
   }
+
+  internal double GetPreferredHorizontalOffset(ScrollViewer? scrollViewer)
+    => _hasHorizontalUserOffset
+      ? _horizontalLastStableOffset
+      : scrollViewer?.HorizontalOffset ?? 0;
 }
