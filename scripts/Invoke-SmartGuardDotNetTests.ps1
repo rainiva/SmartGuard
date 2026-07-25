@@ -100,6 +100,26 @@ function Ensure-SmartGuardDotNetTestBuild {
     }
 }
 
+function Read-SmartGuardTextFileWhenUnlocked {
+    param(
+        [string]$Path,
+        [int]$TimeoutMilliseconds = 5000
+    )
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    while ($true) {
+        try {
+            return [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        }
+        catch [System.IO.IOException] {
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw
+            }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+}
+
 function Invoke-SmartGuardDotNetTestProcesses {
     param(
         [string[]]$ProjectPaths,
@@ -143,7 +163,7 @@ function Invoke-SmartGuardDotNetTestProcesses {
         foreach ($entry in $completed) {
             $entry.Process.WaitForExit()
             $exitCode = [int]([System.IO.File]::ReadAllText($entry.ExitPath, [System.Text.Encoding]::UTF8).Trim())
-            $output = [System.IO.File]::ReadAllText($entry.StdoutPath, [System.Text.Encoding]::UTF8)
+            $output = Read-SmartGuardTextFileWhenUnlocked -Path $entry.StdoutPath
             $results += [pscustomobject]@{
                 Project = $entry.Project
                 ExitCode = $exitCode

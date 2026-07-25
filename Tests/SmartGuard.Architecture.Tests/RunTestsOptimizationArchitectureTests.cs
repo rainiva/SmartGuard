@@ -22,7 +22,10 @@ public class RunTestsOptimizationArchitectureTests
     helper.Should().Contain("dotnet-test-$runId.exit");
     helper.Should().Contain("ReadAllText($entry.ExitPath");
     helper.Should().MatchRegex(
-      @"\$entry\.Process\.WaitForExit\(\)[\s\S]*ReadAllText\(\$entry\.StdoutPath");
+      @"\$entry\.Process\.WaitForExit\(\)[\s\S]*Read-SmartGuardTextFileWhenUnlocked -Path \$entry\.StdoutPath");
+    helper.Should().Contain("function Read-SmartGuardTextFileWhenUnlocked");
+    helper.Should().Contain("catch [System.IO.IOException]");
+    helper.Should().Contain("Read-SmartGuardTextFileWhenUnlocked -Path $entry.StdoutPath");
     helper.Should().Contain("Stop-Process");
     helper.Should().NotContain("Wait-Job");
     helper.Should().Contain("Invoke-SmartGuardDotNetTestProcesses -ProjectPaths @($project)");
