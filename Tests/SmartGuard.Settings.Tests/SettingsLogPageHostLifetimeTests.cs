@@ -120,6 +120,85 @@ public sealed class SettingsLogPageHostLifetimeTests
     }
 
     [Fact]
+    public void Refresh_result_still_shows_when_new_refresh_requests_keep_arriving()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            using var releaseSecondRead = new ManualResetEventSlim();
+            SettingsWindowController? controller = null;
+
+            try
+            {
+                WriteLog(installRoot);
+                LogTailReaderTestMetrics.Reset();
+
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+
+                // Simulate the 2s auto-refresh timer beating the UI completion
+                // callback on a loaded machine: while the first flight is
+                // reading (its reads are attempts 1-2), a new refresh request
+                // is injected, so the first flight's generation is already
+                // stale when it completes. The restarted flight (attempt 3+)
+                // then blocks on its read, freezing the moment after the stale
+                // completion so the assertion below is deterministic.
+                var readCount = 0;
+                var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
+                var capturedController = controller;
+                var capturedList = (ListBox?)null;
+                LogTailReaderTestMetrics.BeforeReadForTests = () =>
+                {
+                    var attempt = Interlocked.Increment(ref readCount);
+                    events.Enqueue($"read#{attempt} on t{Environment.CurrentManagedThreadId}");
+                    if (attempt == 1)
+                        window.Dispatcher.BeginInvoke(() =>
+                        {
+                            events.Enqueue($"inject ForceRefresh, items={capturedList?.Items.Count ?? -1}, inFlight={capturedController.IsLogRefreshInFlightForTests}");
+                            capturedController.ForceRefreshLogView();
+                        });
+                    else if (attempt >= 3 && !releaseSecondRead.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("Test did not release the blocked restarted log read.");
+                };
+
+                controller.NavigateTo("logs");
+                var lstLogView = window.FindName("lstLogView") as ListBox;
+                lstLogView.Should().NotBeNull();
+                capturedList = lstLogView;
+
+                try
+                {
+                    WpfStaTestHost.WaitUntil(
+                        () => lstLogView!.Items.Count > 0,
+                        TimeSpan.FromSeconds(5),
+                        "the first completed refresh to show log items even though a newer refresh request arrived meanwhile");
+                }
+                catch (TimeoutException ex)
+                {
+                    throw new TimeoutException(
+                        $"{ex.Message} events=[{string.Join(" | ", events)}]",
+                        ex);
+                }
+
+                releaseSecondRead.Set();
+                WpfStaTestHost.WaitUntil(
+                    () => !controller.IsLogRefreshInFlightForTests,
+                    TimeSpan.FromSeconds(10),
+                    "the refresh pipeline to settle after the blocked read is released");
+            }
+            finally
+            {
+                releaseSecondRead.Set();
+                controller?.Dispose();
+                LogTailReaderTestMetrics.Reset();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void Dispose_can_be_called_twice()
     {
         WpfStaTestHost.Run(() =>

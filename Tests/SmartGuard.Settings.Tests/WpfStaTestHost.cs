@@ -228,11 +228,18 @@ internal static class WpfStaTestHost
             return TrackedControllers.Sum(controller => controller.ActiveLogRefreshCountForTests);
     }
 
+    private static int GetUiRefreshInFlightCount()
+    {
+        lock (TrackedControllersLock)
+            return TrackedControllers.Count(controller => controller.IsLogRefreshInFlightForTests);
+    }
+
     private static string GetDiagnostics()
     {
         ThreadPool.GetAvailableThreads(out var availableWorkerThreads, out _);
         return
             $"windows={GetWindowCount()}, active refresh={GetActiveRefreshCount()}, " +
+            $"ui refresh in flight={GetUiRefreshInFlightCount()}, " +
             $"log read delay={LogTailReaderTestMetrics.ArtificialDelayMs} ms, " +
             $"log read hook={LogTailReaderTestMetrics.BeforeReadForTests is not null}, " +
             $"thread pool workers available={availableWorkerThreads}, " +

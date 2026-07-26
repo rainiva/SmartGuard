@@ -184,8 +184,14 @@ internal sealed class SettingsLogRefreshPipeline
 
     try
     {
-      var currentGeneration = Volatile.Read(ref _refreshGeneration);
-      if (generation != currentGeneration || !_isLogPageActive())
+      // Flights are serialized by _refreshInFlight, so this snapshot is
+      // always the newest completed result. A stale generation only means
+      // another refresh request arrived meanwhile; the finally block
+      // restarts a flight for it. Discarding the result here instead would
+      // livelock the page ("loading" forever) whenever requests keep
+      // arriving faster than completions, e.g. the 2s auto-refresh timer
+      // on a loaded machine.
+      if (!_isLogPageActive())
         return;
 
       if (failure is not null)
