@@ -234,12 +234,39 @@ internal static class WpfStaTestHost
             return TrackedControllers.Count(controller => controller.IsLogRefreshInFlightForTests);
     }
 
+    private static string GetFlightStages()
+    {
+        // SettingsLogPageHost 受 300 行门禁约束，不加转发属性；
+        // 经反射直读 pipeline 的阶段插桩，定位后台读 flight 卡在哪个阶段。
+        lock (TrackedControllersLock)
+        {
+            var stages = new List<string>();
+            foreach (var controller in TrackedControllers)
+            {
+                var host = typeof(SettingsWindowController)
+                    .GetField("_logPageHost", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
+                    .GetValue(controller);
+                var pipeline = host?.GetType()
+                    .GetField("_refreshPipeline", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
+                    .GetValue(host);
+                var stage = pipeline?.GetType()
+                    .GetProperty("FlightStageForTests", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
+                    .GetValue(pipeline) as string;
+                if (stage is not null)
+                    stages.Add(stage);
+            }
+
+            return stages.Count == 0 ? "<none>" : string.Join("|", stages);
+        }
+    }
+
     private static string GetDiagnostics()
     {
         ThreadPool.GetAvailableThreads(out var availableWorkerThreads, out _);
         return
             $"windows={GetWindowCount()}, active refresh={GetActiveRefreshCount()}, " +
             $"ui refresh in flight={GetUiRefreshInFlightCount()}, " +
+            $"flight stage={GetFlightStages()}, " +
             $"log read delay={LogTailReaderTestMetrics.ArtificialDelayMs} ms, " +
             $"log read hook={LogTailReaderTestMetrics.BeforeReadForTests is not null}, " +
             $"thread pool workers available={availableWorkerThreads}, " +

@@ -25,6 +25,9 @@ internal sealed class SettingsLogRefreshPipeline
   private Task? _activeRefreshTask;
   private int _activeRefreshCount;
   private int _applyAfterDisposeCount;
+  // 诊断插桩：记录最近一次 flight 的阶段与时刻，仅供测试超时信息定位卡点。
+  private volatile string _flightStage = "idle";
+  private long _flightStageAtUtcTicks = DateTime.UtcNow.Ticks;
 
   internal SettingsLogRefreshPipeline(
     Window window,
@@ -54,6 +57,21 @@ internal sealed class SettingsLogRefreshPipeline
   internal int ActiveRefreshCount => Volatile.Read(ref _activeRefreshCount);
 
   internal int ApplyAfterDisposeCount => Volatile.Read(ref _applyAfterDisposeCount);
+
+  internal string FlightStageForTests
+  {
+    get
+    {
+      var elapsed = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Volatile.Read(ref _flightStageAtUtcTicks));
+      return $"{_flightStage}+{(int)elapsed.TotalMilliseconds}ms";
+    }
+  }
+
+  private void MarkStage(string stage)
+  {
+    _flightStage = stage;
+    Volatile.Write(ref _flightStageAtUtcTicks, DateTime.UtcNow.Ticks);
+  }
 
   internal void RecordApplyAfterDispose() =>
     Interlocked.Increment(ref _applyAfterDisposeCount);
@@ -104,15 +122,20 @@ internal sealed class SettingsLogRefreshPipeline
       _refreshCancellation = refreshCancellation;
 
     Interlocked.Increment(ref _activeRefreshCount);
+    MarkStage("queued");
     var refreshTask = Task.Run(() =>
     {
+      MarkStage("reading");
       cancellationToken.ThrowIfCancellationRequested();
       if (forceRefresh)
         controller.ForceRefresh();
       else
         controller.RefreshFromDisk();
       cancellationToken.ThrowIfCancellationRequested();
-      return controller.GetSnapshot();
+      MarkStage("snapshotting");
+      var result = controller.GetSnapshot();
+      MarkStage("read-done");
+      return result;
     });
     lock (_refreshLifetimeLock)
       _activeRefreshTask = refreshTask;
@@ -138,6 +161,7 @@ internal sealed class SettingsLogRefreshPipeline
     try
     {
       snapshot = await refreshTask.ConfigureAwait(false);
+      MarkStage("awaited");
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -165,6 +189,7 @@ internal sealed class SettingsLogRefreshPipeline
 
     _ = _window.Dispatcher.BeginInvoke(() =>
     {
+      MarkStage("ui-dispatched");
       if (_isDisposed() || cancellationToken.IsCancellationRequested)
         return;
 
@@ -208,6 +233,7 @@ internal sealed class SettingsLogRefreshPipeline
     }
     finally
     {
+      MarkStage("completed");
       _refreshInFlight = false;
       if (!_isDisposed() && (_pendingRefresh || Volatile.Read(ref _refreshGeneration) != generation))
       {

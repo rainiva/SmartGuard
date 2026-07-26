@@ -15,25 +15,38 @@ public class LogHorizontalThumbRealMouseTests
     {
         WpfStaTestHost.Run(() =>
         {
-            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
-            using (ctx)
+            var trace = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            SettingsLogViewRefresher.TraceForTests = message => trace.Enqueue(message);
+            try
             {
-                scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
+                var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
+                using (ctx)
+                {
+                    scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
 
-                var target = Math.Min(scrollViewer.ScrollableWidth, 80);
-                scrollViewer.ScrollToHorizontalOffset(target);
-                window.UpdateLayout();
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-                scrollViewer.HorizontalOffset.Should().BeGreaterThan(10);
+                    var target = Math.Min(scrollViewer.ScrollableWidth, 80);
+                    trace.Enqueue($"test:set-offset {target:F1}");
+                    scrollViewer.ScrollToHorizontalOffset(target);
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    scrollViewer.HorizontalOffset.Should().BeGreaterThan(10);
 
-                controller.ForceRefreshLogView();
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
-                window.UpdateLayout();
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    trace.Enqueue("test:force-refresh");
+                    controller.ForceRefreshLogView();
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                    trace.Enqueue("test:content-ready");
+                    window.UpdateLayout();
+                    window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                scrollViewer.HorizontalOffset.Should().BeGreaterThan(
-                    10,
-                    "horizontal offset must be preserved across log refreshes so the thumb does not snap back");
+                    scrollViewer.HorizontalOffset.Should().BeGreaterThan(
+                        10,
+                        "horizontal offset must be preserved across log refreshes so the thumb does not " +
+                        $"snap back; trace=[{string.Join(" | ", trace)}]");
+                }
+            }
+            finally
+            {
+                SettingsLogViewRefresher.TraceForTests = null;
             }
         });
     }
