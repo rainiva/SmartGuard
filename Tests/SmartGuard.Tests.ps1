@@ -1100,6 +1100,393 @@ print(json.dumps(result))" $icon $officialDir
                 Should -Not -Match '(?s)ArgumentList.*?-Command'
         }
 
+        It 'Tray integration is elevated with an outer lifecycle and exact two-test acceptance' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1') -Raw -Encoding UTF8
+            $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Tests.ps1') -Raw -Encoding UTF8
+            $lifecyclePath = Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Lifecycle.ps1'
+
+            Test-Path -LiteralPath $lifecyclePath | Should -BeTrue
+            $runTests | Should -Match '\$integrationResult\s*=\s*Invoke-PesterFileSingleElevation'
+            $runTests | Should -Match 'TrayCoreUserFlow\.Lifecycle\.ps1'
+            $runTests | Should -Match 'LifecycleScriptPath'
+            $runTests | Should -Match '\$integrationResult\.ExitCode\s*-ne\s*0'
+            $runTests | Should -Match '\$integrationResult\.TotalCount\s*-ne\s*2'
+            $runTests | Should -Match '\$integrationResult\.FailedCount\s*-ne\s*0'
+            $runner | Should -Match '\[string\]\$LifecycleScriptPath'
+            $runner | Should -Match 'Enter-PesterFileLifecycle'
+            $runner | Should -Match 'Exit-PesterFileLifecycle'
+            $runner | Should -Not -Match 'Enter-SmartGuardTestLifecycle'
+            $runner | Should -Not -Match 'Exit-SmartGuardTestLifecycle'
+            $flow | Should -Not -Match 'Capture-SmartGuardScheduledTasks'
+            $flow | Should -Not -Match 'Restore-SmartGuardScheduledTasks'
+        }
+
+        It 'Tray lifecycle keeps capture stop and outer restore in transactional order' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $lifecyclePath = Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Lifecycle.ps1'
+            Test-Path -LiteralPath $lifecyclePath | Should -BeTrue
+            . $lifecyclePath
+            $script:task5LifecycleEvents = [System.Collections.Generic.List[string]]::new()
+            $script:task5LifecycleStopFails = $false
+
+            Mock Capture-SmartGuardScheduledTasks {
+                [void]$script:task5LifecycleEvents.Add('Capture')
+                return [pscustomobject]@{ Marker = 'snapshot' }
+            }
+            Mock Stop-SmartGuardForTrayCoreTest {
+                [void]$script:task5LifecycleEvents.Add('Stop')
+                if ($script:task5LifecycleStopFails) {
+                    throw 'controlled stop failure'
+                }
+            }
+            Mock Restore-SmartGuardScheduledTasks {
+                param($Snapshot)
+                $Snapshot.Marker | Should -Be 'snapshot'
+                [void]$script:task5LifecycleEvents.Add('Restore')
+            }
+
+            Enter-PesterFileLifecycle
+            Exit-PesterFileLifecycle
+
+            $script:task5LifecycleEvents | Should -Be @(
+                'Capture'
+                'Stop'
+                'Stop'
+                'Restore'
+            )
+        }
+
+        It 'Tray lifecycle restores its captured baseline when enter stop fails' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Lifecycle.ps1')
+            $script:task5LifecycleEvents = [System.Collections.Generic.List[string]]::new()
+
+            Mock Capture-SmartGuardScheduledTasks {
+                [void]$script:task5LifecycleEvents.Add('Capture')
+                return [pscustomobject]@{ Marker = 'snapshot' }
+            }
+            Mock Stop-SmartGuardForTrayCoreTest {
+                [void]$script:task5LifecycleEvents.Add('Stop')
+                throw 'controlled stop failure'
+            }
+            Mock Restore-SmartGuardScheduledTasks {
+                param($Snapshot)
+                $Snapshot.Marker | Should -Be 'snapshot'
+                [void]$script:task5LifecycleEvents.Add('Restore')
+            }
+
+            { Enter-PesterFileLifecycle } |
+                Should -Throw 'controlled stop failure'
+
+            $script:task5LifecycleEvents | Should -Be @(
+                'Capture'
+                'Stop'
+                'Restore'
+            )
+        }
+
+        It 'elevated Pester runner exits lifecycle before publishing its successful result' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-lifecycle-success-' + [guid]::NewGuid().ToString('N'))
+            $testPath = Join-Path $tempDirectory 'Controlled.Tests.ps1'
+            $lifecyclePath = Join-Path $tempDirectory 'Controlled.Lifecycle.ps1'
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            $eventsPath = Join-Path $tempDirectory 'events.txt'
+            $previousEventsPath = $env:SG_TASK5_EVENTS_PATH
+            $previousResultPath = $env:SG_TASK5_RESULT_PATH
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                [System.IO.File]::WriteAllText(
+                    $testPath,
+                    @'
+Describe 'controlled lifecycle Pester' {
+    It 'runs between enter and exit' {
+        [System.IO.File]::AppendAllText(
+            $env:SG_TASK5_EVENTS_PATH,
+            'Pester|',
+            [System.Text.UTF8Encoding]::new($false))
+        $true | Should -BeTrue
+    }
+}
+'@,
+                    [System.Text.UTF8Encoding]::new($false))
+                [System.IO.File]::WriteAllText(
+                    $lifecyclePath,
+                    @'
+function Enter-PesterFileLifecycle {
+    [System.IO.File]::AppendAllText(
+        $env:SG_TASK5_EVENTS_PATH,
+        'Enter|',
+        [System.Text.UTF8Encoding]::new($false))
+}
+
+function Exit-PesterFileLifecycle {
+    if (Test-Path -LiteralPath $env:SG_TASK5_RESULT_PATH) {
+        throw 'result was published before lifecycle exit'
+    }
+    [System.IO.File]::AppendAllText(
+        $env:SG_TASK5_EVENTS_PATH,
+        'Exit|',
+        [System.Text.UTF8Encoding]::new($false))
+}
+'@,
+                    [System.Text.UTF8Encoding]::new($false))
+                $env:SG_TASK5_EVENTS_PATH = $eventsPath
+                $env:SG_TASK5_RESULT_PATH = $resultPath
+
+                & (Get-WindowsPowerShellExePath) `
+                    -NoProfile `
+                    -ExecutionPolicy Bypass `
+                    -File (Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1') `
+                    -TestPath $testPath `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast `
+                    -LifecycleScriptPath $lifecyclePath
+                $childExitCode = $LASTEXITCODE
+                $diskResult = [System.IO.File]::ReadAllText(
+                    $resultPath,
+                    [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                $events = [System.IO.File]::ReadAllText(
+                    $eventsPath,
+                    [System.Text.Encoding]::UTF8)
+
+                $childExitCode | Should -Be 0
+                $diskResult.Result | Should -Be 'Passed'
+                $diskResult.ExitCode | Should -Be 0
+                $events | Should -Be 'Enter|Pester|Exit|'
+            }
+            finally {
+                if ($null -eq $previousEventsPath) {
+                    Remove-Item Env:SG_TASK5_EVENTS_PATH -ErrorAction SilentlyContinue
+                }
+                else {
+                    $env:SG_TASK5_EVENTS_PATH = $previousEventsPath
+                }
+                if ($null -eq $previousResultPath) {
+                    Remove-Item Env:SG_TASK5_RESULT_PATH -ErrorAction SilentlyContinue
+                }
+                else {
+                    $env:SG_TASK5_RESULT_PATH = $previousResultPath
+                }
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'elevated Pester runner fails its disk result when lifecycle exit fails' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-lifecycle-exit-failure-' + [guid]::NewGuid().ToString('N'))
+            $testPath = Join-Path $tempDirectory 'Controlled.Tests.ps1'
+            $lifecyclePath = Join-Path $tempDirectory 'Controlled.Lifecycle.ps1'
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                [System.IO.File]::WriteAllText(
+                    $testPath,
+                    "Describe 'controlled exit failure' { It 'passes Pester' { `$true | Should -BeTrue } }",
+                    [System.Text.UTF8Encoding]::new($false))
+                [System.IO.File]::WriteAllText(
+                    $lifecyclePath,
+                    @'
+function Enter-PesterFileLifecycle {
+}
+
+function Exit-PesterFileLifecycle {
+    throw 'controlled lifecycle exit failure'
+}
+'@,
+                    [System.Text.UTF8Encoding]::new($false))
+
+                & (Get-WindowsPowerShellExePath) `
+                    -NoProfile `
+                    -ExecutionPolicy Bypass `
+                    -File (Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1') `
+                    -TestPath $testPath `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast `
+                    -LifecycleScriptPath $lifecyclePath 2>$null
+                $childExitCode = $LASTEXITCODE
+                $diskResult = [System.IO.File]::ReadAllText(
+                    $resultPath,
+                    [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+
+                $childExitCode | Should -Be 1
+                $diskResult.Result | Should -Be 'Failed'
+                $diskResult.ExitCode | Should -Be 1
+                $diskResult.Error | Should -Match 'controlled lifecycle exit failure'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'scheduled-task capture records only valid task-backed production process state' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            $productionRoot = 'D:\Apps\SmartGuard'
+            $guardianSlot = [pscustomobject]@{
+                Command = '"D:\Apps\SmartGuard\bin\SmartGuard.Engine.exe" --root "D:\Apps\SmartGuard"'
+                WorkingDirectory = $productionRoot
+                Root = $productionRoot
+            }
+            $traySlot = [pscustomobject]@{
+                Command = '"D:\Apps\SmartGuard\bin\SmartGuard.Tray.exe" --root "D:\Apps\SmartGuard"'
+                WorkingDirectory = $productionRoot
+                Root = $productionRoot
+            }
+
+            Mock Get-SmartGuardScheduledTaskSlot {
+                param($TaskName)
+                if ($TaskName -eq 'SmartGuard Guardian') {
+                    return $guardianSlot
+                }
+                return $traySlot
+            }
+            Mock Get-Process {
+                param($Name)
+                if ($Name -eq 'SmartGuard.Engine') {
+                    return [pscustomobject]@{
+                        Id = 4242
+                        Path = 'D:\Apps\SmartGuard\bin\SmartGuard.Engine.exe'
+                    }
+                }
+                return [pscustomobject]@{
+                    Id = 4243
+                    Path = 'D:\Other\SmartGuard.Tray.exe'
+                }
+            }
+
+            $snapshot = Capture-SmartGuardScheduledTasks
+
+            $snapshot.Guardian | Should -Be $guardianSlot
+            $snapshot.Tray | Should -Be $traySlot
+            $snapshot.GuardianWasRunning | Should -BeTrue
+            $snapshot.TrayWasRunning | Should -BeFalse
+        }
+
+        It 'restore keeps valid stopped task slots stopped' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            $productionRoot = 'D:\Apps\SmartGuard'
+            $slot = [pscustomobject]@{
+                Command = 'SmartGuard'
+                WorkingDirectory = $productionRoot
+                Root = $productionRoot
+            }
+            $snapshot = [pscustomobject]@{
+                Guardian = $slot
+                Tray = $slot
+                GuardianWasRunning = $false
+                TrayWasRunning = $false
+            }
+
+            Mock Test-IsProcessElevated { $true }
+            Mock Test-Path { $true }
+            Mock Invoke-SmartGuardRestoreInstall {}
+            Mock Remove-SmartGuardScheduledTaskSlot {}
+            Mock Start-SmartGuardRestoredTasks {}
+
+            Restore-SmartGuardScheduledTasks -Snapshot $snapshot
+
+            Should -Invoke Invoke-SmartGuardRestoreInstall -Times 1 -Exactly
+            Should -Invoke Start-SmartGuardRestoredTasks -Times 0 -Exactly
+        }
+
+        It 'restore starts only task-backed processes that were running in the snapshot' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            $productionRoot = 'D:\Apps\SmartGuard'
+            $slot = [pscustomobject]@{
+                Command = 'SmartGuard'
+                WorkingDirectory = $productionRoot
+                Root = $productionRoot
+            }
+            $snapshot = [pscustomobject]@{
+                Guardian = $slot
+                Tray = $slot
+                GuardianWasRunning = $true
+                TrayWasRunning = $false
+            }
+
+            Mock Test-Path { $true }
+            Mock Invoke-SmartGuardNativeExe {
+                return [pscustomobject]@{
+                    ExitCode = 0
+                    StdOut = ''
+                    StdErr = ''
+                }
+            }
+
+            Start-SmartGuardRestoredTasks -Root $productionRoot -Snapshot $snapshot
+
+            Should -Invoke Invoke-SmartGuardNativeExe -Times 1 -Exactly -ParameterFilter {
+                $ArgumentList -contains 'guardian'
+            }
+            Should -Invoke Invoke-SmartGuardNativeExe -Times 0 -Exactly -ParameterFilter {
+                $ArgumentList -contains 'tray'
+            }
+        }
+
+        It 'restore removes a task slot that was missing without reviving its orphan process' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            $productionRoot = 'D:\Apps\SmartGuard'
+            $guardianSlot = [pscustomobject]@{
+                Command = 'SmartGuard'
+                WorkingDirectory = $productionRoot
+                Root = $productionRoot
+            }
+            $snapshot = [pscustomobject]@{
+                Guardian = $guardianSlot
+                Tray = 'Missing'
+                GuardianWasRunning = $false
+                TrayWasRunning = $false
+            }
+
+            Mock Test-IsProcessElevated { $true }
+            Mock Test-Path { $true }
+            Mock Invoke-SmartGuardRestoreInstall {}
+            Mock Remove-SmartGuardScheduledTaskSlot {}
+            Mock Start-SmartGuardRestoredTasks {}
+
+            Restore-SmartGuardScheduledTasks -Snapshot $snapshot
+
+            Should -Invoke Remove-SmartGuardScheduledTaskSlot -Times 1 -Exactly -ParameterFilter {
+                $TaskName -eq 'SmartGuard Tray'
+            }
+            Should -Invoke Start-SmartGuardRestoredTasks -Times 0 -Exactly
+        }
+
+        It 'missing task baseline cleans orphan processes without recreating or starting tasks' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            $snapshot = [pscustomobject]@{
+                Guardian = 'Missing'
+                Tray = 'Missing'
+                GuardianWasRunning = $false
+                TrayWasRunning = $false
+            }
+
+            Mock Test-IsProcessElevated { $true }
+            Mock Test-Path { $true }
+            Mock Invoke-SmartGuardEngineUninstall {}
+            Mock Invoke-SmartGuardRestoreInstall {}
+            Mock Start-SmartGuardRestoredTasks {}
+
+            Restore-SmartGuardScheduledTasks -Snapshot $snapshot
+
+            Should -Invoke Invoke-SmartGuardEngineUninstall -Times 1 -Exactly
+            Should -Invoke Invoke-SmartGuardRestoreInstall -Times 0 -Exactly
+            Should -Invoke Start-SmartGuardRestoredTasks -Times 0 -Exactly
+        }
+
         It 'elevated Pester runner publishes discovery container errors in its disk result' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')

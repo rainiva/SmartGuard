@@ -111,6 +111,59 @@ function Get-SmartGuardScheduledTaskSlot {
     }
 }
 
+function Test-SmartGuardScheduledTaskSlotPresent {
+    param($Slot)
+
+    return (
+        $null -ne $Slot -and
+        $Slot -ne 'Missing' -and
+        -not [string]::IsNullOrWhiteSpace([string]$Slot.Root))
+}
+
+function Test-SmartGuardTaskBackedProcessRunning {
+    param(
+        $Slot,
+        [string]$ProcessName,
+        [string]$ExecutableName
+    )
+
+    if (-not (Test-SmartGuardScheduledTaskSlotPresent -Slot $Slot) -or
+        (Test-SmartGuardTaskRootIsPoison -Root ([string]$Slot.Root))) {
+        return $false
+    }
+
+    $expectedPath = [System.IO.Path]::GetFullPath(
+        (Join-Path ([string]$Slot.Root) "bin\$ExecutableName"))
+    foreach ($process in @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)) {
+        $processPath = ''
+        try {
+            $processPath = [string]$process.Path
+        }
+        catch {
+            continue
+        }
+
+        if ([string]::IsNullOrWhiteSpace($processPath)) {
+            continue
+        }
+
+        try {
+            $resolvedProcessPath = [System.IO.Path]::GetFullPath($processPath)
+        }
+        catch {
+            continue
+        }
+
+        if ($resolvedProcessPath.Equals(
+                $expectedPath,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Capture-SmartGuardScheduledTasks {
     $guardian = Get-SmartGuardScheduledTaskSlot -TaskName $script:SmartGuardGuardianTaskName
     $tray = Get-SmartGuardScheduledTaskSlot -TaskName $script:SmartGuardTrayTaskName
@@ -134,8 +187,16 @@ function Capture-SmartGuardScheduledTasks {
     }
 
     return [PSCustomObject]@{
-        Guardian = $guardian
-        Tray     = $tray
+        Guardian          = $guardian
+        Tray              = $tray
+        GuardianWasRunning = Test-SmartGuardTaskBackedProcessRunning `
+            -Slot $guardian `
+            -ProcessName 'SmartGuard.Engine' `
+            -ExecutableName 'SmartGuard.Engine.exe'
+        TrayWasRunning     = Test-SmartGuardTaskBackedProcessRunning `
+            -Slot $tray `
+            -ProcessName 'SmartGuard.Tray' `
+            -ExecutableName 'SmartGuard.Tray.exe'
     }
 }
 
@@ -267,8 +328,48 @@ function Invoke-SmartGuardRestoreInstall {
     }
 }
 
+function Remove-SmartGuardScheduledTaskSlot {
+    param([string]$TaskName)
+
+    if ((Get-SmartGuardScheduledTaskSlot -TaskName $TaskName) -eq 'Missing') {
+        return
+    }
+
+    $schtasksExe = Join-Path $env:SystemRoot 'System32\schtasks.exe'
+    $result = Invoke-SmartGuardNativeExe `
+        -FilePath $schtasksExe `
+        -ArgumentList @('/Delete', '/TN', $TaskName, '/F')
+    if ($result.ExitCode -ne 0 -and
+        (Get-SmartGuardScheduledTaskSlot -TaskName $TaskName) -ne 'Missing') {
+        throw "Restore delete task '$TaskName' failed with exit code $($result.ExitCode). $($result.StdErr)"
+    }
+}
+
 function Start-SmartGuardRestoredTasks {
-    param([string]$Root)
+    param(
+        [string]$Root,
+        $Snapshot
+    )
+
+    $tasksToStart = @(
+        if ((Test-SmartGuardScheduledTaskSlotPresent -Slot $Snapshot.Guardian) -and
+            [bool]$Snapshot.GuardianWasRunning) {
+            [PSCustomObject]@{
+                CliName = 'guardian'
+                TaskName = $script:SmartGuardGuardianTaskName
+            }
+        }
+        if ((Test-SmartGuardScheduledTaskSlotPresent -Slot $Snapshot.Tray) -and
+            [bool]$Snapshot.TrayWasRunning) {
+            [PSCustomObject]@{
+                CliName = 'tray'
+                TaskName = $script:SmartGuardTrayTaskName
+            }
+        }
+    )
+    if ($tasksToStart.Count -eq 0) {
+        return
+    }
 
     $cliCandidates = @(
         (Join-Path $Root 'bin\SmartGuard.Cli.exe'),
@@ -280,27 +381,26 @@ function Start-SmartGuardRestoredTasks {
             continue
         }
 
-        $guardian = Invoke-SmartGuardNativeExe -FilePath $cliExe -ArgumentList @('start', 'guardian', '--root', $Root)
-        if ($guardian.ExitCode -ne 0) {
-            throw "Restore start guardian failed with exit code $($guardian.ExitCode) for root '$Root'. $($guardian.StdErr)"
-        }
-
-        $tray = Invoke-SmartGuardNativeExe -FilePath $cliExe -ArgumentList @('start', 'tray', '--root', $Root)
-        if ($tray.ExitCode -ne 0) {
-            throw "Restore start tray failed with exit code $($tray.ExitCode) for root '$Root'. $($tray.StdErr)"
+        foreach ($task in $tasksToStart) {
+            $start = Invoke-SmartGuardNativeExe `
+                -FilePath $cliExe `
+                -ArgumentList @('start', $task.CliName, '--root', $Root)
+            if ($start.ExitCode -ne 0) {
+                throw "Restore start $($task.CliName) failed with exit code $($start.ExitCode) for root '$Root'. $($start.StdErr)"
+            }
         }
 
         return
     }
 
-    $runGuardian = Invoke-SmartGuardNativeExe -FilePath 'schtasks.exe' -ArgumentList @('/Run', '/TN', $script:SmartGuardGuardianTaskName)
-    if ($runGuardian.ExitCode -ne 0) {
-        throw "Restore schtasks /Run Guardian failed with exit code $($runGuardian.ExitCode)."
-    }
-
-    $runTray = Invoke-SmartGuardNativeExe -FilePath 'schtasks.exe' -ArgumentList @('/Run', '/TN', $script:SmartGuardTrayTaskName)
-    if ($runTray.ExitCode -ne 0) {
-        throw "Restore schtasks /Run Tray failed with exit code $($runTray.ExitCode)."
+    $schtasksExe = Join-Path $env:SystemRoot 'System32\schtasks.exe'
+    foreach ($task in $tasksToStart) {
+        $runTask = Invoke-SmartGuardNativeExe `
+            -FilePath $schtasksExe `
+            -ArgumentList @('/Run', '/TN', $task.TaskName)
+        if ($runTask.ExitCode -ne 0) {
+            throw "Restore schtasks /Run '$($task.TaskName)' failed with exit code $($runTask.ExitCode)."
+        }
     }
 }
 
@@ -359,9 +459,17 @@ function Restore-SmartGuardScheduledTasks {
     # Prefer repo Engine so restore always uses the build under test (production root may lag).
     Invoke-SmartGuardRestoreInstall -Root $restoreRoot -EngineExe $repoEngineExe
 
+    if (-not (Test-SmartGuardScheduledTaskSlotPresent -Slot $Snapshot.Guardian)) {
+        Remove-SmartGuardScheduledTaskSlot -TaskName $script:SmartGuardGuardianTaskName
+    }
+    if (-not (Test-SmartGuardScheduledTaskSlotPresent -Slot $Snapshot.Tray)) {
+        Remove-SmartGuardScheduledTaskSlot -TaskName $script:SmartGuardTrayTaskName
+    }
+
     # Per-It restore should re-register only; starting Engine/Tray races the next Inno PrepareToInstall.
-    if ($StartProcesses) {
-        Start-SmartGuardRestoredTasks -Root $restoreRoot
+    if ($StartProcesses -and
+        ([bool]$Snapshot.GuardianWasRunning -or [bool]$Snapshot.TrayWasRunning)) {
+        Start-SmartGuardRestoredTasks -Root $restoreRoot -Snapshot $Snapshot
     }
 }
 

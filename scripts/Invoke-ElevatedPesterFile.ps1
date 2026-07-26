@@ -6,11 +6,13 @@ param(
     [Parameter(Mandatory)]
     [string]$TranscriptPath,
     [Parameter(Mandatory)]
-    [string]$Tier
+    [string]$Tier,
+    [string]$LifecycleScriptPath
 )
 
 $ErrorActionPreference = 'Stop'
 $transcriptStarted = $false
+$lifecycleEntered = $false
 $payload = [ordered]@{
     Result = 'Failed'
     ExitCode = 1
@@ -36,6 +38,29 @@ try {
 
     $env:SMARTGUARD_ELEVATED_RUN = '1'
     $env:SMARTGUARD_TEST_TIER = $Tier
+
+    if (-not [string]::IsNullOrWhiteSpace($LifecycleScriptPath)) {
+        if (-not (Test-Path -LiteralPath $LifecycleScriptPath -PathType Leaf)) {
+            throw "Lifecycle script file does not exist: $LifecycleScriptPath"
+        }
+
+        . $LifecycleScriptPath
+        foreach ($functionName in @(
+                'Enter-PesterFileLifecycle',
+                'Exit-PesterFileLifecycle'
+            )) {
+            $lifecycleFunction = Get-Command $functionName `
+                -CommandType Function `
+                -ErrorAction SilentlyContinue
+            if ($null -eq $lifecycleFunction) {
+                throw "Lifecycle script must define function $functionName."
+            }
+        }
+
+        Enter-PesterFileLifecycle
+        $lifecycleEntered = $true
+    }
+
     Import-Module Pester -MinimumVersion 5.0 -Force
     $pesterResult = Invoke-Pester -Path $TestPath -PassThru
     if ($null -eq $pesterResult) {
@@ -86,6 +111,23 @@ catch {
     Write-Error $_ -ErrorAction Continue
 }
 finally {
+    if ($lifecycleEntered) {
+        try {
+            Exit-PesterFileLifecycle
+        }
+        catch {
+            $payload.Result = 'Failed'
+            $payload.ExitCode = 1
+            $payload.Error = if ([string]::IsNullOrWhiteSpace([string]$payload.Error)) {
+                $_.Exception.Message
+            }
+            else {
+                "$($payload.Error) Lifecycle exit failed: $($_.Exception.Message)"
+            }
+            Write-Error $_ -ErrorAction Continue
+        }
+    }
+
     if ($transcriptStarted) {
         try {
             Stop-Transcript | Out-Null

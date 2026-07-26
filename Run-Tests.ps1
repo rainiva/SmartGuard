@@ -132,15 +132,60 @@ if ($dotNetResult.Result -ne 'Passed') {
 
 $integrationResult = New-SmartGuardTestLayerResult
 $integration = Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Tests.ps1'
+$integrationLifecycle =
+    Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Lifecycle.ps1'
+$integrationResultPath =
+    Join-Path $resultDirectory "tray-core-user-flow-elevated-$runId.result.json"
+$integrationTranscriptPath =
+    Join-Path $resultDirectory "tray-core-user-flow-elevated-$runId.transcript.log"
 if ($dotNetResult.Result -eq 'Passed' -and
     (Test-Path -LiteralPath $integration) -and
     (Test-SmartGuardTrayIntegrationEnabled -Tier $tier)) {
     Write-Host 'Running integration: Tray core user flow...'
     try {
-        $integrationResult = Invoke-Pester -Path $integration -PassThru
+        $startTrayIntegrationProcess = {
+            param(
+                [string]$ResolvedPowerShellExe,
+                [object[]]$ResolvedArgumentList
+            )
+
+            $arguments = @($ResolvedArgumentList) + @(
+                '-LifecycleScriptPath',
+                (ConvertTo-SmartGuardQuotedProcessArgument -Value $integrationLifecycle)
+            )
+            if (Test-IsProcessElevated) {
+                return Start-Process `
+                    -FilePath $ResolvedPowerShellExe `
+                    -PassThru `
+                    -ArgumentList $arguments
+            }
+
+            return Start-Process `
+                -FilePath $ResolvedPowerShellExe `
+                -Verb RunAs `
+                -PassThru `
+                -ArgumentList $arguments
+        }.GetNewClosure()
+
+        $integrationResult = Invoke-PesterFileSingleElevation `
+            -RepoRoot $PSScriptRoot `
+            -TestPath $integration `
+            -ResultPath $integrationResultPath `
+            -TranscriptPath $integrationTranscriptPath `
+            -Tier $tier `
+            -ProcessStarter $startTrayIntegrationProcess
         $trayIntegrationLayer = ConvertTo-SmartGuardPesterLayerResult -PesterResult $integrationResult
-        if ($integrationResult.Result -ne 'Passed') {
-            $trayIntegrationLayer.Error = 'Tray integration Pester result was not Passed.'
+        if ($integrationResult.Result -ne 'Passed' -or
+            [int]$integrationResult.ExitCode -ne 0 -or
+            [int]$integrationResult.TotalCount -ne 2 -or
+            [int]$integrationResult.FailedCount -ne 0) {
+            $trayIntegrationLayer.Result = 'Failed'
+            $trayIntegrationLayer.Error = (
+                'Tray integration result contract failed: ' +
+                "Result=$($integrationResult.Result), " +
+                "ExitCode=$($integrationResult.ExitCode), " +
+                "TotalCount=$($integrationResult.TotalCount), " +
+                "FailedCount=$($integrationResult.FailedCount).")
         }
     }
     catch {
