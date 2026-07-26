@@ -416,6 +416,7 @@ git commit -m "fix(test): propagate real dotnet child results"
 - 缺失/空/损坏 TRX 必须红，不能降级为仅信任退出码。
 - 每个被选中的项目必须 `total > 0`；fast/full 不得启动纯 Performance 项目。
 - [x] Task 2A adjacent architecture-gate migration: replace the obsolete `.exit` assertions with the captured-process, TRX fail-closed, structured-summary, and `Run-Tests.ps1` propagation contract.
+- [x] Task 2A review follow-up: require the structured summary's `ConvertTo-Json` serialization and explicit UTF-8 no-BOM `WriteAllText` persistence, not only its filename.
 
 ---
 

@@ -46,6 +46,9 @@ public class RunTestsOptimizationArchitectureTests
     var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
     runTests.Should().Contain("$dotNetResult.Result -ne 'Passed'");
     runTests.Should().Contain("run-tests-$runId.summary.json");
+    runTests.Should().Contain("$summaryJson = $summary | ConvertTo-Json -Depth 10");
+    runTests.Should().MatchRegex(
+      @"\[System\.IO\.File\]::WriteAllText\(\s*\$summaryPath,\s*\$summaryJson,\s*\[System\.Text\.UTF8Encoding\]::new\(\$false\)\s*\)");
   }
 
   [Theory]
