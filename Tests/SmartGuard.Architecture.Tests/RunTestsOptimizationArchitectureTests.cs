@@ -106,12 +106,29 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Run_Tests_must_not_elevate_the_whole_suite()
+  public void Run_Tests_must_use_single_elevation_result_protocol_and_fail_installer_layer()
   {
     var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
     runTests.Should().NotContain("Test-RunTestsNeedsInstallerElevation");
     runTests.Should().NotContain("Invoke-RunTestsSingleElevation");
-    runTests.Should().Contain("$installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru");
+    runTests.Should().NotContain("$installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru");
+    runTests.Should().Contain("Invoke-PesterFileSingleElevation");
+    runTests.Should().Contain(
+      "ConvertTo-SmartGuardPesterLayerResult -PesterResult $installerFlowResult");
+    runTests.Should().Contain("Result = $PesterResult.Result.ToString()");
+    runTests.Should().Contain("TotalCount = [int]$PesterResult.TotalCount");
+    runTests.Should().Contain("ExitCode = $exitCode");
+    runTests.Should().MatchRegex(
+      @"if\s*\(\s*\$installerIntegrationLayer\.Result\s*-notin\s*@\('Passed', 'Skipped'\)\s*\)\s*\{\s*\$exitCode\s*=\s*1\s*\}");
+
+    var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
+    var protocolMatch = System.Text.RegularExpressions.Regex.Match(
+      elevation,
+      @"(?s)function Test-SmartGuardElevatedPesterResult.*?(?=\r?\nfunction |\z)");
+    protocolMatch.Success.Should().BeTrue();
+    protocolMatch.Value.Should().Contain("[string]$Result.Result -eq 'Passed'");
+    protocolMatch.Value.Should().Contain("[int]$Result.ExitCode -eq 0");
+    protocolMatch.Value.Should().Contain("[int]$Result.TotalCount -gt 0");
   }
 
   [Fact]

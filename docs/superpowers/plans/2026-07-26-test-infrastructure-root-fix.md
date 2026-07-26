@@ -522,6 +522,12 @@ git commit -m "fix(test): unify observable elevated Pester results"
 - 全量门禁不得再次出现“管理员子流程执行了测试，但父 Pester 显示 0 tests 并算成功”。
 - transcript 成功不能替代 JSON、父退出码和总门禁退出码。
 
+#### Task 3A 迁移记录：架构门禁对齐统一提权协议
+
+- `RunTestsOptimizationArchitectureTests` 不再要求 installer flow 直接调用 `Invoke-Pester`；它必须调用 `Invoke-PesterFileSingleElevation` 并转换返回的结构化结果。
+- 架构门禁同时要求通用 helper fail closed：仅当 `Result == Passed`、`ExitCode == 0` 且 `TotalCount > 0` 时才接受子进程结果。
+- installer integration 层不是可忽略的旁路；其结果不是 `Passed` 或 `Skipped` 时，`Run-Tests.ps1` 必须令总退出码为 1。
+
 ---
 
 ### Task 4：进程停止从 best-effort 改成可证明前置条件
