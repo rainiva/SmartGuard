@@ -14,7 +14,7 @@ internal sealed class SettingsLogPageHost
   private readonly ToastNotificationService _toastService;
   private readonly SettingsLogSearchCoordinator _searchCoordinator;
   private readonly SettingsLogFollowTailCoordinator _followTailCoordinator;
-  private readonly object _refreshLifetimeLock = new();
+  private readonly SettingsLogRefreshPipeline _refreshPipeline;
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private LogSearchFilterBar? _logSearchFilterBar;
@@ -39,20 +39,10 @@ internal sealed class SettingsLogPageHost
   private bool _logPageActive;
   private volatile bool _disposed;
 
-  private int _refreshGeneration;
-  private bool _refreshInFlight;
-  private bool _pendingRefresh;
-  private bool _pendingForceRefresh;
-  private bool _pendingForceRedraw;
-  private CancellationTokenSource? _refreshCancellation;
-  private Task? _activeRefreshTask;
-  private int _activeRefreshCount;
-  private int _applyAfterDisposeCount;
   internal bool IsLogViewInitializedForTests => _logViewInitialized;
-  internal bool IsRefreshInFlightForTests =>
-    _refreshInFlight || Volatile.Read(ref _activeRefreshCount) > 0;
-  internal int ActiveRefreshCountForTests => Volatile.Read(ref _activeRefreshCount);
-  internal int ApplyAfterDisposeCountForTests => Volatile.Read(ref _applyAfterDisposeCount);
+  internal bool IsRefreshInFlightForTests => _refreshPipeline.IsRefreshInFlight;
+  internal int ActiveRefreshCountForTests => _refreshPipeline.ActiveRefreshCount;
+  internal int ApplyAfterDisposeCountForTests => _refreshPipeline.ApplyAfterDisposeCount;
   internal static int ForceRefreshLogViewCountForTests { get; private set; }
 
   internal static void ResetTestMetricsForTests() => ForceRefreshLogViewCountForTests = 0;
@@ -77,7 +67,29 @@ internal sealed class SettingsLogPageHost
       () => _lstLogView,
       () => _logScrollCoordinator.Resolve(_lstLogView, _logListPresenter),
       forceRedraw => RefreshLogView(forceRedraw));
+    _refreshPipeline = new SettingsLogRefreshPipeline(
+      window,
+      () => _disposed,
+      () => _logPageActive,
+      GetRefreshableController,
+      controller => SettingsLogSearchCoordinator.ApplyFilters(
+        controller,
+        _logSearchFilterBar,
+        _chkLogSearchCaseSensitive,
+        _cmbLogTimeRange,
+        _txtLogRangeStart,
+        _txtLogRangeEnd),
+      failure =>
+      {
+        if (_lblLogStatus is not null)
+          _lblLogStatus.Text = $"{LoadFailedStatusText}：{failure.Message}";
+      },
+      ApplySnapshot,
+      () => _followTailCoordinator.ApplyScrollIfEnabled());
   }
+
+  private LogViewController? GetRefreshableController() =>
+    _logListPresenter is null || _lblLogStatus is null ? null : _logController;
 
   internal void ConfigurePaths(string logPath, string? fallbackLogPath)
   {
@@ -159,13 +171,7 @@ internal sealed class SettingsLogPageHost
 
     _disposed = true;
     _logPageActive = false;
-    Interlocked.Increment(ref _refreshGeneration);
-    lock (_refreshLifetimeLock)
-      _refreshCancellation?.Cancel();
-    _refreshInFlight = false;
-    _pendingRefresh = false;
-    _pendingForceRefresh = false;
-    _pendingForceRedraw = false;
+    _refreshPipeline.Shutdown();
     _logTimer?.Stop();
     _searchCoordinator.Dispose();
   }
@@ -202,7 +208,7 @@ internal sealed class SettingsLogPageHost
     _logExportCoordinator = new SettingsLogExportCoordinator(
       _window,
       _toastService,
-      () => _refreshInFlight,
+      () => _refreshPipeline.UiRefreshInFlight,
       () => _logController,
       () => _logSearchFilterBar,
       () => _chkLogSearchCaseSensitive,
@@ -240,164 +246,14 @@ internal sealed class SettingsLogPageHost
     ScheduleLogRefresh(forceRefresh: false, forceRedraw: forceRedraw);
   }
 
-  private void ScheduleLogRefresh(bool forceRefresh, bool forceRedraw)
-  {
-    if (_disposed || _logController is null || _logListPresenter is null || _lblLogStatus is null)
-      return;
-
-    Interlocked.Increment(ref _refreshGeneration);
-
-    if (_refreshInFlight)
-    {
-      _pendingRefresh = true;
-      _pendingForceRefresh |= forceRefresh;
-      _pendingForceRedraw |= forceRedraw;
-      return;
-    }
-
-    StartRefreshFlight(forceRefresh, forceRedraw);
-  }
-
-  private void StartRefreshFlight(bool forceRefresh, bool forceRedraw)
-  {
-    if (_disposed || _logController is null || _logListPresenter is null || _lblLogStatus is null)
-      return;
-
-    _refreshInFlight = true;
-    var generation = Volatile.Read(ref _refreshGeneration);
-    var controller = _logController;
-
-    SettingsLogSearchCoordinator.ApplyFilters(
-      controller,
-      _logSearchFilterBar,
-      _chkLogSearchCaseSensitive,
-      _cmbLogTimeRange,
-      _txtLogRangeStart,
-      _txtLogRangeEnd);
-
-    var refreshCancellation = new CancellationTokenSource();
-    var cancellationToken = refreshCancellation.Token;
-    lock (_refreshLifetimeLock)
-      _refreshCancellation = refreshCancellation;
-
-    Interlocked.Increment(ref _activeRefreshCount);
-    var refreshTask = Task.Run(() =>
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-      if (forceRefresh)
-        controller.ForceRefresh();
-      else
-        controller.RefreshFromDisk();
-      cancellationToken.ThrowIfCancellationRequested();
-      return controller.GetSnapshot();
-    });
-    lock (_refreshLifetimeLock)
-      _activeRefreshTask = refreshTask;
-    _ = ObserveRefreshCompletionAsync(
-      refreshTask,
-      refreshCancellation,
-      cancellationToken,
-      generation,
-      forceRedraw);
-  }
-
-  private async Task ObserveRefreshCompletionAsync(
-    Task<LogViewSnapshot> refreshTask,
-    CancellationTokenSource refreshCancellation,
-    CancellationToken cancellationToken,
-    int generation,
-    bool forceRedraw)
-  {
-    LogViewSnapshot? snapshot = null;
-    Exception? failure = null;
-    var canceled = false;
-
-    try
-    {
-      snapshot = await refreshTask.ConfigureAwait(false);
-    }
-    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-    {
-      canceled = true;
-    }
-    catch (Exception ex)
-    {
-      failure = ex;
-    }
-    finally
-    {
-      lock (_refreshLifetimeLock)
-      {
-        if (ReferenceEquals(_activeRefreshTask, refreshTask))
-          _activeRefreshTask = null;
-        if (ReferenceEquals(_refreshCancellation, refreshCancellation))
-          _refreshCancellation = null;
-        refreshCancellation.Dispose();
-      }
-      Interlocked.Decrement(ref _activeRefreshCount);
-    }
-
-    if (canceled || _disposed || cancellationToken.IsCancellationRequested)
-      return;
-
-    _ = _window.Dispatcher.BeginInvoke(() =>
-    {
-      if (_disposed || cancellationToken.IsCancellationRequested)
-        return;
-
-      CompleteRefreshOnUi(snapshot, failure, cancellationToken, generation, forceRedraw);
-    });
-  }
-
-  private void CompleteRefreshOnUi(
-    LogViewSnapshot? snapshot,
-    Exception? failure,
-    CancellationToken cancellationToken,
-    int generation,
-    bool forceRedraw)
-  {
-    if (_disposed || cancellationToken.IsCancellationRequested)
-      return;
-
-    try
-    {
-      var currentGeneration = Volatile.Read(ref _refreshGeneration);
-      if (generation != currentGeneration || !_logPageActive)
-        return;
-
-      if (failure is not null)
-      {
-        if (_lblLogStatus is not null)
-          _lblLogStatus.Text = $"{LoadFailedStatusText}：{failure.Message}";
-        return;
-      }
-
-      if (snapshot is null)
-        return;
-
-      ApplySnapshot(snapshot, forceRedraw);
-      _followTailCoordinator.ApplyScrollIfEnabled();
-    }
-    finally
-    {
-      _refreshInFlight = false;
-      if (!_disposed && (_pendingRefresh || Volatile.Read(ref _refreshGeneration) != generation))
-      {
-        var nextForceRefresh = _pendingForceRefresh;
-        var nextForceRedraw = _pendingForceRedraw;
-        _pendingRefresh = false;
-        _pendingForceRefresh = false;
-        _pendingForceRedraw = false;
-        StartRefreshFlight(nextForceRefresh, nextForceRedraw);
-      }
-    }
-  }
+  private void ScheduleLogRefresh(bool forceRefresh, bool forceRedraw) =>
+    _refreshPipeline.Schedule(forceRefresh, forceRedraw);
 
   private void ApplySnapshot(LogViewSnapshot snapshot, bool forceRedraw)
   {
     if (_disposed)
     {
-      Interlocked.Increment(ref _applyAfterDisposeCount);
+      _refreshPipeline.RecordApplyAfterDispose();
       return;
     }
 
