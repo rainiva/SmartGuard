@@ -1460,7 +1460,8 @@ print(json.dumps(result))" $icon $officialDir
                 return $processes
             }
             Mock Stop-Process {
-                throw [System.UnauthorizedAccessException]::new('Access denied')
+                param($Id)
+                throw [System.UnauthorizedAccessException]::new("Access denied $Id")
             }
             Mock Test-IsProcessElevated { $false }
 
@@ -1478,9 +1479,12 @@ print(json.dumps(result))" $icon $officialDir
             $exception.Message | Should -Match '4243'
             $exception.Message | Should -Match 'SmartGuard\.Tray'
             $exception.Message | Should -Match 'CurrentProcessElevated=False'
-            $exception.Message | Should -Match 'Access denied'
+            $exception.Message | Should -Match 'StopFailures=.*PID=4242, Name=SmartGuard\.Engine, Error=Access denied 4242'
+            $exception.Message | Should -Match 'StopFailures=.*PID=4243, Name=SmartGuard\.Tray, Error=Access denied 4243'
             $exception.Message | Should -Match 'administrator'
             $exception.Message | Should -Match 'complete test gate'
+            Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 4242 }
+            Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 4243 }
         }
 
         It 'Stop-SmartGuardProcessesWithoutElevation produces no output when every target exits' {
@@ -1561,31 +1565,34 @@ print(json.dumps(result))" $icon $officialDir
             }
             Mock Start-Sleep {}
             [void](New-Item -ItemType Directory -Path $tempDirectory)
-            [System.IO.File]::WriteAllLines(
-                $startupLogPath,
-                @(1..30 | ForEach-Object { "startup-line-$_" }),
-                [System.Text.UTF8Encoding]::new($false))
-
-            $exception = $null
             try {
-                Wait-StatusFile -StatusPath $statusPath -Process $process -StartupLogPath $startupLogPath -TimeoutSec 25
-            }
-            catch {
-                $exception = $_.Exception
-            }
+                [System.IO.File]::WriteAllLines(
+                    $startupLogPath,
+                    @(1..30 | ForEach-Object { "startup-line-$_" }),
+                    [System.Text.UTF8Encoding]::new($false))
 
-            $exception | Should -Not -BeNullOrEmpty
-            $exception.Message | Should -Match '4242'
-            $exception.Message | Should -Match '17'
-            $exception.Message | Should -Match 'SmartGuard\.status\.json'
-            $exception.Message | Should -Match 'StartupLogTail'
-            $exception.Message | Should -Match 'single instance|startup failure'
-            $exception.Message | Should -Match 'startup-line-11'
-            $exception.Message | Should -Match 'startup-line-30'
-            $exception.Message | Should -Not -Match 'startup-line-10'
-            Should -Invoke Start-Sleep -Times 0 -Exactly
+                $exception = $null
+                try {
+                    Wait-StatusFile -StatusPath $statusPath -Process $process -StartupLogPath $startupLogPath -TimeoutSec 25
+                }
+                catch {
+                    $exception = $_.Exception
+                }
 
-            Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+                $exception | Should -Not -BeNullOrEmpty
+                $exception.Message | Should -Match '4242'
+                $exception.Message | Should -Match '17'
+                $exception.Message | Should -Match 'SmartGuard\.status\.json'
+                $exception.Message | Should -Match 'StartupLogTail'
+                $exception.Message | Should -Match 'single instance|startup failure'
+                $exception.Message | Should -Match 'startup-line-11'
+                $exception.Message | Should -Match 'startup-line-30'
+                $exception.Message | Should -Not -Match 'startup-line-10'
+                Should -Invoke Start-Sleep -Times 0 -Exactly
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }
