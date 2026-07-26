@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'SmartGuardStop.ps1')
+. (Join-Path $PSScriptRoot '..\..\scripts\SmartGuardPathConstants.ps1')
 
 function Stop-SmartGuardForTrayCoreTest {
     Stop-SmartGuardForIntegrationTest
@@ -24,12 +25,39 @@ function Copy-EnginePayload {
 function Wait-StatusFile {
     param(
         [string]$StatusPath,
+        [object]$Process,
+        [string]$StartupLogPath,
         [int]$TimeoutSec = 25
     )
+
+    if (-not $StartupLogPath) {
+        $StartupLogPath = Join-Path (Split-Path -Parent $StatusPath) $SmartGuardStartupLogFileName
+    }
+
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
+        if ($Process -and $Process.HasExited) {
+            $exitCode = try { $Process.ExitCode } catch { 'unavailable' }
+            $startupLogTail = '(startup log unavailable)'
+            if (Test-Path -LiteralPath $StartupLogPath) {
+                try {
+                    $startupLogTail = @(
+                        [System.IO.File]::ReadAllLines(
+                            $StartupLogPath,
+                            [System.Text.UTF8Encoding]::new($false)) |
+                            Select-Object -Last 20
+                    ) -join [Environment]::NewLine
+                }
+                catch {
+                    $startupLogTail = "(unable to read startup log: $($_.Exception.Message))"
+                }
+            }
+
+            throw "Engine process exited before status publication. PID=$($Process.Id); ExitCode=$exitCode; StatusPath='$StatusPath'; StartupLogTail=$startupLogTail. A duplicate single instance or startup failure prevented status publication."
+        }
+
         if (Test-Path -LiteralPath $StatusPath) {
-            return Get-Content -LiteralPath $StatusPath -Raw | ConvertFrom-Json
+            return Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
         Start-Sleep -Milliseconds 400
     }
@@ -46,10 +74,6 @@ function Stop-EngineTree {
         $engineExe = Join-Path $InstallRoot 'bin\SmartGuard.Engine.exe'
         if (Test-Path -LiteralPath $engineExe) {
             Stop-SmartGuardProcesses -EngineExe $engineExe -Root $InstallRoot -ProcessId $ProcessId
-            Wait-SmartGuardEngineExit -ProcessId $ProcessId | Out-Null
-            if ($ProcessId -gt 0) {
-                Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-            }
             return
         }
     }

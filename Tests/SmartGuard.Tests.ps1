@@ -1437,5 +1437,64 @@ print(json.dumps(result))" $icon $officialDir
             $stop | Should -Match 'Stop-SmartGuardProcessesWithoutElevation'
             $stop | Should -Match 'if\s*\(\s*-not\s*\(\s*Test-IsProcessElevated\s*\)\s*\)'
         }
+
+        It 'Stop-SmartGuardProcessesWithoutElevation reports an administrator requirement for an inaccessible target process' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1')
+
+            Mock Get-Process {
+                [pscustomobject]@{
+                    Id = 4242
+                    ProcessName = 'SmartGuard.Engine'
+                }
+            } -ParameterFilter { $Id -eq 4242 }
+            Mock Get-Process { @() } -ParameterFilter { $Name }
+            Mock Stop-Process {
+                throw [System.UnauthorizedAccessException]::new('Access denied')
+            } -ParameterFilter { $Id -eq 4242 }
+
+            $exception = $null
+            try {
+                Stop-SmartGuardProcessesWithoutElevation -ProcessId 4242
+            }
+            catch {
+                $exception = $_.Exception
+            }
+
+            $exception | Should -Not -BeNullOrEmpty
+            $exception.Message | Should -Match '4242'
+            $exception.Message | Should -Match 'administrator'
+        }
+
+        It 'Wait-StatusFile reports an exited engine before the status timeout' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Helpers.ps1')
+            $statusPath = Join-Path ([System.IO.Path]::GetTempPath()) 'SmartGuard.status.json'
+            $startupLogPath = Join-Path ([System.IO.Path]::GetTempPath()) 'SmartGuard.startup.log'
+            $process = [pscustomobject]@{
+                Id = 4242
+                HasExited = $true
+                ExitCode = 17
+            }
+
+            Mock Test-Path { $false }
+            Mock Start-Sleep {}
+
+            $exception = $null
+            try {
+                Wait-StatusFile -StatusPath $statusPath -Process $process -StartupLogPath $startupLogPath -TimeoutSec 25
+            }
+            catch {
+                $exception = $_.Exception
+            }
+
+            $exception | Should -Not -BeNullOrEmpty
+            $exception.Message | Should -Match '4242'
+            $exception.Message | Should -Match '17'
+            $exception.Message | Should -Match 'SmartGuard\.status\.json'
+            $exception.Message | Should -Match 'StartupLogTail'
+            $exception.Message | Should -Match 'single instance|startup failure'
+            Should -Invoke Start-Sleep -Times 0 -Exactly
+        }
     }
 }

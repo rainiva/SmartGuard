@@ -25,7 +25,7 @@ Describe 'Tray core user flow (integration)' {
 
         $proc = Start-Process -FilePath $engine -WorkingDirectory $installRoot -WindowStyle Hidden -PassThru
         try {
-            $payload = Wait-StatusFile -StatusPath $statusPath
+            $payload = Wait-StatusFile -StatusPath $statusPath -Process $proc
             $payload | Should -Not -BeNullOrEmpty
             $payload.currentPlan | Should -Not -BeNullOrEmpty
             Test-Path -LiteralPath (Join-Path $installRoot 'SmartGuard.config.json') | Should -Be $true
@@ -48,7 +48,7 @@ Describe 'Tray core user flow (integration)' {
 
         $proc = Start-Process -FilePath $engine -ArgumentList @('--root', $installRoot) -WorkingDirectory $installRoot -WindowStyle Hidden -PassThru
         try {
-            $payload = Wait-StatusFile -StatusPath $statusPath
+            $payload = Wait-StatusFile -StatusPath $statusPath -Process $proc
             $payload | Should -Not -BeNullOrEmpty
             $payload.currentPlan | Should -Not -BeNullOrEmpty
         }
