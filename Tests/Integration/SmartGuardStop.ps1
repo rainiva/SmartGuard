@@ -71,11 +71,12 @@ function Assert-SmartGuardProcessesExited {
             return
         }
 
-        if ([DateTime]::UtcNow -ge $deadline) {
+        $remainingMs = [int][Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if ($remainingMs -le 0) {
             break
         }
 
-        Start-Sleep -Milliseconds $PollMs
+        Start-Sleep -Milliseconds ([Math]::Min([Math]::Max($PollMs, 1), $remainingMs))
     } while ($true)
 
     $processDetails = @($remaining | Sort-Object Id | ForEach-Object {

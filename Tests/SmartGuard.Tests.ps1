@@ -1438,24 +1438,35 @@ print(json.dumps(result))" $icon $officialDir
             $stop | Should -Match 'if\s*\(\s*-not\s*\(\s*Test-IsProcessElevated\s*\)\s*\)'
         }
 
-        It 'Stop-SmartGuardProcessesWithoutElevation reports an administrator requirement for an inaccessible target process' {
+        It 'Stop-SmartGuardProcessesWithoutElevation reports every inaccessible SmartGuard process with recovery guidance' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1')
 
             Mock Get-Process {
-                [pscustomobject]@{
-                    Id = 4242
-                    ProcessName = 'SmartGuard.Engine'
+                param($Id, $Name)
+                $processes = @(
+                    [pscustomobject]@{ Id = 4242; ProcessName = 'SmartGuard.Engine' }
+                    [pscustomobject]@{ Id = 4243; ProcessName = 'SmartGuard.Tray' }
+                )
+
+                if ($PSBoundParameters.ContainsKey('Id')) {
+                    return @($processes | Where-Object Id -eq $Id)
                 }
-            } -ParameterFilter { $Id -eq 4242 }
-            Mock Get-Process { @() } -ParameterFilter { $Name }
+
+                if ((@($Name) -join ',') -ne 'SmartGuard.Engine,SmartGuard.Tray') {
+                    throw "Unexpected process-name query: $($Name -join ',')"
+                }
+
+                return $processes
+            }
             Mock Stop-Process {
                 throw [System.UnauthorizedAccessException]::new('Access denied')
-            } -ParameterFilter { $Id -eq 4242 }
+            }
+            Mock Test-IsProcessElevated { $false }
 
             $exception = $null
             try {
-                Stop-SmartGuardProcessesWithoutElevation -ProcessId 4242
+                Stop-SmartGuardProcessesWithoutElevation -ProcessId 4242 -TimeoutMs 0
             }
             catch {
                 $exception = $_.Exception
@@ -1463,22 +1474,97 @@ print(json.dumps(result))" $icon $officialDir
 
             $exception | Should -Not -BeNullOrEmpty
             $exception.Message | Should -Match '4242'
+            $exception.Message | Should -Match 'SmartGuard\.Engine'
+            $exception.Message | Should -Match '4243'
+            $exception.Message | Should -Match 'SmartGuard\.Tray'
+            $exception.Message | Should -Match 'CurrentProcessElevated=False'
+            $exception.Message | Should -Match 'Access denied'
             $exception.Message | Should -Match 'administrator'
+            $exception.Message | Should -Match 'complete test gate'
         }
 
-        It 'Wait-StatusFile reports an exited engine before the status timeout' {
+        It 'Stop-SmartGuardProcessesWithoutElevation produces no output when every target exits' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1')
+            $script:task4TargetAlive = $true
+
+            Mock Get-Process {
+                param($Id, $Name)
+                if ($PSBoundParameters.ContainsKey('Id') -and $script:task4TargetAlive) {
+                    return [pscustomobject]@{ Id = 4242; ProcessName = 'SmartGuard.Engine' }
+                }
+                return @()
+            }
+            Mock Stop-Process { $script:task4TargetAlive = $false }
+
+            $result = @(Stop-SmartGuardProcessesWithoutElevation -ProcessId 4242 -TimeoutMs 0)
+
+            $result | Should -BeNullOrEmpty
+            Should -Invoke Stop-Process -Times 1 -Exactly
+        }
+
+        It 'Assert-SmartGuardProcessesExited clamps polling to the remaining timeout budget' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\SmartGuardStop.ps1')
+            $script:task4SleepRequests = @()
+
+            Mock Get-Process {
+                param($Id, $Name)
+                if ($PSBoundParameters.ContainsKey('Id')) {
+                    return [pscustomobject]@{ Id = 4242; ProcessName = 'SmartGuard.Engine' }
+                }
+                return @()
+            }
+            Mock Start-Sleep {
+                param([int]$Milliseconds)
+                $script:task4SleepRequests += $Milliseconds
+            }
+
+            { Assert-SmartGuardProcessesExited -ProcessId 4242 -TimeoutMs 20 -PollMs 5000 } |
+                Should -Throw 'SmartGuard processes did not exit within 20 ms*'
+
+            $script:task4SleepRequests[0] | Should -BeLessOrEqual 20
+        }
+
+        It 'Wait-StatusFile returns an existing status payload even after the engine exits' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Helpers.ps1')
-            $statusPath = Join-Path ([System.IO.Path]::GetTempPath()) 'SmartGuard.status.json'
-            $startupLogPath = Join-Path ([System.IO.Path]::GetTempPath()) 'SmartGuard.startup.log'
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-status-existing-' + [guid]::NewGuid().ToString('N'))
+            $statusPath = Join-Path $tempDirectory 'SmartGuard.status.json'
+            $process = [pscustomobject]@{ Id = 4242; HasExited = $true; ExitCode = 17 }
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                [System.IO.File]::WriteAllText(
+                    $statusPath,
+                    '{"currentPlan":"Balanced"}',
+                    [System.Text.UTF8Encoding]::new($false))
+
+                $payload = Wait-StatusFile -StatusPath $statusPath -Process $process
+
+                $payload.currentPlan | Should -Be 'Balanced'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Wait-StatusFile reports an exited engine with the final UTF-8 startup-log tail before the status timeout' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Helpers.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-status-tail-' + [guid]::NewGuid().ToString('N'))
+            $statusPath = Join-Path $tempDirectory 'SmartGuard.status.json'
+            $startupLogPath = Join-Path $tempDirectory 'SmartGuard.startup.log'
             $process = [pscustomobject]@{
                 Id = 4242
                 HasExited = $true
                 ExitCode = 17
             }
-
-            Mock Test-Path { $false }
             Mock Start-Sleep {}
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            [System.IO.File]::WriteAllLines(
+                $startupLogPath,
+                @(1..30 | ForEach-Object { "startup-line-$_" }),
+                [System.Text.UTF8Encoding]::new($false))
 
             $exception = $null
             try {
@@ -1494,7 +1580,12 @@ print(json.dumps(result))" $icon $officialDir
             $exception.Message | Should -Match 'SmartGuard\.status\.json'
             $exception.Message | Should -Match 'StartupLogTail'
             $exception.Message | Should -Match 'single instance|startup failure'
+            $exception.Message | Should -Match 'startup-line-11'
+            $exception.Message | Should -Match 'startup-line-30'
+            $exception.Message | Should -Not -Match 'startup-line-10'
             Should -Invoke Start-Sleep -Times 0 -Exactly
+
+            Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }

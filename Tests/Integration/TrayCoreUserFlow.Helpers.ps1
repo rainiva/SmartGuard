@@ -36,6 +36,16 @@ function Wait-StatusFile {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
+        $statusReadError = $null
+        if (Test-Path -LiteralPath $StatusPath) {
+            try {
+                return Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            }
+            catch {
+                $statusReadError = $_.Exception.Message
+            }
+        }
+
         if ($Process -and $Process.HasExited) {
             $exitCode = try { $Process.ExitCode } catch { 'unavailable' }
             $startupLogTail = '(startup log unavailable)'
@@ -53,11 +63,8 @@ function Wait-StatusFile {
                 }
             }
 
-            throw "Engine process exited before status publication. PID=$($Process.Id); ExitCode=$exitCode; StatusPath='$StatusPath'; StartupLogTail=$startupLogTail. A duplicate single instance or startup failure prevented status publication."
-        }
-
-        if (Test-Path -LiteralPath $StatusPath) {
-            return Get-Content -LiteralPath $StatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $statusSuffix = if ($statusReadError) { " StatusReadError=$statusReadError." } else { '' }
+            throw "Engine process exited before status publication. PID=$($Process.Id); ExitCode=$exitCode; StatusPath='$StatusPath'; StartupLogTail=$startupLogTail.$statusSuffix A duplicate single instance or startup failure prevented status publication."
         }
         Start-Sleep -Milliseconds 400
     }
