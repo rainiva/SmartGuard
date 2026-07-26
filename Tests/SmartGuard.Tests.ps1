@@ -825,6 +825,161 @@ print(json.dumps(result))" $icon $officialDir
             }
         }
 
+        It 'engine publish output never contaminates the structured suite result stream' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-suite-output-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $buildCmdPath = Join-Path $tempDirectory 'build.cmd'
+                $buildCmd = "@echo off`r`necho BUILD-SUCCESS-OUTPUT`r`nexit /b 0`r`n"
+                [System.IO.File]::WriteAllText(
+                    $buildCmdPath,
+                    $buildCmd,
+                    [System.Text.UTF8Encoding]::new($false))
+
+                Mock Ensure-SmartGuardDotNetTestBuild {}
+                Mock Invoke-SmartGuardDotNetTestProcesses {
+                    param($ProjectPaths)
+                    return [pscustomobject]@{
+                        Project = $ProjectPaths[0]
+                        RunId = 'mock'
+                        TrxPath = 'mock.trx'
+                        ExitCode = 0
+                        Output = ''
+                        TimedOut = $false
+                        Result = 'Passed'
+                        PassedCount = 1
+                        FailedCount = 0
+                        SkippedCount = 0
+                        TotalCount = 1
+                        Error = ''
+                    }
+                }
+
+                $suiteOutput = @(
+                    Invoke-SmartGuardDotNetTestSuite `
+                        -RepoRoot $tempDirectory `
+                        -Tier fast
+                )
+
+                $suiteOutput.Count | Should -Be 1
+                $suiteOutput[0].GetType().FullName |
+                    Should -Be 'System.Management.Automation.PSCustomObject'
+                $suiteOutput[0].Result | Should -Be 'Passed'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'parallel dotnet process entries share one batch deadline' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-shared-deadline-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $script:completedEntries = @()
+                $script:nextFakeProcessId = 1000
+                Mock Start-SmartGuardCapturedCommand {
+                    param($ResultDirectory, $RunId)
+                    $script:nextFakeProcessId++
+                    return [pscustomobject]@{
+                        Process = [pscustomobject]@{ Id = $script:nextFakeProcessId }
+                        StdoutPath = Join-Path $ResultDirectory "$RunId.stdout.log"
+                        StderrPath = Join-Path $ResultDirectory "$RunId.stderr.log"
+                        RunId = $RunId
+                    }
+                }
+                Mock Complete-SmartGuardCapturedCommand {
+                    param($Entry)
+                    $script:completedEntries += $Entry
+                    return [pscustomobject]@{
+                        ExitCode = 0
+                        Output = ''
+                        TimedOut = $false
+                        RunId = $Entry.RunId
+                    }
+                }
+                Mock Read-SmartGuardTrxResult {
+                    return [pscustomobject]@{
+                        Result = 'Passed'
+                        PassedCount = 1
+                        FailedCount = 0
+                        SkippedCount = 0
+                        TotalCount = 1
+                        Error = ''
+                    }
+                }
+
+                $projectPaths = @(
+                    (Join-Path $tempDirectory 'First.Tests.csproj'),
+                    (Join-Path $tempDirectory 'Second.Tests.csproj')
+                )
+                $results = @(
+                    Invoke-SmartGuardDotNetTestProcesses `
+                        -ProjectPaths $projectPaths `
+                        -ResultDirectory $tempDirectory `
+                        -RunId 'shared-deadline' `
+                        -TimeoutSeconds 600
+                )
+
+                $results.Count | Should -Be 2
+                $script:completedEntries.Count | Should -Be 2
+                foreach ($entry in $script:completedEntries) {
+                    $entry.PSObject.Properties.Name | Should -Contain 'DeadlineUtc'
+                    $entry.DeadlineUtc | Should -BeOfType ([DateTime])
+                }
+                @(
+                    $script:completedEntries |
+                        ForEach-Object { $_.DeadlineUtc.Ticks } |
+                        Select-Object -Unique
+                ).Count | Should -Be 1
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'captured completion honors an entry deadline instead of granting a new timeout' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-entry-deadline-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $script:deadlineFakeProcess = [pscustomobject]@{
+                    HasExited = $false
+                    Id = 4242
+                    ExitCode = 1
+                }
+                $script:deadlineFakeProcess |
+                    Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {}
+                $entry = [pscustomobject]@{
+                    Process = $script:deadlineFakeProcess
+                    StdoutPath = Join-Path $tempDirectory 'missing.stdout.log'
+                    StderrPath = Join-Path $tempDirectory 'missing.stderr.log'
+                    RunId = 'expired-deadline'
+                    DeadlineUtc = [DateTime]::UtcNow.AddSeconds(-1)
+                }
+                Mock Stop-SmartGuardCapturedProcessTree {
+                    $script:deadlineFakeProcess.HasExited = $true
+                }
+                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+                $result = Complete-SmartGuardCapturedCommand `
+                    -Entry $entry `
+                    -TimeoutSeconds 1
+
+                $stopwatch.Stop()
+                $result.TimedOut | Should -BeTrue
+                $stopwatch.Elapsed | Should -BeLessThan ([TimeSpan]::FromMilliseconds(500))
+                Should -Invoke Stop-SmartGuardCapturedProcessTree -Times 1 -Exactly
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'missing or malformed TRX never becomes a passed project result' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')

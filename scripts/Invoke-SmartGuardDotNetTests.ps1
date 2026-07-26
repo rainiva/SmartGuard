@@ -91,9 +91,11 @@ function Ensure-SmartGuardEnginePublished {
     }
 
     Write-Host "Publishing desktop suite for integration tests..."
-    & $buildCmd
-    if ($LASTEXITCODE -ne 0) {
-        throw "build.cmd failed with exit code $LASTEXITCODE"
+    $buildOutput = & $buildCmd 2>&1
+    $buildExitCode = $LASTEXITCODE
+    $buildOutput | Write-Host
+    if ($buildExitCode -ne 0) {
+        throw "build.cmd failed with exit code $buildExitCode"
     }
 }
 
@@ -319,7 +321,12 @@ function Complete-SmartGuardCapturedCommand {
         [int]$TimeoutSeconds
     )
 
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $deadline = if ($Entry.PSObject.Properties.Name -contains 'DeadlineUtc') {
+        [DateTime]$Entry.DeadlineUtc
+    }
+    else {
+        [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    }
     while (-not $Entry.Process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 100
     }
@@ -501,6 +508,7 @@ function Invoke-SmartGuardDotNetTestProcesses {
     )
 
     [void](New-Item -ItemType Directory -Path $resultDirectory -Force)
+    $batchDeadlineUtc = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $entries = @()
     foreach ($project in $ProjectPaths) {
         $arguments = @('test', $project, '--nologo', '-v', 'q')
@@ -535,6 +543,7 @@ function Invoke-SmartGuardDotNetTestProcesses {
             StderrPath = $entry.StderrPath
             RunId = $entry.RunId
             TrxPath = $trxPath
+            DeadlineUtc = $batchDeadlineUtc
         }
     }
 
