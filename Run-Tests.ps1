@@ -1,5 +1,9 @@
-﻿$testPath = Join-Path $PSScriptRoot 'Tests\SmartGuard.Tests.ps1'
-$resultPath = Join-Path $PSScriptRoot 'test-result.txt'
+$testPath = Join-Path $PSScriptRoot 'Tests\SmartGuard.Tests.ps1'
+$resultDirectory = Join-Path $PSScriptRoot '.work\test-results'
+$runId = '{0}-{1}' -f (
+    [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')),
+    ([guid]::NewGuid().ToString('N'))
+$summaryPath = Join-Path $resultDirectory "run-tests-$runId.summary.json"
 
 # 确保 UTF-8 编码
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -13,7 +17,69 @@ if ((chcp) -notmatch '65001') {
 . (Join-Path $PSScriptRoot 'scripts\Test-IsProcessElevated.ps1')
 . (Join-Path $PSScriptRoot 'scripts\Invoke-SmartGuardDotNetTests.ps1')
 
-$pester = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+function New-SmartGuardTestLayerResult {
+    param(
+        [string]$Result = 'NotRun',
+        [string]$Error = ''
+    )
+
+    return [pscustomobject]@{
+        Result = $Result
+        PassedCount = 0
+        FailedCount = 0
+        SkippedCount = 0
+        TotalCount = 0
+        Error = $Error
+    }
+}
+
+function ConvertTo-SmartGuardPesterLayerResult {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$PesterResult
+    )
+
+    return [pscustomobject]@{
+        Result = $PesterResult.Result.ToString()
+        PassedCount = [int]$PesterResult.PassedCount
+        FailedCount = [int]$PesterResult.FailedCount
+        SkippedCount = [int]$PesterResult.SkippedCount
+        TotalCount = [int]$PesterResult.TotalCount
+        Error = ''
+    }
+}
+
+function Write-SmartGuardTestLayerSummary {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [psobject]$Layer
+    )
+
+    $color = if ($Layer.Result -eq 'Passed') {
+        'Green'
+    }
+    elseif ($Layer.Result -eq 'Skipped') {
+        'Yellow'
+    }
+    else {
+        'Red'
+    }
+    Write-Host (
+        '{0} Result={1} Passed={2} Failed={3} Skipped={4} Total={5}' -f
+        $Name,
+        $Layer.Result,
+        $Layer.PassedCount,
+        $Layer.FailedCount,
+        $Layer.SkippedCount,
+        $Layer.TotalCount) -ForegroundColor $color
+}
+
+$pester = Get-Module -ListAvailable -Name Pester |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
 if (-not $pester -or $pester.Version -lt [version]'5.0.0') {
     Write-Host 'Installing Pester 5.x...'
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -31,58 +97,150 @@ if (-not (Test-Path -LiteralPath $testPath)) {
     exit 1
 }
 
+[void](New-Item -ItemType Directory -Path $resultDirectory -Force)
 $tier = Get-SmartGuardTestTier
 Write-Host "SmartGuard test tier: $tier"
 
-$r = Invoke-Pester -Path $testPath -PassThru
-if ($r.Result -ne 'Passed') {
-    Write-Host "Pester FAILED=$($r.FailedCount)" -ForegroundColor Red
-    exit 1
+$pesterResult = New-SmartGuardTestLayerResult -Result 'Failed'
+$dotNetResult = New-SmartGuardTestLayerResult
+$trayIntegrationLayer = New-SmartGuardTestLayerResult
+$installerIntegrationLayer = New-SmartGuardTestLayerResult
+
+try {
+    $r = Invoke-Pester -Path $testPath -PassThru
+    $pesterResult = ConvertTo-SmartGuardPesterLayerResult -PesterResult $r
+}
+catch {
+    $pesterResult.Error = $_.Exception.Message
 }
 
-if (-not (Invoke-SmartGuardDotNetTestSuite -RepoRoot $PSScriptRoot -Tier $tier)) {
-    exit 1
-}
-
-$integrationResult = [pscustomobject]@{ PassedCount = 0; FailedCount = 0 }
-$installerFlowResult = [pscustomobject]@{ PassedCount = 0; FailedCount = 0 }
-$integration = Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Tests.ps1'
-if ((Test-Path -LiteralPath $integration) -and (Test-SmartGuardTrayIntegrationEnabled -Tier $tier)) {
-    Write-Host 'Running integration: Tray core user flow...'
-    $integrationResult = Invoke-Pester -Path $integration -PassThru
-    if ($integrationResult.Result -ne 'Passed') {
-        Write-Host "Integration FAILED=$($integrationResult.FailedCount)" -ForegroundColor Red
-        exit 1
+if ($pesterResult.Result -eq 'Passed') {
+    try {
+        $dotNetResult = Invoke-SmartGuardDotNetTestSuite -RepoRoot $PSScriptRoot -Tier $tier
+    }
+    catch {
+        $dotNetResult = New-SmartGuardTestLayerResult -Result 'Failed' -Error $_.Exception.Message
     }
 }
-elseif (Test-Path -LiteralPath $integration) {
-    Write-Host "Skipping tray integration: SMARTGUARD_TEST_TIER=$tier" -ForegroundColor Yellow
+else {
+    $dotNetResult.Error = 'Skipped because the Pester layer did not pass.'
 }
 
-$installerFlow = Join-Path $PSScriptRoot 'Tests\Integration\InstallerUserFlow.Tests.ps1'
-if (Test-Path -LiteralPath $installerFlow) {
-    if (Test-SmartGuardInstallerIntegrationEnabled -Tier $tier) {
-        Write-Host 'Running integration: Installer user flow...'
-        $installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru
-        if ($installerFlowResult.Result -ne 'Passed') {
-            Write-Host "Installer integration FAILED=$($installerFlowResult.FailedCount)" -ForegroundColor Red
-            exit 1
+if ($dotNetResult.Result -ne 'Passed') {
+    Write-Host "Dotnet suite did not pass: $($dotNetResult.Error)" -ForegroundColor Red
+}
+
+$integrationResult = New-SmartGuardTestLayerResult
+$integration = Join-Path $PSScriptRoot 'Tests\Integration\TrayCoreUserFlow.Tests.ps1'
+if ($dotNetResult.Result -eq 'Passed' -and
+    (Test-Path -LiteralPath $integration) -and
+    (Test-SmartGuardTrayIntegrationEnabled -Tier $tier)) {
+    Write-Host 'Running integration: Tray core user flow...'
+    try {
+        $integrationResult = Invoke-Pester -Path $integration -PassThru
+        $trayIntegrationLayer = ConvertTo-SmartGuardPesterLayerResult -PesterResult $integrationResult
+        if ($integrationResult.Result -ne 'Passed') {
+            $trayIntegrationLayer.Error = 'Tray integration Pester result was not Passed.'
         }
+    }
+    catch {
+        $trayIntegrationLayer = New-SmartGuardTestLayerResult -Result 'Failed' -Error $_.Exception.Message
+    }
+}
+elseif (-not (Test-Path -LiteralPath $integration)) {
+    $trayIntegrationLayer = New-SmartGuardTestLayerResult -Result 'Skipped' -Error 'Tray integration file is missing.'
+}
+elseif (-not (Test-SmartGuardTrayIntegrationEnabled -Tier $tier)) {
+    $trayIntegrationLayer = New-SmartGuardTestLayerResult -Result 'Skipped' -Error "SMARTGUARD_TEST_TIER=$tier"
+}
+else {
+    $trayIntegrationLayer.Error = 'Skipped because an upstream layer did not pass.'
+}
+
+$installerFlowResult = New-SmartGuardTestLayerResult
+$installerFlow = Join-Path $PSScriptRoot 'Tests\Integration\InstallerUserFlow.Tests.ps1'
+$trayAllowsInstaller = $trayIntegrationLayer.Result -in @('Passed', 'Skipped')
+if ($dotNetResult.Result -eq 'Passed' -and
+    $trayAllowsInstaller -and
+    (Test-Path -LiteralPath $installerFlow) -and
+    (Test-SmartGuardInstallerIntegrationEnabled -Tier $tier)) {
+    Write-Host 'Running integration: Installer user flow...'
+    try {
+        $installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru
+        $installerIntegrationLayer =
+            ConvertTo-SmartGuardPesterLayerResult -PesterResult $installerFlowResult
+        if ($installerFlowResult.Result -ne 'Passed') {
+            $installerIntegrationLayer.Error =
+                'Installer integration Pester result was not Passed.'
+        }
+    }
+    catch {
+        $installerIntegrationLayer =
+            New-SmartGuardTestLayerResult -Result 'Failed' -Error $_.Exception.Message
+    }
+}
+elseif (-not (Test-Path -LiteralPath $installerFlow)) {
+    $installerIntegrationLayer =
+        New-SmartGuardTestLayerResult -Result 'Skipped' -Error 'Installer integration file is missing.'
+}
+elseif (-not (Test-SmartGuardInstallerIntegrationEnabled -Tier $tier)) {
+    $reason = if ($tier -eq 'fast') {
+        "SMARTGUARD_TEST_TIER=$tier"
+    }
+    elseif ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
+        'SMARTGUARD_SKIP_INSTALLER_TESTS=1'
     }
     else {
-        $reason = if ($tier -eq 'fast') {
-            "SMARTGUARD_TEST_TIER=$tier"
-        }
-        elseif ($env:SMARTGUARD_SKIP_INSTALLER_TESTS -eq '1') {
-            'SMARTGUARD_SKIP_INSTALLER_TESTS=1'
-        }
-        else {
-            'disabled'
-        }
-        Write-Host "Skipping installer integration: $reason" -ForegroundColor Yellow
+        'disabled'
     }
+    $installerIntegrationLayer =
+        New-SmartGuardTestLayerResult -Result 'Skipped' -Error $reason
 }
-$total = $r.PassedCount + $integrationResult.PassedCount + $installerFlowResult.PassedCount
-$failed = $r.FailedCount + $integrationResult.FailedCount + $installerFlowResult.FailedCount
-Write-Host "PASSED=$total FAILED=$failed TOTAL=$($total + $failed)"
-if ($failed -gt 0) { exit 1 }
+else {
+    $installerIntegrationLayer.Error = 'Skipped because an upstream layer did not pass.'
+}
+
+$exitCode = 0
+if ($pesterResult.Result -ne 'Passed') {
+    $exitCode = 1
+}
+if ($dotNetResult.Result -ne 'Passed') {
+    $exitCode = 1
+}
+if ($trayIntegrationLayer.Result -notin @('Passed', 'Skipped')) {
+    $exitCode = 1
+}
+if ($installerIntegrationLayer.Result -notin @('Passed', 'Skipped')) {
+    $exitCode = 1
+}
+$result = if ($exitCode -eq 0) { 'Passed' } else { 'Failed' }
+$trxPaths = @(
+    $dotNetResult.ProjectResults |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_.TrxPath) } |
+        ForEach-Object { $_.TrxPath }
+)
+
+$summary = [ordered]@{
+    RunId = $runId
+    Tier = $tier
+    Result = $result
+    Pester = $pesterResult
+    DotNet = $dotNetResult
+    TrayIntegration = $trayIntegrationLayer
+    InstallerIntegration = $installerIntegrationLayer
+    ExitCode = $exitCode
+    TrxPaths = $trxPaths
+    CompletedAtUtc = [DateTime]::UtcNow.ToString('o')
+}
+$summaryJson = $summary | ConvertTo-Json -Depth 10
+[System.IO.File]::WriteAllText(
+    $summaryPath,
+    $summaryJson,
+    [System.Text.UTF8Encoding]::new($false))
+
+Write-SmartGuardTestLayerSummary -Name 'PESTER' -Layer $pesterResult
+Write-SmartGuardTestLayerSummary -Name 'DOTNET' -Layer $dotNetResult
+Write-SmartGuardTestLayerSummary -Name 'TRAY_INTEGRATION' -Layer $trayIntegrationLayer
+Write-SmartGuardTestLayerSummary -Name 'INSTALLER_INTEGRATION' -Layer $installerIntegrationLayer
+Write-Host "RESULT Tier=$tier Result=$result ExitCode=$exitCode Summary=$summaryPath"
+exit $exitCode

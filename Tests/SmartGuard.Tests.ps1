@@ -768,6 +768,109 @@ print(json.dumps(result))" $icon $officialDir
     }
 
     Describe 'Run-Tests optimization contract' {
+        It 'captured test process preserves the real non-zero child exit code' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-captured-command-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $capturedCommand = Start-SmartGuardCapturedCommand `
+                    -CommandText '"%SystemRoot%\System32\cmd.exe" /d /c exit 23' `
+                    -ResultDirectory $tempDirectory `
+                    -RunId 'exit-23'
+
+                $capturedCommand.Process | Should -Not -BeNullOrEmpty
+                $capturedCommand.StdoutPath | Should -Not -BeNullOrEmpty
+                $capturedCommand.RunId | Should -Be 'exit-23'
+
+                $result = Complete-SmartGuardCapturedCommand `
+                    -Entry $capturedCommand `
+                    -TimeoutSeconds 10
+
+                $result.ExitCode | Should -Be 23
+                $result.TimedOut | Should -BeFalse
+                @(Get-ChildItem -LiteralPath $tempDirectory -Filter '*.exit').Count | Should -Be 0
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'captured command timeout stops its captured process tree promptly' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-captured-timeout-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $capturedCommand = Start-SmartGuardCapturedCommand `
+                    -CommandText 'ping 127.0.0.1 -n 30' `
+                    -ResultDirectory $tempDirectory `
+                    -RunId 'timeout'
+                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+                $result = Complete-SmartGuardCapturedCommand `
+                    -Entry $capturedCommand `
+                    -TimeoutSeconds 1
+
+                $stopwatch.Stop()
+                $result.TimedOut | Should -BeTrue
+                $capturedCommand.Process.HasExited | Should -BeTrue
+                $stopwatch.Elapsed | Should -BeLessThan ([TimeSpan]::FromSeconds(10))
+            }
+            finally {
+                if ($null -ne $capturedCommand -and -not $capturedCommand.Process.HasExited) {
+                    Stop-SmartGuardCapturedProcessTree -ProcessId $capturedCommand.Process.Id
+                }
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'missing or malformed TRX never becomes a passed project result' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-trx-result-' + [guid]::NewGuid().ToString('N'))
+            $missingTrxPath = Join-Path $tempDirectory 'missing.trx'
+            $malformedTrxPath = Join-Path $tempDirectory 'malformed.trx'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $missing = Read-SmartGuardTrxResult -Path $missingTrxPath -ExitCode 0
+                $missing.Result | Should -Be 'Failed'
+                $missing.Error | Should -Match 'TRX'
+
+                [System.IO.File]::WriteAllText($malformedTrxPath, '<TestRun', [System.Text.UTF8Encoding]::new($false))
+                $malformed = Read-SmartGuardTrxResult -Path $malformedTrxPath -ExitCode 0
+                $malformed.Result | Should -Be 'Failed'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Run-Tests.ps1 fails the parent gate when the dotnet suite is not passed' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+
+            $runTests | Should -Match '\$dotNetResult\.Result\s*-ne\s*''Passed'''
+            $runTests | Should -Match 'run-tests-.*summary\.json'
+            $runTests | Should -Not -Match 'PASSED=\$total FAILED=\$failed'
+        }
+
+        It 'dotnet test projects exclude performance tests outside the nightly tier' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+
+            $fastProjects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot $root -Tier fast
+            $fullProjects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot $root -Tier full
+            $nightlyProjects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot $root -Tier nightly
+
+            ($fastProjects -join [Environment]::NewLine) |
+                Should -Not -Match 'SmartGuard\.Engine\.PerformanceTests'
+            ($fullProjects -join [Environment]::NewLine) |
+                Should -Not -Match 'SmartGuard\.Engine\.PerformanceTests'
+            ($nightlyProjects -join [Environment]::NewLine) |
+                Should -Match 'SmartGuard\.Engine\.PerformanceTests'
+        }
+
         It 'Run-Tests.ps1 delegates dotnet tests to Invoke-SmartGuardDotNetTests.ps1' {
             $root = Split-Path -Parent $PSScriptRoot
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
@@ -849,19 +952,22 @@ print(json.dumps(result))" $icon $officialDir
         It 'parallel dotnet test processes are polled and time out instead of blocking on background jobs' {
             $root = Split-Path -Parent $PSScriptRoot
             $helper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1') -Raw -Encoding UTF8
-            $helper | Should -Match 'Start-Process\s+-FilePath\s+\$env:ComSpec'
+            $helper | Should -Match 'function Start-SmartGuardCapturedCommand'
+            $helper | Should -Match 'function Complete-SmartGuardCapturedCommand'
+            $helper | Should -Match 'Start-Process[\s\S]*?-FilePath\s+\$env:ComSpec'
             $helper | Should -Match 'dotnet-test-\$runId\.stdout\.log'
-            $helper | Should -Match 'dotnet-test-\$runId\.exit'
-            $helper | Should -Match 'ReadAllText\(\$entry\.ExitPath'
-            $helper | Should -Match '\$entry\.Process\.WaitForExit\(\)[\s\S]*Read-SmartGuardTextFileWhenUnlocked -Path \$entry\.StdoutPath'
+            $helper | Should -Not -Match '%ERRORLEVEL%'
+            $helper | Should -Not -Match '\.ExitPath'
+            $helper | Should -Match '\$Entry\.Process\.HasExited'
+            $helper | Should -Match '\$Entry\.Process\.WaitForExit\(\)'
+            $helper | Should -Match '\$Entry\.Process\.ExitCode'
             $helper | Should -Match 'function Read-SmartGuardTextFileWhenUnlocked'
             $helper | Should -Match 'catch \[System\.IO\.IOException\]'
-            $helper | Should -Match 'Read-SmartGuardTextFileWhenUnlocked -Path \$entry\.StdoutPath'
-            $helper | Should -Match '2>&1'
-            $helper | Should -Match 'Stop-Process'
+            $helper | Should -Match 'Read-SmartGuardTextFileWhenUnlocked -Path \$Entry\.StdoutPath'
+            $helper | Should -Match 'Stop-SmartGuardCapturedProcessTree\s+-ProcessId'
             $helper | Should -Match 'Start-Sleep\s+-Milliseconds'
             $helper | Should -Not -Match 'Wait-Job'
-            $helper | Should -Match 'Invoke-SmartGuardDotNetTestProcesses\s+-ProjectPaths\s+@\(\$project\)'
+            $helper | Should -Match 'Invoke-SmartGuardDotNetTestProcesses[\s\S]*?-ProjectPaths\s+@\(\$project\)'
         }
 
         It 'dotnet test output reader tolerates a writer that releases after the old five second window' {
