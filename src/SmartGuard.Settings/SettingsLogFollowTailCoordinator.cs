@@ -178,12 +178,22 @@ internal sealed class SettingsLogFollowTailCoordinator
 
       scrollViewer.UpdateLayout();
 
+      // Follow-tail is a vertical concern: ScrollIntoView aligns the last
+      // item's left edge, snapping the user's horizontal position to 0, so
+      // restore the horizontal offset after reaching the tail.
+      var horizontalOffset = scrollViewer.HorizontalOffset;
+
       var listBox = _getListBox();
       if (listBox is not null && listBox.Items.Count > 0)
         listBox.ScrollIntoView(listBox.Items[listBox.Items.Count - 1]);
 
       scrollViewer.UpdateLayout();
       scrollViewer.ScrollToEnd();
+      if (horizontalOffset > 0)
+      {
+        scrollViewer.ScrollToHorizontalOffset(horizontalOffset);
+        scrollViewer.UpdateLayout();
+      }
     }
 
     ScrollNow();

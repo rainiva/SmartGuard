@@ -140,6 +140,53 @@ public class LogHorizontalThumbRealMouseTests
         });
     }
 
+    [Fact]
+    public void Scrolling_to_tail_keeps_user_horizontal_offset()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
+            using (ctx)
+            {
+                var target = Math.Min(scrollViewer.ScrollableWidth, 80);
+                scrollViewer.ScrollToHorizontalOffset(target);
+                window.UpdateLayout();
+                scrollViewer.HorizontalOffset.Should().BeGreaterThan(10);
+
+                // Follow-tail is a vertical concern; jumping to the newest log
+                // line must not snap the user's horizontal position back to 0
+                // (ScrollIntoView aligns the item's left edge otherwise).
+                InvokeScrollToBottom(controller);
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                scrollViewer.VerticalOffset.Should().BeApproximately(
+                    scrollViewer.ScrollableHeight,
+                    1,
+                    "scroll-to-bottom must still reach the tail vertically");
+                scrollViewer.HorizontalOffset.Should().BeGreaterThan(
+                    10,
+                    "scrolling to the tail must not reset the user's horizontal offset");
+            }
+        });
+    }
+
+    private static void InvokeScrollToBottom(SettingsWindowController controller)
+    {
+        var hostField = typeof(SettingsWindowController).GetField(
+            "_logPageHost",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var host = hostField!.GetValue(controller)!;
+        var coordinatorField = host.GetType().GetField(
+            "_followTailCoordinator",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var coordinator = coordinatorField!.GetValue(host)!;
+        var method = coordinator.GetType().GetMethod(
+            "ScrollToBottom",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        method!.Invoke(coordinator, null);
+    }
+
     private static ScrollBar FindScrollBar(ScrollViewer scrollViewer, string partName)
     {
         scrollViewer.ApplyTemplate();
