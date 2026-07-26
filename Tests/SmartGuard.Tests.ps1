@@ -1349,6 +1349,99 @@ function Exit-PesterFileLifecycle {
             }
         }
 
+        It 'stability gate stops at first failure and never retries to green' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-TestStabilityGate.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-stability-gate-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'stability.json'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                # 第 2 轮固定失败的测试命令替身；第 3 轮若被调用就能“重试变绿”，
+                # 门禁必须在第 2 轮后立即停止。
+                Mock Invoke-SmartGuardStabilityIteration {
+                    param($Project, $Filter, $ResultDirectory, $RunId, $Iteration, $TimeoutSeconds)
+                    $failed = $Iteration -eq 2
+                    return [pscustomobject]@{
+                        Result = if ($failed) { 'Failed' } else { 'Passed' }
+                        ExitCode = if ($failed) { 1 } else { 0 }
+                        TrxPath = "synthetic-$Iteration.trx"
+                        Output = "synthetic-output-$Iteration"
+                        Error = if ($failed) { 'synthetic second-iteration failure' } else { '' }
+                    }
+                }
+
+                $gateResult = Invoke-SmartGuardTestStabilityGate `
+                    -Project 'Synthetic.Tests.csproj' `
+                    -Iterations 5 `
+                    -ResultPath $resultPath
+
+                $gateResult.Result | Should -Be 'Failed'
+                $gateResult.Iterations | Should -Be 5
+                $gateResult.Completed | Should -Be 2
+                $gateResult.Failures | Should -Be 1
+                $gateResult.FirstFailure.Iteration | Should -Be 2
+                $gateResult.FirstFailure.ExitCode | Should -Be 1
+                $gateResult.FirstFailure.TrxPath | Should -Be 'synthetic-2.trx'
+                $gateResult.FirstFailure.Output | Should -Be 'synthetic-output-2'
+                Should -Invoke Invoke-SmartGuardStabilityIteration -Times 2 -Exactly
+
+                $diskBytes = [System.IO.File]::ReadAllBytes($resultPath)
+                ($diskBytes.Length -ge 3 -and $diskBytes[0] -eq 0xEF -and $diskBytes[1] -eq 0xBB -and $diskBytes[2] -eq 0xBF) |
+                    Should -BeFalse -Because 'stability result JSON must be UTF-8 without BOM'
+                $diskResult = [System.IO.File]::ReadAllText(
+                    $resultPath,
+                    [System.Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
+                $diskResult.Result | Should -Be 'Failed'
+                $diskResult.Completed | Should -Be 2
+                $diskResult.Failures | Should -Be 1
+                $diskResult.FirstFailure.Iteration | Should -Be 2
+                $diskResult.CompletedAtUtc | Should -Not -BeNullOrEmpty
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'stability gate success records every iteration trx path' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-TestStabilityGate.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-stability-pass-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'stability.json'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                Mock Invoke-SmartGuardStabilityIteration {
+                    param($Project, $Filter, $ResultDirectory, $RunId, $Iteration, $TimeoutSeconds)
+                    return [pscustomobject]@{
+                        Result = 'Passed'
+                        ExitCode = 0
+                        TrxPath = "synthetic-$Iteration.trx"
+                        Output = ''
+                        Error = ''
+                    }
+                }
+
+                $gateResult = Invoke-SmartGuardTestStabilityGate `
+                    -Project 'Synthetic.Tests.csproj' `
+                    -Iterations 3 `
+                    -ResultPath $resultPath
+
+                $gateResult.Result | Should -Be 'Passed'
+                $gateResult.Completed | Should -Be 3
+                $gateResult.Failures | Should -Be 0
+                @($gateResult.TrxPaths) | Should -Be @('synthetic-1.trx', 'synthetic-2.trx', 'synthetic-3.trx')
+                Should -Invoke Invoke-SmartGuardStabilityIteration -Times 3 -Exactly
+
+                $diskResult = [System.IO.File]::ReadAllText(
+                    $resultPath,
+                    [System.Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
+                $diskResult.Result | Should -Be 'Passed'
+                @($diskResult.TrxPaths).Count | Should -Be 3
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'scheduled-task capture records only valid task-backed production process state' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')

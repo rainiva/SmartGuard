@@ -4,12 +4,22 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  schedule:
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+    inputs:
+      run-stability:
+        description: Run the no-retry WPF stability gate
+        type: boolean
+        default: true
 
 jobs:
-  run-tests:
+  fast-gate:
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     env:
       SMARTGUARD_SKIP_INSTALLER_TESTS: '1'
+      SMARTGUARD_TEST_TIER: fast
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -29,15 +39,102 @@ jobs:
         shell: pwsh
         run: |
           . ./scripts/Invoke-SmartGuardDotNetTests.ps1
-          $projects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot (Get-Location).Path
+          $projects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot (Get-Location).Path -Tier fast
           foreach ($project in $projects) {
             dotnet restore $project
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           ./build.cmd Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run SmartGuard test suite
+      - name: Run SmartGuard fast test suite
         shell: pwsh
         run: |
           chcp 65001 | Out-Null
           ./Run-Tests.ps1
+
+  full-gate:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    env:
+      SMARTGUARD_SKIP_INSTALLER_TESTS: '1'
+      SMARTGUARD_TEST_TIER: full
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CI dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install Pillow
+          choco install ripgrep -y
+          rg --version
+      - name: Restore and publish desktop suite
+        shell: pwsh
+        run: |
+          . ./scripts/Invoke-SmartGuardDotNetTests.ps1
+          $projects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot (Get-Location).Path -Tier full
+          foreach ($project in $projects) {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          ./build.cmd Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run SmartGuard full test suite
+        shell: pwsh
+        run: |
+          chcp 65001 | Out-Null
+          ./Run-Tests.ps1
+
+  stability-gate:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run-stability)
+    runs-on: windows-latest
+    env:
+      SMARTGUARD_SKIP_INSTALLER_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore Settings test project
+        shell: pwsh
+        run: |
+          dotnet restore Tests/SmartGuard.Settings.Tests/SmartGuard.Settings.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Targeted WPF stability gate (50 iterations, no retry)
+        shell: pwsh
+        run: |
+          chcp 65001 | Out-Null
+          ./scripts/Invoke-TestStabilityGate.ps1 `
+            -Project Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj `
+            -Filter "FullyQualifiedName~Log_page_more_flyout_keeps_bottom_action_clickable_above_lower_content|FullyQualifiedName~User_navigates_to_logs_still_loads_log_content|FullyQualifiedName~User_returning_from_logs_to_about_starts_at_top" `
+            -Iterations 50 `
+            -ResultPath .work\test-results\settings-wpf-targeted-stability.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Full Settings stability gate (5 iterations, no retry)
+        shell: pwsh
+        run: |
+          chcp 65001 | Out-Null
+          ./scripts/Invoke-TestStabilityGate.ps1 `
+            -Project Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj `
+            -Iterations 5 `
+            -ResultPath .work\test-results\settings-wpf-full-stability.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload stability evidence (summary JSON, stdout, TRX)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stability-gate-results
+          path: |
+            .work/test-results/settings-wpf-targeted-stability.json
+            .work/test-results/settings-wpf-full-stability.json
+            .work/test-results/dotnet-test-stability-*.stdout.log
+            .work/test-results/dotnet-test-stability-*.stderr.log
+            .work/test-results/stability-*.trx
+          if-no-files-found: warn
