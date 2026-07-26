@@ -109,26 +109,55 @@ public class RunTestsOptimizationArchitectureTests
   public void Run_Tests_must_use_single_elevation_result_protocol_and_fail_installer_layer()
   {
     var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
-    runTests.Should().NotContain("Test-RunTestsNeedsInstallerElevation");
-    runTests.Should().NotContain("Invoke-RunTestsSingleElevation");
-    runTests.Should().NotContain("$installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru");
-    runTests.Should().Contain("Invoke-PesterFileSingleElevation");
-    runTests.Should().Contain(
-      "ConvertTo-SmartGuardPesterLayerResult -PesterResult $installerFlowResult");
-    runTests.Should().Contain("Result = $PesterResult.Result.ToString()");
-    runTests.Should().Contain("TotalCount = [int]$PesterResult.TotalCount");
-    runTests.Should().Contain("ExitCode = $exitCode");
-    runTests.Should().MatchRegex(
-      @"if\s*\(\s*\$installerIntegrationLayer\.Result\s*-notin\s*@\('Passed', 'Skipped'\)\s*\)\s*\{\s*\$exitCode\s*=\s*1\s*\}");
+    var installerFlowBlock = System.Text.RegularExpressions.Regex.Match(
+      runTests,
+      @"(?ms)^\$installerFlowResult = New-SmartGuardTestLayerResult\r?\n.*?(?=^\$exitCode = 0\r?$)");
+    installerFlowBlock.Success.Should().BeTrue();
+    installerFlowBlock.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation(?:[ \t]*`[ \t]*|\s*$)");
+    installerFlowBlock.Value.Should().NotMatchRegex(
+      @"(?m)^[ \t]*(?:\$[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?Invoke-Pester(?!-)(?:[ \t]|$)");
+    installerFlowBlock.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\$installerIntegrationLayer\s*=\s*\r?\n[ \t]*ConvertTo-SmartGuardPesterLayerResult -PesterResult \$installerFlowResult");
+    installerFlowBlock.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*if\s*\(\s*\$installerFlowResult\.Result\s*-ne\s*'Passed'\s*\)\s*\{");
+
+    var layerResultConverter = System.Text.RegularExpressions.Regex.Match(
+      runTests,
+      @"(?s)function ConvertTo-SmartGuardPesterLayerResult.*?(?=\r?\nfunction |\z)");
+    layerResultConverter.Success.Should().BeTrue();
+    layerResultConverter.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*Result = \$PesterResult\.Result\.ToString\(\)");
+    layerResultConverter.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*TotalCount = \[int\]\$PesterResult\.TotalCount");
+
+    var installerFailureGate = System.Text.RegularExpressions.Regex.Match(
+      runTests,
+      @"(?ms)^if\s*\(\s*\$installerIntegrationLayer\.Result\s*-notin\s*@\('Passed', 'Skipped'\)\s*\)\s*\{\s*\$exitCode\s*=\s*1\s*\}");
+    installerFailureGate.Success.Should().BeTrue();
 
     var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
     var protocolMatch = System.Text.RegularExpressions.Regex.Match(
       elevation,
       @"(?s)function Test-SmartGuardElevatedPesterResult.*?(?=\r?\nfunction |\z)");
     protocolMatch.Success.Should().BeTrue();
-    protocolMatch.Value.Should().Contain("[string]$Result.Result -eq 'Passed'");
-    protocolMatch.Value.Should().Contain("[int]$Result.ExitCode -eq 0");
-    protocolMatch.Value.Should().Contain("[int]$Result.TotalCount -gt 0");
+    protocolMatch.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\[string\]\$Result\.Result\s*-eq\s*'Passed'");
+    protocolMatch.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\[int\]\$Result\.ExitCode\s*-eq\s*0");
+    protocolMatch.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\[int\]\$Result\.TotalCount\s*-gt\s*0");
+
+    const string commentedProtocolCall =
+      "# $installerFlowResult = Invoke-PesterFileSingleElevation";
+    const string stringProtocolCall =
+      "\"$installerFlowResult = Invoke-PesterFileSingleElevation\"";
+    System.Text.RegularExpressions.Regex.Match(
+      commentedProtocolCall,
+      @"(?m)^[ \t]*\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation(?:[ \t]*`[ \t]*|\s*$)").Success.Should().BeFalse();
+    System.Text.RegularExpressions.Regex.Match(
+      stringProtocolCall,
+      @"(?m)^[ \t]*\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation(?:[ \t]*`[ \t]*|\s*$)").Success.Should().BeFalse();
   }
 
   [Fact]

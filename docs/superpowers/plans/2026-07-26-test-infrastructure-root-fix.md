@@ -527,6 +527,7 @@ git commit -m "fix(test): unify observable elevated Pester results"
 - `RunTestsOptimizationArchitectureTests` 不再要求 installer flow 直接调用 `Invoke-Pester`；它必须调用 `Invoke-PesterFileSingleElevation` 并转换返回的结构化结果。
 - 架构门禁同时要求通用 helper fail closed：仅当 `Result == Passed`、`ExitCode == 0` 且 `TotalCount > 0` 时才接受子进程结果。
 - installer integration 层不是可忽略的旁路；其结果不是 `Passed` 或 `Skipped` 时，`Run-Tests.ps1` 必须令总退出码为 1。
+- P1 审查加固：以上断言必须限定到 installer flow、结构化结果验证和失败传播的实际代码范围，并使用行首代码形态匹配；注释或字符串中的同名文本不得使门禁通过。
 
 ---
 
