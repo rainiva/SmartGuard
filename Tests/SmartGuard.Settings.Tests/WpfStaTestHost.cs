@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -43,6 +44,46 @@ internal static class WpfStaTestHost
         window.Show();
         window.UpdateLayout();
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+    }
+
+    public static void WaitUntil(
+        Func<bool> condition,
+        Window? window,
+        string description,
+        int timeoutMs = 10000,
+        bool pumpDispatcher = true)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var timeout = TimeSpan.FromMilliseconds(timeoutMs);
+
+        while (Stopwatch.GetElapsedTime(started) < timeout)
+        {
+            if (condition())
+                return;
+
+            if (pumpDispatcher && window is not null)
+                PumpDispatcher(window);
+
+            Thread.Sleep(1);
+        }
+
+        if (!condition())
+            throw new TimeoutException($"Timed out waiting for {description}.");
+    }
+
+    public static void PumpDispatcher(Window window)
+    {
+        if (!window.Dispatcher.CheckAccess())
+        {
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+            return;
+        }
+
+        var frame = new DispatcherFrame();
+        _ = window.Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     internal static void PrepareHeadlessWindow(Window window)

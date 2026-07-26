@@ -24,6 +24,10 @@ public sealed class SettingsWindowController
 
   internal bool IsLogRefreshInFlightForTests => _logPageHost.IsRefreshInFlightForTests;
 
+  internal int ActiveLogRefreshCountForTests => _logPageHost.ActiveRefreshCountForTests;
+
+  internal int ApplyAfterDisposeCountForTests => _logPageHost.ApplyAfterDisposeCountForTests;
+
   internal static int ForceRefreshLogViewCountForTests =>
     SettingsLogPageHost.ForceRefreshLogViewCountForTests;
 
