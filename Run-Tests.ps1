@@ -159,6 +159,10 @@ else {
 
 $installerFlowResult = New-SmartGuardTestLayerResult
 $installerFlow = Join-Path $PSScriptRoot 'Tests\Integration\InstallerUserFlow.Tests.ps1'
+$installerFlowResultPath =
+    Join-Path $resultDirectory "installer-user-flow-elevated-$runId.result.json"
+$installerFlowTranscriptPath =
+    Join-Path $resultDirectory "installer-user-flow-elevated-$runId.transcript.log"
 $trayAllowsInstaller = $trayIntegrationLayer.Result -in @('Passed', 'Skipped')
 if ($dotNetResult.Result -eq 'Passed' -and
     $trayAllowsInstaller -and
@@ -166,12 +170,20 @@ if ($dotNetResult.Result -eq 'Passed' -and
     (Test-SmartGuardInstallerIntegrationEnabled -Tier $tier)) {
     Write-Host 'Running integration: Installer user flow...'
     try {
-        $installerFlowResult = Invoke-Pester -Path $installerFlow -PassThru
+        $installerFlowResult = Invoke-PesterFileSingleElevation `
+            -RepoRoot $PSScriptRoot `
+            -TestPath $installerFlow `
+            -ResultPath $installerFlowResultPath `
+            -TranscriptPath $installerFlowTranscriptPath `
+            -Tier $tier
         $installerIntegrationLayer =
             ConvertTo-SmartGuardPesterLayerResult -PesterResult $installerFlowResult
         if ($installerFlowResult.Result -ne 'Passed') {
-            $installerIntegrationLayer.Error =
-                'Installer integration Pester result was not Passed.'
+            $installerIntegrationLayer.Error = [string]$installerFlowResult.Error
+            if ([string]::IsNullOrWhiteSpace($installerIntegrationLayer.Error)) {
+                $installerIntegrationLayer.Error =
+                    'Installer integration Pester result was not Passed.'
+            }
         }
     }
     catch {

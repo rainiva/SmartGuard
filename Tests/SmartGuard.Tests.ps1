@@ -1051,7 +1051,8 @@ print(json.dumps(result))" $icon $officialDir
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
             $runTests | Should -Not -Match 'Test-RunTestsNeedsInstallerElevation'
             $runTests | Should -Not -Match 'Invoke-RunTestsSingleElevation'
-            $runTests | Should -Match '\$installerFlowResult\s*=\s*Invoke-Pester\s+-Path\s+\$installerFlow'
+            $runTests | Should -Match '\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation'
+            $runTests | Should -Not -Match '\$installerFlowResult\s*=\s*Invoke-Pester\s+-Path\s+\$installerFlow'
         }
 
         It 'Run-Tests treats a Pester discovery failure as a failed integration run' {
@@ -1059,6 +1060,264 @@ print(json.dumps(result))" $icon $officialDir
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
             $runTests | Should -Match '\$installerFlowResult\.Result\s*-ne\s*''Passed'''
             $runTests | Should -Match '\$integrationResult\.Result\s*-ne\s*''Passed'''
+        }
+
+        It 'Test-SmartGuardElevatedPesterResult rejects a Passed result with zero discovered tests' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $zeroDiscovery = [pscustomobject]@{
+                Result = 'Passed'
+                ExitCode = 0
+                PassedCount = 0
+                FailedCount = 0
+                SkippedCount = 0
+                TotalCount = 0
+                Error = $null
+                CompletedAtUtc = [DateTime]::UtcNow.ToString('O')
+            }
+
+            Test-SmartGuardElevatedPesterResult -Result $zeroDiscovery |
+                Should -BeFalse
+
+            $zeroDiscovery.PSObject.Properties.Remove('CompletedAtUtc')
+            Test-SmartGuardElevatedPesterResult -Result $zeroDiscovery |
+                Should -BeFalse
+        }
+
+        It 'elevated Pester runner records a complete UTF-8 result and never uses an inline command' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runnerPath = Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1'
+            Test-Path -LiteralPath $runnerPath | Should -BeTrue
+            $runner = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
+            $elevation = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-IsProcessElevated.ps1') -Raw -Encoding UTF8
+
+            $runner | Should -Match 'Invoke-Pester'
+            $runner | Should -Match '\bResult\b'
+            $runner | Should -Match '\bTotalCount\b'
+            $runner | Should -Match 'UTF8Encoding'
+            $runner | Should -Match 'CompletedAtUtc'
+            ($runner + [Environment]::NewLine + $elevation) |
+                Should -Not -Match '(?s)ArgumentList.*?-Command'
+        }
+
+        It 'elevated Pester runner publishes discovery container errors in its disk result' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-elevated-container-' + [guid]::NewGuid().ToString('N'))
+            $testPath = Join-Path $tempDirectory 'ContainerFailure.Tests.ps1'
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                [System.IO.File]::WriteAllText(
+                    $testPath,
+                    "throw 'controlled container failure'",
+                    [System.Text.UTF8Encoding]::new($false))
+                $runnerPath = Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1'
+                & (Get-WindowsPowerShellExePath) `
+                    -NoProfile `
+                    -ExecutionPolicy Bypass `
+                    -File $runnerPath `
+                    -TestPath $testPath `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast
+                $childExitCode = $LASTEXITCODE
+                $diskResult = [System.IO.File]::ReadAllText(
+                    $resultPath,
+                    [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+
+                $childExitCode | Should -Be 1
+                $diskResult.ExitCode | Should -Be 1
+                $diskResult.Result | Should -Be 'Failed'
+                $diskResult.TotalCount | Should -Be 0
+                $diskResult.Error | Should -Match 'controlled container failure'
+                $diskResult.CompletedAtUtc | Should -Not -BeNullOrEmpty
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Invoke-PesterFileSingleElevation returns a complete successful disk result' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-elevated-result-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                Mock Test-IsProcessElevated { $false }
+                Mock Start-Process {
+                    $payload = [pscustomobject]@{
+                        Result = 'Passed'
+                        ExitCode = 0
+                        PassedCount = 3
+                        FailedCount = 0
+                        SkippedCount = 0
+                        TotalCount = 3
+                        Error = $null
+                        CompletedAtUtc = [DateTime]::UtcNow.ToString('O')
+                    } | ConvertTo-Json -Compress
+                    [System.IO.File]::WriteAllText(
+                        $resultPath,
+                        $payload,
+                        [System.Text.UTF8Encoding]::new($false))
+                    return [pscustomobject]@{ HasExited = $true; ExitCode = 0 }
+                }
+
+                $result = Invoke-PesterFileSingleElevation `
+                    -RepoRoot $root `
+                    -TestPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast
+
+                $result.Result | Should -Be 'Passed'
+                $result.ExitCode | Should -Be 0
+                $result.TotalCount | Should -Be 3
+                Should -Invoke Start-Process -Times 1 -Exactly -ParameterFilter {
+                    $Verb -eq 'RunAs' -and $ArgumentList -contains '-File'
+                }
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Invoke-PesterFileSingleElevation fails closed for a failed Pester disk result' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-elevated-failed-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                Mock Test-IsProcessElevated { $false }
+                Mock Start-Process {
+                    $payload = [pscustomobject]@{
+                        Result = 'Failed'
+                        ExitCode = 1
+                        PassedCount = 2
+                        FailedCount = 1
+                        SkippedCount = 0
+                        TotalCount = 3
+                        Error = 'intentional failure'
+                        CompletedAtUtc = [DateTime]::UtcNow.ToString('O')
+                    } | ConvertTo-Json -Compress
+                    [System.IO.File]::WriteAllText(
+                        $resultPath,
+                        $payload,
+                        [System.Text.UTF8Encoding]::new($false))
+                    return [pscustomobject]@{ HasExited = $true; ExitCode = 1 }
+                }
+
+                $result = Invoke-PesterFileSingleElevation `
+                    -RepoRoot $root `
+                    -TestPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast
+
+                $result.Result | Should -Be 'Failed'
+                $result.ExitCode | Should -Be 1
+                $result.TotalCount | Should -Be 3
+                $result.Error | Should -Match 'intentional failure'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Invoke-PesterFileSingleElevation fails closed for corrupt result JSON' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-elevated-corrupt-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                Mock Test-IsProcessElevated { $false }
+                Mock Start-Process {
+                    [System.IO.File]::WriteAllText(
+                        $resultPath,
+                        '{not-json',
+                        [System.Text.UTF8Encoding]::new($false))
+                    return [pscustomobject]@{ HasExited = $true; ExitCode = 1 }
+                }
+
+                $result = Invoke-PesterFileSingleElevation `
+                    -RepoRoot $root `
+                    -TestPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast
+
+                $result.Result | Should -Be 'Failed'
+                $result.ExitCode | Should -Be 1
+                $result.Error | Should -Match 'JSON'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Invoke-PesterFileSingleElevation fails closed when the child exits without JSON' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-elevated-no-result-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                Mock Test-IsProcessElevated { $false }
+                Mock Start-Process {
+                    return [pscustomobject]@{ HasExited = $true; ExitCode = 17 }
+                }
+
+                $result = Invoke-PesterFileSingleElevation `
+                    -RepoRoot $root `
+                    -TestPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast
+
+                $result.Result | Should -Be 'Failed'
+                $result.ExitCode | Should -Be 1
+                $result.Error | Should -Match 'without publishing'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'Invoke-PesterFileSingleElevation treats UAC cancellation as failure' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-elevated-cancelled-' + [guid]::NewGuid().ToString('N'))
+            $resultPath = Join-Path $tempDirectory 'result.json'
+            $transcriptPath = Join-Path $tempDirectory 'transcript.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                Mock Test-IsProcessElevated { $false }
+                Mock Start-Process {
+                    throw [System.ComponentModel.Win32Exception]::new('The operation was canceled by the user.')
+                }
+
+                $result = Invoke-PesterFileSingleElevation `
+                    -RepoRoot $root `
+                    -TestPath (Join-Path $root 'Tests\SmartGuard.Tests.ps1') `
+                    -ResultPath $resultPath `
+                    -TranscriptPath $transcriptPath `
+                    -Tier fast
+
+                $result.Result | Should -Be 'Failed'
+                $result.ExitCode | Should -Be 1
+                $result.Error | Should -Match 'launch'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
 
         It 'Test-SmartGuardInstallerIntegrationEnabled permits the installer flow to own its single UAC hop' {
@@ -1075,22 +1334,23 @@ print(json.dumps(result))" $icon $officialDir
             $runnerPath = Join-Path $root 'scripts\Invoke-ElevatedInstallerUserFlow.ps1'
             $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Tests.ps1') -Raw -Encoding UTF8
             $elevation | Should -Match 'function Invoke-InstallerUserFlowSingleElevation'
+            $elevation | Should -Match 'function Invoke-PesterFileSingleElevation'
             $elevation | Should -Match 'SMARTGUARD_ELEVATED_RUN'
             $elevation | Should -Match '\$powershellExe\s*=\s*Get-WindowsPowerShellExePath'
             $elevation | Should -Match 'Start-Process\s+-FilePath\s+\$powershellExe\s+-Verb\s+RunAs'
             $elevation | Should -Not -Match 'Verb\s+RunAs\s+-Wait'
             $elevation | Should -Match "'-File'"
-            $elevation | Should -Match 'Invoke-ElevatedInstallerUserFlow\.ps1'
+            $elevation | Should -Match 'Invoke-ElevatedPesterFile\.ps1'
             $elevation | Should -Match "'-ResultPath'"
-            $elevation | Should -Match 'Start-Sleep\s+-Milliseconds'
+            $elevation | Should -Match 'Start-Sleep\s+-Milliseconds\s+250'
+            $elevation | Should -Match 'AddMinutes\(10\)'
+            $elevation | Should -Match 'CompletedAtUtc'
             $elevation | Should -Match 'ConvertFrom-Json'
             $elevation | Should -Match 'Unable to launch elevated Windows PowerShell'
             Test-Path -LiteralPath $runnerPath | Should -BeTrue
             $runner = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
-            $runner | Should -Match 'Start-Transcript'
-            $runner | Should -Match '\$result\.Result\s*-ne\s*''Passed'''
-            $runner | Should -Match '\[System\.IO\.File\]::WriteAllText'
-            $runner | Should -Match 'UTF8Encoding'
+            $runner | Should -Match 'Invoke-ElevatedPesterFile\.ps1'
+            $runner | Should -Not -Match 'Invoke-Pester'
             $flow | Should -Match 'Invoke-InstallerUserFlowSingleElevation'
             $flow | Should -Match '\$PSCommandPath'
             $flow | Should -Match '\$installerFlowHandoff\.HandedOff'

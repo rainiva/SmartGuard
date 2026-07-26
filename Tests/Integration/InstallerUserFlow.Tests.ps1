@@ -9,8 +9,17 @@ $installerFlowHandoff = Invoke-InstallerUserFlowSingleElevation `
     -RepoRoot $script:InstallerUserFlowRepoRoot `
     -TestScriptPath $PSCommandPath
 if ($installerFlowHandoff.HandedOff) {
-    if ($installerFlowHandoff.ExitCode -ne 0) {
-        throw "Elevated installer integration run failed with exit code $($installerFlowHandoff.ExitCode)."
+    $elevatedResult = $installerFlowHandoff.PesterResult
+    if (-not (Test-SmartGuardElevatedPesterResult -Result $elevatedResult)) {
+        $elevatedError = if ($null -eq $elevatedResult) {
+            'No structured result was returned.'
+        }
+        else {
+            [string]$elevatedResult.Error
+        }
+        throw (
+            "Elevated installer integration run failed with exit code " +
+            "$($installerFlowHandoff.ExitCode): $elevatedError")
     }
 
     return
