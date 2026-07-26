@@ -199,7 +199,7 @@ public class ScrollBarRealDragDiagnosticTests
         controller!.NavigateTo("logs");
         window.UpdateLayout();
         controller.EnsureLogScrollViewerHooked();
-        SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+        SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
         scrollViewer = GetLogScrollViewer(window, controller);
         return ctx;

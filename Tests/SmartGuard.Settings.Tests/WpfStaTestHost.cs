@@ -1,11 +1,17 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Threading;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
 
 internal static class WpfStaTestHost
 {
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
+    private static readonly object TrackedControllersLock = new();
+    private static readonly HashSet<SettingsWindowController> TrackedControllers =
+        new(ReferenceEqualityComparer.Instance);
     private static WpfApplicationFixture? _fixture;
 
     internal static void Attach(WpfApplicationFixture fixture)
@@ -18,15 +24,25 @@ internal static class WpfStaTestHost
                 "WPF tests must use [Collection(\"WpfUiTests\")] so WpfApplicationFixture starts first.");
         fixture.Invoke(() =>
         {
+            var failures = new List<Exception>();
             try
             {
                 action();
             }
-            finally
+            catch (Exception ex)
             {
-                CloseAllWindows();
-                DrainBackgroundWork();
+                failures.Add(ex);
             }
+
+            CaptureFailure(AssertQuiescent, failures);
+            CaptureFailure(RestoreSharedState, failures);
+            lock (TrackedControllersLock)
+                TrackedControllers.Clear();
+
+            if (failures.Count == 1)
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures.Count > 1)
+                throw new AggregateException("WPF test action or cleanup failed.", failures);
         });
     }
 
@@ -43,32 +59,100 @@ internal static class WpfStaTestHost
         PrepareHeadlessWindow(window);
         window.Show();
         window.UpdateLayout();
-        window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+        WaitForRender();
+        WaitForPriority(DispatcherPriority.ApplicationIdle);
     }
 
     public static void WaitUntil(
         Func<bool> condition,
-        Window? window,
-        string description,
-        int timeoutMs = 10000,
-        bool pumpDispatcher = true)
+        TimeSpan timeout,
+        string description)
     {
+        ArgumentNullException.ThrowIfNull(condition);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        if (timeout < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+
         var started = Stopwatch.GetTimestamp();
-        var timeout = TimeSpan.FromMilliseconds(timeoutMs);
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        var frame = new DispatcherFrame();
+        ExceptionDispatchInfo? conditionFailure = null;
+        var conditionSatisfied = false;
+        var timedOut = false;
 
-        while (Stopwatch.GetElapsedTime(started) < timeout)
+        void EvaluateCondition()
         {
-            if (condition())
-                return;
+            try
+            {
+                conditionSatisfied = condition();
+                timedOut = !conditionSatisfied && Stopwatch.GetElapsedTime(started) >= timeout;
+            }
+            catch (Exception ex)
+            {
+                conditionFailure = ExceptionDispatchInfo.Capture(ex);
+            }
 
-            if (pumpDispatcher && window is not null)
-                PumpDispatcher(window);
-
-            Thread.Sleep(1);
+            if (conditionSatisfied || timedOut || conditionFailure is not null)
+                frame.Continue = false;
         }
 
-        if (!condition())
-            throw new TimeoutException($"Timed out waiting for {description}.");
+        EvaluateCondition();
+        if (!conditionSatisfied && !timedOut && conditionFailure is null)
+        {
+            var timer = new DispatcherTimer(
+                TimeSpan.FromMilliseconds(10),
+                DispatcherPriority.Background,
+                (_, _) => EvaluateCondition(),
+                dispatcher);
+            try
+            {
+                timer.Start();
+                Dispatcher.PushFrame(frame);
+            }
+            finally
+            {
+                timer.Stop();
+            }
+        }
+
+        if (!conditionSatisfied && conditionFailure is null)
+            EvaluateCondition();
+
+        conditionFailure?.Throw();
+        if (!conditionSatisfied)
+        {
+            throw new TimeoutException(
+                $"Timed out after {timeout.TotalMilliseconds:0} ms waiting for {description}; {GetDiagnostics()}.");
+        }
+    }
+
+    public static void WaitForRender()
+        => WaitForPriority(DispatcherPriority.Render);
+
+    public static void AssertQuiescent()
+    {
+        var failures = CloseAllWindows();
+        CaptureFailure(
+            () => WaitUntil(
+                () => GetActiveRefreshCount() == 0,
+                DefaultTimeout,
+                "active Settings log refreshes to finish"),
+            failures);
+        CaptureFailure(
+            () => WaitForPriority(DispatcherPriority.ApplicationIdle),
+            failures);
+        CaptureFailure(WaitForRender, failures);
+        CaptureFailure(
+            () => WaitUntil(
+                () => GetWindowCount() == 0,
+                DefaultTimeout,
+                "all WPF windows to close"),
+            failures);
+
+        if (failures.Count == 1)
+            ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1)
+            throw new AggregateException("WPF test cleanup did not become quiescent.", failures);
     }
 
     public static void PumpDispatcher(Window window)
@@ -79,11 +163,14 @@ internal static class WpfStaTestHost
             return;
         }
 
-        var frame = new DispatcherFrame();
-        _ = window.Dispatcher.BeginInvoke(
-            DispatcherPriority.Background,
-            new Action(() => frame.Continue = false));
-        Dispatcher.PushFrame(frame);
+        WaitForPriority(DispatcherPriority.Background);
+    }
+
+    internal static void Track(SettingsWindowController controller)
+    {
+        ArgumentNullException.ThrowIfNull(controller);
+        lock (TrackedControllersLock)
+            TrackedControllers.Add(controller);
     }
 
     internal static void PrepareHeadlessWindow(Window window)
@@ -96,10 +183,11 @@ internal static class WpfStaTestHost
         window.Top = 0;
     }
 
-    private static void CloseAllWindows()
+    private static List<Exception> CloseAllWindows()
     {
+        var failures = new List<Exception>();
         if (Application.Current is null)
-            return;
+            return failures;
 
         foreach (var window in Application.Current.Windows.OfType<Window>().ToList())
         {
@@ -107,21 +195,64 @@ internal static class WpfStaTestHost
             {
                 window.Close();
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort cleanup between automated UI tests.
+                failures.Add(new InvalidOperationException(
+                    $"Failed to close WPF test window '{window.Title}'.",
+                    ex));
             }
         }
+
+        return failures;
     }
 
-    private static void DrainBackgroundWork()
+    private static void WaitForPriority(DispatcherPriority priority)
     {
-        for (var i = 0; i < 3; i++)
+        var frame = new DispatcherFrame();
+        _ = Dispatcher.CurrentDispatcher.BeginInvoke(
+            priority,
+            new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
+    }
+
+    private static int GetWindowCount()
+        => Application.Current?.Windows.Count ?? 0;
+
+    private static int GetActiveRefreshCount()
+    {
+        lock (TrackedControllersLock)
+            return TrackedControllers.Sum(controller => controller.ActiveLogRefreshCountForTests);
+    }
+
+    private static string GetDiagnostics()
+    {
+        ThreadPool.GetAvailableThreads(out var availableWorkerThreads, out _);
+        return
+            $"windows={GetWindowCount()}, active refresh={GetActiveRefreshCount()}, " +
+            $"log read delay={LogTailReaderTestMetrics.ArtificialDelayMs} ms, " +
+            $"log read hook={LogTailReaderTestMetrics.BeforeReadForTests is not null}, " +
+            $"thread pool workers available={availableWorkerThreads}, " +
+            $"threads={ThreadPool.ThreadCount}, pending={ThreadPool.PendingWorkItemCount}";
+    }
+
+    private static void RestoreSharedState()
+    {
+        SettingsUiTestMode.SetEnabled(true);
+        ThemeTransitionAnimator.ResetForTests();
+        LogViewTagPalette.ConfigureForDarkMode(false);
+        LogTailReaderTestMetrics.Reset();
+        SettingsWindowController.ResetTestMetricsForTests();
+    }
+
+    private static void CaptureFailure(Action action, ICollection<Exception> failures)
+    {
+        try
         {
-            Thread.Sleep(5);
-            Dispatcher.CurrentDispatcher.Invoke(
-                () => { },
-                DispatcherPriority.Background);
+            action();
+        }
+        catch (Exception ex)
+        {
+            failures.Add(ex);
         }
     }
 }

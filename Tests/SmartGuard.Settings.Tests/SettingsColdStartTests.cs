@@ -57,6 +57,7 @@ public class SettingsColdStartTests
                 var config = repository.LoadOrDefault(tempRoot);
                 controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
+                WpfStaTestHost.Track(controller!);
 
                 controller!.IsLogViewInitializedForTests.Should().BeFalse();
 
@@ -91,6 +92,7 @@ public class SettingsColdStartTests
                 var config = repository.LoadOrDefault(tempRoot);
                 controller = SettingsWindowController.TryCreate(tempRoot, repository, config);
                 controller.Should().NotBeNull();
+                WpfStaTestHost.Track(controller!);
                 controller!.IsLogViewInitializedForTests.Should().BeFalse();
 
                 controller.NavigateTo("logs");

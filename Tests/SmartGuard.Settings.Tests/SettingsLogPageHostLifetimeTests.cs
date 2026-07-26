@@ -36,15 +36,15 @@ public sealed class SettingsLogPageHostLifetimeTests
                 };
 
                 controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
                 var window = GetWindow(controller);
                 WpfStaTestHost.ShowAndWait(window);
 
                 controller.NavigateTo("logs");
                 WpfStaTestHost.WaitUntil(
                     () => readEntered.IsSet,
-                    window: null,
-                    "the background log read to start",
-                    pumpDispatcher: false);
+                    TimeSpan.FromSeconds(10),
+                    "the background log read to start");
 
                 var disposeDuration = Stopwatch.StartNew();
                 controller.Dispose();
@@ -57,9 +57,8 @@ public sealed class SettingsLogPageHostLifetimeTests
                 releaseRead.Set();
                 WpfStaTestHost.WaitUntil(
                     () => !controller.IsLogRefreshInFlightForTests,
-                    window: null,
-                    "the background log refresh lifetime to finish",
-                    pumpDispatcher: false);
+                    TimeSpan.FromSeconds(10),
+                    "the background log refresh lifetime to finish");
 
                 controller.ActiveLogRefreshCountForTests.Should().Be(0);
                 WpfStaTestHost.PumpDispatcher(window);
@@ -95,6 +94,7 @@ public sealed class SettingsLogPageHostLifetimeTests
                 };
 
                 controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
                 var window = GetWindow(controller);
                 WpfStaTestHost.ShowAndWait(window);
 
@@ -104,7 +104,7 @@ public sealed class SettingsLogPageHostLifetimeTests
 
                 WpfStaTestHost.WaitUntil(
                     () => status!.Text.Contains("加载失败", StringComparison.Ordinal),
-                    window,
+                    TimeSpan.FromSeconds(10),
                     "the log page to show its failed loading state");
 
                 status!.Text.Should().Contain("加载失败");
@@ -130,6 +130,7 @@ public sealed class SettingsLogPageHostLifetimeTests
             try
             {
                 controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
                 controller.Dispose();
 
                 var secondDispose = () => controller.Dispose();

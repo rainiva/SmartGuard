@@ -31,6 +31,7 @@ public class SettingsLogNavResponsivenessTests
                 LogTailReaderTestMetrics.ArtificialDelayMs = 500;
 
                 controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller!);
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
 
@@ -74,7 +75,7 @@ public class SettingsLogNavResponsivenessTests
                 WpfStaTestHost.ShowAndWait(window);
 
                 controller!.NavigateTo("logs");
-                WaitUntilLogContent(window);
+                WaitUntilLogContent(controller, window);
 
                 var lstLogView = window.FindName("lstLogView") as ListBox;
                 lstLogView.Should().NotBeNull();
@@ -108,7 +109,7 @@ public class SettingsLogNavResponsivenessTests
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                WaitUntilLogContent(window);
+                WaitUntilLogContent(controller, window);
 
                 var lstLogView = window.FindName("lstLogView") as ListBox;
                 var countBefore = lstLogView!.Items.Count;
@@ -132,35 +133,43 @@ public class SettingsLogNavResponsivenessTests
         });
     }
 
-    internal static void WaitUntilLogContent(Window window, int timeoutMs = 10000)
+    internal static void WaitUntilLogContent(
+        SettingsWindowController controller,
+        Window window,
+        int timeoutMs = 10000)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
+        WpfStaTestHost.Track(controller);
+        var status = window.FindName("lblLogStatus") as TextBlock;
+        var list = window.FindName("lstLogView") as ListBox;
+        try
         {
-            Thread.Sleep(1);
-            PumpDispatcher(window);
-
-            var status = window.FindName("lblLogStatus") as TextBlock;
-            if (status is not null && status.Text != LoadingStatusText)
-                return;
+            WpfStaTestHost.WaitUntil(
+                () =>
+                    list is not null &&
+                    list.Items.Count > 0 &&
+                    status is not null &&
+                    status.Text != LoadingStatusText,
+                TimeSpan.FromMilliseconds(timeoutMs),
+                "log items and status to settle");
         }
-
-        throw new TimeoutException("Timed out waiting for log page content to load.");
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException(
+                $"{ex.Message} Log items={list?.Items.Count ?? -1}, " +
+                $"status='{status?.Text ?? "<missing>"}', " +
+                $"refresh in flight={controller.IsLogRefreshInFlightForTests}, " +
+                $"active refresh={controller.ActiveLogRefreshCountForTests}.",
+                ex);
+        }
     }
 
     internal static void WaitUntilLogRefreshIdle(SettingsWindowController controller, Window window, int timeoutMs = 10000)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            Thread.Sleep(1);
-            PumpDispatcher(window);
-
-            if (!controller.IsLogRefreshInFlightForTests)
-                return;
-        }
-
-        throw new TimeoutException("Timed out waiting for log refresh flight to finish.");
+        WpfStaTestHost.Track(controller);
+        WpfStaTestHost.WaitUntil(
+            () => !controller.IsLogRefreshInFlightForTests,
+            TimeSpan.FromMilliseconds(timeoutMs),
+            "the active log refresh flight to finish");
     }
 
     internal static void PumpDispatcher(Window window)

@@ -106,6 +106,18 @@ print(json.dumps(result))" $icon $officialDir
         }
     }
 
+    Describe 'WPF test host determinism contract' {
+        It 'uses quiescent cleanup without fixed sleeps' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $hostSource = Get-Content -LiteralPath (
+                Join-Path $root 'Tests\SmartGuard.Settings.Tests\WpfStaTestHost.cs'
+            ) -Raw -Encoding UTF8
+
+            $hostSource | Should -Not -Match '\bThread\.Sleep\s*\('
+            $hostSource | Should -Match '\bAssertQuiescent\s*\('
+        }
+    }
+
     Describe 'Phase 7.5 dotnet publish chain' {
         It 'build.cmd delegates publish to SmartGuard.Cli' {
             $root = Split-Path -Parent $PSScriptRoot

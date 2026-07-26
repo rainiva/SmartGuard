@@ -104,7 +104,7 @@ public class SettingsWindowResizeStabilityTests
                     WpfStaTestHost.ShowAndWait(window);
                     controller!.NavigateTo("logs");
                     window.UpdateLayout();
-                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                     SettingsWindowLayoutStability.StabilizeContentLayout(window);
                     window.UpdateLayout();
@@ -404,13 +404,23 @@ public class SettingsWindowResizeStabilityTests
 
                     controller.NavigateTo("logs");
                     window.UpdateLayout();
-                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
                     controller.NavigateTo("about");
                     window.UpdateLayout();
-                    window.Dispatcher.Invoke(
-                        () => { },
-                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    var pageAbout = window.FindName("pageAbout") as FrameworkElement;
+                    pageAbout.Should().NotBeNull();
+                    WpfStaTestHost.WaitUntil(
+                        () =>
+                            pageAbout!.Visibility == Visibility.Visible &&
+                            pageAbout.IsVisible,
+                        TimeSpan.FromSeconds(10),
+                        "the About page to become visible after returning from logs");
+                    WpfStaTestHost.WaitForRender();
+                    WpfStaTestHost.WaitUntil(
+                        () => Math.Abs(contentScrollViewer.VerticalOffset) <= 1.0,
+                        TimeSpan.FromSeconds(10),
+                        "the About page vertical offset to return to the top");
 
                     contentScrollViewer.VerticalOffset.Should().BeApproximately(
                         0,

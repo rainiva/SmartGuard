@@ -358,7 +358,7 @@ public class SettingsWindowControllerTests
 
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var logSearchFilterHost = window.FindName("logSearchFilterHost") as FrameworkElement;
                 var btnLogMore = window.FindName("btnLogMore") as Button;
@@ -420,7 +420,7 @@ public class SettingsWindowControllerTests
 
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var btnLogMore = window.FindName("btnLogMore") as Button;
                 var btnLogMoreOpenFolder = window.FindName("btnLogMoreOpenFolder") as Button;
@@ -431,17 +431,35 @@ public class SettingsWindowControllerTests
                 logMoreFlyout.Should().NotBeNull();
 
                 btnLogMore!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                WpfStaTestHost.WaitUntil(
+                    () =>
+                        logMoreFlyout!.Visibility == Visibility.Visible &&
+                        logMoreFlyout.ActualWidth > 0 &&
+                        logMoreFlyout.ActualHeight > 0 &&
+                        btnLogMoreOpenFolder!.ActualWidth > 0 &&
+                        btnLogMoreOpenFolder.ActualHeight > 0,
+                    TimeSpan.FromSeconds(10),
+                    "the log-more flyout and bottom action to receive layout");
+                WpfStaTestHost.WaitForRender();
 
-                logMoreFlyout!.Visibility.Should().Be(Visibility.Visible);
+                DependencyObject? hit = null;
+                Button? hitButton = null;
+                WpfStaTestHost.WaitUntil(
+                    () =>
+                    {
+                        var samplePoint = btnLogMoreOpenFolder!.TranslatePoint(
+                            new Point(
+                                btnLogMoreOpenFolder.ActualWidth / 2,
+                                Math.Max(1, btnLogMoreOpenFolder.ActualHeight - 4)),
+                            window);
+                        hit = window.InputHitTest(samplePoint) as DependencyObject;
+                        hitButton = hit as Button ?? (hit is null ? null : FindAncestor<Button>(hit));
+                        return ReferenceEquals(hitButton, btnLogMoreOpenFolder);
+                    },
+                    TimeSpan.FromSeconds(10),
+                    "the bottom log-more action to own its hit-test point");
 
-                var samplePoint = btnLogMoreOpenFolder!.TranslatePoint(
-                    new Point(btnLogMoreOpenFolder.ActualWidth / 2, Math.Max(1, btnLogMoreOpenFolder.ActualHeight - 4)),
-                    window);
-                var hit = window.InputHitTest(samplePoint) as DependencyObject;
                 hit.Should().NotBeNull();
-
-                var hitButton = hit as Button ?? FindAncestor<Button>(hit!);
                 hitButton.Should().BeSameAs(btnLogMoreOpenFolder,
                     "the bottom overflow action should stay on top of lower log content instead of being covered");
             }
@@ -474,7 +492,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var combo = window.FindName("cmbLogTimeRange") as ComboBox;
                 var customPanel = window.FindName("panelLogCustomRange") as UIElement;
@@ -546,7 +564,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var filterBar = GetLogSearchFilterBar(controller!);
                 var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
@@ -588,7 +606,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var filterBar = GetLogSearchFilterBar(controller!);
                 GetLogViewPlainText(controller!).Should().Contain("alpha");
@@ -641,7 +659,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var statusLabel = window.FindName("lblLogStatus") as TextBlock;
                 statusLabel.Should().NotBeNull();
@@ -688,7 +706,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var statusLabel = window.FindName("lblLogStatus") as TextBlock;
                 statusLabel!.Text.Should().Contain("当前空闲 8 秒");
@@ -726,7 +744,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var statusLabel = window.FindName("lblLogStatus") as TextBlock;
                 statusLabel!.Text.Should().Contain("当前空闲 100 秒");
@@ -777,10 +795,10 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 ClickLogToolbarButton(window, "btnLogRefresh");
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var statusLabel = window.FindName("lblLogStatus") as TextBlock;
                 statusLabel.Should().NotBeNull();
@@ -817,13 +835,13 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 GetLogViewPlainText(controller!).Should().Contain("initial entry");
 
                 File.WriteAllText(logPath, "[INFO] 2026-06-21 10:00:00 initial entry\n[INFO] 2026-06-21 10:01:00 refreshed entry\n");
                 ClickLogToolbarButton(window, "btnLogRefresh");
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 GetLogViewPlainText(controller!).Should().Contain("refreshed entry");
             }
@@ -860,7 +878,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
@@ -906,7 +924,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
                 scrollViewer.ScrollableHeight.Should().BeGreaterThan(0);
@@ -960,7 +978,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 InvokeLogExport(controller!, exportPath);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
@@ -1041,7 +1059,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var combo = window.FindName("cmbLogTimeRange") as ComboBox;
                 combo!.SelectedIndex = 3;
@@ -1096,7 +1114,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var filterBar = GetLogSearchFilterBar(controller!);
                 GetLogViewPlainText(controller!).Should().Contain("alpha");
@@ -1389,7 +1407,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 GetLogViewPlainText(controller!).Should().Contain("initial entry");
 
@@ -1430,19 +1448,35 @@ public class SettingsWindowControllerTests
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
-                var navList = window.FindName("navList") as ListBox;
-                navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                NavigateToLogsPage(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
+                var followTailCheckBox = window.FindName("chkLogFollowTail") as CheckBox;
                 scrollViewer.Should().NotBeNull();
+                followTailCheckBox.Should().NotBeNull();
+                followTailCheckBox!.IsChecked = false;
+                WpfStaTestHost.WaitUntil(
+                    () => followTailCheckBox.IsChecked == false,
+                    TimeSpan.FromSeconds(10),
+                    "follow-tail mode to turn off before the user scrolls up");
+
                 scrollViewer!.ScrollToVerticalOffset(0);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                WpfStaTestHost.WaitForRender();
+                WaitUntilVerticalOffset(
+                    scrollViewer,
+                    expected: 0,
+                    tolerance: 0.5,
+                    "the user scroll position to reach the top");
                 scrollViewer.VerticalOffset.Should().Be(0);
 
                 File.AppendAllText(logPath, "[INFO] 2026-06-21 10:01:00 appended while scrolled up\n");
                 InvokeRefreshLogView(controller!);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                WpfStaTestHost.WaitForRender();
+                WaitUntilVerticalOffset(
+                    scrollViewer,
+                    expected: 0,
+                    tolerance: 0.5,
+                    "the user scroll position to remain at the top after refresh");
 
                 scrollViewer.VerticalOffset.Should().Be(0);
             }
@@ -1481,7 +1515,7 @@ public class SettingsWindowControllerTests
 
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
@@ -1523,7 +1557,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
                 scrollViewer.ScrollToVerticalOffset(0);
@@ -1532,7 +1566,20 @@ public class SettingsWindowControllerTests
 
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
                 chkLogFollowTail!.IsChecked = true;
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                try
+                {
+                    WpfStaTestHost.WaitUntil(
+                        () => LogViewScrollState.IsAtTail(scrollViewer),
+                        TimeSpan.FromSeconds(10),
+                        "follow-tail scrolling to reach the latest log line");
+                }
+                catch (TimeoutException ex)
+                {
+                    throw new TimeoutException(
+                        $"{ex.Message} VerticalOffset={scrollViewer.VerticalOffset:0.###}, " +
+                        $"ScrollableHeight={scrollViewer.ScrollableHeight:0.###}.",
+                        ex);
+                }
 
                 LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
                 GetLogViewPlainText(controller!).Should().Contain("scroll line 199");
@@ -1569,7 +1616,7 @@ public class SettingsWindowControllerTests
                 var window = GetWindowField(controller!);
                 var navList = window.FindName("navList") as ListBox;
                 navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
@@ -1623,7 +1670,6 @@ public class SettingsWindowControllerTests
 
                 WaitUntilLogViewMatches(
                     controller!,
-                    window,
                     text => text.Contains("Battery low warning") && !text.Contains("System idle detected"));
             }
             finally
@@ -1886,7 +1932,7 @@ public class SettingsWindowControllerTests
             WpfStaTestHost.ShowAndWait(window);
 
         controller.NavigateTo("logs");
-        SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+        SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
     }
 
     private static void InvokeRefreshLogView(SettingsWindowController controller, bool forceRedraw = false)
@@ -1915,21 +1961,35 @@ public class SettingsWindowControllerTests
 
     private static void WaitUntilLogViewMatches(
         SettingsWindowController controller,
-        Window window,
         Func<string, bool> predicate,
         int timeoutMs = 10000)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
+        WpfStaTestHost.Track(controller);
+        WpfStaTestHost.WaitUntil(
+            () => predicate(GetLogViewPlainText(controller)),
+            TimeSpan.FromMilliseconds(timeoutMs),
+            "the log view to apply the requested filter");
+    }
+
+    private static void WaitUntilVerticalOffset(
+        ScrollViewer scrollViewer,
+        double expected,
+        double tolerance,
+        string description)
+    {
+        try
         {
-            SettingsLogNavResponsivenessTests.PumpDispatcher(window);
-            if (predicate(GetLogViewPlainText(controller)))
-                return;
-
-            Thread.Sleep(1);
+            WpfStaTestHost.WaitUntil(
+                () => Math.Abs(scrollViewer.VerticalOffset - expected) <= tolerance,
+                TimeSpan.FromSeconds(10),
+                description);
         }
-
-        throw new TimeoutException("Timed out waiting for the log view to apply the requested filter.");
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException(
+                $"{ex.Message} VerticalOffset={scrollViewer.VerticalOffset:0.###}, expected={expected:0.###}.",
+                ex);
+        }
     }
 
     private static ScrollViewer GetLogScrollViewer(Window window, SettingsWindowController controller)

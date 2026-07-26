@@ -27,7 +27,7 @@ public class LogHorizontalThumbRealMouseTests
                 scrollViewer.HorizontalOffset.Should().BeGreaterThan(10);
 
                 controller.ForceRefreshLogView();
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
                 window.UpdateLayout();
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
@@ -86,7 +86,7 @@ public class LogHorizontalThumbRealMouseTests
                     "the delayed native/default reset observed in the real window must be part of the regression");
 
                 controller.ForceRefreshLogView();
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
                 window.UpdateLayout();
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
@@ -202,7 +202,7 @@ public class LogHorizontalThumbRealMouseTests
         controller!.NavigateTo("logs");
         window.UpdateLayout();
         controller.EnsureLogScrollViewerHooked();
-        SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+        SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
         scrollViewer = GetLogScrollViewer(window, controller);
         return new Scope(installRoot);
