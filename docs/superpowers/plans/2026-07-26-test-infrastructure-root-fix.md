@@ -93,9 +93,11 @@
 | `scripts/Test-IsProcessElevated.ps1` | 父进程发起单次 UAC、轮询结果、超时和结果校验 |
 | `Tests/Integration/SmartGuardStop.ps1` | 停止进程并验证退出；权限失败时 fail fast |
 | `Tests/Integration/Restore-SmartGuardScheduledTasks.ps1` | 捕获并恢复机器级计划任务/进程基线 |
+| `Tests/Integration/TrayCoreUserFlow.Lifecycle.ps1` | Tray 提权子流程的外层 Capture/Stop/Restore 事务 |
 | `Tests/Integration/TrayCoreUserFlow.Tests.ps1` | 真实启动 Engine、验证状态文件；不再吞掉启动/停止前置条件失败 |
 | `Tests/Integration/TrayCoreUserFlow.Helpers.ps1` | 启动进程、等待状态、收集退出码/日志诊断 |
 | `src/SmartGuard.Settings/SettingsLogPageHost.cs` | 拥有 refresh flight、取消、generation、fault 和 Dispose 生命周期 |
+| `src/SmartGuard.Settings/LogView/LogTailReaderTestMetrics.cs` | 复用并扩展现有测试缝，确定性阻塞或注入一次读盘异常 |
 | `src/SmartGuard.Settings/SettingsWindowController.cs` | Dispose 入口，保证所有子 coordinator 生命周期结束 |
 | `Tests/SmartGuard.Settings.Tests/WpfStaTestHost.cs` | 条件等待、窗口清理、静默状态验证、静态基线恢复 |
 | `Tests/SmartGuard.Settings.Tests/WpfApplicationFixture.cs` | 唯一 STA Application/Dispatcher 生命周期 |
@@ -118,6 +120,7 @@
 **Interfaces:**
 - Produces: 编排行为测试，证明非零子退出码必须传到 helper 和父门禁。
 - Produces: TRX 缺失、损坏、Outcome 非 Completed 时必须失败的契约。
+- Produces: fast/full 不选择纯 Performance 项目、nightly 才选择该项目的分层契约。
 
 - [ ] **Step 1：增加真实非零子进程 RED**
 
@@ -185,17 +188,48 @@ $runTests | Should -Not -Match 'PASSED=\$total FAILED=\$failed'
 
 Expected: 当前实现 FAIL，因为 helper 只返回 bool，最终汇总不包含 .NET 计数。
 
-- [ ] **Step 5：提交 RED**
+- [ ] **Step 5：增加项目选择 RED**
+
+当前 `SmartGuard.Engine.PerformanceTests` 中所有测试均标记 `Category=Performance`。先固定以下行为，避免 fast/full 选择该项目后被过滤成 `total == 0`，与 fail-closed 契约互相冲突：
 
 ```powershell
-git add Tests/SmartGuard.Tests.ps1
-git commit -m "test(gate): expose false-green child exit propagation"
+$fastProjects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot $root -Tier fast
+$fullProjects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot $root -Tier full
+$nightlyProjects = Get-SmartGuardDotNetTestProjectPaths -RepoRoot $root -Tier nightly
+
+$fastProjects | Should -Not -Match 'SmartGuard\.Engine\.PerformanceTests'
+$fullProjects | Should -Not -Match 'SmartGuard\.Engine\.PerformanceTests'
+$nightlyProjects | Should -Match 'SmartGuard\.Engine\.PerformanceTests'
 ```
+
+Expected: 当前实现 FAIL，因为项目选择不接收 Tier，并且三层都包含 Performance 项目。
+
+- [ ] **Step 6：保存 RED 证据但不提交失败状态**
+
+```powershell
+Import-Module Pester -MinimumVersion 5.0
+$red = Invoke-Pester -Path Tests/SmartGuard.Tests.ps1 -PassThru
+$redEvidence = [pscustomobject]@{
+    Result = [string]$red.Result
+    Failed = @($red.Tests | Where-Object Result -eq 'Failed' | ForEach-Object { $_.ExpandedName })
+    CompletedAtUtc = [DateTime]::UtcNow.ToString('O')
+} | ConvertTo-Json -Depth 4
+[IO.File]::WriteAllText(
+    '.work\test-results\task1-false-green-red.json',
+    $redEvidence,
+    [Text.UTF8Encoding]::new($false))
+if ($red.Result -eq 'Passed') {
+    throw 'Expected Task 1 RED, but the targeted false-green contracts all passed.'
+}
+```
+
+记录预期失败名称和退出状态；保留工作区改动直接进入 Task 2。项目规则禁止把已知失败测试单独提交，Task 1 的测试与 Task 2 的最小 GREEN 实现一起提交。
 
 **Task 1 验收：**
 
 - RED 必须由缺失的真实结果接口或错误的当前行为触发。
 - 禁止只写源码正则 `Should -Not -Match '%ERRORLEVEL%'` 作为唯一测试；必须实际启动一个退出 23 的子进程。
+- RED 日志已保存，但 Git 历史中不得出现“仅含失败测试”的提交。
 
 ---
 
@@ -210,6 +244,7 @@ git commit -m "test(gate): expose false-green child exit propagation"
 - Produces: `Start-SmartGuardCapturedCommand(...) -> process entry`
 - Produces: `Complete-SmartGuardCapturedCommand(...) -> { ExitCode; Output; TimedOut }`
 - Produces: `Read-SmartGuardTrxResult(...) -> { Result; PassedCount; FailedCount; SkippedCount; TotalCount; Error }`
+- Changes: `Get-SmartGuardDotNetTestProjectPaths -RepoRoot -Tier` 只返回该层实际应执行且至少发现一项测试的项目。
 - Changes: `Invoke-SmartGuardDotNetTestSuite(...)` 返回结构化 summary，不再返回 bool。
 
 - [ ] **Step 1：最小实现真实退出码捕获**
@@ -296,6 +331,12 @@ Passed =
 
 任何条件不满足均 `Result = Failed`。不得把 `total == 0` 当成功。
 
+项目选择必须先按 Tier 收敛：
+
+- `fast` / `full`：不选择纯 `Category=Performance` 的 `SmartGuard.Engine.PerformanceTests`；
+- `nightly`：选择 Performance 项目且不应用排除 Performance 的过滤器；
+- 不允许通过放宽 `total > 0`、忽略空 TRX 或给纯 Performance 项目添加伪测试来消除冲突。
+
 - [ ] **Step 4：返回结构化 .NET summary**
 
 `Invoke-SmartGuardDotNetTestSuite` 返回：
@@ -373,6 +414,7 @@ git commit -m "fix(test): propagate real dotnet child results"
 - 控制台、TRX、summary JSON、父退出码四者不得矛盾。
 - 删除 `%ERRORLEVEL%` 结果文件协议。
 - 缺失/空/损坏 TRX 必须红，不能降级为仅信任退出码。
+- 每个被选中的项目必须 `total > 0`；fast/full 不得启动纯 Performance 项目。
 
 ---
 
@@ -569,13 +611,15 @@ git commit -m "fix(test): fail fast when SmartGuard processes cannot stop"
 - Modify: `Run-Tests.ps1`
 - Modify: `Tests/Integration/TrayCoreUserFlow.Tests.ps1`
 - Modify: `Tests/Integration/TrayCoreUserFlow.Helpers.ps1`
+- Create: `Tests/Integration/TrayCoreUserFlow.Lifecycle.ps1`
 - Reuse/Modify: `Tests/Integration/Restore-SmartGuardScheduledTasks.ps1`
-- Reuse: `scripts/Invoke-ElevatedPesterFile.ps1`
+- Modify: `scripts/Invoke-ElevatedPesterFile.ps1`
 - Modify: `Tests/SmartGuard.Tests.ps1`
 
 **Interfaces:**
 - Consumes: Task 3 的通用提权 Pester JSON 协议。
 - Consumes: `Capture-SmartGuardScheduledTasks` / `Restore-SmartGuardScheduledTasks`.
+- Changes: 通用 runner 增加可选 `-LifecycleScriptPath`；由同一 runner 在 Pester 外层执行 Enter/Exit，不引入第二套结果协议。
 - Produces: Tray result `TotalCount == 2`，并由父门禁验证。
 
 - [ ] **Step 1：写 Capture/Restore RED**
@@ -583,35 +627,74 @@ git commit -m "fix(test): fail fast when SmartGuard processes cannot stop"
 契约断言 Tray flow 必须：
 
 ```powershell
-$flow | Should -Match 'Capture-SmartGuardScheduledTasks'
-$flow | Should -Match 'Stop-SmartGuardForTrayCoreTest'
-$flow | Should -Match 'Restore-SmartGuardScheduledTasks'
-$flow | Should -Match 'finally'
+$lifecycle | Should -Match 'Enter-SmartGuardElevatedPesterScope'
+$lifecycle | Should -Match 'Capture-SmartGuardScheduledTasks'
+$lifecycle | Should -Match 'Stop-SmartGuardForTrayCoreTest'
+$lifecycle | Should -Match 'Exit-SmartGuardElevatedPesterScope'
+$lifecycle | Should -Match 'Restore-SmartGuardScheduledTasks'
+$runner | Should -Match 'LifecycleScriptPath'
+$runner | Should -Match 'finally'
 ```
 
 顺序断言必须满足 Capture 在 Stop 之前。
 
-- [ ] **Step 2：在提权子流程中建立基线**
+- [ ] **Step 2：由提权 runner 的外层生命周期建立并恢复基线**
 
-`BeforeAll`：
+先用 Step 1 的失败契约驱动 `Invoke-ElevatedPesterFile.ps1` 增加 `-LifecycleScriptPath`。若提供该参数，dot-source 后必须存在 `Enter-SmartGuardElevatedPesterScope` 与 `Exit-SmartGuardElevatedPesterScope`；Exit 在 Pester 外层 `finally` 中执行，且 Exit 失败必须把最终结果改为 Failed。
 
-```powershell
-$script:TaskSnapshot = Capture-SmartGuardScheduledTasks
-Stop-SmartGuardForTrayCoreTest
-Initialize-TrayCoreUserFlowContext -RepoRoot $repoRoot
-```
-
-`AfterAll` 必须在 `finally` 语义中：
+`TrayCoreUserFlow.Lifecycle.ps1` 提供：
 
 ```powershell
-Restore-SmartGuardScheduledTasks -Snapshot $script:TaskSnapshot -StartProcesses:$true
+function Enter-SmartGuardElevatedPesterScope {
+    $snapshot = Capture-SmartGuardScheduledTasks
+    try {
+        Stop-SmartGuardForTrayCoreTest
+        return $snapshot
+    }
+    catch {
+        Restore-SmartGuardScheduledTasks -Snapshot $snapshot
+        throw
+    }
+}
+
+function Exit-SmartGuardElevatedPesterScope {
+    param($State)
+    try {
+        Stop-SmartGuardForTrayCoreTest
+    }
+    finally {
+        Restore-SmartGuardScheduledTasks -Snapshot $State
+    }
+}
 ```
 
-Restore 失败必须使 Pester `Result` 失败，不能只写 Warning。
+该生命周期脚本先 dot-source `TrayCoreUserFlow.Helpers.ps1` 与 `Restore-SmartGuardScheduledTasks.ps1`。通用提权 runner 的控制流必须是：
+
+```powershell
+$scopeEntered = $false
+try {
+    $scopeState = Enter-SmartGuardElevatedPesterScope
+    $scopeEntered = $true
+    $pesterResult = Invoke-Pester -Path $TestPath -PassThru
+}
+finally {
+    if ($scopeEntered) {
+        Exit-SmartGuardElevatedPesterScope -State $scopeState
+    }
+}
+```
+
+Capture/Stop/Restore 不再放在测试文件的 `BeforeAll`/`AfterAll` 中。这样 discovery、BeforeAll、It、AfterAll 任一失败仍由 runner 外层恢复；Restore 完成后才允许写最终 JSON。Restore 失败必须使 JSON `Result=Failed` 且进程退出非零，不能只写 Warning。
+
+`Capture-SmartGuardScheduledTasks` 同时记录有效生产任务对应的 Guardian/Tray 进程在测试前是否运行；`Restore-SmartGuardScheduledTasks` 根据快照决定是否重启，不再由调用方硬编码 `-StartProcesses:$true`：
+
+- 有有效任务且测试前进程运行：恢复任务后重启；
+- 有有效任务但测试前进程未运行：恢复任务但保持停止；
+- 任务缺失但存在高权限孤儿进程：将孤儿视为需清理的不一致残留，不创建任务、不重启孤儿。
 
 - [ ] **Step 3：Run-Tests 显式提权运行 Tray flow**
 
-父门禁调用 Task 3 通用 helper，验证：
+父门禁调用 Task 3 通用 helper，并传入 `TrayCoreUserFlow.Lifecycle.ps1`，验证：
 
 ```text
 Result == Passed
@@ -630,6 +713,7 @@ FailedCount == 0
 
 - Tray tests 2/2；
 - 测试结束后的任务根目录与 Capture 一致；
+- 有效生产任务对应的进程运行/停止状态与 Capture 一致；
 - poison root 不得出现在任务命令或工作目录；
 - 原基线为 Missing 时仍保持 Missing；
 - 无 `sg-user-flow-*` 目录残留；
@@ -638,7 +722,7 @@ FailedCount == 0
 - [ ] **Step 5：提交**
 
 ```powershell
-git add Run-Tests.ps1 Tests/Integration/TrayCoreUserFlow.Tests.ps1 Tests/Integration/TrayCoreUserFlow.Helpers.ps1 Tests/Integration/Restore-SmartGuardScheduledTasks.ps1 Tests/SmartGuard.Tests.ps1
+git add Run-Tests.ps1 scripts/Invoke-ElevatedPesterFile.ps1 Tests/Integration/TrayCoreUserFlow.Tests.ps1 Tests/Integration/TrayCoreUserFlow.Helpers.ps1 Tests/Integration/TrayCoreUserFlow.Lifecycle.ps1 Tests/Integration/Restore-SmartGuardScheduledTasks.ps1 Tests/SmartGuard.Tests.ps1
 git commit -m "fix(test): isolate elevated tray integration state"
 ```
 
@@ -654,34 +738,53 @@ git commit -m "fix(test): isolate elevated tray integration state"
 **Files:**
 - Modify: `src/SmartGuard.Settings/SettingsLogPageHost.cs`
 - Modify: `src/SmartGuard.Settings/SettingsWindowController.cs`
+- Modify: `src/SmartGuard.Settings/LogView/LogTailReaderTestMetrics.cs`
 - Create: `Tests/SmartGuard.Settings.Tests/SettingsLogPageHostLifetimeTests.cs`
 - Modify: `Tests/SmartGuard.Settings.Tests/WpfStaTestHost.cs`
 
 **Interfaces:**
 - Produces: `_disposed`、每次 refresh 的 `CancellationTokenSource`、可观察的 active refresh count。
 - Produces: `SettingsLogPageHost.ActiveRefreshFlightCountForTests`.
+- Produces: `SettingsLogPageHost.ApplyAfterDisposeCountForTests`.
+- Extends: `LogTailReaderTestMetrics.BeforeReadForTests`，复用现有 `MaybeDelayForTests()` 调用点，不新增第二套读盘测试钩子。
 - Produces: Dispose 后禁止排队/应用 UI continuation。
 - Produces: refresh fault 转成明确状态和测试可见错误，不保持 Loading。
 
 - [ ] **Step 1：写 Dispose 后回调 RED**
 
-使用现有慢读盘测试钩子：
+扩展现有 `LogTailReaderTestMetrics` 测试缝；`Reset()` 必须同时清空 `BeforeReadForTests`：
 
 ```csharp
+internal static Action? BeforeReadForTests { get; set; }
+
+internal static void MaybeDelayForTests()
+{
+    BeforeReadForTests?.Invoke();
+    // 保留现有 ArtificialDelayMs 行为
+}
+
 [Fact]
 public void Disposing_controller_while_log_refresh_is_in_flight_never_applies_after_dispose()
 {
+    using var entered = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    LogTailReaderTestMetrics.BeforeReadForTests = () =>
+    {
+        entered.Set();
+        if (!release.Wait(TimeSpan.FromSeconds(10)))
+            throw new TimeoutException("Timed out waiting to release synthetic log read.");
+    };
+
     WpfStaTestHost.Run(() =>
     {
-        using var slowRead = LogTailReaderTestHook.BlockNextRead();
         var controller = CreateControllerWithLog();
         var window = GetWindow(controller);
         WpfStaTestHost.ShowAndWait(window);
 
         controller.NavigateTo("logs");
-        slowRead.WaitUntilEntered();
+        entered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
         controller.Dispose();
-        slowRead.Release();
+        release.Set();
 
         WpfStaTestHost.WaitUntil(
             () => SettingsLogPageHost.ActiveRefreshFlightCountForTests == 0,
@@ -699,10 +802,11 @@ Expected: 当前 host 没有 active-flight/after-dispose 契约，或回调仍�
 
 - [ ] **Step 3：写后台异常 RED**
 
-慢读钩子改为抛出固定异常：
+同一测试缝改为抛出固定异常：
 
 ```csharp
-LogTailReaderTestHook.ThrowNextRead(new IOException("synthetic read failure"));
+LogTailReaderTestMetrics.BeforeReadForTests =
+    () => throw new IOException("synthetic read failure");
 controller.NavigateTo("logs");
 
 WpfStaTestHost.WaitUntil(
@@ -733,7 +837,7 @@ private Task? _activeRefreshTask;
 4. continuation 排队前先检查 `_disposed`、token、generation；
 5. UI callback 内再次检查；
 6. fault 必须观察 `task.Exception` 并切换明确失败状态；
-7. `finally` 中清 `_refreshInFlight`、active count，按现有 pending 规则决定是否再开；
+7. active count 必须在后台 Task 的完成路径中 `Interlocked.Decrement`，且不依赖 Dispatcher continuation 是否成功排队或执行；UI continuation 只负责 UI 状态和 pending 调度；
 8. Dispose 设置 `_disposed`、递增 generation、取消 CTS、停止所有 timer/coordinator；
 9. Dispose 后 `ScheduleLogRefresh` 立即返回。
 
@@ -763,7 +867,7 @@ Expected: 全部 PASS。
 - [ ] **Step 7：提交**
 
 ```powershell
-git add src/SmartGuard.Settings/SettingsLogPageHost.cs src/SmartGuard.Settings/SettingsWindowController.cs Tests/SmartGuard.Settings.Tests/SettingsLogPageHostLifetimeTests.cs Tests/SmartGuard.Settings.Tests/WpfStaTestHost.cs
+git add src/SmartGuard.Settings/SettingsLogPageHost.cs src/SmartGuard.Settings/SettingsWindowController.cs src/SmartGuard.Settings/LogView/LogTailReaderTestMetrics.cs Tests/SmartGuard.Settings.Tests/SettingsLogPageHostLifetimeTests.cs Tests/SmartGuard.Settings.Tests/WpfStaTestHost.cs
 git commit -m "fix(settings): own and cancel log refresh lifetime"
 ```
 
@@ -875,7 +979,7 @@ WaitUntilFlyoutHitTest(window, expectedButton)
 `WpfStaTestHost.Run` 的 finally：
 
 1. 关闭全部窗口；
-2. 等待 `ActiveRefreshFlightCountForTests == 0`；
+2. 等待 `ActiveRefreshFlightCountForTests == 0`；该计数由后台完成路径归零，不得依赖已关闭 Dispatcher 上的 UI callback；
 3. 执行 ApplicationIdle/Render barrier；
 4. 断言 `Application.Current.Windows.Count == 0`；
 5. 恢复以下静态状态：
@@ -961,7 +1065,7 @@ It 'stability gate stops at first failure and never retries to green' {
 失败过的三个测试组合运行 50 轮：
 
 ```powershell
-.\scripts\Invoke-TestStabilityGate.ps1 `
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-TestStabilityGate.ps1 `
   -Project Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj `
   -Filter "FullyQualifiedName~Log_page_more_flyout_keeps_bottom_action_clickable_above_lower_content|FullyQualifiedName~User_navigates_to_logs_still_loads_log_content|FullyQualifiedName~User_returning_from_logs_to_about_starts_at_top" `
   -Iterations 50 `
@@ -973,7 +1077,7 @@ It 'stability gate stops at first failure and never retries to green' {
 完整 Settings 套件连续 5 轮，任一轮失败即失败：
 
 ```powershell
-.\scripts\Invoke-TestStabilityGate.ps1 `
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-TestStabilityGate.ps1 `
   -Project Tests\SmartGuard.Settings.Tests\SmartGuard.Settings.Tests.csproj `
   -Iterations 5 `
   -ResultPath .work\test-results\settings-wpf-full-stability.json
@@ -1215,6 +1319,24 @@ Task 9 契约与两轮终验
 - 全文没有待定项或缺少执行细节的占位语句。
 - 每个行为任务均给出文件、接口、RED、GREEN、命令和验收。
 - 未将“多跑几次”作为修复；重复运行只出现在最终稳定性门禁。
+
+---
+
+## 9. Grill-me 自主阻塞审查记录（2026-07-26）
+
+仅记录会使计划无法执行、产生假结论或破坏机器基线的阻塞项；均按推荐方案写回对应任务。
+
+| 阻塞项 | 现场反证 | 推荐决策与写回结果 | 状态 |
+|---|---|---|---|
+| `total > 0` 与纯 Performance 项目在 fast/full 被过滤为空互相冲突 | `SmartGuard.Engine.PerformanceTests` 的测试标记为 `Category=Performance`，当前项目选择三层均包含该项目，而 fast/full 过滤器排除 Performance | Task 1 增加分层项目选择 RED；Task 2 要求 fast/full 不选择该项目，nightly 才选择；保留所有已选项目 `total > 0` | 已消除 |
+| Task 6 引用了不存在的 `LogTailReaderTestHook` | 当前仓库只有 `LogTailReaderTestMetrics.ArtificialDelayMs` / `MaybeDelayForTests()`，没有该类型或 `BlockNextRead` / `ThrowNextRead` | 改为扩展现有 `LogTailReaderTestMetrics.BeforeReadForTests`，明确阻塞、放行、异常注入和 Reset 契约 | 已消除 |
+| Tray 的 Capture/Restore 放在 Pester `BeforeAll`/`AfterAll`，不能覆盖 discovery/容器级失败 | 当前 installer 流程同样在测试容器内恢复；提权 runner 只包围 `Invoke-Pester` 并在其后写 JSON | 给通用提权 runner 增加唯一的外层 lifecycle 接口；Tray lifecycle 在 runner 的 try/finally 中 Capture/Stop/Restore，恢复完成后才写结果 | 已消除 |
+| Tray 恢复硬编码 `StartProcesses:$true` 会改变“任务存在但进程原本停止”的机器状态 | 当前快照只保存任务槽，Task 5 又要求验证停止态基线，二者无法同时成立 | 快照增加有效生产进程运行态；恢复按快照决定是否重启；缺任务的孤儿进程只清理、不复活 | 已消除 |
+| active refresh 计数可能依赖已被 Dispose 的 Dispatcher continuation 归零 | 计划原文只写“finally 清 active count”，同时又禁止 Dispose 后排队 UI callback，存在清理等待永不满足的路径 | Task 6 明确计数在后台 Task 完成路径归零，完全独立于 UI callback；Task 7 静默清理据此等待 | 已消除 |
+| 稳定性脚本直接调用可能被本机 PowerShell 执行策略拦截 | 当前环境执行 `.ps1` 的可靠入口是显式 `powershell.exe -ExecutionPolicy Bypass -File` | Task 8 两条本地验收命令改为显式 PowerShell 5.1 Bypass 入口 | 已消除 |
+| Task 1 要求提交已知 RED，直接违反仓库“禁止提交测试失败”的规则 | 原计划在确认失败后执行 `git commit`，而项目规则要求提交前相关测试必须通过 | Task 1 改为只保存 RED 日志、不提交；测试改动与 Task 2 最小 GREEN 实现一起提交 | 已消除 |
+
+**审查结论：** 未留下需要用户决策的阻塞项；计划仍按 Task 1–9 顺序执行，不允许以放宽 fail-closed、增加重试或扩大超时替代根因修复。
 
 ---
 
