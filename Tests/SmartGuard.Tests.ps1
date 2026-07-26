@@ -1315,16 +1315,26 @@ function Exit-PesterFileLifecycle {
 '@,
                     [System.Text.UTF8Encoding]::new($false))
 
-                & (Get-WindowsPowerShellExePath) `
-                    -NoProfile `
-                    -ExecutionPolicy Bypass `
-                    -File (Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1') `
-                    -TestPath $testPath `
-                    -ResultPath $resultPath `
-                    -TranscriptPath $transcriptPath `
-                    -Tier fast `
-                    -LifecycleScriptPath $lifecyclePath 2>$null
-                $childExitCode = $LASTEXITCODE
+                # 子 runner 失败时通过 Write-Error 写 stderr（被测行为）；Pester 5 在 It 内
+                # ErrorActionPreference=Stop，PS 5.1 下原生 stderr 经 2>$null 会变成
+                # terminating NativeCommandError，必须临时降为 Continue。
+                $previousErrorActionPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                    & (Get-WindowsPowerShellExePath) `
+                        -NoProfile `
+                        -ExecutionPolicy Bypass `
+                        -File (Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1') `
+                        -TestPath $testPath `
+                        -ResultPath $resultPath `
+                        -TranscriptPath $transcriptPath `
+                        -Tier fast `
+                        -LifecycleScriptPath $lifecyclePath 2>$null
+                    $childExitCode = $LASTEXITCODE
+                }
+                finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
                 $diskResult = [System.IO.File]::ReadAllText(
                     $resultPath,
                     [System.Text.Encoding]::UTF8) | ConvertFrom-Json

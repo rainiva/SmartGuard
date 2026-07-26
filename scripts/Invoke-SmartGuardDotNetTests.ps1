@@ -260,7 +260,17 @@ function Stop-SmartGuardCapturedProcessTree {
         [SmartGuardCapturedProcessTreeSnapshot]::GetProcessIds($ProcessId)
     )
 
-    & $taskkillPath /PID $ProcessId /T /F 2>$null | Out-Null
+    # Pester 5 在 It 内把 ErrorActionPreference 设为 Stop；PS 5.1 下原生命令的
+    # stderr 经 2>$null 重定向会被包装成 terminating NativeCommandError，
+    # 导致 taskkill 失败信息直接炸掉调用方而不是走 Stop-Process 回退。
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $taskkillPath /PID $ProcessId /T /F 2>$null | Out-Null
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     if ($LASTEXITCODE -eq 0) {
         return
     }
