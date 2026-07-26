@@ -78,6 +78,31 @@ public sealed class WpfStaTestHostTests
     }
 
     [Fact]
+    public void ShowAndWait_keeps_test_window_outside_visible_screen()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = new Window
+            {
+                Width = 300,
+                Height = 200,
+                Content = new TextBlock { Text = "headless sentinel" },
+            };
+
+            WpfStaTestHost.ShowAndWait(window);
+
+            var fullyLeftOfScreen =
+                window.Left + window.ActualWidth <= SystemParameters.VirtualScreenLeft;
+            var fullyAboveScreen =
+                window.Top + window.ActualHeight <= SystemParameters.VirtualScreenTop;
+            (fullyLeftOfScreen || fullyAboveScreen).Should().BeTrue(
+                $"test windows must stay outside the visible desktop so runs do not flash " +
+                $"windows at the user, but got Left={window.Left}, Top={window.Top}, " +
+                $"virtual screen origin=({SystemParameters.VirtualScreenLeft}, {SystemParameters.VirtualScreenTop})");
+        });
+    }
+
+    [Fact]
     public void Run_restores_shared_state_after_closing_windows()
     {
         WpfStaTestHost.Run(() =>

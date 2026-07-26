@@ -135,7 +135,18 @@ internal static class ScrollViewerSmoothScroll
 
     var maxOffset = scrollViewer.ScrollableHeight;
     if (maxOffset <= 0)
+    {
+      // The ScrollViewer's window has been closed or its content collapsed
+      // (e.g. navigating away from the page that hosts it). Detach the
+      // inertial animation so the static CompositionTarget.Rendering hook
+      // can be released once ActiveScrollViewers becomes empty; otherwise
+      // long-running test runs accumulate dead viewers and the rendering
+      // callback starves the dispatcher, breaking time-sensitive WPF
+      // layout pumps in subsequent tests.
+      scrollViewer.SetValue(VelocityYProperty, 0.0);
+      ActiveScrollViewers.Remove(scrollViewer);
       return;
+    }
 
     var nextOffset = scrollViewer.VerticalOffset + (velocity * elapsedSeconds);
     nextOffset = Math.Max(0, Math.Min(nextOffset, maxOffset));

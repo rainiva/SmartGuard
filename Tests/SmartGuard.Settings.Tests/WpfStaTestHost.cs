@@ -179,8 +179,12 @@ internal static class WpfStaTestHost
         window.ShowActivated = false;
         window.Opacity = 0;
         window.WindowState = WindowState.Normal;
-        window.Left = 0;
-        window.Top = 0;
+        // Opacity=0 does not hide windows with a system title bar
+        // (AllowsTransparency=false), so park the window far outside the
+        // virtual screen to keep test runs from flashing windows at the user.
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = SystemParameters.VirtualScreenLeft - 32000;
+        window.Top = SystemParameters.VirtualScreenTop - 32000;
     }
 
     private static List<Exception> CloseAllWindows()
@@ -242,6 +246,11 @@ internal static class WpfStaTestHost
         LogViewTagPalette.ConfigureForDarkMode(false);
         LogTailReaderTestMetrics.Reset();
         SettingsWindowController.ResetTestMetricsForTests();
+        // Release any lingering CompositionTarget.Rendering hook and clear
+        // residual inertial velocity left by a previous test; otherwise the
+        // rendering callback keeps firing on every frame for the remainder
+        // of the process and starves the dispatcher of subsequent tests.
+        ScrollViewerSmoothScroll.ResetForTesting();
     }
 
     private static void CaptureFailure(Action action, ICollection<Exception> failures)
