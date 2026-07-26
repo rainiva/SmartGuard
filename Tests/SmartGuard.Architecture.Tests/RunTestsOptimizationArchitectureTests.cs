@@ -17,23 +17,35 @@ public class RunTestsOptimizationArchitectureTests
   public void Dotnet_test_helper_must_build_once_and_poll_parallel_processes_with_no_build()
   {
     var helper = SourceScanHelper.ReadSource("scripts/Invoke-SmartGuardDotNetTests.ps1");
-    helper.Should().Contain("Start-Process -FilePath $env:ComSpec");
-    helper.Should().Contain("dotnet-test-$runId.stdout.log");
-    helper.Should().Contain("dotnet-test-$runId.exit");
-    helper.Should().Contain("ReadAllText($entry.ExitPath");
-    helper.Should().MatchRegex(
-      @"\$entry\.Process\.WaitForExit\(\)[\s\S]*Read-SmartGuardTextFileWhenUnlocked -Path \$entry\.StdoutPath");
+    helper.Should().Contain("dotnet-test-$RunId.stdout.log");
+    helper.Should().Contain("function Start-SmartGuardCapturedCommand");
+    helper.Should().Contain("function Complete-SmartGuardCapturedCommand");
+    helper.Should().Contain("function Read-SmartGuardTrxResult");
+    helper.Should().Contain("$Entry.Process.ExitCode");
+    helper.Should().Contain("trx;LogFileName=$trxFileName");
+    helper.Should().Contain("$counterValues.total -le 0");
+    helper.Should().NotContain(".exit");
+    helper.Should().NotContain("ExitPath");
+    helper.Should().NotContain("%ERRORLEVEL%");
+    var capturedCommandProtocol = System.Text.RegularExpressions.Regex.Match(
+      helper,
+      @"(?s)function Start-SmartGuardCapturedCommand.*?(?=\r?\nfunction Read-SmartGuardTrxResult)");
+    capturedCommandProtocol.Success.Should().BeTrue();
+    capturedCommandProtocol.Value.Should().NotContain("$LASTEXITCODE");
     helper.Should().Contain("function Read-SmartGuardTextFileWhenUnlocked");
     helper.Should().Contain("catch [System.IO.IOException]");
-    helper.Should().Contain("Read-SmartGuardTextFileWhenUnlocked -Path $entry.StdoutPath");
     helper.Should().Contain("Stop-Process");
     helper.Should().NotContain("Wait-Job");
-    helper.Should().Contain("Invoke-SmartGuardDotNetTestProcesses -ProjectPaths @($project)");
+    helper.Should().Contain("foreach ($project in $serialProjects)");
     helper.Should().Contain("Get-SmartGuardParallelDotNetTestProjectPaths");
     helper.Should().Contain("Get-SmartGuardSerialDotNetTestProjectPaths");
     helper.Should().Contain("--no-restore");
     helper.Should().Contain("--no-build");
     helper.Should().Contain("Ensure-SmartGuardDotNetTestBuild");
+
+    var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
+    runTests.Should().Contain("$dotNetResult.Result -ne 'Passed'");
+    runTests.Should().Contain("run-tests-$runId.summary.json");
   }
 
   [Theory]
