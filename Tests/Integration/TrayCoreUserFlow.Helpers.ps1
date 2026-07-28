@@ -27,15 +27,35 @@ function Wait-StatusFile {
         [string]$StatusPath,
         [object]$Process,
         [string]$StartupLogPath,
-        [int]$TimeoutSec = 25
+        [int]$TimeoutSec = 25,
+        [int]$InitTimeoutSec = 90
     )
 
     if (-not $StartupLogPath) {
         $StartupLogPath = Join-Path (Split-Path -Parent $StatusPath) $SmartGuardStartupLogFileName
     }
 
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    while ((Get-Date) -lt $deadline) {
+    # Cold-start AV scans can hold a freshly copied engine exe for tens of
+    # seconds before ANY application code runs (observed: alive 25s+ with no
+    # startup log at all). The status timeout therefore starts counting once
+    # the startup log exists (application code running); process init gets
+    # its own, longer bound so genuine status-publication bugs still fail.
+    $initDeadline = (Get-Date).AddSeconds($InitTimeoutSec)
+    $deadline = $null
+    while ($true) {
+        if ($null -eq $deadline) {
+            if (Test-Path -LiteralPath $StartupLogPath) {
+                $deadline = (Get-Date).AddSeconds($TimeoutSec)
+            }
+            elseif ((Get-Date) -ge $initDeadline) {
+                $timeoutPid = if ($Process) { $Process.Id } else { 'unknown' }
+                throw "Timed out after $InitTimeoutSec s waiting for status publication while the engine is still running. PID=$timeoutPid; StatusPath='$StatusPath'; StartupLogTail=(startup log never appeared; process likely stuck in image scanning or crashed before logging)."
+            }
+        }
+        elseif ((Get-Date) -ge $deadline) {
+            break
+        }
+
         $statusReadError = $null
         if (Test-Path -LiteralPath $StatusPath) {
             try {

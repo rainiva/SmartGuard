@@ -2165,5 +2165,46 @@ function Exit-PesterFileLifecycle {
                 Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
+
+        It 'Wait-StatusFile keeps waiting while antivirus-style init delays the startup log beyond the status timeout' {
+            # Elevated runs showed the engine alive for 25s with NO startup log
+            # at all: the process was stuck in OS/AV image scanning before any
+            # application code ran. The status timeout must start counting from
+            # the moment the startup log appears (application code running),
+            # not from process creation, otherwise cold AV scans fail the gate.
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Helpers.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-status-init-' + [guid]::NewGuid().ToString('N'))
+            $statusPath = Join-Path $tempDirectory 'SmartGuard.status.json'
+            $startupLogPath = Join-Path $tempDirectory 'SmartGuard.startup.log'
+            $process = [pscustomobject]@{
+                Id = 6161
+                HasExited = $false
+                ExitCode = $null
+            }
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            $script:InitDelaySleepCount = 0
+            Mock Start-Sleep {
+                $script:InitDelaySleepCount++
+                if ($script:InitDelaySleepCount -eq 2) {
+                    [System.IO.File]::WriteAllLines(
+                        $startupLogPath,
+                        @('late-startup-line'),
+                        [System.Text.UTF8Encoding]::new($false))
+                    [System.IO.File]::WriteAllText(
+                        $statusPath,
+                        '{"currentPlan":"Balanced"}',
+                        [System.Text.UTF8Encoding]::new($false))
+                }
+            }
+            try {
+                $payload = Wait-StatusFile -StatusPath $statusPath -Process $process -StartupLogPath $startupLogPath -TimeoutSec 0 -InitTimeoutSec 30
+                $payload | Should -Not -BeNullOrEmpty
+                $payload.currentPlan | Should -Be 'Balanced'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
