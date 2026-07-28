@@ -1074,6 +1074,16 @@ print(json.dumps(result))" $icon $officialDir
             $runTests | Should -Match '\$integrationResult\.Result\s*-ne\s*''Passed'''
         }
 
+        It 'Run-Tests integration contract failures carry the underlying elevation error' {
+            # A failed UAC launch used to surface only as
+            # "Result=Failed, ExitCode=1, TotalCount=0" with the real
+            # launcher error discarded - a diagnostics black hole.
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Match '\$underlyingError\s*=\s*\[string\]\$integrationResult\.Error'
+            $runTests | Should -Match '(?s)Tray integration result contract failed.*?\$underlyingSuffix\)'
+        }
+
         It 'Test-SmartGuardElevatedPesterResult rejects a Passed result with zero discovered tests' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')

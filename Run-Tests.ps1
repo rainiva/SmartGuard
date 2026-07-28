@@ -180,12 +180,20 @@ if ($dotNetResult.Result -eq 'Passed' -and
             [int]$integrationResult.TotalCount -ne 2 -or
             [int]$integrationResult.FailedCount -ne 0) {
             $trayIntegrationLayer.Result = 'Failed'
+            $underlyingError = [string]$integrationResult.Error
+            $underlyingSuffix = if ([string]::IsNullOrWhiteSpace($underlyingError)) {
+                ''
+            }
+            else {
+                " Error=$underlyingError"
+            }
             $trayIntegrationLayer.Error = (
                 'Tray integration result contract failed: ' +
                 "Result=$($integrationResult.Result), " +
                 "ExitCode=$($integrationResult.ExitCode), " +
                 "TotalCount=$($integrationResult.TotalCount), " +
-                "FailedCount=$($integrationResult.FailedCount).")
+                "FailedCount=$($integrationResult.FailedCount)." +
+                $underlyingSuffix)
         }
     }
     catch {
