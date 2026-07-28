@@ -127,7 +127,21 @@ function Read-SmartGuardTextFileWhenUnlocked {
     $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
     while ($true) {
         try {
-            return [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+            # FileShare ReadWrite: MSBuild nodeReuse workers inherit the
+            # redirected stdout handle and keep it open after dotnet test
+            # exits, so an exclusive read would fail forever.
+            $stream = [System.IO.File]::Open(
+                $Path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::ReadWrite)
+            try {
+                $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+                return $reader.ReadToEnd()
+            }
+            finally {
+                $stream.Dispose()
+            }
         }
         catch [System.IO.IOException] {
             if ([DateTime]::UtcNow -ge $deadline) {

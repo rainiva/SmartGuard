@@ -1926,6 +1926,33 @@ function Exit-PesterFileLifecycle {
             }
         }
 
+        It 'dotnet test output reader reads while a lingering writer still holds the write handle' {
+            # MSBuild nodeReuse worker processes inherit the redirected stdout
+            # handle (FileShare Read+Write) and keep it open long after dotnet
+            # test exits; the reader must not wait for such writers to go away.
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-output-writer-' + [guid]::NewGuid().ToString('N'))
+            $path = Join-Path $tempDirectory 'stdout.log'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            [System.IO.File]::WriteAllText($path, 'completed output', [System.Text.UTF8Encoding]::new($false))
+            $writer = [System.IO.File]::Open(
+                $path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Write,
+                [System.IO.FileShare]::ReadWrite)
+            try {
+                $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
+                Read-SmartGuardTextFileWhenUnlocked -Path $path -TimeoutMilliseconds 3000 | Should -Be 'completed output'
+                $elapsed.Stop()
+                $elapsed.ElapsedMilliseconds | Should -BeLessThan 1000
+            }
+            finally {
+                $writer.Dispose()
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'InstallerUserFlow.Tests.ps1 re-resolves repo root in BeforeAll when script scope is empty' {
             $root = Split-Path -Parent $PSScriptRoot
             $flow = Get-Content -LiteralPath (Join-Path $root 'Tests\Integration\InstallerUserFlow.Tests.ps1') -Raw -Encoding UTF8
