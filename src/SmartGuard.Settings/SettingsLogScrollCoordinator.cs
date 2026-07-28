@@ -42,6 +42,18 @@ internal sealed class SettingsLogScrollCoordinator
     _scrollViewer.AddHandler(
       ScrollBar.ScrollEvent,
       new ScrollEventHandler((_, args) => OnUserScroll(args, followTailCoordinator)));
+    // SmoothScroll marks wheel events handled and replays them as programmatic
+    // ScrollToVerticalOffset frames, which the post-refresh suppression window
+    // mutes; hook the raw gesture (handledEventsToo) so wheeling up always
+    // cancels follow-tail no matter when it happens.
+    _scrollViewer.AddHandler(
+      System.Windows.UIElement.PreviewMouseWheelEvent,
+      new System.Windows.Input.MouseWheelEventHandler((_, args) =>
+      {
+        if (args.Delta > 0 && _scrollViewer is { ScrollableHeight: > 0 })
+          followTailCoordinator.OnUserVerticalScroll();
+      }),
+      handledEventsToo: true);
     EnsureThumbHandlersHooked(followTailCoordinator);
     _scrollHooked = true;
     return _scrollViewer;
@@ -57,6 +69,15 @@ internal sealed class SettingsLogScrollCoordinator
     if (args.ScrollEventType == ScrollEventType.EndScroll)
     {
       RestoreCommittedOffset(scrollBar);
+      return;
+    }
+
+    // Track paging / arrow clicks that move up into history are explicit
+    // user gestures too and must cancel follow-tail.
+    if (args.ScrollEventType is ScrollEventType.LargeDecrement or ScrollEventType.SmallDecrement
+        && scrollBar.Orientation == Orientation.Vertical)
+    {
+      followTailCoordinator.OnUserVerticalScroll();
       return;
     }
 

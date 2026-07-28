@@ -97,6 +97,9 @@ internal sealed class SettingsLogFollowTailCoordinator
     controller.FollowTail = enabled;
     if (enabled)
     {
+      // Explicitly enabling follow-tail is an intentional jump to the tail,
+      // exempt from the "keep the user's reading position" gate below.
+      PendingFollowTailInitialScroll = true;
       _refreshLogView(true);
       ApplyScrollIfEnabled();
     }
@@ -130,6 +133,22 @@ internal sealed class SettingsLogFollowTailCoordinator
     {
       PendingFollowTailInitialScroll = false;
       return;
+    }
+
+    // The checkbox can be stale-checked when a user scroll landed inside a
+    // suppression window. Follow-tail only keeps following users who are
+    // still near the tail; anyone reading history keeps their position and
+    // the toggle self-heals to unchecked. Initial scrolls (page activation,
+    // explicit re-check) are intentional jumps and skip this gate.
+    if (!PendingFollowTailInitialScroll)
+    {
+      var currentScrollViewer = _resolveScrollViewer();
+      if (currentScrollViewer is not null && !LogViewScrollState.IsAtTail(currentScrollViewer))
+      {
+        controller.FollowTail = false;
+        SyncFollowTailToggle();
+        return;
+      }
     }
 
     PendingFollowTailInitialScroll = true;
