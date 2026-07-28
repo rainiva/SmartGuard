@@ -340,3 +340,16 @@
 | TASK-SKIP | **阻断** | `ScheduledTaskInstallGate` + `InstallCommands`：当 `SMARTGUARD_SKIP_SCHEDULED_TASKS` 或 `--skip-scheduled-tasks` 生效时，不得 `RegisterGuardian`/`RegisterTray`/`DesktopShellRegistration.Apply` |
 | INT-TASK-CAPTURE | **阻断** | Inno 安装/卸载集成测试须 `Capture-SmartGuardScheduledTasks` 于 `Stop` 前，`finally`/`AfterAll` 中 `Restore-SmartGuardScheduledTasks`；默认测试安装须 `SMARTGUARD_SKIP_SCHEDULED_TASKS=1`（`Invoke-SmartGuardSilentInstall` 默认 `$SkipScheduledTasks = $true`） |
 | DOC-10 | **已关闭** | 本文档 §1/§2/§3/§6/§17 + `InstallCommandsSkipArchitectureTests`、`ArchitectureContractScheduledTaskIsolationTests` 终验 |
+
+---
+
+## 18. 测试基础设施根治契约（2026-07-26）
+
+| ID | 状态 | 契约 |
+|----|------|------|
+| TEST-TRUTH | **阻断** | 测试子进程真值 = `Process.ExitCode` + TRX `ResultSummary/Counters` 双重校验；两者矛盾、TRX 缺失、损坏、`total = 0` 或 Outcome 非 `Completed` 时必须判 Failed（fail-closed），不得以 stdout 文本或局部计数替代 |
+| ELEVATED-TRUTH | **阻断** | 提权测试真值 = 子进程磁盘 JSON + transcript + 父进程验证三者齐备；零测试、缺 JSON、JSON 损坏或子退出码非零均判 Failed，父门禁不得把"提权窗口成功返回"当作通过 |
+| WPF-QUIESCENT | **阻断** | WPF controller `Dispose` 后不得再有任何 UI apply（apply 计数必须为 0）；每个 WPF 用例结束必须 quiescent：窗口数 0、active refresh 0、timer/测试钩子复位；禁止固定 `Thread.Sleep` 充当 UI 完成条件 |
+| INT-LIFECYCLE | **阻断** | Integration 必须按 Capture → Stop → Test → Restore 执行；Stop 失败或 Restore 失败任一发生，当前测试必须判红，不得 best-effort 吞掉后继续；恢复按快照决定进程运行态，孤儿进程只清理不复活 |
+| NO-RETRY-GREEN | **阻断** | 稳定性门禁（`scripts/Invoke-TestStabilityGate.ps1`）任一轮失败立即停止并整体判 Failed；禁止重跑失败轮以"重试后成功"覆盖第一失败证据 |
+| DOC-11 | **已关闭** | 本文档 §18 + Pester `Run-Tests optimization contract`/`Invoke-TestStabilityGate` 契约测试（Tasks 2–8，commits e9dc556..f148110）终验 |
