@@ -94,7 +94,10 @@ public sealed class GuardianLoop
         }
       }
 
-      _iterationState.LastKnownGuid = PowerCfgExecutor.GetCurrentPlanGuid();
+      _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
+        PowerCfgExecutor.GetCurrentPlanGuid,
+        _iterationState.LastKnownGuid,
+        message => WriteLog(config, LogLevel.Warn, message));
       WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(_configRepository, _rootPath), cancellationToken);
     }
   }

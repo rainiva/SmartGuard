@@ -42,4 +42,15 @@ public class GuardianLoopArchitectureTests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
     source.Should().Contain("ResolveLogFile");
   }
+
+  [Fact]
+  public void GuardianLoop_plan_probe_must_be_fault_tolerant()
+  {
+    // A bare PowerCfgExecutor.GetCurrentPlanGuid() call in the main loop let a
+    // transient powercfg timeout crash the whole engine (0xE0434352); the probe
+    // must go through GuardianPlanProbe so failures degrade instead of killing.
+    var loop = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    loop.Should().Contain("GuardianPlanProbe.ProbeOrKeep");
+    loop.Should().NotContain("= PowerCfgExecutor.GetCurrentPlanGuid()");
+  }
 }
