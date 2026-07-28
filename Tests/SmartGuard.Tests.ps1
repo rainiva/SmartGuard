@@ -837,6 +837,40 @@ print(json.dumps(result))" $icon $officialDir
             }
         }
 
+        It 'engine publish refreshes a stale binary older than the newest engine source' {
+            # The published bin\SmartGuard.Engine.exe sat at an old date while
+            # newer src commits shipped crash fixes; the integration layer then
+            # kept exercising the stale engine because Ensure only checked
+            # existence, never freshness.
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-stale-publish-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path (Join-Path $tempDirectory 'bin'))
+            [void](New-Item -ItemType Directory -Path (Join-Path $tempDirectory 'src\SmartGuard.Engine'))
+            try {
+                $enginePath = Join-Path $tempDirectory 'bin\SmartGuard.Engine.exe'
+                $sourcePath = Join-Path $tempDirectory 'src\SmartGuard.Engine\Program.cs'
+                $markerPath = Join-Path $tempDirectory 'build-invoked.txt'
+                $buildCmdPath = Join-Path $tempDirectory 'build.cmd'
+                [System.IO.File]::WriteAllText($enginePath, 'stale engine', [System.Text.UTF8Encoding]::new($false))
+                [System.IO.File]::WriteAllText($sourcePath, '// fresh source', [System.Text.UTF8Encoding]::new($false))
+                [System.IO.File]::WriteAllText(
+                    $buildCmdPath,
+                    "@echo off`r`necho invoked> `"$markerPath`"`r`nexit /b 0`r`n",
+                    [System.Text.UTF8Encoding]::new($false))
+                (Get-Item -LiteralPath $enginePath).LastWriteTimeUtc = [DateTime]::UtcNow.AddDays(-2)
+                (Get-Item -LiteralPath $sourcePath).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-5)
+
+                Ensure-SmartGuardEnginePublished -RepoRoot $tempDirectory
+
+                Test-Path -LiteralPath $markerPath |
+                    Should -BeTrue -Because 'a stale published engine must trigger a republish'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'engine publish output never contaminates the structured suite result stream' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')

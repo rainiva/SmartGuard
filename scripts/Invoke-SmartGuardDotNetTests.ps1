@@ -77,11 +77,34 @@ function Get-SmartGuardSerialDotNetTestProjectPaths {
     return $projects
 }
 
+function Test-SmartGuardEnginePublishStale {
+    param(
+        [string]$RepoRoot,
+        [string]$EngineExePath
+    )
+
+    $publishedAtUtc = (Get-Item -LiteralPath $EngineExePath).LastWriteTimeUtc
+    $sourceRoot = Join-Path $RepoRoot 'src'
+    if (-not (Test-Path -LiteralPath $sourceRoot)) {
+        return $false
+    }
+
+    $newestSource = Get-ChildItem -LiteralPath $sourceRoot -Recurse -File |
+        Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    return ($null -ne $newestSource) -and ($newestSource.LastWriteTimeUtc -gt $publishedAtUtc)
+}
+
 function Ensure-SmartGuardEnginePublished {
     param([string]$RepoRoot)
 
+    # Existence alone is not enough: a published engine older than the newest
+    # source kept integration tests exercising stale binaries without the
+    # latest crash fixes.
     $engineExe = Join-Path $RepoRoot 'bin\SmartGuard.Engine.exe'
-    if (Test-Path -LiteralPath $engineExe) {
+    if ((Test-Path -LiteralPath $engineExe) -and
+        -not (Test-SmartGuardEnginePublishStale -RepoRoot $RepoRoot -EngineExePath $engineExe)) {
         return
     }
 
