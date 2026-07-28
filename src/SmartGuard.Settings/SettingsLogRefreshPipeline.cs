@@ -28,6 +28,13 @@ internal sealed class SettingsLogRefreshPipeline
   // 诊断插桩：记录最近一次 flight 的阶段与时刻，仅供测试超时信息定位卡点。
   private volatile string _flightStage = "idle";
   private long _flightStageAtUtcTicks = DateTime.UtcNow.Ticks;
+  // 进程级 flight 计数：区分“泄漏 controller 的 flight 泛滥”与“纯负载慢”。
+  private static int _globalRunningFlightCount;
+  private static int _globalStartedFlightCount;
+
+  internal static int GlobalRunningFlightCountForTests => Volatile.Read(ref _globalRunningFlightCount);
+
+  internal static int GlobalStartedFlightCountForTests => Volatile.Read(ref _globalStartedFlightCount);
 
   internal SettingsLogRefreshPipeline(
     Window window,
@@ -122,6 +129,8 @@ internal sealed class SettingsLogRefreshPipeline
       _refreshCancellation = refreshCancellation;
 
     Interlocked.Increment(ref _activeRefreshCount);
+    Interlocked.Increment(ref _globalRunningFlightCount);
+    Interlocked.Increment(ref _globalStartedFlightCount);
     MarkStage("queued");
     var refreshTask = Task.Run(() =>
     {
@@ -182,6 +191,7 @@ internal sealed class SettingsLogRefreshPipeline
         refreshCancellation.Dispose();
       }
       Interlocked.Decrement(ref _activeRefreshCount);
+      Interlocked.Decrement(ref _globalRunningFlightCount);
     }
 
     if (canceled || _isDisposed() || cancellationToken.IsCancellationRequested)

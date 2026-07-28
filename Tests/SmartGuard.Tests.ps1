@@ -2123,5 +2123,47 @@ function Exit-PesterFileLifecycle {
                 Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
+
+        It 'Wait-StatusFile throws with startup-log diagnostics when a live engine never publishes status' {
+            # The timeout path used to `return $null`, so the Pester assertion
+            # only said "Expected a value, but got $null" with zero evidence
+            # (no PID, no startup log tail). Timeouts must carry diagnostics.
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\TrayCoreUserFlow.Helpers.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-status-timeout-' + [guid]::NewGuid().ToString('N'))
+            $statusPath = Join-Path $tempDirectory 'SmartGuard.status.json'
+            $startupLogPath = Join-Path $tempDirectory 'SmartGuard.startup.log'
+            $process = [pscustomobject]@{
+                Id = 5151
+                HasExited = $false
+                ExitCode = $null
+            }
+            Mock Start-Sleep {}
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                [System.IO.File]::WriteAllLines(
+                    $startupLogPath,
+                    @('startup-slow-line-1', 'startup-slow-line-2'),
+                    [System.Text.UTF8Encoding]::new($false))
+
+                $exception = $null
+                try {
+                    Wait-StatusFile -StatusPath $statusPath -Process $process -StartupLogPath $startupLogPath -TimeoutSec 0
+                }
+                catch {
+                    $exception = $_.Exception
+                }
+
+                $exception | Should -Not -BeNullOrEmpty
+                $exception.Message | Should -Match 'Timed out'
+                $exception.Message | Should -Match '5151'
+                $exception.Message | Should -Match 'still running'
+                $exception.Message | Should -Match 'SmartGuard\.status\.json'
+                $exception.Message | Should -Match 'startup-slow-line-2'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 }

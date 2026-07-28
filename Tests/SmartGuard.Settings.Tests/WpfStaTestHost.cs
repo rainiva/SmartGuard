@@ -267,6 +267,8 @@ internal static class WpfStaTestHost
             $"windows={GetWindowCount()}, active refresh={GetActiveRefreshCount()}, " +
             $"ui refresh in flight={GetUiRefreshInFlightCount()}, " +
             $"flight stage={GetFlightStages()}, " +
+            $"global flights running={SettingsLogRefreshPipeline.GlobalRunningFlightCountForTests} " +
+            $"started={SettingsLogRefreshPipeline.GlobalStartedFlightCountForTests}, " +
             $"log read delay={LogTailReaderTestMetrics.ArtificialDelayMs} ms, " +
             $"log read hook={LogTailReaderTestMetrics.BeforeReadForTests is not null}, " +
             $"thread pool workers available={availableWorkerThreads}, " +

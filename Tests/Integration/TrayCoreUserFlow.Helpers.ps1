@@ -68,7 +68,26 @@ function Wait-StatusFile {
         }
         Start-Sleep -Milliseconds 400
     }
-    return $null
+
+    # Timeout with the engine still alive: never return $null silently —
+    # the caller's assertion would fail with zero evidence. Attach the same
+    # startup-log diagnostics as the exited-engine path.
+    $timeoutLogTail = '(startup log unavailable)'
+    if (Test-Path -LiteralPath $StartupLogPath) {
+        try {
+            $timeoutLogTail = @(
+                [System.IO.File]::ReadAllLines(
+                    $StartupLogPath,
+                    [System.Text.UTF8Encoding]::new($false)) |
+                    Select-Object -Last 20
+            ) -join [Environment]::NewLine
+        }
+        catch {
+            $timeoutLogTail = "(unable to read startup log: $($_.Exception.Message))"
+        }
+    }
+    $timeoutPid = if ($Process) { $Process.Id } else { 'unknown' }
+    throw "Timed out after $TimeoutSec s waiting for status publication while the engine is still running. PID=$timeoutPid; StatusPath='$StatusPath'; StartupLogTail=$timeoutLogTail."
 }
 
 function Stop-EngineTree {
