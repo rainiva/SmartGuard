@@ -1084,6 +1084,18 @@ print(json.dumps(result))" $icon $officialDir
             $runTests | Should -Match '(?s)Tray integration result contract failed.*?\$underlyingSuffix\)'
         }
 
+        It 'Run-Tests process starter scriptblocks stay bound to the script session state' {
+            # .GetNewClosure() rebinds the starter to a detached dynamic module
+            # where dot-sourced helpers (Test-IsProcessElevated,
+            # ConvertTo-SmartGuardQuotedProcessArgument) are invisible unless an
+            # earlier session leaked them into the global scope; the tray gate
+            # then fails instantly with "Unable to launch elevated Windows
+            # PowerShell ... 无法将 ... 识别为 cmdlet".
+            $root = Split-Path -Parent $PSScriptRoot
+            $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
+            $runTests | Should -Not -Match '\.GetNewClosure\(\)'
+        }
+
         It 'Test-SmartGuardElevatedPesterResult rejects a Passed result with zero discovered tests' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')

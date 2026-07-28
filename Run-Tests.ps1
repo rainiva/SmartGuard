@@ -165,7 +165,7 @@ if ($dotNetResult.Result -eq 'Passed' -and
                 -Verb RunAs `
                 -PassThru `
                 -ArgumentList $arguments
-        }.GetNewClosure()
+        }
 
         $integrationResult = Invoke-PesterFileSingleElevation `
             -RepoRoot $PSScriptRoot `
