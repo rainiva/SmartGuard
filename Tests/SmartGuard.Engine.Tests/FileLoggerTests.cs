@@ -85,4 +85,68 @@ public class FileLoggerTests
             if (Directory.Exists(dir)) Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public void Write_does_not_throw_when_log_path_is_unwritable()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "locked.log");
+        Directory.CreateDirectory(logPath); // 让日志路径本身是目录，制造写入必然失败
+        try
+        {
+            var act = () => FileLogger.Write(LogLevel.Info, logPath, "boom", long.MaxValue);
+            act.Should().NotThrow();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Write_does_not_throw_when_rotation_target_is_unwritable()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "test.log");
+        var now = new DateTime(2026, 6, 16, 10, 0, 0);
+        try
+        {
+            File.WriteAllText(logPath, new string('x', 200));
+            Directory.CreateDirectory(logPath + ".20260616.bak"); // 归档目标是目录，轮转必然失败
+            var act = () => FileLogger.Write(LogLevel.Info, logPath, "next", 100, now);
+            act.Should().NotThrow();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Write_is_reentrancy_guarded_and_does_not_recurse()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "test.log");
+        var probeCalls = 0;
+        FileLogger.ReentrancyProbeForTests = () =>
+        {
+            probeCalls++;
+            if (probeCalls == 1)
+                FileLogger.Write(LogLevel.Error, logPath, "nested", long.MaxValue); // 内层再次进入应被防递归短路
+        };
+        try
+        {
+            var act = () => FileLogger.Write(LogLevel.Info, logPath, "outer", long.MaxValue);
+            act.Should().NotThrow();
+            probeCalls.Should().Be(1, "防递归应阻止内层 Write 再次触发 probe");
+        }
+        finally
+        {
+            FileLogger.ReentrancyProbeForTests = null;
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
 }

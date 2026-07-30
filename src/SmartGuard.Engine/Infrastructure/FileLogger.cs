@@ -2,6 +2,11 @@ namespace SmartGuard.Engine.Infrastructure;
 
 public static class FileLogger
 {
+  [ThreadStatic]
+  private static bool _writing;
+
+  internal static Action? ReentrancyProbeForTests;
+
   public static void RotateDailyIfNeeded(string logPath, DateTime now)
   {
     if (!File.Exists(logPath)) return;
@@ -34,10 +39,24 @@ public static class FileLogger
 
   public static void Write(LogLevel level, string logPath, string message, long maxBytes, DateTime? now = null)
   {
-    var timestamp = now ?? DateTime.Now;
-    PrepareLogFile(logPath, maxBytes, timestamp);
-    var line = LogLineFormatter.Format(timestamp, level, message);
-    WriteLine(logPath, line);
+    if (_writing) return; // 防递归：日志内部再触发写入直接短路，避免栈溢出与雪崩
+    _writing = true;
+    try
+    {
+      ReentrancyProbeForTests?.Invoke();
+      var timestamp = now ?? DateTime.Now;
+      PrepareLogFile(logPath, maxBytes, timestamp);
+      var line = LogLineFormatter.Format(timestamp, level, message);
+      WriteLine(logPath, line);
+    }
+    catch
+    {
+      // 日志写入失败绝不上抛，避免拖垮 GuardianLoop 主循环；不在此处再次记日志（防递归）
+    }
+    finally
+    {
+      _writing = false;
+    }
   }
 
   public static void WriteLine(string logPath, string line)
