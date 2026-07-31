@@ -167,14 +167,7 @@ public static class InstallCommands
 
   private static void WriteStartupLog(string startupLog, string message)
   {
-    try
-    {
-      var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}";
-      File.AppendAllText(startupLog, line);
-    }
-    catch
-    {
-      // ignore logging failures
-    }
+    var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
+    SmartGuardLogWriter.TryAppendLine(startupLog, line);
   }
 }

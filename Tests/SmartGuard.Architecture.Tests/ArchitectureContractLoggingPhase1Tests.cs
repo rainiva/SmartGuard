@@ -12,4 +12,17 @@ public class ArchitectureContractLoggingPhase1Tests
   {
     ContractContent.Should().Contain("ExceptionFormatter");
   }
+
+  [Fact]
+  public void No_direct_File_AppendAllText_outside_unified_log_writer()
+  {
+    var offenders = SourceScanHelper.EnumerateCsFilesUnder("src")
+      .Where(f => !f.EndsWith("SmartGuardLogWriter.cs", StringComparison.OrdinalIgnoreCase))
+      .Where(f => File.ReadAllText(f).Contains("File.AppendAllText"))
+      .Select(Path.GetFileName)
+      .ToList();
+
+    offenders.Should().BeEmpty(
+      "日志追加必须经 SmartGuardLogWriter.TryAppendLine，禁止散落 File.AppendAllText 直写");
+  }
 }

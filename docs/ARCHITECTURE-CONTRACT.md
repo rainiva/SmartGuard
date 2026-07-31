@@ -17,6 +17,7 @@
 | 电池与供电状态 | `BatteryInfoProvider`；Windows `GetSystemPowerStatus` 为主来源，WMI 仅作未知字段的可选补充 | Engine 轮询、电源事件、状态发布 | — | WMI 异常覆盖原生状态；独立采集入口；异常直接伪造 `100% / 插电` |
 | 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页 | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
 | 启动日志路径 | `SmartGuardPaths.StartupLogFile(root)` | Engine CLI、Settings/Tray 暂停回退 | — | `InstallCommands` 硬编码 `SmartGuard.startup.log` |
+| 日志行追加落盘 | `SmartGuardLogWriter.TryAppendLine` | 全部进程 | `SmartGuardLogWriter` | 各处 `File.AppendAllText` 直写日志 |
 | 可执行文件路径 | `SmartGuardPaths.EngineExe` / `TrayExe` / `SettingsExe` / `CliExe` | 注册、shell、启动 | — | `Path.Combine(root, "bin", "*.exe")` 散落 |
 | 进程镜像名 | `SmartGuardPaths.ProcessImageNames` | `EngineLifecycle` | — | `EngineLifecycle` 内独立 exe 名字面量列表 |
 | Settings XAML | `src/SmartGuard.Settings/SmartGuard.Settings.xaml`（编译嵌入/BAML） | `SettingsXamlLoader.TryLoadEmbeddedWindow` | Settings 项目源文件 | runtime 读取 `installRoot\\lib\\SmartGuard.Settings.xaml` |
@@ -90,6 +91,7 @@
 | `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
 | `BrandIconLoader.SaveEmbeddedIconToFile` | `SmartGuard.Configuration` | 安装时将嵌入 .ico 提取到 `{root}/bin/SmartGuard.ico`，供 AUMID `IconUri`（Toast 标题栏图标真源）消费 |
 | `ExceptionFormatter` | `SmartGuard.Configuration` | 异常完整链格式化（类型/消息/StackTrace/InnerException/AggregateException 展开）唯一入口 |
+| `SmartGuardLogWriter` | `SmartGuard.Configuration` | 统一日志追加：命名 Mutex + FileShare 重试 + 永不抛出 |
 
 ---
 

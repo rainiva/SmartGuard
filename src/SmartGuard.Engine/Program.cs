@@ -37,11 +37,7 @@ public static class Program
     if (!guard.IsOwner)
     {
       Console.WriteLine("SmartGuard 核心服务已在后台运行。");
-      try
-      {
-        File.AppendAllText(fallbackLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 核心服务已在运行{Environment.NewLine}");
-      }
-      catch { /* ignore */ }
+      SmartGuardLogWriter.TryAppendLine(fallbackLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 核心服务已在运行");
       return 0;
     }
 

@@ -111,8 +111,8 @@ public sealed class GuardConfigRepository
       logPath = fallbackLogPath ?? SmartGuardPaths.DefaultLogFile(root);
     var dir = Path.GetDirectoryName(logPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    var line = $"[INFO] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}";
-    File.AppendAllText(logPath, line);
+    var line = $"[INFO] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
+    SmartGuardLogWriter.TryAppendLine(logPath, line);
   }
 
   private JsonObject LoadOrCreateNode()
