@@ -59,6 +59,27 @@ public static class FileLogger
     }
   }
 
+  public static bool TryWrite(LogLevel level, string logPath, string message, long maxBytes, DateTime? now = null)
+  {
+    if (_writing) return false; // 复用 Slice 1 的防递归守卫
+    _writing = true;
+    try
+    {
+      var timestamp = now ?? DateTime.Now;
+      PrepareLogFile(logPath, maxBytes, timestamp);
+      WriteLine(logPath, LogLineFormatter.Format(timestamp, level, message));
+      return true;
+    }
+    catch
+    {
+      return false; // 失败上报给降级链，绝不上抛
+    }
+    finally
+    {
+      _writing = false;
+    }
+  }
+
   public static void WriteLine(string logPath, string line)
   {
     var dir = Path.GetDirectoryName(logPath);

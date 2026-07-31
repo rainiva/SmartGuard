@@ -44,4 +44,14 @@ public class ArchitectureContractLoggingPhase1Tests
           $"{program} 必须在启动时注册全局未处理异常处理器");
     }
   }
+
+  [Fact]
+  public void GuardianLoop_WriteLog_uses_three_layer_fallback_chain()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("LogFallbackChain.Write",
+      "WriteLog 必须走三层降级链而非单层 fallback");
+    source.Should().Contain("FileLogger.TryWrite",
+      "主层写入必须使用可上报成败的 TryWrite");
+  }
 }

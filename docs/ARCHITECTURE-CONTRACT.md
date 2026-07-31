@@ -94,6 +94,7 @@
 | `SmartGuardLogWriter` | `SmartGuard.Configuration` | 统一日志追加：命名 Mutex + FileShare 重试 + 永不抛出 |
 | `GlobalExceptionHandlers` | `SmartGuard.Configuration` | 注册 AppDomain/TaskScheduler 全局未处理异常处理器 |
 | `CrashLogWriter` | `SmartGuard.Configuration` | 崩溃应急同步写入（主日志尽力 + `%TEMP%\SmartGuard\crash.log` 必写） |
+| `LogFallbackChain` | `SmartGuard.Configuration` | 日志三层降级链（主日志 → startup 回退 → `%TEMP%\SmartGuard\emergency.log`），每层异常隔离 |
 
 ---
 
@@ -304,6 +305,7 @@
 | Toast 品牌 Logo | `ToastAppLogoArchitectureTests`、`ToastNotificationXmlBuilderTests` |
 | 计划任务安装跳过 | `InstallCommandsSkipArchitectureTests` |
 | 计划任务测试隔离契约 | `ArchitectureContractScheduledTaskIsolationTests` |
+| 日志阶段一止血 | `ArchitectureContractLoggingPhase1Tests` |
 
 ---
 
@@ -358,3 +360,16 @@
 | INT-LIFECYCLE | **阻断** | Integration 必须按 Capture → Stop → Test → Restore 执行；Stop 失败或 Restore 失败任一发生，当前测试必须判红，不得 best-effort 吞掉后继续；恢复按快照决定进程运行态，孤儿进程只清理不复活 |
 | NO-RETRY-GREEN | **阻断** | 稳定性门禁（`scripts/Invoke-TestStabilityGate.ps1`）任一轮失败立即停止并整体判 Failed；禁止重跑失败轮以"重试后成功"覆盖第一失败证据 |
 | DOC-11 | **已关闭** | 本文档 §18 + Pester `Run-Tests optimization contract`/`Invoke-TestStabilityGate` 契约测试（Tasks 2–8，commits e9dc556..f148110）终验 |
+
+---
+
+## 19. 日志系统阶段一（风险止血）（2026-07-30）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-P1-ISOLATE | 阻断 | `FileLogger.Write`/`TryWrite` 全路径异常隔离 + 防递归；日志失败不得上抛、不得递归记日志 |
+| LOG-P1-EXCHAIN | 阻断 | 异常记录唯一格式化入口 `ExceptionFormatter.Format`（类型/StackTrace/InnerException/AggregateException 展开） |
+| LOG-P1-WRITER | 阻断 | 日志追加唯一入口 `SmartGuardLogWriter.TryAppendLine`；禁止散落 `File.AppendAllText` 直写日志 |
+| LOG-P1-CRASH | 阻断 | 四进程启动经 `GlobalExceptionHandlers.Register` + `CrashLogWriter` 崩溃应急同步写入 |
+| LOG-P1-FALLBACK | 阻断 | Engine 日志降级链 `LogFallbackChain`（主 → startup → `%TEMP%\SmartGuard\emergency.log`），每层异常保护 |
+| DOC-LOG-P1 | 已关闭 | 本文档 §1/§3/§6/§19 + `ArchitectureContractLoggingPhase1Tests` 终验 |

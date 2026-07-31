@@ -149,4 +149,41 @@ public class FileLoggerTests
             if (Directory.Exists(dir)) Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public void TryWrite_returns_true_and_persists_on_success()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "test.log");
+        try
+        {
+            FileLogger.TryWrite(LogLevel.Info, logPath, "ok-line", long.MaxValue).Should().BeTrue();
+            File.ReadAllText(logPath).Should().Contain("ok-line");
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void TryWrite_returns_false_and_does_not_throw_on_failure()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "as-dir.log");
+        Directory.CreateDirectory(logPath); // 目录路径，写入必然失败
+        try
+        {
+            var result = true;
+            var act = () => result = FileLogger.TryWrite(LogLevel.Info, logPath, "x", long.MaxValue);
+            act.Should().NotThrow();
+            result.Should().BeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
 }

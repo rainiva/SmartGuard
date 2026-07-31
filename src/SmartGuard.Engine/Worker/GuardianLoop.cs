@@ -137,14 +137,11 @@ public sealed class GuardianLoop
   {
     var fp = message.Trim().ToLowerInvariant();
     if (!_tickLogFingerprints.Add(fp)) return;
-    try
-    {
-      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-      FileLogger.Write(level, logPath, message, config.LogMaxBytes);
-    }
-    catch
-    {
-      FileLogger.Write(LogLevel.Warn, _fallbackLogPath, $"[LOG-FALLBACK] {message}", long.MaxValue);
-    }
+    var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
+    var line = LogLineFormatter.Format(DateTime.Now, level, message);
+    LogFallbackChain.Write(
+      () => FileLogger.TryWrite(level, logPath, message, config.LogMaxBytes),
+      _fallbackLogPath,
+      line);
   }
 }
