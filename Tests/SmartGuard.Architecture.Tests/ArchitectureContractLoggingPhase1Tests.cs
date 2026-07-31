@@ -25,4 +25,23 @@ public class ArchitectureContractLoggingPhase1Tests
     offenders.Should().BeEmpty(
       "日志追加必须经 SmartGuardLogWriter.TryAppendLine，禁止散落 File.AppendAllText 直写");
   }
+
+  [Fact]
+  public void All_four_process_entrypoints_register_global_exception_handlers()
+  {
+    var programs = new[]
+    {
+      "src/SmartGuard.Engine/Program.cs",
+      "src/SmartGuard.Tray/Program.cs",
+      "src/SmartGuard.Settings/Program.cs",
+      "src/SmartGuard.Cli/Program.cs",
+    };
+
+    foreach (var program in programs)
+    {
+      SourceScanHelper.ReadSource(program)
+        .Should().Contain("GlobalExceptionHandlers.Register",
+          $"{program} 必须在启动时注册全局未处理异常处理器");
+    }
+  }
 }

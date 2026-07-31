@@ -16,6 +16,10 @@ internal static class Program
     Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
     var root = InstallRootResolver.Resolve(null, args);
+    GlobalExceptionHandlers.Register("Tray", root);
+    System.Windows.Forms.Application.ThreadException += (_, e) =>
+      CrashLogWriter.Write("Tray", SmartGuardPaths.ResolveLogFile(
+        new GuardConfigRepository(SmartGuardPaths.ConfigFile(root)).LoadOrDefault(root), root), e.Exception);
     using var guard = SingleInstanceGuard.TryAcquire("Tray");
     if (!guard.IsOwner)
     {

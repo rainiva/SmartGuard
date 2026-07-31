@@ -45,6 +45,9 @@ internal static class Program
         var configPath = SmartGuardPaths.ConfigFile(root);
         var repository = new GuardConfigRepository(configPath);
         var config = repository.LoadOrDefault(root);
+        GlobalExceptionHandlers.Register("Settings", root);
+        app.DispatcherUnhandledException += (_, e) =>
+          CrashLogWriter.Write("Settings", SmartGuardPaths.ResolveLogFile(config, root), e.Exception);
 
         _controller = SettingsWindowController.TryCreate(root, repository, config, out var loadError);
         if (_controller is null)

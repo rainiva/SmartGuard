@@ -92,6 +92,8 @@
 | `BrandIconLoader.SaveEmbeddedIconToFile` | `SmartGuard.Configuration` | 安装时将嵌入 .ico 提取到 `{root}/bin/SmartGuard.ico`，供 AUMID `IconUri`（Toast 标题栏图标真源）消费 |
 | `ExceptionFormatter` | `SmartGuard.Configuration` | 异常完整链格式化（类型/消息/StackTrace/InnerException/AggregateException 展开）唯一入口 |
 | `SmartGuardLogWriter` | `SmartGuard.Configuration` | 统一日志追加：命名 Mutex + FileShare 重试 + 永不抛出 |
+| `GlobalExceptionHandlers` | `SmartGuard.Configuration` | 注册 AppDomain/TaskScheduler 全局未处理异常处理器 |
+| `CrashLogWriter` | `SmartGuard.Configuration` | 崩溃应急同步写入（主日志尽力 + `%TEMP%\SmartGuard\crash.log` 必写） |
 
 ---
 

@@ -12,6 +12,7 @@ public static class Program
   {
     var parsed = CommandLineParser.Parse(args);
     var root = InstallRootResolver.Resolve(parsed.Root, args);
+    GlobalExceptionHandlers.Register("Engine", root);
     var configPath = SmartGuardPaths.ConfigFile(root);
     var statusPath = SmartGuardPaths.StatusFile(root);
     var initMarker = SmartGuardPaths.InitMarkerFile(root);
