@@ -38,4 +38,19 @@ public class ArchitectureContractLoggingPhase3Tests
   {
     ContractContent.Should().Contain("OperationIdContext");
   }
+
+  [Fact]
+  public void Contract_registers_event_name_registry()
+  {
+    ContractContent.Should().Contain("EventNameRegistry");
+    ContractContent.Should().Contain("EventNameMigration");
+  }
+
+  [Fact]
+  public void GuardianLoop_WriteLog_uses_registered_event_names()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("EventNameRegistry.",
+      "WriteLog 调用点必须使用 EventNameRegistry 常量，禁止硬编码事件名");
+  }
 }

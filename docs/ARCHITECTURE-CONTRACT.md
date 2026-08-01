@@ -109,6 +109,8 @@
 | `LogDeduplicationFilter` | `SmartGuard.Configuration` | 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行，释放后重置 |
 | `LogBackpressureController` | `SmartGuard.Configuration` | 背压控制器：监控 Normal 队列深度超过阈值时主动丢弃低价值行，High 不受影响 |
 | `OperationIdContext` | `SmartGuard.Configuration` | OperationId 进程内 AsyncLocal 传播 + 跨进程经 status.json 中继 |
+| `EventNameRegistry` | `SmartGuard.Configuration` | 事件名称唯一注册表：内置常量 + 运行时注册 + 门禁强制 |
+| `EventNameMigration` | `SmartGuard.Configuration` | 事件名称历史别名兼容名单：预留阶段四渐进迁移接口 |
 
 ---
 
@@ -416,3 +418,4 @@
 | LOG-P3-BACKPRESSURE | 阻断 | `LogBackpressureController` 背压控制器：监控 Normal 队列深度超过阈值时主动丢弃低价值行；`LogPipeline` 暴露 `NormalQueueDepth`/`HighQueueDepth` 供背压读取；阈值默认容量 80% |
 | LOG-P3-OPID | 阻断 | `OperationIdContext` AsyncLocal 进程内传播 + `status.json` `operationId` 字段跨进程中继；禁止引入独立共享内存/命名管道 |
 | LOG-P3-OPID-READ | 阻断 | `StatusStore` / `StatusReader` 读取 `status.json` `operationId` 字段并调用 `OperationIdContext.Set`/`Clear` |
+| LOG-P3-EVENTNAME | 阻断 | `EventNameRegistry` 事件名称唯一注册表 + 门禁扫描 `WriteLog` 调用点；`EventNameMigration` 维护历史别名兼容；阶段三不做全量重命名 |

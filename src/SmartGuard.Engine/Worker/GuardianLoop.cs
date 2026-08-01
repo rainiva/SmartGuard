@@ -52,14 +52,14 @@ public sealed class GuardianLoop
     _publisher = new StatusPublisher(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
     _powerCfgBrightnessSupported = powerCfgBrightnessSupported;
-    _firstRunInitializer = new GuardianFirstRunInitializer(_initMarkerPath, _brightness, WriteLog);
-    _exceptionStormHandler = new GuardianExceptionStormHandler(_iterationState, WriteLog);
+    _firstRunInitializer = new GuardianFirstRunInitializer(_initMarkerPath, _brightness, (c, l, m) => WriteLog(c, l, m, EventNameRegistry.AppStarted));
+    _exceptionStormHandler = new GuardianExceptionStormHandler(_iterationState, (c, l, m) => WriteLog(c, l, m, EventNameRegistry.IterationError));
     _iterationRunner = new GuardianIterationRunner(
       _idleTracker,
       _brightness,
       _publisher,
       LoadConfig,
-      WriteLog,
+      (c, l, m) => WriteLog(c, l, m, EventNameRegistry.HeartbeatTick),
       _powerCfgBrightnessSupported);
     _logPipeline = new LogPipeline(WriteBatchToDisk, _logOptions); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
   }
@@ -76,11 +76,11 @@ public sealed class GuardianLoop
       var config = LoadConfig();
       _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
       var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-      WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}");
+      WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}", EventNameRegistry.AppStarted);
 
       using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
       if (!powerListener.IsEnabled)
-        WriteLog(config, LogLevel.Warn, "电源事件监听不可用（SystemEvents），将仅按轮询间隔工作");
+        WriteLog(config, LogLevel.Warn, "电源事件监听不可用（SystemEvents），将仅按轮询间隔工作", EventNameRegistry.AppStarted);
 
       while (!cancellationToken.IsCancellationRequested)
       {
@@ -105,7 +105,7 @@ public sealed class GuardianLoop
         _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
           PowerCfgExecutor.GetCurrentPlanGuid,
           _iterationState.LastKnownGuid,
-          message => WriteLog(config, LogLevel.Warn, message));
+          message => WriteLog(config, LogLevel.Warn, message, EventNameRegistry.ExternalPlanChange));
         WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(_configRepository, _rootPath), cancellationToken);
       }
     }
@@ -121,7 +121,7 @@ public sealed class GuardianLoop
     try
     {
       var cfg = LoadConfig();
-      WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc));
+      WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc), EventNameRegistry.PowerPlanSwitched);
     }
     catch
     {
@@ -147,7 +147,7 @@ public sealed class GuardianLoop
     _configRepository.Save(GuardConfig.CreateDefault(_rootPath));
   }
 
-  private void WriteLog(GuardConfig config, LogLevel level, string message)
+  private void WriteLog(GuardConfig config, LogLevel level, string message, string eventName = EventNameRegistry.IterationError)
   {
     if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
       return;
