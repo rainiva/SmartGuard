@@ -112,4 +112,50 @@ public class ArchitectureContractLoggingPhase4Tests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewController.cs");
     source.Should().Contain("ApplyFilterSpec");
   }
+
+  [Fact]
+  public void Phase4_contract_section_22_has_seven_log_p4_entries()
+  {
+    ContractContent.Should().Contain("LOG-P4-TRACE");
+    ContractContent.Should().Contain("LOG-P4-QUERY");
+    ContractContent.Should().Contain("LOG-P4-UI-FILTER");
+    ContractContent.Should().Contain("LOG-P4-UI-ASYNC");
+    ContractContent.Should().Contain("LOG-P4-JSONL");
+    ContractContent.Should().Contain("LOG-P4-FILTERSPEC");
+    ContractContent.Should().Contain("LOG-P4-VERIFY");
+  }
+
+  [Fact]
+  public void Phase4_contract_has_doc_log_p4_closure()
+  {
+    ContractContent.Should().Contain("DOC-LOG-P4");
+    ContractContent.Should().Contain("已关闭");
+  }
+
+  [Fact]
+  public void Phase4_contract_registers_all_new_types()
+  {
+    ContractContent.Should().Contain("TraceIdContext");
+    ContractContent.Should().Contain("SpanIdContext");
+    ContractContent.Should().Contain("UserActionIdContext");
+    ContractContent.Should().Contain("LogIndexBuilder");
+    ContractContent.Should().Contain("LogQueryService");
+    ContractContent.Should().Contain("LogViewBackgroundQuery");
+    ContractContent.Should().Contain("LogJsonlFormatter");
+    ContractContent.Should().Contain("LogQueryFilterSpec");
+    ContractContent.Should().Contain("LogFilterBuilder");
+  }
+
+  [Fact]
+  public void Phase4_wip_list_has_nine_entries()
+  {
+    ContractContent.Should().Contain("SettingsLogPageHost");
+    ContractContent.Should().Contain("SettingsLogRefreshPipeline");
+  }
+
+  [Fact]
+  public void Phase4_src_no_file_append_all_text()
+  {
+    ContractContent.Should().Contain("File.AppendAllText");
+  }
 }

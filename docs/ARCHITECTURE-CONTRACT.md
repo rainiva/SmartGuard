@@ -453,3 +453,5 @@
 | LOG-P4-UI-ASYNC | 阻断 | `LogViewBackgroundQuery` 后台线程流式读取 + CancellationToken 取消；`SettingsLogPageHost` 接线异步查询；禁止 UI 线程执行大日志文件过滤 |
 | LOG-P4-JSONL | 阻断 | `LogJsonlFormatter` 日志行与 JSONL 双向转换（D1 方案 A：保留兼容前缀 3 天可回滚）；`DiagnosticBundleExporter` 追加 `logs/SmartGuard.jsonl` 导出条目 |
 | LOG-P4-FILTERSPEC | 阻断 | `LogQueryFilterSpec` 结构化筛选规格 + `LogFilterBuilder` 流式构建器；`LogViewController.ApplyFilterSpec` 接入统一筛选入口 |
+| LOG-P4-VERIFY | 阻断 | 终验：§22 七条 LOG-P4-* 收口行齐备 + DOC-LOG-P4 状态"已关闭"；§3 含阶段四全部新类型行；§6 含阶段四门禁索引行；WIP 禁触清单调整为 9 个（含 `SettingsLogPageHost`、`SettingsLogRefreshPipeline` 等） |
+| DOC-LOG-P4 | 已关闭 | 本文档 §3/§6/§22 + `ArchitectureContractLoggingPhase4Tests` 终验 |
