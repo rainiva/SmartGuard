@@ -160,4 +160,20 @@ public class ArchitectureContractLoggingPhase4Tests
   {
     ContractContent.Should().Contain("File.AppendAllText");
   }
+
+  [Fact]
+  public void Phase4_jsonl_formatter_emits_pure_json_without_text_prefix()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogJsonlFormatter.cs");
+    source.Should().Contain("JsonSerializer.Serialize");
+    source.Should().NotContain("| {");
+  }
+
+  [Fact]
+  public void Phase4_contract_jsonl_is_standalone_file_not_compat_prefix()
+  {
+    ContractContent.Should().Contain("logs/SmartGuard.jsonl");
+    ContractContent.Should().NotContain("保留兼容前缀");
+    ContractContent.Should().Contain("主日志保持纯文本");
+  }
 }

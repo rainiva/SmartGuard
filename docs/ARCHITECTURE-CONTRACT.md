@@ -125,7 +125,7 @@
 | `LogQueryService` | `SmartGuard.Configuration` | 日志查询服务：消费 LogIndex 按多条件过滤 + 分页返回（D2 裁决） |
 | `LogViewBackgroundQuery` | `SmartGuard.Settings.LogView` | 后台日志查询：Task 线程执行过滤 + CancellationToken 取消（可复用后台查询原语，页面主刷新走 `SettingsLogRefreshPipeline`） |
 | `LogJsonlEntry` | `SmartGuard.Configuration` | 结构化日志条目 record：与参考标准文档 §3 LogEvent record 对齐 |
-| `LogJsonlFormatter` | `SmartGuard.Configuration` | 日志行与 JSONL 双向转换（D1 方案 A：保留兼容前缀） |
+| `LogJsonlFormatter` | `SmartGuard.Configuration` | 日志行与 JSONL 双向转换（D1 落点：主日志保持纯文本，JSONL 为独立诊断文件 `logs/SmartGuard.jsonl`） |
 | `LogQueryFilterSpec` | `SmartGuard.Configuration` | 结构化筛选规格 record：时间/等级/模块/事件/OperationId/TraceId/PID/TID/关键词 + 分页 |
 | `LogFilterBuilder` | `SmartGuard.Configuration` | 流式筛选构建器：链式 With 方法构建 LogQueryFilterSpec |
 
@@ -451,7 +451,7 @@
 | LOG-P4-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 查询索引架构：日志文件 → 内存索引 → 多条件过滤 + 分页查询；CancellationToken 可取消；索引可重建 |
 | LOG-P4-UI-FILTER | 阻断 | `LogViewController` 新增 `OperationIdFilter`/`EventNameFilter`/`ProcessIdFilter`/`ThreadIdFilter` 属性并扩展 `GetFilteredLines`；S3 解锁阶段三 4 个 WIP 禁触 UI 文件 |
 | LOG-P4-UI-ASYNC | 阻断 | `SettingsLogRefreshPipeline` 为 UI 非阻塞唯一入口（后台 `Task.Run` 读取 + `Dispatcher.BeginInvoke` 回 UI）；`LogViewBackgroundQuery` 为可复用后台查询原语；`CancellationToken` 取消；禁止 UI 线程执行大日志文件过滤 |
-| LOG-P4-JSONL | 阻断 | `LogJsonlFormatter` 日志行与 JSONL 双向转换（D1 方案 A：保留兼容前缀 3 天可回滚）；`DiagnosticBundleExporter` 追加 `logs/SmartGuard.jsonl` 导出条目 |
+| LOG-P4-JSONL | 阻断 | `LogJsonlFormatter` 日志行与 JSONL 双向转换（D1 落点：主日志保持纯文本，JSONL 为独立诊断文件 `logs/SmartGuard.jsonl`；`FormatLine` 输出纯 JSON）；`DiagnosticBundleExporter` 追加 `logs/SmartGuard.jsonl` 导出条目 |
 | LOG-P4-FILTERSPEC | 阻断 | `LogQueryFilterSpec` 结构化筛选规格 + `LogFilterBuilder` 流式构建器；`LogViewController.ApplyFilterSpec` 接入统一筛选入口 |
 | LOG-P4-VERIFY | 阻断 | 终验：§22 七条 LOG-P4-* 收口行齐备 + DOC-LOG-P4 状态"已关闭"；§3 含阶段四全部新类型行；§6 含阶段四门禁索引行；WIP 禁触清单调整为 9 个（含 `SettingsLogPageHost`、`SettingsLogRefreshPipeline` 等） |
 | DOC-LOG-P4 | 已关闭 | 本文档 §3/§6/§22 + `ArchitectureContractLoggingPhase4Tests` 终验 |
