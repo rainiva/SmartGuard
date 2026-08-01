@@ -219,6 +219,14 @@ public sealed class LogViewController
       EventNameFilter = spec.EventName ?? string.Empty;
       ProcessIdFilter = spec.ProcessId;
       ThreadIdFilter = spec.ThreadId;
+      if (!string.IsNullOrEmpty(spec.Level))
+        ActiveTagFilters = new[] { spec.Level };
+      if (spec.StartTime.HasValue || spec.EndTime.HasValue)
+      {
+        CustomRangeStart = spec.StartTime?.LocalDateTime;
+        CustomRangeEnd = spec.EndTime?.LocalDateTime;
+        TimeRange = LogViewTimeRange.Custom;
+      }
     }
 
     public Task<IReadOnlyList<string>> GetFilteredLinesAsync(CancellationToken cancellationToken)

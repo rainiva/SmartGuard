@@ -446,4 +446,24 @@ public class LogViewControllerTests : IDisposable
       controller.ProcessIdFilter.Should().BeNull();
       controller.ThreadIdFilter.Should().BeNull();
     }
+
+  [Fact]
+  public void ApplyFilterSpec_maps_time_range_and_level_to_ui_properties()
+  {
+    var controller = new LogViewController("nonexistent.log");
+    var spec = new SmartGuard.Configuration.LogQueryFilterSpec(
+      Keyword: "boom", Level: "ERROR", Category: null,
+      OperationId: "op-1", TraceId: null,
+      ProcessId: 10, ThreadId: 20, EventName: "Evt",
+      StartTime: new DateTimeOffset(2026, 8, 1, 8, 0, 0, TimeSpan.Zero),
+      EndTime: new DateTimeOffset(2026, 8, 1, 9, 0, 0, TimeSpan.Zero),
+      Page: 1, PageSize: 50);
+    controller.ApplyFilterSpec(spec);
+    controller.SearchKeyword.Should().Be("boom");
+    controller.OperationIdFilter.Should().Be("op-1");
+    controller.TimeRange.Should().Be(LogViewTimeRange.Custom);
+    controller.CustomRangeStart.Should().Be(spec.StartTime!.Value.LocalDateTime);
+    controller.CustomRangeEnd.Should().Be(spec.EndTime!.Value.LocalDateTime);
+    controller.ActiveTagFilters.Should().ContainSingle().Which.Should().Be("ERROR");
+  }
 }

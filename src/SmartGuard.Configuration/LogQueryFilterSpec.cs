@@ -20,4 +20,8 @@ public sealed record LogQueryFilterSpec(
 {
   public static LogQueryFilterSpec Default =>
     new(null, null, null, null, null, null, null, null, null, null, 1, 50);
+
+  public LogQueryRequest ToQueryRequest() => new(
+    Keyword, Level, Category, OperationId, TraceId,
+    ProcessId, ThreadId, EventName, Page, PageSize);
 }

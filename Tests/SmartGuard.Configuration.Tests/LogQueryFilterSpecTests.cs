@@ -53,4 +53,25 @@ public class LogQueryFilterSpecTests
     spec.Level.Should().Be("ERROR");
     spec.OperationId.Should().Be("op-abc");
   }
+
+  [Fact]
+  public void ToQueryRequest_maps_all_non_time_fields()
+  {
+    var spec = new LogQueryFilterSpec(
+      "crash", "ERROR", "Engine", "op-abc", "trace-xyz",
+      1234, 5678, "IterationError",
+      new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2026, 8, 2, 0, 0, 0, TimeSpan.Zero), 2, 100);
+    var request = spec.ToQueryRequest();
+    request.Keyword.Should().Be("crash");
+    request.Level.Should().Be("ERROR");
+    request.Category.Should().Be("Engine");
+    request.OperationId.Should().Be("op-abc");
+    request.TraceId.Should().Be("trace-xyz");
+    request.ProcessId.Should().Be(1234);
+    request.ThreadId.Should().Be(5678);
+    request.EventName.Should().Be("IterationError");
+    request.Page.Should().Be(2);
+    request.PageSize.Should().Be(100);
+  }
 }
