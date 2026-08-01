@@ -17,6 +17,10 @@ public sealed class LogViewController
 
     public string SearchKeyword { get; set; } = string.Empty;
     public bool SearchCaseSensitive { get; set; }
+    public string OperationIdFilter { get; set; } = string.Empty;
+    public string EventNameFilter { get; set; } = string.Empty;
+    public int? ProcessIdFilter { get; set; }
+    public int? ThreadIdFilter { get; set; }
     public IReadOnlyList<string> ActiveTagFilters
     {
         get => _activeTagFilters;
@@ -101,7 +105,7 @@ public sealed class LogViewController
         var display = LogViewDisplaySlice.Select(
             filtered,
             LogViewDisplaySlice.DefaultMaxLines,
-            preferTail: FollowTail);
+            preferTail: true);
 
         return new LogViewSnapshot(
             display.Lines,
@@ -192,6 +196,15 @@ public sealed class LogViewController
                 if (!LogViewTimeRangeFilter.IsWithinRange(TimeRange, timestamp, now, CustomRangeStart, CustomRangeEnd))
                     continue;
             }
+
+            // 阶段四新增筛选字段
+            if (!string.IsNullOrEmpty(OperationIdFilter) &&
+                !line.Contains("op=" + OperationIdFilter, searchComparison))
+                continue;
+
+            if (!string.IsNullOrEmpty(EventNameFilter) &&
+                !line.Contains(EventNameFilter, searchComparison))
+                continue;
 
             result.Add(line);
         }

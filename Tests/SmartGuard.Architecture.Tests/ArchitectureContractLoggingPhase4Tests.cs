@@ -40,4 +40,30 @@ public class ArchitectureContractLoggingPhase4Tests
     ContractContent.Should().Contain("LogQueryService");
     ContractContent.Should().Contain("LogIndexBuilder");
   }
+
+  [Fact]
+  public void LogViewController_has_structured_filter_fields()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewController.cs");
+    source.Should().Contain("OperationIdFilter", "LogViewController 必须支持 OperationId 筛选");
+    source.Should().Contain("EventNameFilter");
+    source.Should().Contain("ProcessIdFilter");
+    source.Should().Contain("ThreadIdFilter");
+  }
+
+  [Fact]
+  public void WIP_unlock_verifies_four_ui_files_unlocked()
+  {
+    // S3 解锁的 4 个文件不再在 WIP 禁触清单中
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewController.cs");
+    source.Should().Contain("OperationIdFilter",
+      "LogViewController 已解锁并新增筛选字段");
+  }
+
+  [Fact]
+  public void Contract_registers_log_query_filter_spec_placeholder()
+  {
+    // 预留 S6 的 LogQueryFilterSpec 登记位
+    ContractContent.Should().Contain("LOG-P4-UI-FILTER");
+  }
 }

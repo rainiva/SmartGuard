@@ -113,6 +113,28 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
+    public void GetSnapshot_keeps_latest_lines_visible_when_follow_tail_is_disabled()
+    {
+        var builder = new System.Text.StringBuilder();
+        var firstTimestamp = new DateTime(2026, 7, 29, 10, 0, 0);
+        for (var i = 0; i < 700; i++)
+            builder.AppendLine($"[INFO] {firstTimestamp.AddSeconds(i):yyyy-MM-dd HH:mm:ss} line {i}");
+
+        File.WriteAllText(_logPath, builder.ToString());
+
+        var controller = new LogViewController(_logPath, _fallbackPath)
+        {
+            FollowTail = false,
+        };
+
+        var snapshot = controller.GetSnapshot();
+
+        snapshot.DisplayLines.Should().HaveCount(LogViewDisplaySlice.DefaultMaxLines);
+        snapshot.DisplayLines[0].Should().Contain("line 200");
+        snapshot.DisplayLines[^1].Should().Contain("line 699");
+    }
+
+    [Fact]
     public void RefreshFromDisk_marks_content_changed_only_when_file_grows()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 first line\n");
@@ -300,5 +322,128 @@ public class LogViewControllerTests : IDisposable
         };
 
         controller.GetFilteredLines().Should().ContainSingle(line => line.Contains("Battery"));
+    }
+
+    [Fact]
+    public void GetFilteredLines_filters_by_operation_id()
+    {
+      var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(dir);
+      var path = Path.Combine(dir, "test.log");
+      File.WriteAllLines(path, new[]
+      {
+        "[INFO] 2026-08-01 10:00:00 [Engine] AppStarted",
+        "[WARN] 2026-08-01 10:01:00 [Engine] RecoveryDegraded op=op-abc",
+        "[ERROR] 2026-08-01 10:02:00 [GuardianLoop] IterationError op=op-def"
+      });
+
+      try
+      {
+        var controller = new LogViewController(path);
+        controller.ForceRefresh();
+        controller.OperationIdFilter = "op-abc";
+
+        var filtered = controller.GetFilteredLines();
+        filtered.Should().HaveCount(1);
+        filtered[0].Should().Contain("op=op-abc");
+      }
+      finally
+      {
+        Directory.Delete(dir, recursive: true);
+      }
+    }
+
+    [Fact]
+    public void GetFilteredLines_filters_by_event_name()
+    {
+      var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(dir);
+      var path = Path.Combine(dir, "test.log");
+      File.WriteAllLines(path, new[]
+      {
+        "[INFO] 2026-08-01 10:00:00 [Engine] AppStarted",
+        "[ERROR] 2026-08-01 10:02:00 [GuardianLoop] IterationError"
+      });
+
+      try
+      {
+        var controller = new LogViewController(path);
+        controller.ForceRefresh();
+        controller.EventNameFilter = "IterationError";
+
+        var filtered = controller.GetFilteredLines();
+        filtered.Should().HaveCount(1);
+        filtered[0].Should().Contain("IterationError");
+      }
+      finally
+      {
+        Directory.Delete(dir, recursive: true);
+      }
+    }
+
+    [Fact]
+    public void GetFilteredLines_returns_all_when_no_new_filters_set()
+    {
+      var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(dir);
+      var path = Path.Combine(dir, "test.log");
+      File.WriteAllLines(path, new[]
+      {
+        "[INFO] 2026-08-01 10:00:00 [Engine] AppStarted",
+        "[ERROR] 2026-08-01 10:02:00 [GuardianLoop] IterationError"
+      });
+
+      try
+      {
+        var controller = new LogViewController(path);
+        controller.ForceRefresh();
+
+        var filtered = controller.GetFilteredLines();
+        filtered.Should().HaveCount(2);
+      }
+      finally
+      {
+        Directory.Delete(dir, recursive: true);
+      }
+    }
+
+    [Fact]
+    public void GetFilteredLines_combines_keyword_and_operation_id_filter()
+    {
+      var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(dir);
+      var path = Path.Combine(dir, "test.log");
+      File.WriteAllLines(path, new[]
+      {
+        "[WARN] 2026-08-01 10:01:00 [Engine] RecoveryDegraded op=op-abc",
+        "[ERROR] 2026-08-01 10:02:00 [GuardianLoop] IterationError op=op-abc",
+        "[INFO] 2026-08-01 10:03:00 [Engine] AppStarted op=op-xyz"
+      });
+
+      try
+      {
+        var controller = new LogViewController(path);
+        controller.ForceRefresh();
+        controller.OperationIdFilter = "op-abc";
+        controller.SearchKeyword = "Error";
+
+        var filtered = controller.GetFilteredLines();
+        filtered.Should().HaveCount(1);
+        filtered[0].Should().Contain("IterationError");
+      }
+      finally
+      {
+        Directory.Delete(dir, recursive: true);
+      }
+    }
+
+    [Fact]
+    public void OperationIdFilter_defaults_to_empty_string()
+    {
+      var controller = new LogViewController("dummy.log");
+      controller.OperationIdFilter.Should().BeEmpty();
+      controller.EventNameFilter.Should().BeEmpty();
+      controller.ProcessIdFilter.Should().BeNull();
+      controller.ThreadIdFilter.Should().BeNull();
     }
 }

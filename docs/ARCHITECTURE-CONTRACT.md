@@ -444,3 +444,4 @@
 |----|------|-----------|
 | LOG-P4-TRACE | 阻断 | `TraceIdContext`/`SpanIdContext`/`UserActionIdContext` AsyncLocal 进程内传播；`LogLineFormatter.Format` 扩展可选上下文参数；`GuardianLoop.WriteLog` 传入 `Current` 值 |
 | LOG-P4-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 查询索引架构：日志文件 → 内存索引 → 多条件过滤 + 分页查询；CancellationToken 可取消；索引可重建 |
+| LOG-P4-UI-FILTER | 阻断 | `LogViewController` 新增 `OperationIdFilter`/`EventNameFilter`/`ProcessIdFilter`/`ThreadIdFilter` 属性并扩展 `GetFilteredLines`；S3 解锁阶段三 4 个 WIP 禁触 UI 文件 |
