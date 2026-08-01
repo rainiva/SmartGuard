@@ -21,6 +21,7 @@ public sealed class GuardianLoop
   private readonly GuardianIterationRunner _iterationRunner;
   private readonly GuardianFirstRunInitializer _firstRunInitializer;
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
+  private readonly LogPipeline _logPipeline;
   private bool _powerCfgBrightnessSupported = true;
 
   public GuardianLoop(
@@ -57,6 +58,7 @@ public sealed class GuardianLoop
       LoadConfig,
       WriteLog,
       _powerCfgBrightnessSupported);
+    _logPipeline = new LogPipeline(WriteBatchToDisk); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
   }
 
   public void Run(CancellationToken cancellationToken = default)
@@ -64,41 +66,50 @@ public sealed class GuardianLoop
 
   public async Task RunAsync(CancellationToken cancellationToken = default)
   {
-    EnsureConfigExists();
-    var config = LoadConfig();
-    _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
-    var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-    WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}");
-
-    using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
-    if (!powerListener.IsEnabled)
-      WriteLog(config, LogLevel.Warn, "电源事件监听不可用（SystemEvents），将仅按轮询间隔工作");
-
-    while (!cancellationToken.IsCancellationRequested)
+    _logPipeline.Start();
+    try
     {
-      _tickLogFingerprints.Clear();
-      try
+      EnsureConfigExists();
+      var config = LoadConfig();
+      _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
+      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
+      WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}");
+
+      using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
+      if (!powerListener.IsEnabled)
+        WriteLog(config, LogLevel.Warn, "电源事件监听不可用（SystemEvents），将仅按轮询间隔工作");
+
+      while (!cancellationToken.IsCancellationRequested)
       {
-        await _iterationRunner.RunAsync(_iterationState, cancellationToken);
-      }
-      catch (Exception ex)
-      {
+        _tickLogFingerprints.Clear();
         try
         {
-          var cfg = LoadConfig();
-          _exceptionStormHandler.TrackAndLogException(ex, cfg);
+          await _iterationRunner.RunAsync(_iterationState, cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
-          FileLogger.Write(LogLevel.Error, _fallbackLogPath, ex.Message, long.MaxValue);
+          try
+          {
+            var cfg = LoadConfig();
+            _exceptionStormHandler.TrackAndLogException(ex, cfg);
+          }
+          catch
+          {
+            FileLogger.Write(LogLevel.Error, _fallbackLogPath, ex.Message, long.MaxValue);
+          }
         }
-      }
 
-      _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
-        PowerCfgExecutor.GetCurrentPlanGuid,
-        _iterationState.LastKnownGuid,
-        message => WriteLog(config, LogLevel.Warn, message));
-      WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(_configRepository, _rootPath), cancellationToken);
+        _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
+          PowerCfgExecutor.GetCurrentPlanGuid,
+          _iterationState.LastKnownGuid,
+          message => WriteLog(config, LogLevel.Warn, message));
+        WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(_configRepository, _rootPath), cancellationToken);
+      }
+    }
+    finally
+    {
+      // 受控关闭：停止接收 → 排空队列 → Flush → Stopped（3s 超时上限，超时也不阻塞退出）
+      await _logPipeline.StopAsync();
     }
   }
 
@@ -141,9 +152,36 @@ public sealed class GuardianLoop
     if (!_tickLogFingerprints.Add(fp)) return;
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
     var line = LogLineFormatter.Format(DateTime.Now, level, message);
+    if (_logPipeline.TryEnqueue(MapPriority(level), line)) return;
+
+    // 入队失败（队列满/管线已停）回退阶段一同步三层降级链，关键日志不丢
     LogFallbackChain.Write(
       () => FileLogger.TryWrite(level, logPath, message, config.LogMaxBytes),
       _fallbackLogPath,
       line);
+  }
+
+  private static LogPriority MapPriority(LogLevel level) => level switch
+  {
+    LogLevel.Warn or LogLevel.Error or LogLevel.Critical => LogPriority.High,
+    _ => LogPriority.Normal,
+  };
+
+  private bool WriteBatchToDisk(IReadOnlyList<string> lines)
+  {
+    try
+    {
+      var config = LoadConfig();
+      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
+      if (FileLogger.TryWriteLines(logPath, lines, config.LogMaxBytes)) return true;
+
+      foreach (var line in lines)
+        LogFallbackChain.Write(() => false, _fallbackLogPath, line); // 主层已失败，逐行走 startup/emergency 降级
+      return true; // 已降级处置完毕，不让管线重复计失败批次
+    }
+    catch
+    {
+      return false; // 未预期异常：计入 FailedBatches，绝不上抛到消费线程
+    }
   }
 }

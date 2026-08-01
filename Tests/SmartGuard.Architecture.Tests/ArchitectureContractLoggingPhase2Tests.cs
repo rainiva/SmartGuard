@@ -37,4 +37,13 @@ public class ArchitectureContractLoggingPhase2Tests
     ContractContent.Should().Contain("LogPipelineState");
     ContractContent.Should().Contain("StopAsync");
   }
+
+  [Fact]
+  public void GuardianLoop_enqueues_logs_into_async_pipeline()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("LogPipeline", "Engine 日志必须经异步管线落盘，业务线程不得同步写主日志");
+    source.Should().Contain("TryEnqueue", "WriteLog 必须非阻塞入队");
+    source.Should().Contain("StopAsync", "进程退出必须受控关闭管线，不得丢尾部日志");
+  }
 }

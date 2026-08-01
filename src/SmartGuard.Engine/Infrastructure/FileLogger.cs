@@ -80,6 +80,33 @@ public static class FileLogger
     }
   }
 
+  public static bool TryWriteLines(string logPath, IReadOnlyList<string> lines, long maxBytes, DateTime? now = null)
+  {
+    if (lines.Count == 0) return true; // 空批直接成功，不碰磁盘不触发轮转
+    if (_writing) return false; // 复用 [ThreadStatic] 防递归守卫
+    _writing = true;
+    try
+    {
+      var timestamp = now ?? DateTime.Now;
+      PrepareLogFile(logPath, maxBytes, timestamp);
+      var dir = Path.GetDirectoryName(logPath);
+      if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+      using var fs = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+      using var sw = new StreamWriter(fs, System.Text.Encoding.UTF8);
+      foreach (var line in lines)
+        sw.WriteLine(line);
+      return true;
+    }
+    catch
+    {
+      return false; // 批量失败上报给消费侧降级，绝不上抛
+    }
+    finally
+    {
+      _writing = false;
+    }
+  }
+
   public static void WriteLine(string logPath, string line)
   {
     var dir = Path.GetDirectoryName(logPath);

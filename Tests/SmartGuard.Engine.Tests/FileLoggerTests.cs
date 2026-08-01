@@ -186,4 +186,53 @@ public class FileLoggerTests
             if (Directory.Exists(dir)) Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public void TryWriteLines_appends_all_lines_in_order()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "batch.log");
+        try
+        {
+            var ok = FileLogger.TryWriteLines(path, new[] { "line-1", "line-2", "line-3" }, maxBytes: 1_048_576);
+
+            ok.Should().BeTrue();
+            File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l))
+                .Should().Equal("line-1", "line-2", "line-3");
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void TryWriteLines_returns_false_when_log_path_is_unwritable()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "as-dir.log");
+        Directory.CreateDirectory(path); // 路径是目录，打开文件流必然失败
+        try
+        {
+            var result = true;
+            var act = () => result = FileLogger.TryWriteLines(path, new[] { "x" }, maxBytes: 1_048_576);
+
+            act.Should().NotThrow("批量写入失败必须吞掉异常交由降级链处理");
+            result.Should().BeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void TryWriteLines_returns_true_for_empty_batch_without_touching_disk()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "empty.log");
+
+        FileLogger.TryWriteLines(path, Array.Empty<string>(), maxBytes: 1_048_576).Should().BeTrue();
+        File.Exists(path).Should().BeFalse("空批不得创建文件或触发轮转");
+    }
 }
