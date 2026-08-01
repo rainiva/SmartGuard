@@ -33,6 +33,8 @@ public static class SettingsSnapshotMapper
       LogMaxBytes = current.LogMaxBytes,
       LogMinimumLevel = current.LogMinimumLevel,
       LogHeartMinIntervalSec = current.LogHeartMinIntervalSec,
+      LogMaxArchiveFiles = current.LogMaxArchiveFiles,
+      LogDirectoryMaxBytes = current.LogDirectoryMaxBytes,
       BrightnessRetryCount = current.BrightnessRetryCount,
       BrightnessRetryDelayMs = current.BrightnessRetryDelayMs,
       NotifyOnPlanChange = notifyOnPlanChange,

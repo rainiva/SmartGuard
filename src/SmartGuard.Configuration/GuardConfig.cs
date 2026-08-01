@@ -24,6 +24,8 @@ public sealed class GuardConfig
   public long LogMaxBytes { get; set; } = 1_048_576;
   public string LogMinimumLevel { get; set; } = "Info";
   public int LogHeartMinIntervalSec { get; set; } = 60;
+  public int LogMaxArchiveFiles { get; set; } = 30;
+  public long LogDirectoryMaxBytes { get; set; } = 104_857_600;
   public int BrightnessRetryCount { get; set; } = 3;
   public int BrightnessRetryDelayMs { get; set; } = 100;
   public bool NotifyOnPlanChange { get; set; } = true;
@@ -67,6 +69,8 @@ public sealed class GuardConfig
       LogMaxBytes = 1_048_576,
       LogMinimumLevel = "Info",
       LogHeartMinIntervalSec = 60,
+      LogMaxArchiveFiles = 30,
+      LogDirectoryMaxBytes = 104_857_600,
       BrightnessRetryCount = 3,
       BrightnessRetryDelayMs = 100,
       NotifyOnPlanChange = true,

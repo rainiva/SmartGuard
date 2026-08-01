@@ -43,4 +43,77 @@ public class LogArchivePlannerTests
       .Should().BeTrue();
     date.Should().Be(new DateOnly(2026, 6, 16));
   }
+
+  [Fact]
+  public void SelectArchivesBeyondCount_picks_oldest_over_limit()
+  {
+    var archives = new (string Path, DateOnly Date)[]
+    {
+      (@"C:\logs\a.log.20260730.bak", new DateOnly(2026, 7, 30)),
+      (@"C:\logs\a.log.20260728.bak", new DateOnly(2026, 7, 28)),
+      (@"C:\logs\a.log.20260729.bak", new DateOnly(2026, 7, 29)),
+    };
+
+    var doomed = LogArchivePlanner.SelectArchivesBeyondCount(archives, maxArchiveFiles: 2);
+
+    doomed.Should().Equal(@"C:\logs\a.log.20260728.bak");
+  }
+
+  [Fact]
+  public void SelectArchivesBeyondCount_returns_empty_within_limit_or_disabled()
+  {
+    var archives = new (string Path, DateOnly Date)[]
+    {
+      (@"C:\logs\a.log.20260730.bak", new DateOnly(2026, 7, 30)),
+    };
+
+    LogArchivePlanner.SelectArchivesBeyondCount(archives, maxArchiveFiles: 1).Should().BeEmpty();
+    LogArchivePlanner.SelectArchivesBeyondCount(archives, maxArchiveFiles: 0)
+      .Should().BeEmpty("0 表示禁用数量上限");
+  }
+
+  [Fact]
+  public void SelectArchivesOverBudget_deletes_oldest_until_under_budget()
+  {
+    var archives = new (string Path, DateOnly Date, long SizeBytes)[]
+    {
+      (@"C:\logs\a.log.20260729.bak", new DateOnly(2026, 7, 29), 400),
+      (@"C:\logs\a.log.20260728.bak", new DateOnly(2026, 7, 28), 400),
+      (@"C:\logs\a.log.20260730.bak", new DateOnly(2026, 7, 30), 400),
+    };
+
+    var doomed = LogArchivePlanner.SelectArchivesOverBudget(
+      archives, currentLogSizeBytes: 100, maxDirectoryBytes: 1_000);
+
+    doomed.Should().Equal(@"C:\logs\a.log.20260728.bak"); // 总量 1300 > 1000，删最旧 400 后 900 ≤ 1000
+  }
+
+  [Fact]
+  public void SelectArchivesOverBudget_never_selects_current_log_even_when_it_alone_exceeds_budget()
+  {
+    var archives = new (string Path, DateOnly Date, long SizeBytes)[]
+    {
+      (@"C:\logs\a.log.20260729.bak", new DateOnly(2026, 7, 29), 400),
+    };
+
+    var doomed = LogArchivePlanner.SelectArchivesOverBudget(
+      archives, currentLogSizeBytes: 5_000, maxDirectoryBytes: 1_000);
+
+    doomed.Should().Equal(new[] { @"C:\logs\a.log.20260729.bak" },
+      "只能删归档；当前日志即使独自超预算也绝不入选");
+  }
+
+  [Fact]
+  public void SelectArchivesOverBudget_returns_empty_when_disabled_or_within_budget()
+  {
+    var archives = new (string Path, DateOnly Date, long SizeBytes)[]
+    {
+      (@"C:\logs\a.log.20260730.bak", new DateOnly(2026, 7, 30), 400),
+    };
+
+    LogArchivePlanner.SelectArchivesOverBudget(archives, 100, maxDirectoryBytes: 0)
+      .Should().BeEmpty("0 表示禁用容量上限");
+    LogArchivePlanner.SelectArchivesOverBudget(archives, 100, maxDirectoryBytes: 1_000)
+      .Should().BeEmpty();
+  }
 }

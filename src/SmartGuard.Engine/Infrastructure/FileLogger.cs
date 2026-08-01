@@ -107,6 +107,38 @@ public static class FileLogger
     }
   }
 
+  public static void EnforceArchiveLimits(string logPath, int maxArchiveFiles, long maxDirectoryBytes)
+  {
+    try
+    {
+      var dir = Path.GetDirectoryName(logPath);
+      if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+      var prefix = Path.GetFileName(logPath) + ".";
+
+      var archives = new List<(string Path, DateOnly Date, long SizeBytes)>();
+      foreach (var path in Directory.EnumerateFiles(dir, prefix + "*.bak"))
+      {
+        if (!LogArchivePlanner.TryParseArchiveDate(path, out var archiveDate)) continue;
+        archives.Add((path, archiveDate, new FileInfo(path).Length));
+      }
+
+      foreach (var doomed in LogArchivePlanner.SelectArchivesBeyondCount(
+                 archives.Select(a => (a.Path, a.Date)).ToList(), maxArchiveFiles))
+      {
+        File.Delete(doomed);
+        archives.RemoveAll(a => a.Path == doomed);
+      }
+
+      var currentBytes = File.Exists(logPath) ? new FileInfo(logPath).Length : 0;
+      foreach (var doomed in LogArchivePlanner.SelectArchivesOverBudget(archives, currentBytes, maxDirectoryBytes))
+        File.Delete(doomed);
+    }
+    catch
+    {
+      // 容量治理失败绝不影响日志写入主路径，也不在此再记日志（防递归）
+    }
+  }
+
   public static void WriteLine(string logPath, string line)
   {
     var dir = Path.GetDirectoryName(logPath);

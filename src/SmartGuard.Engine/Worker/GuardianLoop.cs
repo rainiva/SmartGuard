@@ -177,7 +177,11 @@ public sealed class GuardianLoop
     {
       var config = LoadConfig();
       var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-      if (FileLogger.TryWriteLines(logPath, lines, config.LogMaxBytes)) return true;
+      if (FileLogger.TryWriteLines(logPath, lines, config.LogMaxBytes))
+      {
+        FileLogger.EnforceArchiveLimits(logPath, config.LogMaxArchiveFiles, config.LogDirectoryMaxBytes);
+        return true;
+      }
 
       foreach (var line in lines)
         LogFallbackChain.Write(() => false, _fallbackLogPath, line); // 主层已失败，逐行走 startup/emergency 降级

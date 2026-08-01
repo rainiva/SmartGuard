@@ -61,4 +61,32 @@ public class SmartGuardLogWriterTests
             if (Directory.Exists(dir)) Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public void TryAppendLine_under_multi_process_style_stress_loses_no_lines()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "stress.log");
+        try
+        {
+            var results = new ConcurrentBag<bool>();
+            var writers = Enumerable.Range(0, 4).Select(w => Task.Run(() =>
+            {
+                for (var i = 0; i < 100; i++)
+                    results.Add(SmartGuardLogWriter.TryAppendLine(path, $"writer{w}-line{i:D3}"));
+            })).ToArray();
+            Task.WaitAll(writers);
+
+            results.Should().OnlyContain(r => r == true, "4 写者持续交错写入不得失败");
+            var lines = File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+            lines.Should().HaveCount(400, "4 写者 × 100 行不得丢行");
+            lines.Should().OnlyContain(
+                l => System.Text.RegularExpressions.Regex.IsMatch(l, "^writer[0-3]-line[0-9]{3}$"),
+                "行内容不得交错损坏（决策 D3 的评估证据）");
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
 }

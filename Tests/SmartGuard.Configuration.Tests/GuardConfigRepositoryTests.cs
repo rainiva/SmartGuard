@@ -217,4 +217,30 @@ public class GuardConfigRepositoryTests
       Directory.Delete(dir, recursive: true);
     }
   }
+
+  [Fact]
+  public void Save_round_trips_archive_retention_limits()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.LogMaxArchiveFiles = 10;
+      config.LogDirectoryMaxBytes = 52_428_800;
+      repo.Save(config);
+
+      var loaded = new GuardConfigRepository(path).TryLoad();
+      loaded.Should().NotBeNull();
+      loaded!.LogMaxArchiveFiles.Should().Be(10);
+      loaded.LogDirectoryMaxBytes.Should().Be(52_428_800);
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
 }

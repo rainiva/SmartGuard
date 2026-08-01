@@ -55,4 +55,13 @@ public class ArchitectureContractLoggingPhase2Tests
     ContractContent.Should().Contain("HeartLogSampler");
     ContractContent.Should().Contain("LogHeartMinIntervalSec");
   }
+
+  [Fact]
+  public void Contract_registers_retention_limits_and_pipeline_enforces_them()
+  {
+    ContractContent.Should().Contain("LogMaxArchiveFiles");
+    ContractContent.Should().Contain("LogDirectoryMaxBytes");
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("EnforceArchiveLimits", "批量落盘成功后必须执行归档容量治理");
+  }
 }

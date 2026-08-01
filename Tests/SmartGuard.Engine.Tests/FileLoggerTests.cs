@@ -235,4 +235,60 @@ public class FileLoggerTests
         FileLogger.TryWriteLines(path, Array.Empty<string>(), maxBytes: 1_048_576).Should().BeTrue();
         File.Exists(path).Should().BeFalse("空批不得创建文件或触发轮转");
     }
+
+    [Fact]
+    public void EnforceArchiveLimits_deletes_oldest_archives_over_count()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "smart.log");
+        File.WriteAllText(logPath, "current");
+        File.WriteAllText(logPath + ".20260728.bak", "old-1");
+        File.WriteAllText(logPath + ".20260729.bak", "old-2");
+        File.WriteAllText(logPath + ".20260730.bak", "old-3");
+        try
+        {
+            FileLogger.EnforceArchiveLimits(logPath, maxArchiveFiles: 2, maxDirectoryBytes: 0);
+
+            File.Exists(logPath + ".20260728.bak").Should().BeFalse("超出数量上限时最旧归档先删");
+            File.Exists(logPath + ".20260729.bak").Should().BeTrue();
+            File.Exists(logPath + ".20260730.bak").Should().BeTrue();
+            File.Exists(logPath).Should().BeTrue("当前日志永不删除");
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void EnforceArchiveLimits_deletes_archives_until_directory_budget_met()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var logPath = Path.Combine(dir, "smart.log");
+        File.WriteAllText(logPath, new string('x', 100));
+        File.WriteAllText(logPath + ".20260728.bak", new string('x', 400));
+        File.WriteAllText(logPath + ".20260729.bak", new string('x', 400));
+        try
+        {
+            FileLogger.EnforceArchiveLimits(logPath, maxArchiveFiles: 0, maxDirectoryBytes: 600);
+
+            File.Exists(logPath + ".20260728.bak").Should().BeFalse("总量 900 > 600，删最旧后 500 ≤ 600");
+            File.Exists(logPath + ".20260729.bak").Should().BeTrue();
+            File.Exists(logPath).Should().BeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void EnforceArchiveLimits_does_not_throw_on_missing_directory()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"), "ghost.log");
+        var act = () => FileLogger.EnforceArchiveLimits(logPath, maxArchiveFiles: 2, maxDirectoryBytes: 600);
+        act.Should().NotThrow("容量治理任何异常必须被吞掉，不得影响写入主路径");
+    }
 }

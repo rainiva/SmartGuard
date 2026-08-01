@@ -156,4 +156,31 @@ public class SettingsSnapshotMapperTests
 
     updated.LogHeartMinIntervalSec.Should().Be(120);
   }
+
+  [Fact]
+  public void ApplyTraySettings_preserves_archive_retention_limits()
+  {
+    var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+    current.LogMaxArchiveFiles = 10;
+    current.LogDirectoryMaxBytes = 52_428_800;
+
+    var updated = SettingsSnapshotMapper.ApplyTraySettings(
+      current,
+      balancedThresholdMin: 5,
+      powerSaverThresholdMin: 15,
+      lowBatteryPercent: 30,
+      checkIntervalSec: 15,
+      brightnessRestoreMs: 300,
+      heartbeatIntervalMin: current.HeartbeatIntervalMin,
+      activePlanGuid: current.ActivePlanGuid,
+      balancedPlanGuid: current.BalancedPlanGuid,
+      powerSaverPlanGuid: current.PowerSaverPlanGuid,
+      paused: false,
+      notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
+      autoStartEnabled: true);
+
+    updated.LogMaxArchiveFiles.Should().Be(10);
+    updated.LogDirectoryMaxBytes.Should().Be(52_428_800);
+  }
 }
