@@ -102,6 +102,8 @@
 | `LogPriority` | `SmartGuard.Configuration` | 日志行优先级（Normal/High），满时先丢 Normal |
 | `LogPipelineState` | `SmartGuard.Configuration` | 管线生命周期状态机：Starting/Running/Flushing/Stopped |
 | `HeartLogSampler` | `SmartGuard.Engine.Infrastructure` | Heart 心跳持久化节流（注入时钟可测，被节流不重置窗口）；配置项 `GuardConfig.LogHeartMinIntervalSec` |
+| `CrashRingBuffer` | `SmartGuard.Configuration` | 崩溃环形缓冲：固定容量内存环形队列，仅接收高优先级行，崩溃时同步 flush |
+| `EmergencySyncWriter` | `SmartGuard.Configuration` | 应急同步写入器：崩溃时绕过管线直接同步落盘，全路径异常隔离 |
 
 ---
 
@@ -314,6 +316,7 @@
 | 计划任务测试隔离契约 | `ArchitectureContractScheduledTaskIsolationTests` |
 | 日志阶段一止血 | `ArchitectureContractLoggingPhase1Tests` |
 | 日志阶段二异步管线 | `ArchitectureContractLoggingPhase2Tests` |
+| 日志阶段三结构化与可观测 | `ArchitectureContractLoggingPhase3Tests` |
 
 ---
 
@@ -395,3 +398,11 @@
 | LOG-P2-HEART | 阻断 | Heart 心跳持久化经 `HeartLogSampler.ShouldPersist` 节流，配置项 `LogHeartMinIntervalSec`（默认 60 秒，0 禁用）；默认 10 分钟心跳下行为不变，仅防秒级心跳源刷爆 |
 | LOG-P2-RETAIN | 阻断 | 归档保留三重上限：7 天（既有）+ `LogMaxArchiveFiles`（默认 30，0 禁用）+ `LogDirectoryMaxBytes`（默认 104_857_600，0 禁用）；删除只选归档、最旧先删、永不删当前日志（`LogArchivePlanner` 纯函数 + `FileLogger.EnforceArchiveLimits`） |
 | DOC-LOG-P2 | 已关闭 | 本文档 §3/§6/§20 + `ArchitectureContractLoggingPhase2Tests` 终验 |
+
+---
+
+## 21. 日志系统阶段三（结构化与可观测）（2026-08-01）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-P3-CRASH | 阻断 | `CrashRingBuffer` 崩溃环形缓冲 + `EmergencySyncWriter` 应急同步写入；仅接收 Warn/Error/Critical；容量默认 500；崩溃时同步 flush 到 `%TEMP%\SmartGuard\crash-ring.log` |
