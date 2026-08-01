@@ -134,10 +134,14 @@ public static class DiagnosticBundleExporter
       return;
     }
 
-    var lines = File.ReadAllLines(sourcePath);
+    var tailBytes = ReadTailBytes(sourcePath, MainLogTailMaxBytes);
+    var tailText = Encoding.UTF8.GetString(tailBytes);
+    var rawLines = tailText.Split('\n');
+    var startIndex = new FileInfo(sourcePath).Length > MainLogTailMaxBytes ? 1 : 0;
     var jsonlLines = new List<string>();
-    foreach (var line in lines)
+    for (var i = startIndex; i < rawLines.Length; i++)
     {
+      var line = rawLines[i].TrimEnd('\r');
       if (LogJsonlFormatter.TryParseLine(line, out var entry) && entry != null)
         jsonlLines.Add(LogJsonlFormatter.FormatLine(entry));
     }

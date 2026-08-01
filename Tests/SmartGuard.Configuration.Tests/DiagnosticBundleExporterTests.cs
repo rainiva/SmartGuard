@@ -198,6 +198,31 @@ public class DiagnosticBundleExporterTests
     }
   }
 
+  [Fact]
+  public void Export_jsonl_only_reads_log_tail_when_over_512KB()
+  {
+    var dir = CreateTempDir();
+    var zipPath = Path.Combine(dir, "diag.zip");
+    try
+    {
+      var logPath = SmartGuardPaths.DefaultLogFile(dir);
+      var head = "[INFO] 2026-08-01 00:00:00 [Engine] HEAD_MARKER_EVENT\n";
+      var padding = new string('x', DiagnosticBundleExporter.MainLogTailMaxBytes);
+      var tail = "\n[ERROR] 2026-08-01 10:01:00 [GuardianLoop] TAIL_MARKER_EVENT op=op-tail";
+      File.WriteAllText(logPath, head + padding + tail);
+
+      DiagnosticBundleExporter.Export(dir, zipPath, "1.0.0");
+
+      using var archive = ZipFile.OpenRead(zipPath);
+      var jsonl = ReadEntryText(archive, "logs/SmartGuard.jsonl");
+      jsonl.Should().Contain("TAIL_MARKER_EVENT", "尾部 512KiB 内的行应被导出");
+      jsonl.Should().NotContain("HEAD_MARKER_EVENT", "超出 512KiB 尾部上限的头部行不得被读取/导出");
+      System.Text.Encoding.UTF8.GetByteCount(jsonl)
+        .Should().BeLessThanOrEqualTo(DiagnosticBundleExporter.MainLogTailMaxBytes + 4096);
+    }
+    finally { Directory.Delete(dir, recursive: true); }
+  }
+
   private static string ReadEntryText(ZipArchive archive, string entryPath)
   {
     var entry = archive.GetEntry(entryPath)
