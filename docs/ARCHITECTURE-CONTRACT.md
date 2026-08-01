@@ -100,6 +100,7 @@
 | `LogPipelineOptions` | `SmartGuard.Configuration` | 管线容量/批量/定时/关闭超时参数（默认 20000/2000/200/100ms/3000ms） |
 | `LogPipelineDiagnostics` | `SmartGuard.Configuration` | 管线诊断快照：Enqueued/DroppedNormal/DroppedHigh/WrittenLines/FailedBatches |
 | `LogPriority` | `SmartGuard.Configuration` | 日志行优先级（Normal/High），满时先丢 Normal |
+| `LogPipelineState` | `SmartGuard.Configuration` | 管线生命周期状态机：Starting/Running/Flushing/Stopped |
 
 ---
 
@@ -388,3 +389,4 @@
 |----|------|-----------|
 | LOG-P2-LEVEL | 阻断 | 日志级别六级 `Trace/Debug/Info/Warn/Error/Critical` + `Heart` 末位；`GuardianLoop.WriteLog` 经 `LogLevelFilter.ShouldWrite` 统一过滤，配置项 `LogMinimumLevel`（默认 `Info`，非法回退 `Info`） |
 | LOG-P2-QUEUE | 阻断 | `LogPipeline` 有界双优先级队列（`FullMode.Wait` + `TryWrite` 非阻塞入队，满时按优先级计数丢弃）；禁用 `DropWrite`（无法计数）；业务线程永不阻塞 |
+| LOG-P2-LIFECYCLE | 阻断 | 管线受控关闭：`StopAsync` 按"停止接收 → 排空队列 → Flush → Stopped"执行，`ShutdownTimeoutMs`（默认 3s）超时上限，超时返回 false 且消费者任务自行收敛不泄漏；批量触发为 `FlushIntervalMs=100` 与 `MaxBatchSize=200` 先到先触发 |

@@ -30,4 +30,11 @@ public class ArchitectureContractLoggingPhase2Tests
     ContractContent.Should().Contain("LogPipelineDiagnostics");
     ContractContent.Should().Contain("LogPriority");
   }
+
+  [Fact]
+  public void Contract_registers_pipeline_lifecycle_state_machine()
+  {
+    ContractContent.Should().Contain("LogPipelineState");
+    ContractContent.Should().Contain("StopAsync");
+  }
 }
