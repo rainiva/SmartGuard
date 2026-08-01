@@ -117,6 +117,12 @@
 | `LogFailureInjector` | `SmartGuard.Configuration` | 故障注入测试框架：测试专用钩子，不修改生产代码路径 |
 | `LogPipelineHealth` | `SmartGuard.Configuration` | 可观测健康指标：8 项内部指标快照，定时 JSON 行追加到日志末尾 |
 | `LogHealthSnapshot` | `SmartGuard.Configuration` | 健康指标快照 record：11 字段含速率与延迟 |
+| `LogIndexEntry` | `SmartGuard.Configuration` | 日志行索引条目 record：行号/时间戳/级别/类别/事件名/OperationId/TraceId/PID/TID |
+| `LogIndex` | `SmartGuard.Configuration` | 日志索引集合：内存索引 + 源文件路径 |
+| `LogIndexBuilder` | `SmartGuard.Configuration` | 日志索引构建器：按行解析日志文件构建内存索引，CancellationToken 可取消 |
+| `LogQueryRequest` | `SmartGuard.Configuration` | 日志查询请求 record：多条件筛选 + 分页参数 |
+| `LogQueryResult` | `SmartGuard.Configuration` | 日志查询结果 record：匹配条目 + 总数 + 分页信息 |
+| `LogQueryService` | `SmartGuard.Configuration` | 日志查询服务：消费 LogIndex 按多条件过滤 + 分页返回（D2 裁决） |
 
 ---
 
@@ -437,3 +443,4 @@
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
 | LOG-P4-TRACE | 阻断 | `TraceIdContext`/`SpanIdContext`/`UserActionIdContext` AsyncLocal 进程内传播；`LogLineFormatter.Format` 扩展可选上下文参数；`GuardianLoop.WriteLog` 传入 `Current` 值 |
+| LOG-P4-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 查询索引架构：日志文件 → 内存索引 → 多条件过滤 + 分页查询；CancellationToken 可取消；索引可重建 |

@@ -33,4 +33,11 @@ public class ArchitectureContractLoggingPhase4Tests
     source.Should().Contain("operationId");
     source.Should().Contain("userActionId");
   }
+
+  [Fact]
+  public void Contract_registers_log_query_service()
+  {
+    ContractContent.Should().Contain("LogQueryService");
+    ContractContent.Should().Contain("LogIndexBuilder");
+  }
 }
