@@ -21,4 +21,13 @@ public class ArchitectureContractLoggingPhase2Tests
     source.Should().Contain("LogLevelFilter.ShouldWrite",
       "WriteLog 必须经统一级别过滤入口，禁止散落 level >= min 手写比较");
   }
+
+  [Fact]
+  public void Contract_registers_log_pipeline_family()
+  {
+    ContractContent.Should().Contain("LogPipeline");
+    ContractContent.Should().Contain("LogPipelineOptions");
+    ContractContent.Should().Contain("LogPipelineDiagnostics");
+    ContractContent.Should().Contain("LogPriority");
+  }
 }

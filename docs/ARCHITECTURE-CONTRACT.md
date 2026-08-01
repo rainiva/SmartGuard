@@ -96,6 +96,10 @@
 | `CrashLogWriter` | `SmartGuard.Configuration` | 崩溃应急同步写入（主日志尽力 + `%TEMP%\SmartGuard\crash.log` 必写） |
 | `LogFallbackChain` | `SmartGuard.Configuration` | 日志三层降级链（主日志 → startup 回退 → `%TEMP%\SmartGuard\emergency.log`），每层异常隔离 |
 | `LogLevelFilter` | `SmartGuard.Engine.Infrastructure` | 日志级别统一过滤入口：`ShouldWrite`（Heart 恒放行）+ `ParseMinimum`（大小写不敏感，非法回退 Info）；配置项 `GuardConfig.LogMinimumLevel` |
+| `LogPipeline` | `SmartGuard.Configuration` | 异步日志管线：有界双优先级队列 + 批量出队（High 先）+ 诊断计数；Slice 3 起含单写者消费线程与生命周期 |
+| `LogPipelineOptions` | `SmartGuard.Configuration` | 管线容量/批量/定时/关闭超时参数（默认 20000/2000/200/100ms/3000ms） |
+| `LogPipelineDiagnostics` | `SmartGuard.Configuration` | 管线诊断快照：Enqueued/DroppedNormal/DroppedHigh/WrittenLines/FailedBatches |
+| `LogPriority` | `SmartGuard.Configuration` | 日志行优先级（Normal/High），满时先丢 Normal |
 
 ---
 
@@ -383,3 +387,4 @@
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
 | LOG-P2-LEVEL | 阻断 | 日志级别六级 `Trace/Debug/Info/Warn/Error/Critical` + `Heart` 末位；`GuardianLoop.WriteLog` 经 `LogLevelFilter.ShouldWrite` 统一过滤，配置项 `LogMinimumLevel`（默认 `Info`，非法回退 `Info`） |
+| LOG-P2-QUEUE | 阻断 | `LogPipeline` 有界双优先级队列（`FullMode.Wait` + `TryWrite` 非阻塞入队，满时按优先级计数丢弃）；禁用 `DropWrite`（无法计数）；业务线程永不阻塞 |
