@@ -23,6 +23,8 @@ public sealed class GuardianLoop
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
   private readonly LogPipeline _logPipeline;
   private readonly HeartLogSampler _heartSampler = new();
+  private readonly LogPipelineOptions _logOptions = new();
+  private readonly LogBackpressureController _backpressure = new();
   private bool _powerCfgBrightnessSupported = true;
 
   public GuardianLoop(
@@ -59,7 +61,7 @@ public sealed class GuardianLoop
       LoadConfig,
       WriteLog,
       _powerCfgBrightnessSupported);
-    _logPipeline = new LogPipeline(WriteBatchToDisk); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
+    _logPipeline = new LogPipeline(WriteBatchToDisk, _logOptions); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
   }
 
   public void Run(CancellationToken cancellationToken = default)
@@ -156,6 +158,7 @@ public sealed class GuardianLoop
     if (!_deduplication.TryAccept(fp, message, out var dedupMessage)) return;
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
     var line = LogLineFormatter.Format(DateTime.Now, level, dedupMessage!);
+    if (MapPriority(level) == LogPriority.Normal && _backpressure.ShouldThrottle(_logPipeline.NormalQueueDepth, _logOptions.NormalQueueCapacity)) return; // 背压：丢弃 Normal 低价值行
     if (_logPipeline.TryEnqueue(MapPriority(level), line)) return;
 
     // 入队失败（队列满/管线已停）回退阶段一同步三层降级链，关键日志不丢

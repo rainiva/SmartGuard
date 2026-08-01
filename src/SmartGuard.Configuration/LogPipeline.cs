@@ -30,6 +30,9 @@ public sealed class LogPipeline
 
   public LogPipelineState State => (LogPipelineState)Volatile.Read(ref _state);
 
+  public int NormalQueueDepth => _normalQueue.Reader.Count;
+  public int HighQueueDepth => _highQueue.Reader.Count;
+
   public LogPipelineDiagnostics Diagnostics => new(
     Interlocked.Read(ref _enqueued),
     Interlocked.Read(ref _droppedNormal),

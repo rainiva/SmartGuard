@@ -26,4 +26,10 @@ public class ArchitectureContractLoggingPhase3Tests
   {
     ContractContent.Should().Contain("LogDeduplicationFilter");
   }
+
+  [Fact]
+  public void Contract_registers_backpressure_controller()
+  {
+    ContractContent.Should().Contain("LogBackpressureController");
+  }
 }
