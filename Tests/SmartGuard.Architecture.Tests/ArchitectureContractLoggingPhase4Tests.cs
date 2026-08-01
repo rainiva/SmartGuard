@@ -98,4 +98,18 @@ public class ArchitectureContractLoggingPhase4Tests
     source.Should().Contain("AddJsonlLogEntry");
     source.Should().Contain("SmartGuard.jsonl");
   }
+
+  [Fact]
+  public void Contract_registers_filter_spec_and_builder()
+  {
+    ContractContent.Should().Contain("LogQueryFilterSpec");
+    ContractContent.Should().Contain("LogFilterBuilder");
+  }
+
+  [Fact]
+  public void LogViewController_has_apply_filter_spec_method()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewController.cs");
+    source.Should().Contain("ApplyFilterSpec");
+  }
 }

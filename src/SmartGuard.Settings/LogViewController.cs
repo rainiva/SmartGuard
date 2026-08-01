@@ -212,6 +212,15 @@ public sealed class LogViewController
         return result;
     }
 
+    public void ApplyFilterSpec(SmartGuard.Configuration.LogQueryFilterSpec spec)
+    {
+      SearchKeyword = spec.Keyword ?? string.Empty;
+      OperationIdFilter = spec.OperationId ?? string.Empty;
+      EventNameFilter = spec.EventName ?? string.Empty;
+      ProcessIdFilter = spec.ProcessId;
+      ThreadIdFilter = spec.ThreadId;
+    }
+
     public Task<IReadOnlyList<string>> GetFilteredLinesAsync(CancellationToken cancellationToken)
     {
         return Task.Run(() => GetFilteredLines(), cancellationToken);
