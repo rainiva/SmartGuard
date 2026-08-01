@@ -193,4 +193,28 @@ public class GuardConfigRepositoryTests
       Directory.Delete(dir, recursive: true);
     }
   }
+
+  [Fact]
+  public void Save_round_trips_log_heart_min_interval()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.LogHeartMinIntervalSec = 120;
+      repo.Save(config);
+
+      var loaded = new GuardConfigRepository(path).TryLoad();
+      loaded.Should().NotBeNull();
+      loaded!.LogHeartMinIntervalSec.Should().Be(120);
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
 }

@@ -46,4 +46,13 @@ public class ArchitectureContractLoggingPhase2Tests
     source.Should().Contain("TryEnqueue", "WriteLog 必须非阻塞入队");
     source.Should().Contain("StopAsync", "进程退出必须受控关闭管线，不得丢尾部日志");
   }
+
+  [Fact]
+  public void GuardianLoop_throttles_heart_logs_via_sampler()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("HeartLogSampler", "Heart 心跳持久化必须经采样治理，防秒级心跳源刷爆日志");
+    ContractContent.Should().Contain("HeartLogSampler");
+    ContractContent.Should().Contain("LogHeartMinIntervalSec");
+  }
 }

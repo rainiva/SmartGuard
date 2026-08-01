@@ -22,6 +22,7 @@ public sealed class GuardianLoop
   private readonly GuardianFirstRunInitializer _firstRunInitializer;
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
   private readonly LogPipeline _logPipeline;
+  private readonly HeartLogSampler _heartSampler = new();
   private bool _powerCfgBrightnessSupported = true;
 
   public GuardianLoop(
@@ -147,6 +148,9 @@ public sealed class GuardianLoop
   private void WriteLog(GuardConfig config, LogLevel level, string message)
   {
     if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
+      return;
+    if (level == LogLevel.Heart
+        && !_heartSampler.ShouldPersist(DateTime.Now, TimeSpan.FromSeconds(Math.Max(0, config.LogHeartMinIntervalSec))))
       return;
     var fp = message.Trim().ToLowerInvariant();
     if (!_tickLogFingerprints.Add(fp)) return;

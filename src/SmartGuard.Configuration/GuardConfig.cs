@@ -23,6 +23,7 @@ public sealed class GuardConfig
   public bool Paused { get; set; }
   public long LogMaxBytes { get; set; } = 1_048_576;
   public string LogMinimumLevel { get; set; } = "Info";
+  public int LogHeartMinIntervalSec { get; set; } = 60;
   public int BrightnessRetryCount { get; set; } = 3;
   public int BrightnessRetryDelayMs { get; set; } = 100;
   public bool NotifyOnPlanChange { get; set; } = true;
@@ -65,6 +66,7 @@ public sealed class GuardConfig
       Paused = false,
       LogMaxBytes = 1_048_576,
       LogMinimumLevel = "Info",
+      LogHeartMinIntervalSec = 60,
       BrightnessRetryCount = 3,
       BrightnessRetryDelayMs = 100,
       NotifyOnPlanChange = true,

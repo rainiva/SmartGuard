@@ -101,6 +101,7 @@
 | `LogPipelineDiagnostics` | `SmartGuard.Configuration` | 管线诊断快照：Enqueued/DroppedNormal/DroppedHigh/WrittenLines/FailedBatches |
 | `LogPriority` | `SmartGuard.Configuration` | 日志行优先级（Normal/High），满时先丢 Normal |
 | `LogPipelineState` | `SmartGuard.Configuration` | 管线生命周期状态机：Starting/Running/Flushing/Stopped |
+| `HeartLogSampler` | `SmartGuard.Engine.Infrastructure` | Heart 心跳持久化节流（注入时钟可测，被节流不重置窗口）；配置项 `GuardConfig.LogHeartMinIntervalSec` |
 
 ---
 
@@ -391,3 +392,4 @@
 | LOG-P2-QUEUE | 阻断 | `LogPipeline` 有界双优先级队列（`FullMode.Wait` + `TryWrite` 非阻塞入队，满时按优先级计数丢弃）；禁用 `DropWrite`（无法计数）；业务线程永不阻塞 |
 | LOG-P2-LIFECYCLE | 阻断 | 管线受控关闭：`StopAsync` 按"停止接收 → 排空队列 → Flush → Stopped"执行，`ShutdownTimeoutMs`（默认 3s）超时上限，超时返回 false 且消费者任务自行收敛不泄漏；批量触发为 `FlushIntervalMs=100` 与 `MaxBatchSize=200` 先到先触发 |
 | LOG-P2-WIRE | 阻断 | `GuardianLoop.WriteLog` 经 `LogPipeline.TryEnqueue` 非阻塞入队（Warn/Error/Critical 走 High），消费侧 `FileLogger.TryWriteLines` 单次打开批量追加；入队失败与批量落盘失败均回退阶段一 `LogFallbackChain` 同步三层降级 |
+| LOG-P2-HEART | 阻断 | Heart 心跳持久化经 `HeartLogSampler.ShouldPersist` 节流，配置项 `LogHeartMinIntervalSec`（默认 60 秒，0 禁用）；默认 10 分钟心跳下行为不变，仅防秒级心跳源刷爆 |
