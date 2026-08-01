@@ -109,6 +109,9 @@
 | `LogDeduplicationFilter` | `SmartGuard.Configuration` | 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行，释放后重置 |
 | `LogBackpressureController` | `SmartGuard.Configuration` | 背压控制器：监控 Normal 队列深度超过阈值时主动丢弃低价值行，High 不受影响 |
 | `OperationIdContext` | `SmartGuard.Configuration` | OperationId 进程内 AsyncLocal 传播 + 跨进程经 status.json 中继 |
+| `TraceIdContext` | `SmartGuard.Configuration` | TraceId 进程内 AsyncLocal 传播 + 跨进程经 status.json traceId 字段中继（D3 裁决） |
+| `SpanIdContext` | `SmartGuard.Configuration` | SpanId 进程内 AsyncLocal 传播（子步骤关联） |
+| `UserActionIdContext` | `SmartGuard.Configuration` | UserActionId 进程内 AsyncLocal 传播（用户交互事件链关联） |
 | `EventNameRegistry` | `SmartGuard.Configuration` | 事件名称唯一注册表：内置常量 + 运行时注册 + 门禁强制 |
 | `EventNameMigration` | `SmartGuard.Configuration` | 事件名称历史别名兼容名单：预留阶段四渐进迁移接口 |
 | `LogFailureInjector` | `SmartGuard.Configuration` | 故障注入测试框架：测试专用钩子，不修改生产代码路径 |
@@ -327,6 +330,7 @@
 | 日志阶段一止血 | `ArchitectureContractLoggingPhase1Tests` |
 | 日志阶段二异步管线 | `ArchitectureContractLoggingPhase2Tests` |
 | 日志阶段三结构化与可观测 | `ArchitectureContractLoggingPhase3Tests` |
+| 日志阶段四 UI 与查询升级 | `ArchitectureContractLoggingPhase4Tests` |
 
 ---
 
@@ -425,3 +429,11 @@
 | LOG-P3-INJECT | 阻断 | `LogFailureInjector` 故障注入测试框架：磁盘写满/路径权限/文件锁定/消费线程异常；不修改生产代码路径 |
 | LOG-P3-HEALTH | 阻断 | `LogPipelineHealth` + `LogHealthSnapshot` 可观测健康指标：8 项内部指标 + JSON 行追加到日志末尾（D4 裁决） |
 | DOC-LOG-P3 | 已关闭 | 本文档 §3/§6/§21 + `ArchitectureContractLoggingPhase3Tests` 终验 |
+
+---
+
+## 22. 日志系统阶段四（UI 与查询升级 / 易诊断）（2026-08-01）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-P4-TRACE | 阻断 | `TraceIdContext`/`SpanIdContext`/`UserActionIdContext` AsyncLocal 进程内传播；`LogLineFormatter.Format` 扩展可选上下文参数；`GuardianLoop.WriteLog` 传入 `Current` 值 |

@@ -157,7 +157,7 @@ public sealed class GuardianLoop
     var fp = message.Trim().ToLowerInvariant();
     if (!_deduplication.TryAccept(fp, message, out var dedupMessage)) return;
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-    var line = LogLineFormatter.Format(DateTime.Now, level, dedupMessage!);
+    var line = LogLineFormatter.Format(DateTime.Now, level, dedupMessage!, TraceIdContext.Current, SpanIdContext.Current, OperationIdContext.Current, UserActionIdContext.Current);
     if (MapPriority(level) == LogPriority.Normal && _backpressure.ShouldThrottle(_logPipeline.NormalQueueDepth, _logOptions.NormalQueueCapacity)) return; // 背压：丢弃 Normal 低价值行
     if (_logPipeline.TryEnqueue(MapPriority(level), line)) return;
 
