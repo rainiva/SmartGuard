@@ -20,4 +20,10 @@ public class ArchitectureContractLoggingPhase3Tests
     ContractContent.Should().Contain("LogRecoveryStateMachine");
     ContractContent.Should().Contain("LogConsumerRecovery");
   }
+
+  [Fact]
+  public void Contract_registers_deduplication_filter()
+  {
+    ContractContent.Should().Contain("LogDeduplicationFilter");
+  }
 }

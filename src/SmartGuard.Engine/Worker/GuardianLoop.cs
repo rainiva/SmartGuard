@@ -13,7 +13,7 @@ public sealed class GuardianLoop
   private readonly string _fallbackLogPath;
   private readonly IdleTracker _idleTracker = new();
   private readonly BrightnessService _brightness = new();
-  private readonly HashSet<string> _tickLogFingerprints = new(StringComparer.OrdinalIgnoreCase);
+  private readonly LogDeduplicationFilter _deduplication = new(threshold: 5);
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
   private readonly StatusPublisher _publisher;
   private readonly GuardConfigRepository _configRepository;
@@ -82,7 +82,7 @@ public sealed class GuardianLoop
 
       while (!cancellationToken.IsCancellationRequested)
       {
-        _tickLogFingerprints.Clear();
+        _deduplication.Reset();
         try
         {
           await _iterationRunner.RunAsync(_iterationState, cancellationToken);
@@ -153,14 +153,14 @@ public sealed class GuardianLoop
         && !_heartSampler.ShouldPersist(DateTime.Now, TimeSpan.FromSeconds(Math.Max(0, config.LogHeartMinIntervalSec))))
       return;
     var fp = message.Trim().ToLowerInvariant();
-    if (!_tickLogFingerprints.Add(fp)) return;
+    if (!_deduplication.TryAccept(fp, message, out var dedupMessage)) return;
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-    var line = LogLineFormatter.Format(DateTime.Now, level, message);
+    var line = LogLineFormatter.Format(DateTime.Now, level, dedupMessage!);
     if (_logPipeline.TryEnqueue(MapPriority(level), line)) return;
 
     // 入队失败（队列满/管线已停）回退阶段一同步三层降级链，关键日志不丢
     LogFallbackChain.Write(
-      () => FileLogger.TryWrite(level, logPath, message, config.LogMaxBytes),
+      () => FileLogger.TryWrite(level, logPath, dedupMessage!, config.LogMaxBytes),
       _fallbackLogPath,
       line);
   }

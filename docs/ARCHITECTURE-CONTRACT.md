@@ -106,6 +106,7 @@
 | `EmergencySyncWriter` | `SmartGuard.Configuration` | 应急同步写入器：崩溃时绕过管线直接同步落盘，全路径异常隔离 |
 | `LogRecoveryStateMachine` | `SmartGuard.Engine.Infrastructure` | 管线消费侧故障恢复状态机：Healthy/Degraded/Failed 三态，连续失败阈值 + 定时探测恢复 |
 | `LogConsumerRecovery` | `SmartGuard.Engine.Infrastructure` | 消费者自恢复包装器：Failed 态降级到 `LogFallbackChain` 同步写入，恢复后复位 |
+| `LogDeduplicationFilter` | `SmartGuard.Configuration` | 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行，释放后重置 |
 
 ---
 
@@ -409,3 +410,4 @@
 |----|------|-----------|
 | LOG-P3-CRASH | 阻断 | `CrashRingBuffer` 崩溃环形缓冲 + `EmergencySyncWriter` 应急同步写入；仅接收 Warn/Error/Critical；容量默认 500；崩溃时同步 flush 到 `%TEMP%\SmartGuard\crash-ring.log` |
 | LOG-P3-RECOVER | 阻断 | `LogRecoveryStateMachine` 三态恢复 + `LogConsumerRecovery` 包装消费回调；Failed 态降级到 `LogFallbackChain` 同步写入；连续失败阈值默认 3，恢复探测间隔默认 30s |
+| LOG-P3-DEDUP | 阻断 | `LogDeduplicationFilter` 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行；`GuardianLoop.WriteLog` 替代 `_tickLogFingerprints` HashSet 去重；阈值默认 5 |
