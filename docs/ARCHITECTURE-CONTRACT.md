@@ -108,6 +108,7 @@
 | `LogConsumerRecovery` | `SmartGuard.Engine.Infrastructure` | 消费者自恢复包装器：Failed 态降级到 `LogFallbackChain` 同步写入，恢复后复位 |
 | `LogDeduplicationFilter` | `SmartGuard.Configuration` | 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行，释放后重置 |
 | `LogBackpressureController` | `SmartGuard.Configuration` | 背压控制器：监控 Normal 队列深度超过阈值时主动丢弃低价值行，High 不受影响 |
+| `OperationIdContext` | `SmartGuard.Configuration` | OperationId 进程内 AsyncLocal 传播 + 跨进程经 status.json 中继 |
 
 ---
 
@@ -413,3 +414,5 @@
 | LOG-P3-RECOVER | 阻断 | `LogRecoveryStateMachine` 三态恢复 + `LogConsumerRecovery` 包装消费回调；Failed 态降级到 `LogFallbackChain` 同步写入；连续失败阈值默认 3，恢复探测间隔默认 30s |
 | LOG-P3-DEDUP | 阻断 | `LogDeduplicationFilter` 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行；`GuardianLoop.WriteLog` 替代 `_tickLogFingerprints` HashSet 去重；阈值默认 5 |
 | LOG-P3-BACKPRESSURE | 阻断 | `LogBackpressureController` 背压控制器：监控 Normal 队列深度超过阈值时主动丢弃低价值行；`LogPipeline` 暴露 `NormalQueueDepth`/`HighQueueDepth` 供背压读取；阈值默认容量 80% |
+| LOG-P3-OPID | 阻断 | `OperationIdContext` AsyncLocal 进程内传播 + `status.json` `operationId` 字段跨进程中继；禁止引入独立共享内存/命名管道 |
+| LOG-P3-OPID-READ | 阻断 | `StatusStore` / `StatusReader` 读取 `status.json` `operationId` 字段并调用 `OperationIdContext.Set`/`Clear` |

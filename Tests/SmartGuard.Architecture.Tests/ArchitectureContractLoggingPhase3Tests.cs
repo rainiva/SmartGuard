@@ -32,4 +32,10 @@ public class ArchitectureContractLoggingPhase3Tests
   {
     ContractContent.Should().Contain("LogBackpressureController");
   }
+
+  [Fact]
+  public void Contract_registers_operation_id_context()
+  {
+    ContractContent.Should().Contain("OperationIdContext");
+  }
 }

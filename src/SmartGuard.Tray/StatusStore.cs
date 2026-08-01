@@ -23,16 +23,29 @@ public sealed class StatusStore(string statusPath)
     {
       _cached = null;
       _cachedWriteTimeUtc = DateTime.MinValue;
+      SyncOperationId(_cached);
       return null;
     }
 
     var writeTimeUtc = File.GetLastWriteTimeUtc(statusPath);
     if (_cached is not null && _cachedWriteTimeUtc == writeTimeUtc)
+    {
+      SyncOperationId(_cached);
       return _cached;
+    }
 
     DiskReadCountForTests++;
     _cached = StatusJsonReader.TryRead(statusPath);
     _cachedWriteTimeUtc = _cached is null ? DateTime.MinValue : writeTimeUtc;
+    SyncOperationId(_cached);
     return _cached;
+  }
+
+  private static void SyncOperationId(StatusPayload? status)
+  {
+    if (!string.IsNullOrEmpty(status?.operationId))
+      OperationIdContext.Set(status!.operationId!);
+    else
+      OperationIdContext.Clear();
   }
 }

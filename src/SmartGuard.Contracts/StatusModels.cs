@@ -14,6 +14,7 @@ public sealed class StatusPayload
   public int enginePid { get; set; }
   public object? lastExternalChange { get; set; }
   public NotificationEvent? notificationEvent { get; set; }
+  public string? operationId { get; set; }
 }
 
 public sealed class NotificationEvent
