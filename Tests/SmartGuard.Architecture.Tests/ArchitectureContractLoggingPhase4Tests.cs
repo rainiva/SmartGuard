@@ -77,11 +77,13 @@ public class ArchitectureContractLoggingPhase4Tests
   }
 
   [Fact]
-  public void SettingsLogPageHost_wires_background_query()
+  public void SettingsLogPageHost_uses_refresh_pipeline_as_async_entry()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.cs");
-    source.Should().Contain("LogViewBackgroundQuery",
-      "SettingsLogPageHost 必须接线 LogViewBackgroundQuery 实现非阻塞查询（D4 裁决）");
+    source.Should().Contain("SettingsLogRefreshPipeline",
+      "SettingsLogPageHost 的 UI 非阻塞唯一入口为 SettingsLogRefreshPipeline（S4 收口，D4 裁决）");
+    source.Should().NotContain("_backgroundQuery",
+      "死字段 _backgroundQuery 已移除，避免第二条非阻塞路径");
   }
 
   [Fact]
