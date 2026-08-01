@@ -104,6 +104,8 @@
 | `HeartLogSampler` | `SmartGuard.Engine.Infrastructure` | Heart 心跳持久化节流（注入时钟可测，被节流不重置窗口）；配置项 `GuardConfig.LogHeartMinIntervalSec` |
 | `CrashRingBuffer` | `SmartGuard.Configuration` | 崩溃环形缓冲：固定容量内存环形队列，仅接收高优先级行，崩溃时同步 flush |
 | `EmergencySyncWriter` | `SmartGuard.Configuration` | 应急同步写入器：崩溃时绕过管线直接同步落盘，全路径异常隔离 |
+| `LogRecoveryStateMachine` | `SmartGuard.Engine.Infrastructure` | 管线消费侧故障恢复状态机：Healthy/Degraded/Failed 三态，连续失败阈值 + 定时探测恢复 |
+| `LogConsumerRecovery` | `SmartGuard.Engine.Infrastructure` | 消费者自恢复包装器：Failed 态降级到 `LogFallbackChain` 同步写入，恢复后复位 |
 
 ---
 
@@ -406,3 +408,4 @@
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
 | LOG-P3-CRASH | 阻断 | `CrashRingBuffer` 崩溃环形缓冲 + `EmergencySyncWriter` 应急同步写入；仅接收 Warn/Error/Critical；容量默认 500；崩溃时同步 flush 到 `%TEMP%\SmartGuard\crash-ring.log` |
+| LOG-P3-RECOVER | 阻断 | `LogRecoveryStateMachine` 三态恢复 + `LogConsumerRecovery` 包装消费回调；Failed 态降级到 `LogFallbackChain` 同步写入；连续失败阈值默认 3，恢复探测间隔默认 30s |

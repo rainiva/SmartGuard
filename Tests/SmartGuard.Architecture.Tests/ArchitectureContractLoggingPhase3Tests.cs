@@ -13,4 +13,11 @@ public class ArchitectureContractLoggingPhase3Tests
     ContractContent.Should().Contain("CrashRingBuffer");
     ContractContent.Should().Contain("EmergencySyncWriter");
   }
+
+  [Fact]
+  public void Contract_registers_recovery_state_machine()
+  {
+    ContractContent.Should().Contain("LogRecoveryStateMachine");
+    ContractContent.Should().Contain("LogConsumerRecovery");
+  }
 }
