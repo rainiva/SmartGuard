@@ -32,6 +32,7 @@ public static class DiagnosticBundleExporter
       AddStatusEntry(root, archive, fileEntries);
       AddMainLogEntry(root, archive, fileEntries);
       AddStartupLogEntry(root, archive, fileEntries);
+      AddJsonlLogEntry(root, archive, fileEntries);
 
       var manifestJson = BuildManifestJson(appVersion, fileEntries);
       WriteTextEntry(archive, "manifest.json", manifestJson);
@@ -116,6 +117,38 @@ public static class DiagnosticBundleExporter
     }
 
     WriteBinaryEntry(archive, entryPath, File.ReadAllBytes(sourcePath));
+    fileEntries.Add(ManifestFileEntry.Included(entryPath));
+  }
+
+  private static void AddJsonlLogEntry(string root, ZipArchive archive, List<ManifestFileEntry> fileEntries)
+  {
+    const string entryPath = "logs/SmartGuard.jsonl";
+    var config = new GuardConfigRepository(SmartGuardPaths.ConfigFile(root)).TryLoad();
+    var sourcePath = config is null
+      ? SmartGuardPaths.DefaultLogFile(root)
+      : SmartGuardPaths.ResolveLogFile(config, root);
+
+    if (!File.Exists(sourcePath))
+    {
+      fileEntries.Add(ManifestFileEntry.Missing(entryPath));
+      return;
+    }
+
+    var lines = File.ReadAllLines(sourcePath);
+    var jsonlLines = new List<string>();
+    foreach (var line in lines)
+    {
+      if (LogJsonlFormatter.TryParseLine(line, out var entry) && entry != null)
+        jsonlLines.Add(LogJsonlFormatter.FormatLine(entry));
+    }
+
+    if (jsonlLines.Count == 0)
+    {
+      fileEntries.Add(ManifestFileEntry.Missing(entryPath));
+      return;
+    }
+
+    WriteTextEntry(archive, entryPath, string.Join("\n", jsonlLines));
     fileEntries.Add(ManifestFileEntry.Included(entryPath));
   }
 

@@ -124,6 +124,8 @@
 | `LogQueryResult` | `SmartGuard.Configuration` | 日志查询结果 record：匹配条目 + 总数 + 分页信息 |
 | `LogQueryService` | `SmartGuard.Configuration` | 日志查询服务：消费 LogIndex 按多条件过滤 + 分页返回（D2 裁决） |
 | `LogViewBackgroundQuery` | `SmartGuard.Settings.LogView` | 后台日志查询：Task 线程执行过滤 + CancellationToken 取消（D4 裁决） |
+| `LogJsonlEntry` | `SmartGuard.Configuration` | 结构化日志条目 record：与参考标准文档 §3 LogEvent record 对齐 |
+| `LogJsonlFormatter` | `SmartGuard.Configuration` | 日志行与 JSONL 双向转换（D1 方案 A：保留兼容前缀） |
 
 ---
 
@@ -447,3 +449,4 @@
 | LOG-P4-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 查询索引架构：日志文件 → 内存索引 → 多条件过滤 + 分页查询；CancellationToken 可取消；索引可重建 |
 | LOG-P4-UI-FILTER | 阻断 | `LogViewController` 新增 `OperationIdFilter`/`EventNameFilter`/`ProcessIdFilter`/`ThreadIdFilter` 属性并扩展 `GetFilteredLines`；S3 解锁阶段三 4 个 WIP 禁触 UI 文件 |
 | LOG-P4-UI-ASYNC | 阻断 | `LogViewBackgroundQuery` 后台线程流式读取 + CancellationToken 取消；`SettingsLogPageHost` 接线异步查询；禁止 UI 线程执行大日志文件过滤 |
+| LOG-P4-JSONL | 阻断 | `LogJsonlFormatter` 日志行与 JSONL 双向转换（D1 方案 A：保留兼容前缀 3 天可回滚）；`DiagnosticBundleExporter` 追加 `logs/SmartGuard.jsonl` 导出条目 |

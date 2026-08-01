@@ -83,4 +83,19 @@ public class ArchitectureContractLoggingPhase4Tests
     source.Should().Contain("LogViewBackgroundQuery",
       "SettingsLogPageHost 必须接线 LogViewBackgroundQuery 实现非阻塞查询（D4 裁决）");
   }
+
+  [Fact]
+  public void Contract_registers_log_jsonl_formatter()
+  {
+    ContractContent.Should().Contain("LogJsonlFormatter");
+    ContractContent.Should().Contain("LogJsonlEntry");
+  }
+
+  [Fact]
+  public void DiagnosticBundleExporter_has_jsonl_entry()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/DiagnosticBundleExporter.cs");
+    source.Should().Contain("AddJsonlLogEntry");
+    source.Should().Contain("SmartGuard.jsonl");
+  }
 }

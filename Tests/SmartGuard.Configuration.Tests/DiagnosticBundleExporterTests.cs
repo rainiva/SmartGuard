@@ -171,6 +171,33 @@ public class DiagnosticBundleExporterTests
     }
   }
 
+  [Fact]
+  public void Export_includes_jsonl_log_entry()
+  {
+    var dir = CreateTempDir();
+    var zipPath = Path.Combine(dir, "diag.zip");
+
+    try
+    {
+      var logPath = SmartGuardPaths.DefaultLogFile(dir);
+      File.WriteAllLines(logPath, new[]
+      {
+        "[INFO] 2026-08-01 10:00:00 [Engine] AppStarted",
+        "[ERROR] 2026-08-01 10:01:00 [GuardianLoop] IterationError op=op-abc"
+      });
+
+      DiagnosticBundleExporter.Export(dir, zipPath, "1.0.0");
+
+      using var archive = ZipFile.OpenRead(zipPath);
+      var jsonlEntry = archive.Entries.FirstOrDefault(e => e.Name == "SmartGuard.jsonl");
+      jsonlEntry.Should().NotBeNull("Diagnostic bundle must include JSONL log entry");
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
+
   private static string ReadEntryText(ZipArchive archive, string entryPath)
   {
     var entry = archive.GetEntry(entryPath)
