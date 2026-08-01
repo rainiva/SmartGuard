@@ -135,6 +135,8 @@ public sealed class GuardianLoop
 
   private void WriteLog(GuardConfig config, LogLevel level, string message)
   {
+    if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
+      return;
     var fp = message.Trim().ToLowerInvariant();
     if (!_tickLogFingerprints.Add(fp)) return;
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);

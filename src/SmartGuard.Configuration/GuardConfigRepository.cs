@@ -141,6 +141,7 @@ public sealed class GuardConfigRepository
     node["LogFile"] = config.LogFile;
     node["Paused"] = config.Paused;
     node["LogMaxBytes"] = config.LogMaxBytes;
+    node["LogMinimumLevel"] = config.LogMinimumLevel;
     node["BrightnessRetryCount"] = config.BrightnessRetryCount;
     node["BrightnessRetryDelayMs"] = config.BrightnessRetryDelayMs;
     node["NotifyOnPlanChange"] = config.NotifyOnPlanChange;

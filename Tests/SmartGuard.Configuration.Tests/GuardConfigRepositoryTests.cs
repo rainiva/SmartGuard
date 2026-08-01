@@ -169,4 +169,28 @@ public class GuardConfigRepositoryTests
       Directory.Delete(dir, recursive: true);
     }
   }
+
+  [Fact]
+  public void Save_round_trips_log_minimum_level()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.LogMinimumLevel = "Debug";
+      repo.Save(config);
+
+      var loaded = new GuardConfigRepository(path).TryLoad();
+      loaded.Should().NotBeNull();
+      loaded!.LogMinimumLevel.Should().Be("Debug");
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
 }

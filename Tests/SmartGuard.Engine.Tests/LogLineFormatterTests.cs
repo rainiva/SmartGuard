@@ -9,6 +9,9 @@ public class LogLineFormatterTests
   [InlineData(LogLevel.Warn, "[WARN]")]
   [InlineData(LogLevel.Error, "[ERROR]")]
   [InlineData(LogLevel.Heart, "[HEART]")]
+  [InlineData(LogLevel.Trace, "[TRACE]")]
+  [InlineData(LogLevel.Debug, "[DEBUG]")]
+  [InlineData(LogLevel.Critical, "[CRITICAL]")]
   public void Format_includes_level_tag(LogLevel level, string tag)
   {
     var line = LogLineFormatter.Format(new DateTime(2026, 6, 16, 16, 0, 13), level, "test message");

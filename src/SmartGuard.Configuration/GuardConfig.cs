@@ -22,6 +22,7 @@ public sealed class GuardConfig
   public string LogFile { get; set; } = string.Empty;
   public bool Paused { get; set; }
   public long LogMaxBytes { get; set; } = 1_048_576;
+  public string LogMinimumLevel { get; set; } = "Info";
   public int BrightnessRetryCount { get; set; } = 3;
   public int BrightnessRetryDelayMs { get; set; } = 100;
   public bool NotifyOnPlanChange { get; set; } = true;
@@ -63,6 +64,7 @@ public sealed class GuardConfig
       LogFile = SmartGuardPaths.DefaultLogFile(root),
       Paused = false,
       LogMaxBytes = 1_048_576,
+      LogMinimumLevel = "Info",
       BrightnessRetryCount = 3,
       BrightnessRetryDelayMs = 100,
       NotifyOnPlanChange = true,

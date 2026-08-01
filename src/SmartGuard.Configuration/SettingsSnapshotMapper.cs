@@ -31,6 +31,7 @@ public static class SettingsSnapshotMapper
       LogFile = current.LogFile,
       Paused = paused,
       LogMaxBytes = current.LogMaxBytes,
+      LogMinimumLevel = current.LogMinimumLevel,
       BrightnessRetryCount = current.BrightnessRetryCount,
       BrightnessRetryDelayMs = current.BrightnessRetryDelayMs,
       NotifyOnPlanChange = notifyOnPlanChange,

@@ -106,4 +106,29 @@ public class SettingsSnapshotMapperTests
     updated.NotifyOnPlanChange.Should().BeTrue();
     updated.NotifyOnExternalChange.Should().BeFalse();
   }
+
+  [Fact]
+  public void ApplyTraySettings_preserves_log_minimum_level()
+  {
+    var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+    current.LogMinimumLevel = "Debug";
+
+    var updated = SettingsSnapshotMapper.ApplyTraySettings(
+      current,
+      balancedThresholdMin: 5,
+      powerSaverThresholdMin: 15,
+      lowBatteryPercent: 30,
+      checkIntervalSec: 15,
+      brightnessRestoreMs: 300,
+      heartbeatIntervalMin: current.HeartbeatIntervalMin,
+      activePlanGuid: current.ActivePlanGuid,
+      balancedPlanGuid: current.BalancedPlanGuid,
+      powerSaverPlanGuid: current.PowerSaverPlanGuid,
+      paused: false,
+      notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
+      autoStartEnabled: true);
+
+    updated.LogMinimumLevel.Should().Be("Debug");
+  }
 }

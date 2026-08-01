@@ -6,9 +6,12 @@ public static class LogLineFormatter
   {
     var tag = level switch
     {
+      LogLevel.Trace => "TRACE",
+      LogLevel.Debug => "DEBUG",
       LogLevel.Info => "INFO",
       LogLevel.Warn => "WARN",
       LogLevel.Error => "ERROR",
+      LogLevel.Critical => "CRITICAL",
       LogLevel.Heart => "HEART",
       _ => "INFO",
     };

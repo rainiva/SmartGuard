@@ -95,6 +95,7 @@
 | `GlobalExceptionHandlers` | `SmartGuard.Configuration` | 注册 AppDomain/TaskScheduler 全局未处理异常处理器 |
 | `CrashLogWriter` | `SmartGuard.Configuration` | 崩溃应急同步写入（主日志尽力 + `%TEMP%\SmartGuard\crash.log` 必写） |
 | `LogFallbackChain` | `SmartGuard.Configuration` | 日志三层降级链（主日志 → startup 回退 → `%TEMP%\SmartGuard\emergency.log`），每层异常隔离 |
+| `LogLevelFilter` | `SmartGuard.Engine.Infrastructure` | 日志级别统一过滤入口：`ShouldWrite`（Heart 恒放行）+ `ParseMinimum`（大小写不敏感，非法回退 Info）；配置项 `GuardConfig.LogMinimumLevel` |
 
 ---
 
@@ -306,6 +307,7 @@
 | 计划任务安装跳过 | `InstallCommandsSkipArchitectureTests` |
 | 计划任务测试隔离契约 | `ArchitectureContractScheduledTaskIsolationTests` |
 | 日志阶段一止血 | `ArchitectureContractLoggingPhase1Tests` |
+| 日志阶段二异步管线 | `ArchitectureContractLoggingPhase2Tests` |
 
 ---
 
@@ -373,3 +375,11 @@
 | LOG-P1-CRASH | 阻断 | 四进程启动经 `GlobalExceptionHandlers.Register` + `CrashLogWriter` 崩溃应急同步写入 |
 | LOG-P1-FALLBACK | 阻断 | Engine 日志降级链 `LogFallbackChain`（主 → startup → `%TEMP%\SmartGuard\emergency.log`），每层异常保护 |
 | DOC-LOG-P1 | 已关闭 | 本文档 §1/§3/§6/§19 + `ArchitectureContractLoggingPhase1Tests` 终验 |
+
+---
+
+## 20. 日志系统阶段二（异步化与写入管线）（2026-08-01）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-P2-LEVEL | 阻断 | 日志级别六级 `Trace/Debug/Info/Warn/Error/Critical` + `Heart` 末位；`GuardianLoop.WriteLog` 经 `LogLevelFilter.ShouldWrite` 统一过滤，配置项 `LogMinimumLevel`（默认 `Info`，非法回退 `Info`） |
