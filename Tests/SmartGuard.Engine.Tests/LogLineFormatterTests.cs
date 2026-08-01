@@ -36,4 +36,11 @@ public class LogLineFormatterTests
     line.Should().Be("[WARN] 2026-06-16 16:00:13 亮度写回未完全匹配，已重试 3 次");
     line.Should().NotContain("WARN:");
   }
+
+  [Fact]
+  public void BuildContextSuffix_returns_empty_string_when_all_context_null()
+  {
+    var suffix = LogLineFormatter.BuildContextSuffix(null, null, null, null);
+    suffix.Should().BeEmpty();
+  }
 }

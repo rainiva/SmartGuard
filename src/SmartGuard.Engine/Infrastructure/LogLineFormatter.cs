@@ -30,6 +30,9 @@ public static class LogLineFormatter
   internal static string BuildContextSuffix(
     string? traceId, string? spanId, string? operationId, string? userActionId)
   {
+    if (string.IsNullOrEmpty(traceId) && string.IsNullOrEmpty(spanId)
+        && string.IsNullOrEmpty(operationId) && string.IsNullOrEmpty(userActionId))
+      return string.Empty;
     var parts = new System.Text.StringBuilder();
     if (!string.IsNullOrEmpty(traceId)) parts.Append("trace=").Append(traceId).Append(' ');
     if (!string.IsNullOrEmpty(spanId)) parts.Append("span=").Append(spanId).Append(' ');
