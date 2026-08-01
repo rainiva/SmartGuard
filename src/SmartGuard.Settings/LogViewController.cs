@@ -212,6 +212,11 @@ public sealed class LogViewController
         return result;
     }
 
+    public Task<IReadOnlyList<string>> GetFilteredLinesAsync(CancellationToken cancellationToken)
+    {
+        return Task.Run(() => GetFilteredLines(), cancellationToken);
+    }
+
     private int GetTotalLineCount()
     {
         if (string.IsNullOrEmpty(_cachedText))

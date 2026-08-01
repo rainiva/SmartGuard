@@ -66,4 +66,21 @@ public class ArchitectureContractLoggingPhase4Tests
     // 预留 S6 的 LogQueryFilterSpec 登记位
     ContractContent.Should().Contain("LOG-P4-UI-FILTER");
   }
+
+  [Fact]
+  public void LogViewBackgroundQuery_exists_and_is_async()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogView/LogViewBackgroundQuery.cs");
+    source.Should().Contain("QueryAsync");
+    source.Should().Contain("CancellationToken");
+    source.Should().Contain("Task<");
+  }
+
+  [Fact]
+  public void SettingsLogPageHost_wires_background_query()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.cs");
+    source.Should().Contain("LogViewBackgroundQuery",
+      "SettingsLogPageHost 必须接线 LogViewBackgroundQuery 实现非阻塞查询（D4 裁决）");
+  }
 }

@@ -15,7 +15,7 @@ internal sealed class SettingsLogPageHost
   private readonly SettingsLogSearchCoordinator _searchCoordinator;
   private readonly SettingsLogFollowTailCoordinator _followTailCoordinator;
   private readonly SettingsLogRefreshPipeline _refreshPipeline;
-  private LogViewController? _logController;
+  private LogViewController? _logController; private LogView.LogViewBackgroundQuery? _backgroundQuery;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private LogSearchFilterBar? _logSearchFilterBar;
   private ListBox? _lstLogView;
@@ -86,6 +86,7 @@ internal sealed class SettingsLogPageHost
       },
       ApplySnapshot,
       () => _followTailCoordinator.ApplyScrollIfEnabled());
+    _backgroundQuery = new LogView.LogViewBackgroundQuery();
   }
 
   private LogViewController? GetRefreshableController() =>
