@@ -53,4 +53,12 @@ public class ArchitectureContractLoggingPhase3Tests
     source.Should().Contain("EventNameRegistry.",
       "WriteLog 调用点必须使用 EventNameRegistry 常量，禁止硬编码事件名");
   }
+
+  [Fact]
+  public void Contract_registers_health_and_injector()
+  {
+    ContractContent.Should().Contain("LogPipelineHealth");
+    ContractContent.Should().Contain("LogFailureInjector");
+    ContractContent.Should().Contain("LogHealthSnapshot");
+  }
 }

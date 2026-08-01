@@ -19,6 +19,7 @@ public sealed class LogPipeline
   private long _droppedHigh;
   private long _writtenLines;
   private long _failedBatches;
+  private System.Timers.Timer? _healthTimer;
 
   public LogPipeline(Func<IReadOnlyList<string>, bool> writeBatch, LogPipelineOptions? options = null)
   {
@@ -86,8 +87,42 @@ public sealed class LogPipeline
     return waiter.Task;
   }
 
+  public void StartHealthReporting(LogPipelineHealth health, TimeSpan interval)
+  {
+    StopHealthReporting();
+    _healthTimer = new System.Timers.Timer(interval.TotalMilliseconds)
+    {
+      AutoReset = true,
+      Enabled = true
+    };
+    _healthTimer.Elapsed += (s, e) =>
+    {
+      try
+      {
+        var snapshot = health.TakeSnapshot(this);
+        var jsonLine = health.FormatJson(snapshot);
+        TryEnqueue(LogPriority.High, jsonLine);
+      }
+      catch
+      {
+        // 健康报告异常绝不影响管线主路径
+      }
+    };
+  }
+
+  public void StopHealthReporting()
+  {
+    if (_healthTimer != null)
+    {
+      _healthTimer.Enabled = false;
+      _healthTimer.Dispose();
+      _healthTimer = null;
+    }
+  }
+
   public async Task<bool> StopAsync()
   {
+    StopHealthReporting();
     // Running→Flushing（停止接收）；Starting→Stopped（从未启动，同步排空）
     Interlocked.CompareExchange(
       ref _state, (int)LogPipelineState.Flushing, (int)LogPipelineState.Running);
