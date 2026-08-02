@@ -1,3 +1,4 @@
+using System.IO;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
@@ -14,6 +15,12 @@ public sealed class LogViewController
     private bool _contentChanged;
     private bool _isLoaded;
     private IReadOnlyList<string> _activeTagFilters = [];
+
+    // D2：按文件签名（LastWriteTimeUtc + Length）缓存磁盘总行数，避免 2s 定时刷新重算。
+    private string? _totalLineCountPath;
+    private long _totalLineCountLength = -1;
+    private DateTime _totalLineCountWriteTimeUtc;
+    private int _totalLineCountCache;
 
     public string SearchKeyword { get; set; } = string.Empty;
     public bool SearchCaseSensitive { get; set; }
@@ -236,11 +243,37 @@ public sealed class LogViewController
 
     private int GetTotalLineCount()
     {
-        if (string.IsNullOrEmpty(_cachedText))
+        // D6：「总计」只计主日志 _logPath 磁盘真实行数；
+        // 仅当主日志不存在时才退化计 _fallbackLogPath。
+        string? path = null;
+        if (File.Exists(_logPath))
+            path = _logPath;
+        else if (!string.IsNullOrWhiteSpace(_fallbackLogPath) && File.Exists(_fallbackLogPath))
+            path = _fallbackLogPath;
+
+        if (path is null)
             return 0;
 
-        var newline = _cachedText.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        return _cachedText.Split(newline, StringSplitOptions.RemoveEmptyEntries).Length;
+        try
+        {
+            // D2：签名（LastWriteTimeUtc + Length）未变则直接返回缓存。
+            var info = new FileInfo(path);
+            if (_totalLineCountPath == path
+                && _totalLineCountLength == info.Length
+                && _totalLineCountWriteTimeUtc == info.LastWriteTimeUtc)
+                return _totalLineCountCache;
+
+            var count = LogLineCounter.CountLines(path);
+            _totalLineCountPath = path;
+            _totalLineCountLength = info.Length;
+            _totalLineCountWriteTimeUtc = info.LastWriteTimeUtc;
+            _totalLineCountCache = count;
+            return count;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private static bool MatchesTagFilter(string tag, IReadOnlySet<string> activeTags)

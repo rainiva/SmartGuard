@@ -225,6 +225,39 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
+    public void GetSnapshot_total_line_count_reflects_disk_real_count_when_log_exceeds_tail()
+    {
+        // 磁盘真实约 4000 行（>256KB），远超尾部缓存段所能容纳的行数
+        var builder = new System.Text.StringBuilder();
+        for (var i = 0; i < 4000; i++)
+            builder.AppendLine($"[INFO] 2026-06-19 10:00:{i % 60:D2} line {i} {new string('x', 60)}");
+
+        File.WriteAllText(_logPath, builder.ToString());
+        var diskLineCount = LogLineCounter.CountLines(_logPath);
+        diskLineCount.Should().Be(4000);
+
+        var controller = new LogViewController(_logPath, _fallbackPath);
+        var snapshot = controller.GetSnapshot();
+
+        // 尾部缓存段确实被截断，但「总计」必须报告磁盘真实行数
+        snapshot.IsTailTruncated.Should().BeTrue();
+        snapshot.TotalLineCount.Should().Be(diskLineCount);
+    }
+
+    [Fact]
+    public void GetSnapshot_total_line_count_counts_primary_only_and_ignores_fallback()
+    {
+        // D6：主日志存在时，「总计」只计主日志行数，忽略 fallback
+        File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 a\n[INFO] 2026-06-19 10:00:01 b\n");
+        File.WriteAllText(
+            _fallbackPath,
+            "[INFO] 2026-06-19 09:00:00 f1\n[INFO] 2026-06-19 09:00:01 f2\n[INFO] 2026-06-19 09:00:02 f3\n");
+
+        var controller = new LogViewController(_logPath, _fallbackPath);
+        controller.GetSnapshot().TotalLineCount.Should().Be(2);
+    }
+
+    [Fact]
     public void GetSnapshot_reports_empty_state_when_tag_filter_has_no_matches()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 ok\n");
