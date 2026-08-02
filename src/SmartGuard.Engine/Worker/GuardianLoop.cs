@@ -23,6 +23,7 @@ public sealed class GuardianLoop
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
   private readonly LogPipeline _logPipeline;
   private readonly LogConsumerRecovery _consumerRecovery = new(new LogRecoveryStateMachine());
+  private readonly LogPipelineHealth _pipelineHealth = new();
   private readonly HeartLogSampler _heartSampler = new();
   private readonly LogPipelineOptions _logOptions = new();
   private readonly LogBackpressureController _backpressure = new();
@@ -71,6 +72,7 @@ public sealed class GuardianLoop
   public async Task RunAsync(CancellationToken cancellationToken = default)
   {
     _logPipeline.Start();
+    _logPipeline.StartHealthReporting(_pipelineHealth, TimeSpan.FromMinutes(5));
     try
     {
       EnsureConfigExists();

@@ -93,4 +93,12 @@ public class ArchitectureContractLoggingPhase3Tests
     source.Should().Contain("TraceIdContext.GenerateNew",
       "每次迭代入口必须生成新 TraceId，否则结构化日志 trace 后缀无源头赋值");
   }
+
+  [Fact]
+  public void GuardianLoop_enables_pipeline_health_reporting()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("StartHealthReporting",
+      "GuardianLoop 启动管线后必须调 StartHealthReporting，否则 LogPipelineHealth 定时落盘未在生产启用");
+  }
 }
