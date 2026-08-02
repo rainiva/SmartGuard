@@ -1,11 +1,12 @@
 namespace SmartGuard.Configuration;
 
 /// <summary>
-/// 日志行索引条目：从日志文件单行解析出的结构化字段。
-/// 用于 LogQueryService 快速筛选，避免全文件扫描。
+/// 日志行索引条目：从 <see cref="LogEvent"/> 提取的可查询字段与稳定物理定位。
 /// </summary>
 public sealed record LogIndexEntry(
-  int LineNumber,
+  LogSourceIdentity Source,
+  long ByteOffset,
+  string EventId,
   DateTimeOffset Timestamp,
   string Level,
   string Category,

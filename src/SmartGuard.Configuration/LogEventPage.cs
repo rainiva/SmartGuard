@@ -5,4 +5,8 @@ public sealed record LogEventPage(
   LogReadCursor? OlderCursor,
   LogReadCursor? NewerCursor,
   bool HasOlder,
-  bool HasNewer);
+  bool HasNewer)
+{
+  public static LogEventPage Empty { get; } =
+    new(Array.Empty<LogEvent>(), null, null, false, false);
+}

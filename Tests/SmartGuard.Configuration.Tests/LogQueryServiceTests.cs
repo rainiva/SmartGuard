@@ -4,15 +4,42 @@ namespace SmartGuard.Configuration.Tests;
 
 public class LogQueryServiceTests
 {
+  private static LogSourceIdentity TestSource()
+    => LogSourceIdentity.FromContentPrefix(
+      new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
+      "query-test");
+
+  private static LogIndexEntry Entry(
+    long offset,
+    DateTimeOffset timestamp,
+    string level,
+    string category,
+    string? eventName,
+    string? operationId,
+    int? processId,
+    int? threadId)
+    => new(
+      TestSource(),
+      offset,
+      $"l:test-{offset}",
+      timestamp,
+      level,
+      category,
+      eventName,
+      operationId,
+      null,
+      processId,
+      threadId);
+
   private static LogIndex CreateTestIndex()
   {
     var entries = new List<LogIndexEntry>
     {
-      new(1, new DateTimeOffset(2026, 8, 1, 10, 0, 0, TimeSpan.Zero), "INFO", "Engine", "AppStarted", null, null, 1234, 5678),
-      new(2, new DateTimeOffset(2026, 8, 1, 10, 1, 0, TimeSpan.Zero), "WARN", "Engine", "RecoveryDegraded", "op-abc", null, 1234, 5678),
-      new(3, new DateTimeOffset(2026, 8, 1, 10, 2, 0, TimeSpan.Zero), "ERROR", "GuardianLoop", "IterationError", "op-abc", null, 1234, 5678),
-      new(4, new DateTimeOffset(2026, 8, 1, 10, 3, 0, TimeSpan.Zero), "INFO", "Engine", "HeartbeatTick", null, null, 1234, 5678),
-      new(5, new DateTimeOffset(2026, 8, 1, 10, 4, 0, TimeSpan.Zero), "ERROR", "Engine", "IterationError", "op-def", null, 4321, 8765),
+      Entry(0, new DateTimeOffset(2026, 8, 1, 10, 0, 0, TimeSpan.Zero), "INFO", "Engine", "AppStarted", null, 1234, 5678),
+      Entry(64, new DateTimeOffset(2026, 8, 1, 10, 1, 0, TimeSpan.Zero), "WARN", "Engine", "RecoveryDegraded", "op-abc", 1234, 5678),
+      Entry(128, new DateTimeOffset(2026, 8, 1, 10, 2, 0, TimeSpan.Zero), "ERROR", "GuardianLoop", "IterationError", "op-abc", 1234, 5678),
+      Entry(192, new DateTimeOffset(2026, 8, 1, 10, 3, 0, TimeSpan.Zero), "INFO", "Engine", "HeartbeatTick", null, 1234, 5678),
+      Entry(256, new DateTimeOffset(2026, 8, 1, 10, 4, 0, TimeSpan.Zero), "ERROR", "Engine", "IterationError", "op-def", 4321, 8765),
     };
     return new LogIndex(entries, "test.log");
   }

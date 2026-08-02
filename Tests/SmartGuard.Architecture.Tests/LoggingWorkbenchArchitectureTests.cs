@@ -32,6 +32,18 @@ public class LoggingWorkbenchArchitectureTests
   }
 
   [Fact]
+  public void LogIndexBuilder_does_not_open_log_files_directly()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogIndexBuilder.cs");
+    source.Should().NotContain("new FileStream");
+    source.Should().NotContain("File.OpenRead");
+    source.Should().NotContain("File.Exists");
+    source.Should().NotContain("StreamReader");
+    source.Should().NotContain("ReadAllText");
+    source.Should().NotContain("ReadAllLines");
+  }
+
+  [Fact]
   public void Log_queries_remain_LogQueryService()
   {
     ContractContent.Should().Contain("LOG-WB-QUERY");
