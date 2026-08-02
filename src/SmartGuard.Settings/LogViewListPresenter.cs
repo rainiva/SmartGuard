@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
 
@@ -17,7 +19,14 @@ public sealed class LogViewListPresenter
     private readonly ObservableCollection<LogLineDisplayItem> _items = new();
     private ListBox? _listBox;
 
+    public ReadOnlyObservableCollection<LogLineDisplayItem> Items { get; }
+
     public ScrollViewer? ScrollViewer { get; private set; }
+
+    public LogViewListPresenter()
+    {
+        Items = new ReadOnlyObservableCollection<LogLineDisplayItem>(_items);
+    }
 
     public void Attach(ListBox listBox)
     {
@@ -61,8 +70,41 @@ public sealed class LogViewListPresenter
         };
     }
 
+    public LogViewApplyResult ApplyDelta(LogWindowDelta delta)
+    {
+        if (delta.IsEmpty)
+            return LogViewApplyResult.Unchanged;
+
+        if (delta.IsInitialize)
+        {
+            ReplaceItemsWithoutReset(delta.InitializeEvents.Select(LogLineDisplayItem.FromEvent));
+            NotifyContentChanged();
+            return LogViewApplyResult.Replaced;
+        }
+
+        ApplyRemovals(delta.RemovedHeadCount, delta.RemovedTailCount);
+
+        if (delta.PrependedEvents.Count > 0)
+        {
+            for (var i = delta.PrependedEvents.Count - 1; i >= 0; i--)
+                _items.Insert(0, LogLineDisplayItem.FromEvent(delta.PrependedEvents[i]));
+        }
+
+        foreach (var logEvent in delta.AppendedEvents)
+            _items.Add(LogLineDisplayItem.FromEvent(logEvent));
+
+        NotifyContentChanged();
+
+        return delta.AppendedEvents.Count > 0 || delta.PrependedEvents.Count > 0
+            ? LogViewApplyResult.Appended
+            : LogViewApplyResult.Replaced;
+    }
+
     public string GetPlainText()
         => string.Join(Environment.NewLine, _items.Select(item => item.LineText));
+
+    internal string? GetEventIdAt(int index)
+        => index >= 0 && index < _items.Count ? _items[index].EventId : null;
 
     public static ScrollViewer? FindScrollViewer(ListBox listBox)
     {
@@ -116,12 +158,27 @@ public sealed class LogViewListPresenter
 
     private LogViewApplyResult ReplaceAll(LogViewUpdatePlan plan)
     {
-        _items.Clear();
-        foreach (var line in plan.AllLines)
-            _items.Add(LogLineDisplayItem.Parse(line));
-
+        ReplaceItemsWithoutReset(plan.AllLines.Select(LogLineDisplayItem.Parse));
         NotifyContentChanged();
         return LogViewApplyResult.Replaced;
+    }
+
+    private void ReplaceItemsWithoutReset(IEnumerable<LogLineDisplayItem> nextItems)
+    {
+        while (_items.Count > 0)
+            _items.RemoveAt(_items.Count - 1);
+
+        foreach (var item in nextItems)
+            _items.Add(item);
+    }
+
+    private void ApplyRemovals(int removedHeadCount, int removedTailCount)
+    {
+        for (var i = 0; i < removedHeadCount && _items.Count > 0; i++)
+            _items.RemoveAt(0);
+
+        for (var i = 0; i < removedTailCount && _items.Count > 0; i++)
+            _items.RemoveAt(_items.Count - 1);
     }
 
     private void NotifyContentChanged()

@@ -90,4 +90,25 @@ public class LoggingWorkbenchArchitectureTests
       "diagnostic export must stay on DiagnosticBundleExporter; found: "
       + string.Join(", ", exporters));
   }
+
+  [Fact]
+  public void LogEventWindow_is_the_single_bounded_display_window()
+  {
+    var boundedWindows = SourceScanHelper.EnumerateCsFilesUnder("src")
+      .Where(path => File.ReadAllText(path).Contains("class LogEventWindow", StringComparison.Ordinal))
+      .Select(path => Path.GetRelativePath(SourceScanHelper.RepoRoot, path))
+      .ToList();
+
+    boundedWindows.Should().ContainSingle(
+      "bounded log display window must stay on LogEventWindow; found: "
+      + string.Join(", ", boundedWindows));
+  }
+
+  [Fact]
+  public void LogViewListPresenter_does_not_clear_observable_collection()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewListPresenter.cs");
+    source.Should().NotContain("_items.Clear(",
+      "incremental log list updates must not reset the observable collection");
+  }
 }
