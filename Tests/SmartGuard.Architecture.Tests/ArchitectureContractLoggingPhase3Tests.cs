@@ -77,4 +77,20 @@ public class ArchitectureContractLoggingPhase3Tests
     source.Should().Contain("FlushToSync",
       "崩溃回调必须在 CrashLogWriter.Write 前 flush 环形缓冲，否则 CrashRingBuffer 未接入崩溃路径");
   }
+
+  [Fact]
+  public void GuardianIterationRunner_generates_operation_id_per_iteration()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs");
+    source.Should().Contain("OperationIdContext.GenerateNew",
+      "每次迭代入口必须生成新 OperationId，否则日志上下文后缀与 status.json 中继无源头赋值");
+  }
+
+  [Fact]
+  public void GuardianIterationRunner_generates_trace_id_per_iteration()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs");
+    source.Should().Contain("TraceIdContext.GenerateNew",
+      "每次迭代入口必须生成新 TraceId，否则结构化日志 trace 后缀无源头赋值");
+  }
 }

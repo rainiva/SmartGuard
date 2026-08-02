@@ -28,6 +28,8 @@ internal sealed class GuardianIterationRunner(
 {
   public async Task RunAsync(GuardianLoopIterationState state, CancellationToken cancellationToken)
   {
+    OperationIdContext.GenerateNew();
+    TraceIdContext.GenerateNew();
     var config = loadConfig();
     var planCatalog = state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad();
     state.PlanCatalog = planCatalog;
@@ -136,6 +138,7 @@ internal sealed class GuardianIterationRunner(
       paused = config.Paused,
       enginePid = Environment.ProcessId,
       lastExternalChange = null,
+      operationId = OperationIdContext.Current,
       notificationEvent = state.NotificationRetention.Event
     });
   }
