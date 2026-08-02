@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings.LogView;
 
@@ -29,6 +30,8 @@ public static class LogLineDisplayFormatter
     if (string.IsNullOrEmpty(line)) return line;
     if (line.StartsWith("---", StringComparison.Ordinal)) return line;
     if (LegacyLogPipelineHealth.IsMatch(line)) return $"[DIAG] {line.TrimStart()}";
+    if (line.TrimStart().StartsWith('{'))
+      return LogEventDisplayFormatter.FormatLineForUi(line);
 
     if (TagBeforeTimestamp.IsMatch(line)) return line;
 

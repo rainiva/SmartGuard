@@ -137,13 +137,30 @@ public static class DiagnosticBundleExporter
     var tailBytes = ReadTailBytes(sourcePath, MainLogTailMaxBytes);
     var tailText = Encoding.UTF8.GetString(tailBytes);
     var rawLines = tailText.Split('\n');
+    var source = LogSourceIdentity.FromFilePath(sourcePath);
     var startIndex = new FileInfo(sourcePath).Length > MainLogTailMaxBytes ? 1 : 0;
     var jsonlLines = new List<string>();
+    long byteOffset = 0;
     for (var i = startIndex; i < rawLines.Length; i++)
     {
       var line = rawLines[i].TrimEnd('\r');
-      if (LogJsonlFormatter.TryParseLine(line, out var entry) && entry != null)
-        jsonlLines.Add(LogJsonlFormatter.FormatLine(entry));
+      if (string.IsNullOrWhiteSpace(line))
+      {
+        byteOffset += Encoding.UTF8.GetByteCount(rawLines[i]) + 1;
+        continue;
+      }
+
+      if (LogJsonlFormatter.TryParseEvent(line, out var structured) && structured is not null)
+      {
+        jsonlLines.Add(LogJsonlFormatter.FormatLine(structured));
+      }
+      else
+      {
+        var decoded = LogEventDecoder.Decode(new LogPhysicalLine(source, byteOffset, line, true));
+        jsonlLines.Add(LogJsonlFormatter.FormatLine(decoded));
+      }
+
+      byteOffset += Encoding.UTF8.GetByteCount(rawLines[i]) + 1;
     }
 
     if (jsonlLines.Count == 0)
