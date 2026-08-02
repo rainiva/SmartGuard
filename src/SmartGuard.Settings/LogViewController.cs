@@ -99,13 +99,9 @@ public sealed class LogViewController
         EnsureLoaded();
         var filtered = GetFilteredLines();
         var emptyStateMessage = ResolveEmptyStateMessage(filtered);
-        var display = LogViewDisplaySlice.Select(
-            filtered,
-            LogViewDisplaySlice.DefaultMaxLines,
-            preferTail: true);
 
         return new LogViewSnapshot(
-            display.Lines,
+            filtered,
             GetTotalLineCount(),
             _isTailTruncated,
             _logPath,
@@ -114,7 +110,7 @@ public sealed class LogViewController
             emptyStateMessage,
             TimeRange,
             filtered.Count,
-            display.IsTruncated,
+            IsDisplayTruncated: false,
             _activeTagFilters);
     }
 

@@ -854,7 +854,7 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_jumps_to_bottom_without_enabling_follow_tail()
+    public void User_jumps_to_bottom_enables_follow_tail()
     {
         RunOnSta(() =>
         {
@@ -890,7 +890,7 @@ public class SettingsWindowControllerTests
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
                 LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
-                chkLogFollowTail.IsChecked.Should().BeFalse();
+                chkLogFollowTail.IsChecked.Should().BeTrue();
             }
             finally
             {

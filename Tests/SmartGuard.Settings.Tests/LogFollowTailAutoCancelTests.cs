@@ -52,6 +52,86 @@ public class LogFollowTailAutoCancelTests
     }
 
     [Fact]
+    public void Wheel_scroll_up_from_tail_is_not_rechecked_before_the_viewport_moves()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
+            using (ctx)
+            {
+                var followTail = (CheckBox)window.FindName("chkLogFollowTail");
+                followTail.IsChecked = true;
+                var coordinator = GetFollowTailCoordinator(controller);
+
+                scrollViewer.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, 120)
+                {
+                    RoutedEvent = UIElement.PreviewMouseWheelEvent,
+                    Source = scrollViewer,
+                });
+
+                coordinator.OnScrollChanged(scrollViewer);
+
+                followTail.IsChecked.Should().BeFalse(
+                    "the first layout event can still report the old tail offset and must not undo the user's upward gesture");
+            }
+        });
+    }
+
+    [Fact]
+    public void Bottom_button_reaching_tail_checks_follow_tail()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out _);
+            using (ctx)
+            {
+                var followTail = (CheckBox)window.FindName("chkLogFollowTail");
+                var topButton = (Button)window.FindName("btnLogScrollTop");
+                var bottomButton = (Button)window.FindName("btnLogScrollBottom");
+
+                topButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                followTail.IsChecked.Should().BeFalse();
+
+                bottomButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                scrollViewer.VerticalOffset.Should().BeGreaterThanOrEqualTo(
+                    scrollViewer.ScrollableHeight - LogViewScrollState.TailThresholdPixels);
+                followTail.IsChecked.Should().BeTrue(
+                    "reaching the tail restores live-follow mode regardless of whether the user dragged or pressed the bottom button");
+            }
+        });
+    }
+
+    [Fact]
+    public void Scrollbar_thumb_reaching_tail_checks_follow_tail()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out _);
+            using (ctx)
+            {
+                var followTail = (CheckBox)window.FindName("chkLogFollowTail");
+                var topButton = (Button)window.FindName("btnLogScrollTop");
+                topButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                var scrollBar = FindScrollBar(scrollViewer, "PART_VerticalScrollBar");
+                scrollBar.RaiseEvent(new ScrollEventArgs(ScrollEventType.ThumbPosition, scrollBar.Maximum)
+                {
+                    RoutedEvent = ScrollBar.ScrollEvent,
+                });
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
+                followTail.IsChecked.Should().BeTrue(
+                    "dragging the vertical thumb down to the tail must restore live-follow mode");
+            }
+        });
+    }
+
+    [Fact]
     public void Scrollbar_track_page_up_cancels_follow_tail()
     {
         WpfStaTestHost.Run(() =>

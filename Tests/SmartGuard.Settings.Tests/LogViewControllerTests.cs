@@ -96,7 +96,7 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
-    public void GetSnapshot_truncates_display_lines_for_large_result_sets()
+    public void GetSnapshot_keeps_all_loaded_lines_browsable_for_large_result_sets()
     {
         var builder = new System.Text.StringBuilder();
         for (var i = 0; i < 3000; i++)
@@ -107,13 +107,15 @@ public class LogViewControllerTests : IDisposable
         var controller = new LogViewController(_logPath, _fallbackPath);
         var snapshot = controller.GetSnapshot();
 
-        snapshot.FilteredLines.Count.Should().Be(LogViewDisplaySlice.DefaultMaxLines);
-        snapshot.IsDisplayTruncated.Should().BeTrue();
+        snapshot.DisplayLines.Should().HaveCount(3000);
+        snapshot.DisplayLines[0].Should().Contain("line 0");
+        snapshot.DisplayLines[^1].Should().Contain("line 2999");
+        snapshot.IsDisplayTruncated.Should().BeFalse();
         snapshot.MatchedLineCount.Should().Be(3000);
     }
 
     [Fact]
-    public void GetSnapshot_keeps_latest_lines_visible_when_follow_tail_is_disabled()
+    public void GetSnapshot_keeps_entire_loaded_history_visible_when_follow_tail_is_disabled()
     {
         var builder = new System.Text.StringBuilder();
         var firstTimestamp = new DateTime(2026, 7, 29, 10, 0, 0);
@@ -129,8 +131,8 @@ public class LogViewControllerTests : IDisposable
 
         var snapshot = controller.GetSnapshot();
 
-        snapshot.DisplayLines.Should().HaveCount(LogViewDisplaySlice.DefaultMaxLines);
-        snapshot.DisplayLines[0].Should().Contain("line 200");
+        snapshot.DisplayLines.Should().HaveCount(700);
+        snapshot.DisplayLines[0].Should().Contain("line 0");
         snapshot.DisplayLines[^1].Should().Contain("line 699");
     }
 

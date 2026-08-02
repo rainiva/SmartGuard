@@ -11,6 +11,7 @@ internal sealed class SettingsLogFollowTailCoordinator
   private readonly Func<ListBox?> _getListBox;
   private readonly Func<ScrollViewer?> _resolveScrollViewer;
   private readonly Action<bool> _refreshLogView;
+  private bool _pendingUserScrollAwayFromTail;
 
   internal bool SuppressFollowTailAutoSync { get; private set; }
 
@@ -38,8 +39,23 @@ internal sealed class SettingsLogFollowTailCoordinator
     if (controller is null || SuppressFollowTailAutoSync || PendingFollowTailInitialScroll)
       return;
 
-    controller.FollowTail = LogViewScrollState.IsAtTail(scrollViewer);
+    var isAtTail = LogViewScrollState.IsAtTail(scrollViewer);
+    if (_pendingUserScrollAwayFromTail)
+    {
+      if (isAtTail)
+        return;
+
+      _pendingUserScrollAwayFromTail = false;
+    }
+
+    controller.FollowTail = isAtTail;
     SyncFollowTailToggle();
+  }
+
+  internal void OnUserScrollAwayFromTail()
+  {
+    _pendingUserScrollAwayFromTail = true;
+    OnUserVerticalScroll();
   }
 
   internal void OnUserVerticalScroll()
@@ -56,6 +72,7 @@ internal sealed class SettingsLogFollowTailCoordinator
 
   internal void ScrollToTop()
   {
+    _pendingUserScrollAwayFromTail = false;
     SuppressFollowTailAutoSync = true;
     try
     {
@@ -73,13 +90,14 @@ internal sealed class SettingsLogFollowTailCoordinator
 
   internal void ScrollToBottom()
   {
+    _pendingUserScrollAwayFromTail = false;
     SuppressFollowTailAutoSync = true;
     try
     {
       ScrollLogViewToTail();
       var controller = _getController();
-      if (controller is not null && _getFollowTailCheckBox()?.IsChecked != true)
-        controller.FollowTail = false;
+      if (controller is not null)
+        controller.FollowTail = true;
       SyncFollowTailToggle();
     }
     finally
@@ -97,6 +115,7 @@ internal sealed class SettingsLogFollowTailCoordinator
     controller.FollowTail = enabled;
     if (enabled)
     {
+      _pendingUserScrollAwayFromTail = false;
       // Explicitly enabling follow-tail is an intentional jump to the tail,
       // exempt from the "keep the user's reading position" gate below.
       PendingFollowTailInitialScroll = true;

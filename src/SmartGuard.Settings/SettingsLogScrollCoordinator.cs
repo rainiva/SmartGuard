@@ -51,7 +51,7 @@ internal sealed class SettingsLogScrollCoordinator
       new System.Windows.Input.MouseWheelEventHandler((_, args) =>
       {
         if (args.Delta > 0 && _scrollViewer is { ScrollableHeight: > 0 })
-          followTailCoordinator.OnUserVerticalScroll();
+          followTailCoordinator.OnUserScrollAwayFromTail();
       }),
       handledEventsToo: true);
     EnsureThumbHandlersHooked(followTailCoordinator);
@@ -77,7 +77,7 @@ internal sealed class SettingsLogScrollCoordinator
     if (args.ScrollEventType is ScrollEventType.LargeDecrement or ScrollEventType.SmallDecrement
         && scrollBar.Orientation == Orientation.Vertical)
     {
-      followTailCoordinator.OnUserVerticalScroll();
+      followTailCoordinator.OnUserScrollAwayFromTail();
       return;
     }
 
@@ -98,7 +98,10 @@ internal sealed class SettingsLogScrollCoordinator
     _verticalCommittedOffset = args.NewValue;
     _verticalObservedOffset = args.NewValue;
     _verticalThumbTrackObserved = true;
-    followTailCoordinator.OnUserVerticalScroll();
+    if (args.NewValue < _scrollViewer.VerticalOffset)
+      followTailCoordinator.OnUserScrollAwayFromTail();
+    else
+      followTailCoordinator.OnUserVerticalScroll();
     _scrollViewer.ScrollToVerticalOffset(args.NewValue);
   }
 

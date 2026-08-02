@@ -20,10 +20,15 @@ public static class LogLineDisplayFormatter
     @"^(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?<message>.*)$",
     RegexOptions.Compiled);
 
+  private static readonly Regex LegacyLogPipelineHealth = new(
+    "^\\s*\\{\\s*\"health\"\\s*:\\s*\"LogPipeline\"",
+    RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
   public static string FormatLine(string line)
   {
     if (string.IsNullOrEmpty(line)) return line;
     if (line.StartsWith("---", StringComparison.Ordinal)) return line;
+    if (LegacyLogPipelineHealth.IsMatch(line)) return $"[DIAG] {line.TrimStart()}";
 
     if (TagBeforeTimestamp.IsMatch(line)) return line;
 
@@ -59,8 +64,26 @@ public static class LogLineDisplayFormatter
 
     var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
     var lines = text.Split(newline, StringSplitOptions.None);
+    string? contextTag = null;
+    string? contextTimestamp = null;
     for (var i = 0; i < lines.Length; i++)
-      lines[i] = FormatLine(lines[i]);
+    {
+      var formatted = FormatLine(lines[i]);
+      if (formatted.StartsWith("StackTrace:", StringComparison.Ordinal)
+          && contextTag is not null
+          && contextTimestamp is not null)
+      {
+        formatted = $"[{contextTag}] {contextTimestamp} {formatted}";
+      }
+
+      lines[i] = formatted;
+      var context = TagBeforeTimestamp.Match(formatted);
+      if (context.Success)
+      {
+        contextTag = context.Groups["tag"].Value;
+        contextTimestamp = context.Groups["timestamp"].Value;
+      }
+    }
 
     return string.Join(newline, lines);
   }
