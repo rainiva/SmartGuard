@@ -288,7 +288,6 @@ internal sealed class SettingsLogPageHost
       _lblLogStatus.Text = LoadingStatusText;
     ScheduleLogRefresh(forceRefresh: true, forceRedraw: true);
   }
-
   internal void ExportVisibleLogToPath(string destinationPath)
   {
     if (_disposed)
