@@ -343,6 +343,7 @@
 | 日志阶段二异步管线 | `ArchitectureContractLoggingPhase2Tests` |
 | 日志阶段三结构化与可观测 | `ArchitectureContractLoggingPhase3Tests` |
 | 日志阶段四 UI 与查询升级 | `ArchitectureContractLoggingPhase4Tests` |
+| 日志工作台 P0 唯一真源 | `LoggingWorkbenchArchitectureTests` |
 
 ---
 
@@ -457,3 +458,17 @@
 | LOG-P4-HISTORY | 阻断 | `LogTailReader` 为日志页历史读取唯一入口：按新到旧消费 `SmartGuard.log` 与同目录 `SmartGuard.log.*.bak`，恢复为时间顺序后与 startup 回退合并；总载入量受最近 256KB 预算约束，状态栏统计仅基于该已载入集合 |
 | LOG-P4-VERIFY | 阻断 | 终验：§22 八条 LOG-P4-* 收口行齐备 + DOC-LOG-P4 状态"已关闭"；§3 含阶段四全部新类型行；§6 含阶段四门禁索引行；WIP 禁触清单调整为 9 个（含 `SettingsLogPageHost`、`SettingsLogRefreshPipeline` 等） |
 | DOC-LOG-P4 | 已关闭 | 本文档 §3/§6/§22 + `ArchitectureContractLoggingPhase4Tests` 终验 |
+
+---
+
+## 23. 日志工作台 P0（唯一真源与反重复）（2026-08-02）
+
+**关联 ADR：** [docs/decisions/0001-log-workbench-architecture.md](decisions/0001-log-workbench-architecture.md)
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-WB-HISTORY | 阻断 | `LogTailReader` 为 configured 主日志与同目录归档历史读取唯一实现；扩展 cursor 分页时仍禁止第二套主日志 `FileStream` reader；startup 为只读兼容 source，由 `LogTailReader` 合并 |
+| LOG-WB-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 为日志查询与内存索引唯一真源；UI 筛选与诊断查询准备不得另建 query service |
+| LOG-WB-CONFIG | 阻断 | 日志筛选器、视图偏好及相关 config 字段只经 `GuardConfigRepository.TryLoad` / `Save` 持久化；禁止旁路全量写或 Engine/Tray 直读磁盘 config 决定日志 UI 状态 |
+| LOG-WB-EXPORT | 阻断 | `DiagnosticBundleExporter` 为诊断包 zip 唯一真源；`logs/SmartGuard.jsonl` 为导出规范化视图，不是第二实时日志物理源 |
+| DOC-LOG-WB | 登记 | 本文档 §23 + ADR `0001-log-workbench-architecture.md` + `LoggingWorkbenchArchitectureTests`；P0 阶段未关闭，视口/typed-event/writer 门禁分别在 P0-06/P0-02/P0-03 同切片 RED→GREEN |
