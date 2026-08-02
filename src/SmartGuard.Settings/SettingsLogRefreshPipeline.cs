@@ -59,7 +59,7 @@ internal sealed class SettingsLogRefreshPipeline
   }
 
   internal bool IsRefreshInFlight =>
-    _refreshInFlight || Volatile.Read(ref _activeRefreshCount) > 0;
+    !_isDisposed() && (_refreshInFlight || Volatile.Read(ref _activeRefreshCount) > 0);
 
   internal bool UiRefreshInFlight => _refreshInFlight;
 
@@ -109,10 +109,10 @@ internal sealed class SettingsLogRefreshPipeline
       return;
 
     Interlocked.Increment(ref _refreshGeneration);
-    CancelActiveRefresh();
 
     if (_refreshInFlight)
     {
+      CancelActiveRefresh();
       _pendingRefresh = true;
       _pendingKind = MergeKind(_pendingKind, kind);
       _pendingForceRefresh |= forceRefresh;
