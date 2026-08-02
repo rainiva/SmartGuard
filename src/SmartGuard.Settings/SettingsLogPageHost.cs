@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -13,7 +12,7 @@ internal sealed class SettingsLogPageHost
   private readonly string _root;
   private readonly ToastNotificationService _toastService;
   private readonly SettingsLogSearchCoordinator _searchCoordinator;
-  private readonly SettingsLogFollowTailCoordinator _followTailCoordinator;
+  private readonly LogViewportController _logViewport;
   private readonly SettingsLogRefreshPipeline _refreshPipeline;
   private LogViewController? _logController;
   private System.Windows.Threading.DispatcherTimer? _logTimer;
@@ -25,7 +24,6 @@ internal sealed class SettingsLogPageHost
   private int? _logIdleSeconds;
   private bool _logStatusMayBeStale;
   private TextBlock? _lblLogStatus;
-  private readonly SettingsLogScrollCoordinator _logScrollCoordinator = new();
   private ScrollViewer? _logScrollViewer;
   private string? _logPath;
   private string? _fallbackLogPath;
@@ -60,12 +58,11 @@ internal sealed class SettingsLogPageHost
     _logPath = logPath;
     _fallbackLogPath = fallbackLogPath;
     _searchCoordinator = new SettingsLogSearchCoordinator(window, () => RefreshLogView());
-    _followTailCoordinator = new SettingsLogFollowTailCoordinator(
+    _logViewport = new LogViewportController(
       window,
-      () => _logController,
-      () => _chkLogFollowTail,
       () => _lstLogView,
-      () => _logScrollCoordinator.Resolve(_lstLogView, _logListPresenter),
+      () => _logListPresenter,
+      () => _chkLogFollowTail,
       forceRedraw => RefreshLogView(forceRedraw));
     _refreshPipeline = new SettingsLogRefreshPipeline(
       window,
@@ -85,7 +82,7 @@ internal sealed class SettingsLogPageHost
           _lblLogStatus.Text = $"{LoadFailedStatusText}：{failure.Message}";
       },
       ApplySnapshot,
-      () => _followTailCoordinator.ApplyScrollIfEnabled());
+      () => _logViewport.ApplyFollowLatestIfEnabled(fromRefreshPipeline: true));
   }
 
   private LogViewController? GetRefreshableController() =>
@@ -117,7 +114,7 @@ internal sealed class SettingsLogPageHost
     {
       _logPageActive = false;
       _logTimer?.Stop();
-      _followTailCoordinator.PendingFollowTailInitialScroll = false;
+      _logViewport.ClearPendingInitialTailScroll();
       return;
     }
 
@@ -126,14 +123,19 @@ internal sealed class SettingsLogPageHost
     if (_logTimer is null)
       return;
 
-    _followTailCoordinator.SyncFollowTailFromUi();
-    _followTailCoordinator.PendingFollowTailInitialScroll = _logController?.FollowTail == true;
+    _logViewport.SyncFollowLatestFromUi();
+    if (_logController is not null)
+      _logController.FollowTail = _logViewport.FollowLatest;
+    if (_logViewport.FollowLatest)
+      _logViewport.MarkPendingInitialTailScroll();
+    else
+      _logViewport.ClearPendingInitialTailScroll();
     _logTimer.Start();
     EnsureLogScrollViewerHooked();
 
     if (reason == LogPageActivationReason.WindowRestored && _lastDisplayedLines.Count > 0)
     {
-      _followTailCoordinator.ApplyScrollIfEnabled();
+      _logViewport.ApplyFollowLatestIfEnabled();
       return;
     }
 
@@ -141,10 +143,9 @@ internal sealed class SettingsLogPageHost
     if (isFirstVisit && _lblLogStatus is not null)
       _lblLogStatus.Text = LoadingStatusText;
 
-    // First visit: force full redraw once content arrives. Revisit: keep list, incremental apply.
     ScheduleLogRefresh(forceRefresh: false, forceRedraw: isFirstVisit);
     if (!isFirstVisit)
-      _followTailCoordinator.ApplyScrollIfEnabled();
+      _logViewport.ApplyFollowLatestIfEnabled();
   }
 
   internal void RefreshLogViewForThemeChange()
@@ -160,8 +161,7 @@ internal sealed class SettingsLogPageHost
     if (_disposed)
       return;
 
-    _logScrollViewer = _logScrollCoordinator.EnsureHooked(
-      _lstLogView, _logListPresenter, _followTailCoordinator);
+    _logScrollViewer = _logViewport.EnsureHooked(_lstLogView, _logListPresenter);
   }
 
   internal void Dispose()
@@ -190,7 +190,7 @@ internal sealed class SettingsLogPageHost
       () =>
       {
         EnsureLogScrollViewerHooked();
-        _followTailCoordinator.ApplyScrollIfEnabled();
+        _logViewport.ApplyFollowLatestIfEnabled();
       },
       () => RefreshLogView());
     _logController = controls.Controller;
@@ -221,7 +221,7 @@ internal sealed class SettingsLogPageHost
     SettingsLogPageHostWiring.WireToolbarButtons(
       _window,
       _chkLogFollowTail,
-      _followTailCoordinator,
+      _logViewport,
       () => _logExportCoordinator.CopyVisible(),
       () => _logExportCoordinator.ExportVisible(),
       () => _logExportCoordinator.OpenFolder(),
@@ -235,7 +235,9 @@ internal sealed class SettingsLogPageHost
       _txtLogRangeEnd,
       _chkLogSearchCaseSensitive,
       () => RefreshLogView());
-    _followTailCoordinator.SyncFollowTailFromUi();
+    _logViewport.SyncFollowLatestFromUi();
+    if (_logController is not null)
+      _logController.FollowTail = _logViewport.FollowLatest;
   }
 
   internal void RefreshLogView(bool forceRedraw = false)
@@ -271,9 +273,8 @@ internal sealed class SettingsLogPageHost
       ref _logStatusMayBeStale,
       ref _lastDisplayedLines,
       ref forceCount,
-      _followTailCoordinator,
-      () => _logScrollCoordinator.Resolve(_lstLogView, _logListPresenter),
-      _logScrollCoordinator.GetPreferredHorizontalOffset, forceRedraw);
+      _logViewport,
+      forceRedraw);
     ForceRefreshLogViewCountForTests = forceCount;
   }
 

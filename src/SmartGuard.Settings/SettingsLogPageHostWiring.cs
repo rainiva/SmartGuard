@@ -11,7 +11,7 @@ internal static class SettingsLogPageHostWiring
   internal static void WireToolbarButtons(
     Window window,
     CheckBox? followTailCheckBox,
-    SettingsLogFollowTailCoordinator followTailCoordinator,
+    LogViewportController logViewport,
     Action copyVisibleLog,
     Action exportVisibleLog,
     Action openLogFolder,
@@ -112,13 +112,13 @@ internal static class SettingsLogPageHostWiring
       SetLogMoreFlyoutOpen(false);
       openLogFolder();
     };
-    if (btnLogScrollTop is not null) btnLogScrollTop.Click += (_, _) => followTailCoordinator.ScrollToTop();
-    if (btnLogScrollBottom is not null) btnLogScrollBottom.Click += (_, _) => followTailCoordinator.ScrollToBottom();
+    if (btnLogScrollTop is not null) btnLogScrollTop.Click += (_, _) => logViewport.ScrollToTop();
+    if (btnLogScrollBottom is not null) btnLogScrollBottom.Click += (_, _) => logViewport.ScrollToBottom();
     if (btnLogRefresh is not null) btnLogRefresh.Click += (_, _) => forceRefreshLogView();
     if (followTailCheckBox is not null)
     {
-      followTailCheckBox.Checked += (_, _) => followTailCoordinator.SetFollowTail(true);
-      followTailCheckBox.Unchecked += (_, _) => followTailCoordinator.SetFollowTail(false);
+      followTailCheckBox.Checked += (_, _) => logViewport.SetFollowLatest(true);
+      followTailCheckBox.Unchecked += (_, _) => logViewport.SetFollowLatest(false);
     }
   }
 

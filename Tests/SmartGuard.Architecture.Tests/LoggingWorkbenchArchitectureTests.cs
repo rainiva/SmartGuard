@@ -111,4 +111,52 @@ public class LoggingWorkbenchArchitectureTests
     source.Should().NotContain("_items.Clear(",
       "incremental log list updates must not reset the observable collection");
   }
+
+  [Fact]
+  public void Log_viewport_scroll_mutations_are_owned_by_LogViewportController_only()
+  {
+    var scrollApis = new[]
+    {
+      "ScrollToVerticalOffset",
+      "ScrollToHorizontalOffset",
+      "ScrollIntoView",
+      "ScrollToEnd",
+    };
+
+    var violations = new List<string>();
+    foreach (var file in EnumerateLogModuleSources())
+    {
+      if (file.EndsWith("LogViewportController.cs", StringComparison.OrdinalIgnoreCase))
+        continue;
+
+      var source = File.ReadAllText(file);
+      var relativePath = Path.GetRelativePath(SourceScanHelper.RepoRoot, file);
+      foreach (var api in scrollApis)
+      {
+        if (source.Contains(api, StringComparison.Ordinal))
+          violations.Add($"{relativePath}: {api}");
+      }
+    }
+
+    violations.Should().BeEmpty(
+      "only LogViewportController may mutate log ScrollViewer offsets; violations: "
+      + string.Join(", ", violations));
+  }
+
+  private static IEnumerable<string> EnumerateLogModuleSources()
+  {
+    return SourceScanHelper.EnumerateCsFilesUnder("src/SmartGuard.Settings")
+      .Where(IsLogModuleSourceFile);
+  }
+
+  private static bool IsLogModuleSourceFile(string path)
+  {
+    var fileName = Path.GetFileName(path);
+    return fileName.StartsWith("SettingsLog", StringComparison.Ordinal)
+      || fileName.StartsWith("LogView", StringComparison.Ordinal)
+      || fileName.StartsWith("LogLine", StringComparison.Ordinal)
+      || fileName.StartsWith("LogSearch", StringComparison.Ordinal)
+      || fileName.StartsWith("LogTag", StringComparison.Ordinal)
+      || fileName.StartsWith("LogViewport", StringComparison.Ordinal);
+  }
 }

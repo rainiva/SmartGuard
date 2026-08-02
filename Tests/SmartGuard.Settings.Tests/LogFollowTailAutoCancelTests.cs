@@ -9,13 +9,7 @@ namespace SmartGuard.Settings.Tests;
 
 // Regression for the follow-tail auto-cancel bug: scrolling up sometimes
 // failed to uncheck 跟随最新, so the next refresh snapped the viewport back
-// to the tail while the user was reading history. Root causes:
-// 1) mouse wheel scrolling only reaches OnScrollChanged, which is muted
-//    during the post-refresh SuppressFollowTailAutoSync window;
-// 2) scrollbar track paging (LargeDecrement) was never treated as a user
-//    gesture;
-// 3) the refresh pipeline re-applied tail scrolling whenever the checkbox
-//    was still (stale) checked, ignoring the user's actual position.
+// to the tail while the user was reading history.
 [Collection("WpfUiTests")]
 [Trait("Category", "WpfUi")]
 public class LogFollowTailAutoCancelTests
@@ -30,12 +24,12 @@ public class LogFollowTailAutoCancelTests
             {
                 var followTail = (CheckBox)window.FindName("chkLogFollowTail");
                 followTail.IsChecked = true;
-                var coordinator = GetFollowTailCoordinator(controller);
+                var viewport = GetLogViewport(controller);
 
-                // Open the post-refresh suppression window exactly like the
-                // 2s auto-refresh does, then wheel up inside it.
-                coordinator.ApplyScrollIfEnabled();
-                coordinator.SuppressFollowTailAutoSync.Should().BeTrue(
+                viewport.ScrollToTopImmediate();
+                viewport.PendingInitialTailScroll = true;
+                viewport.ApplyFollowLatestIfEnabled();
+                viewport.SuppressFollowAutoSync.Should().BeTrue(
                     "the test must exercise the suppression window that used to swallow the cancel");
 
                 scrollViewer.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, 120)
@@ -61,7 +55,7 @@ public class LogFollowTailAutoCancelTests
             {
                 var followTail = (CheckBox)window.FindName("chkLogFollowTail");
                 followTail.IsChecked = true;
-                var coordinator = GetFollowTailCoordinator(controller);
+                var viewport = GetLogViewport(controller);
 
                 scrollViewer.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, 120)
                 {
@@ -69,7 +63,7 @@ public class LogFollowTailAutoCancelTests
                     Source = scrollViewer,
                 });
 
-                coordinator.OnScrollChanged(scrollViewer);
+                viewport.HandleScrollChangedForTests(scrollViewer);
 
                 followTail.IsChecked.Should().BeFalse(
                     "the first layout event can still report the old tail offset and must not undo the user's upward gesture");
@@ -118,10 +112,10 @@ public class LogFollowTailAutoCancelTests
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 var scrollBar = FindScrollBar(scrollViewer, "PART_VerticalScrollBar");
-                scrollBar.RaiseEvent(new ScrollEventArgs(ScrollEventType.ThumbPosition, scrollBar.Maximum)
-                {
-                    RoutedEvent = ScrollBar.ScrollEvent,
-                });
+                scrollBar.ApplyTemplate();
+                var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as Track;
+                track.Should().NotBeNull();
+                RaiseGenuineDrag(window, track!.Thumb, horizontalDelta: 0, verticalDelta: 40, steps: 8);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
@@ -168,24 +162,22 @@ public class LogFollowTailAutoCancelTests
             {
                 var followTail = (CheckBox)window.FindName("chkLogFollowTail");
                 followTail.IsChecked = true;
-                var coordinator = GetFollowTailCoordinator(controller);
+                var viewport = GetLogViewport(controller);
 
-                // Let the page-activation initial scroll fully settle first.
-                WpfStaTestHost.WaitUntil(
-                    () => !coordinator.PendingFollowTailInitialScroll && !coordinator.SuppressFollowTailAutoSync,
-                    TimeSpan.FromSeconds(10),
-                    "the initial follow-tail scroll to settle");
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                // Reproduce the stale state through the bug mechanism itself:
-                // scrolling up inside the programmatic-scroll suppression
-                // window (here opened by ScrollToBottom) is muted, so the
-                // checkbox stays checked while the user sits at the top.
-                coordinator.ScrollToBottom();
+                viewport.ScrollToTopImmediate();
+                viewport.PendingInitialTailScroll = true;
+                viewport.ApplyFollowLatestIfEnabled();
+                viewport.SuppressFollowAutoSync.Should().BeTrue(
+                    "the regression requires a stale checked state inside programmatic-scroll suppression");
                 scrollViewer.ScrollToVerticalOffset(0);
                 window.UpdateLayout();
                 scrollViewer.VerticalOffset.Should().Be(0);
                 followTail.IsChecked.Should().BeTrue(
-                    "the muted scroll event must leave the checkbox stale-checked to set up the regression");
+                    "scroll events muted during suppression must leave the checkbox stale-checked to set up the regression");
 
                 var host = GetLogPageHost(controller);
                 host.RefreshLogView(forceRedraw: true);
@@ -202,13 +194,13 @@ public class LogFollowTailAutoCancelTests
         });
     }
 
-    private static SettingsLogFollowTailCoordinator GetFollowTailCoordinator(SettingsWindowController controller)
+    private static LogViewportController GetLogViewport(SettingsWindowController controller)
     {
         var host = GetLogPageHost(controller);
         var field = typeof(SettingsLogPageHost).GetField(
-            "_followTailCoordinator",
+            "_logViewport",
             BindingFlags.NonPublic | BindingFlags.Instance);
-        return (SettingsLogFollowTailCoordinator)field!.GetValue(host)!;
+        return (LogViewportController)field!.GetValue(host)!;
     }
 
     private static SettingsLogPageHost GetLogPageHost(SettingsWindowController controller)
@@ -225,6 +217,33 @@ public class LogFollowTailAutoCancelTests
         var scrollBar = scrollViewer.Template?.FindName(partName, scrollViewer) as ScrollBar;
         scrollBar.Should().NotBeNull();
         return scrollBar!;
+    }
+
+    private static void RaiseGenuineDrag(
+        Window window,
+        Thumb thumb,
+        double horizontalDelta,
+        double verticalDelta,
+        int steps)
+    {
+        thumb.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+        for (var i = 0; i < steps; i++)
+        {
+            thumb.RaiseEvent(new DragDeltaEventArgs(horizontalDelta, verticalDelta)
+            {
+                RoutedEvent = Thumb.DragDeltaEvent,
+            });
+            window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
+
+        thumb.RaiseEvent(new DragCompletedEventArgs(
+            horizontalDelta * steps,
+            verticalDelta * steps,
+            canceled: false)
+        {
+            RoutedEvent = Thumb.DragCompletedEvent,
+        });
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     private static Scope CreateShownLogPageContext(

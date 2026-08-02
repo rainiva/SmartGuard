@@ -15,38 +15,25 @@ public class LogHorizontalThumbRealMouseTests
     {
         WpfStaTestHost.Run(() =>
         {
-            var trace = new System.Collections.Concurrent.ConcurrentQueue<string>();
-            SettingsLogViewRefresher.TraceForTests = message => trace.Enqueue(message);
-            try
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
+            using (ctx)
             {
-                var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
-                using (ctx)
-                {
-                    scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
+                scrollViewer.ScrollableWidth.Should().BeGreaterThan(0);
 
-                    var target = Math.Min(scrollViewer.ScrollableWidth, 80);
-                    trace.Enqueue($"test:set-offset {target:F1}");
-                    scrollViewer.ScrollToHorizontalOffset(target);
-                    window.UpdateLayout();
-                    window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-                    scrollViewer.HorizontalOffset.Should().BeGreaterThan(10);
+                var target = Math.Min(scrollViewer.ScrollableWidth, 80);
+                scrollViewer.ScrollToHorizontalOffset(target);
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                scrollViewer.HorizontalOffset.Should().BeGreaterThan(10);
 
-                    trace.Enqueue("test:force-refresh");
-                    controller.ForceRefreshLogView();
-                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
-                    trace.Enqueue("test:content-ready");
-                    window.UpdateLayout();
-                    window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                controller.ForceRefreshLogView();
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                window.UpdateLayout();
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                    scrollViewer.HorizontalOffset.Should().BeGreaterThan(
-                        10,
-                        "horizontal offset must be preserved across log refreshes so the thumb does not " +
-                        $"snap back; trace=[{string.Join(" | ", trace)}]");
-                }
-            }
-            finally
-            {
-                SettingsLogViewRefresher.TraceForTests = null;
+                scrollViewer.HorizontalOffset.Should().BeGreaterThan(
+                    10,
+                    "horizontal offset must be preserved across log refreshes so the thumb does not snap back");
             }
         });
     }
@@ -60,10 +47,13 @@ public class LogHorizontalThumbRealMouseTests
             using (ctx)
             {
                 var scrollBar = FindScrollBar(scrollViewer, "PART_HorizontalScrollBar");
-                var target = Math.Min(scrollViewer.ScrollableWidth, 120);
-                target.Should().BeGreaterThan(10);
+                scrollBar.ApplyTemplate();
+                var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as Track;
+                track.Should().NotBeNull();
 
-                RaiseUserScrollSequence(scrollBar, target);
+                RaiseGenuineDrag(window, track!.Thumb, horizontalDelta: 30, verticalDelta: 0, steps: 4);
+                var target = scrollViewer.HorizontalOffset;
+                target.Should().BeGreaterThan(10);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 scrollViewer.HorizontalOffset.Should().BeApproximately(
@@ -117,24 +107,26 @@ public class LogHorizontalThumbRealMouseTests
     {
         WpfStaTestHost.Run(() =>
         {
-            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out _);
+            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
             using (ctx)
             {
                 scrollViewer.ScrollableHeight.Should().BeGreaterThan(10);
                 var followTail = window.FindName("chkLogFollowTail") as CheckBox;
                 followTail.Should().NotBeNull();
                 followTail!.IsChecked = true;
-                var scrollBar = FindScrollBar(scrollViewer, "PART_VerticalScrollBar");
-                var target = scrollViewer.ScrollableHeight / 2;
 
-                RaiseUserScrollSequence(scrollBar, target);
+                var scrollBar = FindScrollBar(scrollViewer, "PART_VerticalScrollBar");
+                scrollBar.ApplyTemplate();
+                var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as Track;
+                track.Should().NotBeNull();
+
+                RaiseGenuineDrag(window, track!.Thumb, horizontalDelta: 0, verticalDelta: -20, steps: 8);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                 followTail.IsChecked.Should().BeFalse(
                     "manual vertical thumb movement must take precedence over follow-tail");
-                scrollViewer.VerticalOffset.Should().BeApproximately(
-                    target,
-                    1,
+                scrollViewer.VerticalOffset.Should().BeLessThan(
+                    scrollViewer.ScrollableHeight - LogViewScrollState.TailThresholdPixels,
                     "EndScroll must not return the log viewport to its default position");
             }
         });
@@ -177,14 +169,14 @@ public class LogHorizontalThumbRealMouseTests
             "_logPageHost",
             BindingFlags.NonPublic | BindingFlags.Instance);
         var host = hostField!.GetValue(controller)!;
-        var coordinatorField = host.GetType().GetField(
-            "_followTailCoordinator",
+        var viewportField = host.GetType().GetField(
+            "_logViewport",
             BindingFlags.NonPublic | BindingFlags.Instance);
-        var coordinator = coordinatorField!.GetValue(host)!;
-        var method = coordinator.GetType().GetMethod(
+        var viewport = viewportField!.GetValue(host)!;
+        var method = viewport.GetType().GetMethod(
             "ScrollToBottom",
             BindingFlags.NonPublic | BindingFlags.Instance);
-        method!.Invoke(coordinator, null);
+        method!.Invoke(viewport, null);
     }
 
     private static ScrollBar FindScrollBar(ScrollViewer scrollViewer, string partName)
@@ -193,18 +185,6 @@ public class LogHorizontalThumbRealMouseTests
         var scrollBar = scrollViewer.Template?.FindName(partName, scrollViewer) as ScrollBar;
         scrollBar.Should().NotBeNull();
         return scrollBar!;
-    }
-
-    private static void RaiseUserScrollSequence(ScrollBar scrollBar, double target)
-    {
-        scrollBar.RaiseEvent(new ScrollEventArgs(ScrollEventType.ThumbTrack, target)
-        {
-            RoutedEvent = ScrollBar.ScrollEvent,
-        });
-        scrollBar.RaiseEvent(new ScrollEventArgs(ScrollEventType.EndScroll, 0)
-        {
-            RoutedEvent = ScrollBar.ScrollEvent,
-        });
     }
 
     private static void RaiseGenuineDrag(

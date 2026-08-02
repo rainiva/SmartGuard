@@ -1232,6 +1232,7 @@
                        Style="{StaticResource SettingsLogListBox}"
                        VirtualizingPanel.IsVirtualizing="True"
                        VirtualizingPanel.VirtualizationMode="Recycling"
+                       VirtualizingPanel.ScrollUnit="Pixel"
                        BorderThickness="0"
                        Background="Transparent"
                        Padding="12"
