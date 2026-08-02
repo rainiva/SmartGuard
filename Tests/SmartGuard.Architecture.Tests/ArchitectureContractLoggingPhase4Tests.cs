@@ -132,7 +132,7 @@ public class ArchitectureContractLoggingPhase4Tests
   public void LogTailReader_is_the_single_archive_history_reader()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogView/LogTailReader.cs");
-    source.Should().Contain(".bak");
+    source.Should().Contain("LogSourceCatalog");
     ContractContent.Should().Contain("LogTailReader");
     ContractContent.Should().Contain("最近 256KB");
   }
