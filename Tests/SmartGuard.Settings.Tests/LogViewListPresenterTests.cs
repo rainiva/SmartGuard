@@ -71,6 +71,7 @@ public class LogViewListPresenterTests
             var listBox = CreateListBox();
             VirtualizingPanel.GetIsVirtualizing(listBox).Should().BeTrue();
             VirtualizingPanel.GetVirtualizationMode(listBox).Should().Be(VirtualizationMode.Recycling);
+            VirtualizingPanel.GetScrollUnit(listBox).Should().Be(ScrollUnit.Pixel);
             ScrollViewer.GetCanContentScroll(listBox).Should().BeTrue();
         });
     }

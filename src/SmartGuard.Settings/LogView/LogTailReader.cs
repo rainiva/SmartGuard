@@ -7,6 +7,8 @@ namespace SmartGuard.Settings.LogView;
 
 public sealed record LogFileSlice(long Length, string Text);
 
+public sealed record LogInitialView(long FileLength, string Text, bool IsTailTruncated);
+
 public static class LogTailReader
 {
   public static long GetFileLength(string path)
@@ -89,18 +91,98 @@ public static class LogTailReader
     }
   }
 
-  public static (long FileLength, string Text) ReadInitialView(
+  public static LogInitialView ReadInitialView(
     string logPath,
     string? fallbackLogPath,
     int maxTailBytes = 262_144)
   {
-    var primary = ReadRecentTail(logPath, maxTailBytes);
+    var primary = ReadRecentHistory(logPath, maxTailBytes);
     string? fallbackTail = null;
     if (!string.IsNullOrWhiteSpace(fallbackLogPath) && File.Exists(fallbackLogPath))
       fallbackTail = ReadRecentTail(fallbackLogPath, Math.Min(maxTailBytes, 32_768)).Text;
 
     var merged = LogViewerComposer.MergeChronologically(primary.Text, fallbackTail);
-    return (primary.Length, merged);
+    var mergedExceedsBudget = maxTailBytes > 0 && Encoding.UTF8.GetByteCount(merged) > maxTailBytes;
+    return new LogInitialView(
+      GetFileLength(logPath),
+      merged,
+      primary.IsTruncated || mergedExceedsBudget);
+  }
+
+  private static (string Text, bool IsTruncated) ReadRecentHistory(string logPath, int maxBytes)
+  {
+    var sources = GetHistorySourcesNewestFirst(logPath);
+    if (sources.Count == 0)
+      return (string.Empty, false);
+
+    if (maxBytes <= 0)
+    {
+      var allText = sources
+        .AsEnumerable()
+        .Reverse()
+        .Select(path => ReadFromOffset(path, 0).Text);
+      return (string.Join(Environment.NewLine, allText), false);
+    }
+
+    var remainingBytes = maxBytes;
+    var selectedNewestFirst = new List<string>();
+    var isTruncated = false;
+    var processed = 0;
+
+    foreach (var source in sources)
+    {
+      if (remainingBytes <= 0)
+      {
+        isTruncated = true;
+        break;
+      }
+
+      var length = GetFileLength(source);
+      var slice = ReadRecentTail(source, remainingBytes);
+      if (!string.IsNullOrEmpty(slice.Text))
+        selectedNewestFirst.Add(slice.Text);
+
+      processed++;
+      if (length > remainingBytes)
+      {
+        isTruncated = true;
+        break;
+      }
+
+      remainingBytes -= (int)length;
+    }
+
+    if (processed < sources.Count)
+      isTruncated = true;
+
+    return (
+      string.Join(Environment.NewLine, selectedNewestFirst.AsEnumerable().Reverse()),
+      isTruncated);
+  }
+
+  private static IReadOnlyList<string> GetHistorySourcesNewestFirst(string logPath)
+  {
+    var sources = new List<string>();
+    if (File.Exists(logPath))
+      sources.Add(logPath);
+
+    try
+    {
+      var directory = Path.GetDirectoryName(logPath);
+      var fileName = Path.GetFileName(logPath);
+      if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+      {
+        sources.AddRange(Directory
+          .EnumerateFiles(directory, fileName + ".*.bak", SearchOption.TopDirectoryOnly)
+          .OrderByDescending(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase));
+      }
+    }
+    catch
+    {
+      // 当前日志仍可读取时，归档枚举失败不应阻断日志页。
+    }
+
+    return sources;
   }
 
   public static string? ReadFullWithFallback(string logPath, string? fallbackLogPath)

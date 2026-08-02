@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
@@ -142,7 +143,7 @@ public class ScrollViewerSmoothScrollTests
     }
 
     [Fact]
-    public void Log_view_presenter_attaches_smooth_scroll_to_log_scroll_viewer()
+    public void Log_view_presenter_does_not_attach_custom_inertia_to_log_scroll_viewer()
     {
         var source = File.ReadAllText(Path.Combine(
             SettingsSourcePaths.RepoRoot(),
@@ -150,7 +151,49 @@ public class ScrollViewerSmoothScrollTests
             "SmartGuard.Settings",
             "LogViewListPresenter.cs"));
 
-        source.Should().Contain("ScrollViewerSmoothScroll.Attach(ScrollViewer)");
+        source.Should().NotContain("ScrollViewerSmoothScroll.Attach(ScrollViewer)");
+    }
+
+    [Fact]
+    public void Log_view_wheel_event_is_left_to_native_pixel_scrolling()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var host = new Window { Width = 420, Height = 320, ShowInTaskbar = false };
+            try
+            {
+                var listBox = new ListBox { Height = 260, Width = 380 };
+                var presenter = new LogViewListPresenter();
+                presenter.Attach(listBox);
+                presenter.Apply(LogViewUpdatePlan.ReplaceAll(
+                    Enumerable.Range(0, 500)
+                        .Select(i => $"[INFO] 2026-08-02 10:00:00 line {i} {new string('x', 300)}")
+                        .ToArray()));
+                host.Content = listBox;
+                WpfStaTestHost.ShowAndWait(host);
+                presenter.EnsureScrollViewerResolved();
+                var scrollViewer = presenter.ScrollViewer!;
+                scrollViewer.ScrollToEnd();
+                scrollViewer.UpdateLayout();
+
+                var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, 120)
+                {
+                    RoutedEvent = UIElement.PreviewMouseWheelEvent,
+                    Source = scrollViewer,
+                };
+                scrollViewer.RaiseEvent(wheel);
+
+                wheel.Handled.Should().BeFalse(
+                    "the log list should use native pixel scrolling instead of swallowing the gesture");
+                ScrollViewerSmoothScroll.GetVerticalVelocityForTesting(scrollViewer)
+                    .Should().Be(0);
+            }
+            finally
+            {
+                ScrollViewerSmoothScroll.ResetForTesting();
+                host.Close();
+            }
+        });
     }
 
     private static ScrollViewer CreateTallScrollViewer()

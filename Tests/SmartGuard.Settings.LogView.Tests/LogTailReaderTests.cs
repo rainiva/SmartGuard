@@ -62,6 +62,46 @@ public class LogTailReaderTests
   }
 
   [Fact]
+  public void ReadInitialView_includes_retained_archives_in_chronological_order()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var primary = Path.Combine(root, "SmartGuard.log");
+    var olderArchive = primary + ".20260730.bak";
+    var newerArchive = primary + ".20260731.bak";
+    try
+    {
+      File.WriteAllText(olderArchive, "[INFO] 2026-07-30 09:00:00 archive older\n");
+      File.WriteAllText(newerArchive, "[INFO] 2026-07-31 09:00:00 archive newer\n");
+      File.WriteAllText(primary, "[INFO] 2026-08-01 09:00:00 current\n");
+
+      var initial = LogTailReader.ReadInitialView(primary, fallbackLogPath: null);
+
+      initial.Text.Should().Contain("archive older");
+      initial.Text.Should().Contain("archive newer");
+      initial.Text.IndexOf("archive older", StringComparison.Ordinal).Should()
+        .BeLessThan(initial.Text.IndexOf("archive newer", StringComparison.Ordinal));
+      initial.Text.IndexOf("archive newer", StringComparison.Ordinal).Should()
+        .BeLessThan(initial.Text.IndexOf("current", StringComparison.Ordinal));
+    }
+    finally
+    {
+      try { Directory.Delete(root, recursive: true); } catch { }
+    }
+  }
+
+  [Fact]
+  public void ReadInitialView_reports_truncation_when_merged_sources_exceed_budget()
+  {
+    var primary = WriteTemp("primary-budget.log", "primary-" + new string('p', 55) + "\n");
+    var fallback = WriteTemp("fallback-budget.log", "fallback-" + new string('f', 55) + "\n");
+
+    var initial = LogTailReader.ReadInitialView(primary, fallback, maxTailBytes: 100);
+
+    initial.IsTailTruncated.Should().BeTrue();
+  }
+
+  [Fact]
   public void ReadFullWithFallback_merges_primary_and_fallback_chronologically()
   {
     var primary = WriteTemp("primary.log", "[INFO] 2026-06-16 17:00:00 main log");

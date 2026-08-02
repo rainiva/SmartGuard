@@ -149,6 +149,53 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
+    public void RefreshFromDisk_keeps_archive_truncation_after_current_log_append()
+    {
+        var archivePath = _logPath + ".20260731.bak";
+        try
+        {
+            File.WriteAllText(
+                archivePath,
+                "[INFO] 2026-07-31 10:00:00 " + new string('x', 300_000) + "\n");
+            File.WriteAllText(_logPath, "[INFO] 2026-08-01 10:00:00 current\n");
+
+            var controller = new LogViewController(_logPath, _fallbackPath);
+            controller.GetSnapshot().IsTailTruncated.Should().BeTrue();
+
+            File.AppendAllText(_logPath, "[INFO] 2026-08-01 10:01:00 appended\n");
+            controller.RefreshFromDisk();
+
+            controller.GetSnapshot().IsTailTruncated.Should().BeTrue();
+        }
+        finally
+        {
+            try { File.Delete(archivePath); } catch { }
+        }
+    }
+
+    [Fact]
+    public void RefreshFromDisk_keeps_archive_history_when_current_log_is_missing()
+    {
+        var archivePath = _logPath + ".20260731.bak";
+        try
+        {
+            File.Delete(_logPath);
+            File.WriteAllText(archivePath, "[INFO] 2026-07-31 10:00:00 archived\n");
+
+            var controller = new LogViewController(_logPath, _fallbackPath);
+            controller.GetSnapshot().DisplayLines.Should().ContainSingle(line => line.Contains("archived"));
+
+            controller.RefreshFromDisk();
+
+            controller.GetSnapshot().DisplayLines.Should().ContainSingle(line => line.Contains("archived"));
+        }
+        finally
+        {
+            try { File.Delete(archivePath); } catch { }
+        }
+    }
+
+    [Fact]
     public void RefreshFromDisk_skips_read_when_file_length_unchanged()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 first line\n");
@@ -225,7 +272,7 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
-    public void GetSnapshot_total_line_count_reflects_disk_real_count_when_log_exceeds_tail()
+    public void GetSnapshot_total_line_count_reports_loaded_tail_count_when_log_exceeds_tail()
     {
         // 磁盘真实约 4000 行（>256KB），远超尾部缓存段所能容纳的行数
         var builder = new System.Text.StringBuilder();
@@ -239,28 +286,28 @@ public class LogViewControllerTests : IDisposable
         var controller = new LogViewController(_logPath, _fallbackPath);
         var snapshot = controller.GetSnapshot();
 
-        // 尾部缓存段确实被截断，但「总计」必须报告磁盘真实行数
+        // 状态栏口径必须来自同一已载入数据集，而不是混入整盘物理行数。
         snapshot.IsTailTruncated.Should().BeTrue();
-        snapshot.TotalLineCount.Should().Be(diskLineCount);
+        snapshot.TotalLineCount.Should().Be(snapshot.MatchedLineCount);
+        snapshot.TotalLineCount.Should().BeLessThan(diskLineCount);
     }
 
     [Fact]
-    public void GetSnapshot_total_line_count_counts_primary_only_and_ignores_fallback()
+    public void GetSnapshot_total_line_count_includes_primary_and_fallback_loaded_lines()
     {
-        // D6：主日志存在时，「总计」只计主日志行数，忽略 fallback
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 a\n[INFO] 2026-06-19 10:00:01 b\n");
         File.WriteAllText(
             _fallbackPath,
             "[INFO] 2026-06-19 09:00:00 f1\n[INFO] 2026-06-19 09:00:01 f2\n[INFO] 2026-06-19 09:00:02 f3\n");
 
         var controller = new LogViewController(_logPath, _fallbackPath);
-        controller.GetSnapshot().TotalLineCount.Should().Be(2);
+        controller.GetSnapshot().TotalLineCount.Should().Be(5);
     }
 
     [Fact]
     public void GetSnapshot_total_line_count_falls_back_to_fallback_when_primary_missing()
     {
-        // D6 第二分支：主日志不存在时，「总计」退化计 fallback 磁盘真实行数
+        // 主日志不存在时，已加载集合由 fallback 提供。
         File.Delete(_logPath); // 确保主日志不存在
         File.WriteAllText(_fallbackPath, "[INFO] 2026-06-19 09:00:00 f1\n[INFO] 2026-06-19 09:00:01 f2\n");
 

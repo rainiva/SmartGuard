@@ -100,8 +100,8 @@ public sealed class LogPipeline
       try
       {
         var snapshot = health.TakeSnapshot(this);
-        var jsonLine = health.FormatJson(snapshot);
-        TryEnqueue(LogPriority.High, jsonLine);
+        var logLine = health.FormatLogLine(snapshot, DateTime.Now);
+        TryEnqueue(LogPriority.High, logLine);
       }
       catch
       {

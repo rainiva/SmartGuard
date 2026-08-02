@@ -115,7 +115,7 @@
 | `EventNameRegistry` | `SmartGuard.Configuration` | 事件名称唯一注册表：内置常量 + 运行时注册 + 门禁强制 |
 | `EventNameMigration` | `SmartGuard.Configuration` | 事件名称历史别名兼容名单：预留阶段四渐进迁移接口 |
 | `LogFailureInjector` | `SmartGuard.Configuration` | 故障注入测试框架：测试专用钩子，不修改生产代码路径 |
-| `LogPipelineHealth` | `SmartGuard.Configuration` | 可观测健康指标：8 项内部指标快照，定时 JSON 行追加到日志末尾 |
+| `LogPipelineHealth` | `SmartGuard.Configuration` | 可观测健康指标：8 项内部指标快照，以 `[DIAG] yyyy-MM-dd HH:mm:ss {JSON}` 标准时间戳日志行定时追加到日志末尾 |
 | `LogHealthSnapshot` | `SmartGuard.Configuration` | 健康指标快照 record：11 字段含速率与延迟 |
 | `LogIndexEntry` | `SmartGuard.Configuration` | 日志行索引条目 record：行号/时间戳/级别/类别/事件名/OperationId/TraceId/PID/TID |
 | `LogIndex` | `SmartGuard.Configuration` | 日志索引集合：内存索引 + 源文件路径 |
@@ -124,6 +124,7 @@
 | `LogQueryResult` | `SmartGuard.Configuration` | 日志查询结果 record：匹配条目 + 总数 + 分页信息 |
 | `LogQueryService` | `SmartGuard.Configuration` | 日志查询服务：消费 LogIndex 按多条件过滤 + 分页返回（D2 裁决） |
 | `LogViewBackgroundQuery` | `SmartGuard.Settings.LogView` | 后台日志查询：Task 线程执行过滤 + CancellationToken 取消（可复用后台查询原语，页面主刷新走 `SettingsLogRefreshPipeline`） |
+| `LogTailReader` | `SmartGuard.Settings.LogView` | 日志页历史读取唯一入口：当前日志 + 同目录日期归档 `.bak` + startup 回退，合并后受最近 256KB 预算约束 |
 | `LogJsonlEntry` | `SmartGuard.Configuration` | 结构化日志条目 record：与参考标准文档 §3 LogEvent record 对齐 |
 | `LogJsonlFormatter` | `SmartGuard.Configuration` | 日志行与 JSONL 双向转换（D1 落点：主日志保持纯文本，JSONL 为独立诊断文件 `logs/SmartGuard.jsonl`） |
 | `LogQueryFilterSpec` | `SmartGuard.Configuration` | 结构化筛选规格 record：时间/等级/模块/事件/OperationId/TraceId/PID/TID/关键词 + 分页 |
@@ -438,7 +439,7 @@
 | LOG-P3-OPID-READ | 阻断 | `StatusStore` / `StatusReader` 读取 `status.json` `operationId` 字段并调用 `OperationIdContext.Set`/`Clear` |
 | LOG-P3-EVENTNAME | 阻断 | `EventNameRegistry` 事件名称唯一注册表 + 门禁扫描 `WriteLog` 调用点；`EventNameMigration` 维护历史别名兼容；阶段三不做全量重命名 |
 | LOG-P3-INJECT | 阻断 | `LogFailureInjector` 故障注入测试框架：磁盘写满/路径权限/文件锁定/消费线程异常；不修改生产代码路径 |
-| LOG-P3-HEALTH | 阻断 | `LogPipelineHealth` + `LogHealthSnapshot` 可观测健康指标：8 项内部指标 + JSON 行追加到日志末尾（D4 裁决） |
+| LOG-P3-HEALTH | 阻断 | `LogPipelineHealth` + `LogHealthSnapshot` 可观测健康指标：8 项内部指标；由 `FormatLogLine` 输出 `[DIAG]` 标签、标准时间戳与单行 JSON 后追加到日志末尾（D4 裁决） |
 | DOC-LOG-P3 | 已关闭 | 本文档 §3/§6/§21 + `ArchitectureContractLoggingPhase3Tests` 终验 |
 
 ---
@@ -453,5 +454,6 @@
 | LOG-P4-UI-ASYNC | 阻断 | `SettingsLogRefreshPipeline` 为 UI 非阻塞唯一入口（后台 `Task.Run` 读取 + `Dispatcher.BeginInvoke` 回 UI）；`LogViewBackgroundQuery` 为可复用后台查询原语；`CancellationToken` 取消；禁止 UI 线程执行大日志文件过滤 |
 | LOG-P4-JSONL | 阻断 | `LogJsonlFormatter` 日志行与 JSONL 双向转换（D1 落点：主日志保持纯文本，JSONL 为独立诊断文件 `logs/SmartGuard.jsonl`；`FormatLine` 输出纯 JSON）；`DiagnosticBundleExporter` 追加 `logs/SmartGuard.jsonl` 导出条目 |
 | LOG-P4-FILTERSPEC | 阻断 | `LogQueryFilterSpec` 结构化筛选规格 + `LogFilterBuilder` 流式构建器；`LogViewController.ApplyFilterSpec` 接入统一筛选入口；`LogQueryFilterSpec.ToQueryRequest` 组合器统一 UI 直筛与索引查询筛选真源 |
-| LOG-P4-VERIFY | 阻断 | 终验：§22 七条 LOG-P4-* 收口行齐备 + DOC-LOG-P4 状态"已关闭"；§3 含阶段四全部新类型行；§6 含阶段四门禁索引行；WIP 禁触清单调整为 9 个（含 `SettingsLogPageHost`、`SettingsLogRefreshPipeline` 等） |
+| LOG-P4-HISTORY | 阻断 | `LogTailReader` 为日志页历史读取唯一入口：按新到旧消费 `SmartGuard.log` 与同目录 `SmartGuard.log.*.bak`，恢复为时间顺序后与 startup 回退合并；总载入量受最近 256KB 预算约束，状态栏统计仅基于该已载入集合 |
+| LOG-P4-VERIFY | 阻断 | 终验：§22 八条 LOG-P4-* 收口行齐备 + DOC-LOG-P4 状态"已关闭"；§3 含阶段四全部新类型行；§6 含阶段四门禁索引行；WIP 禁触清单调整为 9 个（含 `SettingsLogPageHost`、`SettingsLogRefreshPipeline` 等） |
 | DOC-LOG-P4 | 已关闭 | 本文档 §3/§6/§22 + `ArchitectureContractLoggingPhase4Tests` 终验 |

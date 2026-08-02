@@ -69,9 +69,15 @@ public class LogPipelineHealthTests
   }
 
   [Fact]
-  public async Task StartHealthReporting_emits_json_line_after_interval()
+  public async Task StartHealthReporting_emits_timestamped_diag_line_after_interval()
   {
-    var pipeline = new LogPipeline(_ => true);
+    var writtenLines = new System.Collections.Concurrent.ConcurrentQueue<string>();
+    var pipeline = new LogPipeline(lines =>
+    {
+      foreach (var line in lines)
+        writtenLines.Enqueue(line);
+      return true;
+    });
     pipeline.Start();
 
     var health = new LogPipelineHealth();
@@ -83,8 +89,12 @@ public class LogPipelineHealthTests
     pipeline.StopHealthReporting();
     pipeline.StopAsync().GetAwaiter().GetResult();
 
-    // 验证管线已入队健康 JSON 行（WrittenLines 至少包含 2 次健康报告）
+    // 健康记录必须使用标准日志包头，才能按时间排序和筛选。
     pipeline.Diagnostics.WrittenLines.Should().BeGreaterThanOrEqualTo(2);
+    writtenLines.Should().Contain(line =>
+      System.Text.RegularExpressions.Regex.IsMatch(
+        line,
+        "^\\[DIAG\\] \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\{\\\"health\\\":\\\"LogPipeline\\\""));
   }
 
   [Fact]
@@ -97,14 +107,14 @@ public class LogPipelineHealthTests
     pipeline.StartHealthReporting(health, TimeSpan.FromMilliseconds(100));
     await Task.Delay(300); // 等待若干周期
 
-    var writtenBeforeStop = pipeline.Diagnostics.WrittenLines;
+    var enqueuedBeforeStop = pipeline.Diagnostics.Enqueued;
     pipeline.StopHealthReporting();
 
     await Task.Delay(500); // 停止后再等待
 
-    // 停止后不应有新增写入（允许少量竞态余量，但不应持续增长）
-    var writtenAfterStop = pipeline.Diagnostics.WrittenLines;
-    (writtenAfterStop - writtenBeforeStop).Should().BeLessThanOrEqualTo(1);
+    // 落盘计数可能在停止后继续排空停止前的队列；发射计数才是定时器是否仍在产生日志的口径。
+    var enqueuedAfterStop = pipeline.Diagnostics.Enqueued;
+    (enqueuedAfterStop - enqueuedBeforeStop).Should().BeLessThanOrEqualTo(1);
 
     pipeline.StopAsync().GetAwaiter().GetResult();
   }

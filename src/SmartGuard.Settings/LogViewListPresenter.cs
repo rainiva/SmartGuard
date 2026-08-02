@@ -36,6 +36,7 @@ public sealed class LogViewListPresenter
     {
         VirtualizingPanel.SetIsVirtualizing(listBox, true);
         VirtualizingPanel.SetVirtualizationMode(listBox, VirtualizationMode.Recycling);
+        VirtualizingPanel.SetScrollUnit(listBox, ScrollUnit.Pixel);
         ScrollViewer.SetCanContentScroll(listBox, true);
         ScrollViewer.SetHorizontalScrollBarVisibility(listBox, ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(listBox, ScrollBarVisibility.Auto);
@@ -101,7 +102,6 @@ public sealed class LogViewListPresenter
         if (ScrollViewer is not null)
         {
             ScrollBarAutoHide.Attach(ScrollViewer);
-            ScrollViewerSmoothScroll.Attach(ScrollViewer);
         }
     }
 

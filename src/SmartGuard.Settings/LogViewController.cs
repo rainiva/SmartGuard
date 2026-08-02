@@ -1,4 +1,3 @@
-using System.IO;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
@@ -15,15 +14,6 @@ public sealed class LogViewController
     private bool _contentChanged;
     private bool _isLoaded;
     private IReadOnlyList<string> _activeTagFilters = [];
-
-    // D2：按文件签名（LastWriteTimeUtc + Length）缓存磁盘总行数，避免 2s 定时刷新重算。
-    // 假设：日志文件仅通过追加写增长，且不在时间戳精度窗口内做同长覆盖写。
-    // 在该前提下，LastWriteTimeUtc + Length 作为签名可唯一标识内容版本。
-    // 如需引入覆盖写或非 NTFS 文件系统，请调整签名逻辑或移除缓存。
-    private string? _totalLineCountPath;
-    private long _totalLineCountLength = -1;
-    private DateTime _totalLineCountWriteTimeUtc;
-    private int _totalLineCountCache;
 
     public string SearchKeyword { get; set; } = string.Empty;
     public bool SearchCaseSensitive { get; set; }
@@ -56,7 +46,7 @@ public sealed class LogViewController
         var result = LogTailReader.ReadInitialView(_logPath, _fallbackLogPath);
         _fileLength = result.FileLength;
         _cachedText = LogLineDisplayFormatter.FormatText(result.Text);
-        _isTailTruncated = _fileLength > DefaultMaxTailBytes;
+        _isTailTruncated = result.IsTailTruncated;
         _contentChanged = true;
         _isLoaded = true;
         TrimCachedTextIfNeeded();
@@ -70,12 +60,9 @@ public sealed class LogViewController
         var length = LogTailReader.GetFileLength(_logPath);
         if (length <= 0)
         {
-            if (!string.IsNullOrEmpty(_cachedText))
+            if (_fileLength > 0)
             {
-                _cachedText = string.Empty;
-                _fileLength = 0;
-                _isTailTruncated = false;
-                _contentChanged = true;
+                ForceRefresh();
             }
             else if (_fileLength < 0)
             {
@@ -101,7 +88,7 @@ public sealed class LogViewController
                 LogViewerDelta.PrepareForAppend(_cachedText, delta.Text));
             _cachedText += formattedDelta;
             _fileLength = length;
-            _isTailTruncated = _fileLength > DefaultMaxTailBytes;
+            _isTailTruncated = _isTailTruncated || _fileLength > DefaultMaxTailBytes;
             _contentChanged = true;
             TrimCachedTextIfNeeded();
         }
@@ -246,37 +233,11 @@ public sealed class LogViewController
 
     private int GetTotalLineCount()
     {
-        // D6：「总计」只计主日志 _logPath 磁盘真实行数；
-        // 仅当主日志不存在时才退化计 _fallbackLogPath。
-        string? path = null;
-        if (File.Exists(_logPath))
-            path = _logPath;
-        else if (!string.IsNullOrWhiteSpace(_fallbackLogPath) && File.Exists(_fallbackLogPath))
-            path = _fallbackLogPath;
-
-        if (path is null)
+        if (string.IsNullOrEmpty(_cachedText))
             return 0;
 
-        try
-        {
-            // D2：签名（LastWriteTimeUtc + Length）未变则直接返回缓存。
-            var info = new FileInfo(path);
-            if (_totalLineCountPath == path
-                && _totalLineCountLength == info.Length
-                && _totalLineCountWriteTimeUtc == info.LastWriteTimeUtc)
-                return _totalLineCountCache;
-
-            var count = LogLineCounter.CountLines(path);
-            _totalLineCountPath = path;
-            _totalLineCountLength = info.Length;
-            _totalLineCountWriteTimeUtc = info.LastWriteTimeUtc;
-            _totalLineCountCache = count;
-            return count;
-        }
-        catch
-        {
-            return 0;
-        }
+        var newline = _cachedText.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return _cachedText.Split(newline, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
     private static bool MatchesTagFilter(string tag, IReadOnlySet<string> activeTags)

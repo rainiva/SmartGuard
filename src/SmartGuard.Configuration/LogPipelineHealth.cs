@@ -5,7 +5,7 @@ namespace SmartGuard.Configuration;
 
 /// <summary>
 /// 可观测健康指标快照：8 项内部指标 + 入队/落盘速率。
-/// 定时（默认 5 分钟）以 JSON 行追加到主日志末尾（D4 裁决）。
+/// 定时（默认 5 分钟）以带标准时间戳的 [DIAG] JSON 行追加到主日志末尾（D4 裁决）。
 /// </summary>
 public sealed record LogHealthSnapshot(
   long EnqueuedTotal,
@@ -72,4 +72,7 @@ public sealed class LogPipelineHealth
       p99LatencyMs = snapshot.P99LatencyMs
     });
   }
+
+  public string FormatLogLine(LogHealthSnapshot snapshot, DateTime timestamp)
+    => $"[DIAG] {timestamp:yyyy-MM-dd HH:mm:ss} {FormatJson(snapshot)}";
 }

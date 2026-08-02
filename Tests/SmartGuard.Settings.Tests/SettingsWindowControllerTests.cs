@@ -1560,11 +1560,14 @@ public class SettingsWindowControllerTests
                 SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
-                scrollViewer.ScrollToVerticalOffset(0);
+                var btnLogScrollTop = window.FindName("btnLogScrollTop") as Button;
+                btnLogScrollTop.Should().NotBeNull();
+                btnLogScrollTop!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
                 scrollViewer.VerticalOffset.Should().Be(0);
 
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
+                chkLogFollowTail!.IsChecked.Should().BeFalse();
                 chkLogFollowTail!.IsChecked = true;
                 try
                 {

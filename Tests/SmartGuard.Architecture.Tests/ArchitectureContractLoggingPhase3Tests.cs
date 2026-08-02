@@ -60,6 +60,8 @@ public class ArchitectureContractLoggingPhase3Tests
     ContractContent.Should().Contain("LogPipelineHealth");
     ContractContent.Should().Contain("LogFailureInjector");
     ContractContent.Should().Contain("LogHealthSnapshot");
+    ContractContent.Should().Contain("[DIAG]");
+    ContractContent.Should().Contain("标准时间戳");
   }
 
   [Fact]
@@ -108,6 +110,14 @@ public class ArchitectureContractLoggingPhase3Tests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
     source.Should().Contain("StartHealthReporting",
       "GuardianLoop 启动管线后必须调 StartHealthReporting，否则 LogPipelineHealth 定时落盘未在生产启用");
+  }
+
+  [Fact]
+  public void LogPipeline_health_reporting_uses_standard_log_line_formatter()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogPipeline.cs");
+    source.Should().Contain("FormatLogLine",
+      "健康记录必须携带标准标签和时间戳，不能再以裸 JSON 混入主日志");
   }
 
   [Fact]

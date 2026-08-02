@@ -116,7 +116,7 @@ public class ArchitectureContractLoggingPhase4Tests
   }
 
   [Fact]
-  public void Phase4_contract_section_22_has_seven_log_p4_entries()
+  public void Phase4_contract_section_22_has_eight_log_p4_entries()
   {
     ContractContent.Should().Contain("LOG-P4-TRACE");
     ContractContent.Should().Contain("LOG-P4-QUERY");
@@ -124,7 +124,17 @@ public class ArchitectureContractLoggingPhase4Tests
     ContractContent.Should().Contain("LOG-P4-UI-ASYNC");
     ContractContent.Should().Contain("LOG-P4-JSONL");
     ContractContent.Should().Contain("LOG-P4-FILTERSPEC");
+    ContractContent.Should().Contain("LOG-P4-HISTORY");
     ContractContent.Should().Contain("LOG-P4-VERIFY");
+  }
+
+  [Fact]
+  public void LogTailReader_is_the_single_archive_history_reader()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogView/LogTailReader.cs");
+    source.Should().Contain(".bak");
+    ContractContent.Should().Contain("LogTailReader");
+    ContractContent.Should().Contain("最近 256KB");
   }
 
   [Fact]
