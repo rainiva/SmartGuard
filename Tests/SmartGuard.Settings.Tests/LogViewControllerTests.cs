@@ -258,6 +258,17 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
+    public void GetSnapshot_total_line_count_falls_back_to_fallback_when_primary_missing()
+    {
+        // D6 第二分支：主日志不存在时，「总计」退化计 fallback 磁盘真实行数
+        File.Delete(_logPath); // 确保主日志不存在
+        File.WriteAllText(_fallbackPath, "[INFO] 2026-06-19 09:00:00 f1\n[INFO] 2026-06-19 09:00:01 f2\n");
+
+        var controller = new LogViewController(_logPath, _fallbackPath);
+        controller.GetSnapshot().TotalLineCount.Should().Be(2);
+    }
+
+    [Fact]
     public void GetSnapshot_reports_empty_state_when_tag_filter_has_no_matches()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 ok\n");

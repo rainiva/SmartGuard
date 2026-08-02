@@ -17,6 +17,9 @@ public sealed class LogViewController
     private IReadOnlyList<string> _activeTagFilters = [];
 
     // D2：按文件签名（LastWriteTimeUtc + Length）缓存磁盘总行数，避免 2s 定时刷新重算。
+    // 假设：日志文件仅通过追加写增长，且不在时间戳精度窗口内做同长覆盖写。
+    // 在该前提下，LastWriteTimeUtc + Length 作为签名可唯一标识内容版本。
+    // 如需引入覆盖写或非 NTFS 文件系统，请调整签名逻辑或移除缓存。
     private string? _totalLineCountPath;
     private long _totalLineCountLength = -1;
     private DateTime _totalLineCountWriteTimeUtc;

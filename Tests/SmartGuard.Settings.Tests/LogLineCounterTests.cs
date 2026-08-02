@@ -80,4 +80,15 @@ public class LogLineCounterTests : IDisposable
 
         LogLineCounter.CountLines(_logPath).Should().Be(3);
     }
+
+    [Fact]
+    public void CountLines_returns_zero_when_file_is_exclusively_locked()
+    {
+        // D5：文件被独占写锁持有时，应返回 0（不抛异常）
+        File.WriteAllText(_logPath, "a\nb\n");
+        using var lockStream = new FileStream(
+            _logPath, FileMode.Open, FileAccess.Write, FileShare.None);
+
+        LogLineCounter.CountLines(_logPath).Should().Be(0);
+    }
 }
