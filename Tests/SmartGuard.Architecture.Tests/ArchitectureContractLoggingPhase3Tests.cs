@@ -61,4 +61,12 @@ public class ArchitectureContractLoggingPhase3Tests
     ContractContent.Should().Contain("LogFailureInjector");
     ContractContent.Should().Contain("LogHealthSnapshot");
   }
+
+  [Fact]
+  public void GuardianLoop_WriteBatch_uses_consumer_recovery()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("ExecuteWithRecovery",
+      "管线消费回调必须经 LogConsumerRecovery.ExecuteWithRecovery 包装，否则消费恢复状态机未接入生产路径");
+  }
 }

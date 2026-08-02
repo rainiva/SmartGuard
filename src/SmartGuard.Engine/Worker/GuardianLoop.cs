@@ -22,6 +22,7 @@ public sealed class GuardianLoop
   private readonly GuardianFirstRunInitializer _firstRunInitializer;
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
   private readonly LogPipeline _logPipeline;
+  private readonly LogConsumerRecovery _consumerRecovery = new(new LogRecoveryStateMachine());
   private readonly HeartLogSampler _heartSampler = new();
   private readonly LogPipelineOptions _logOptions = new();
   private readonly LogBackpressureController _backpressure = new();
@@ -61,7 +62,7 @@ public sealed class GuardianLoop
       LoadConfig,
       (c, l, m) => WriteLog(c, l, m, EventNameRegistry.HeartbeatTick),
       _powerCfgBrightnessSupported);
-    _logPipeline = new LogPipeline(WriteBatchToDisk, _logOptions); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
+    _logPipeline = new LogPipeline(lines => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, lines, _fallbackLogPath), _logOptions); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
   }
 
   public void Run(CancellationToken cancellationToken = default)
