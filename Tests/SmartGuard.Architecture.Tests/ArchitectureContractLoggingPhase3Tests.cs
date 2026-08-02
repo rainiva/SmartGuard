@@ -101,4 +101,12 @@ public class ArchitectureContractLoggingPhase3Tests
     source.Should().Contain("StartHealthReporting",
       "GuardianLoop 启动管线后必须调 StartHealthReporting，否则 LogPipelineHealth 定时落盘未在生产启用");
   }
+
+  [Fact]
+  public void GuardianLoop_writes_to_crash_ring_buffer()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    source.Should().Contain("CrashRingBuffer.Instance",
+      "高优先级日志行必须同步 Add 到 CrashRingBuffer.Instance，否则崩溃现场环形缓冲未接入生产路径");
+  }
 }
