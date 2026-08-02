@@ -159,8 +159,10 @@ public sealed class GuardianLoop
     if (!_deduplication.TryAccept(fp, message, out var dedupMessage)) return;
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
     var line = LogLineFormatter.Format(DateTime.Now, level, dedupMessage!, TraceIdContext.Current, SpanIdContext.Current, OperationIdContext.Current, UserActionIdContext.Current);
-    if (MapPriority(level) == LogPriority.Normal && _backpressure.ShouldThrottle(_logPipeline.NormalQueueDepth, _logOptions.NormalQueueCapacity)) return; // 背压：丢弃 Normal 低价值行
-    if (_logPipeline.TryEnqueue(MapPriority(level), line)) return;
+    var priority = level is LogLevel.Warn or LogLevel.Error or LogLevel.Critical ? LogPriority.High : LogPriority.Normal;
+    if (priority == LogPriority.High) CrashRingBuffer.Instance.Add(line); // 崩溃现场环形缓冲：高优先级行同步留存
+    if (priority == LogPriority.Normal && _backpressure.ShouldThrottle(_logPipeline.NormalQueueDepth, _logOptions.NormalQueueCapacity)) return; // 背压：丢弃 Normal 低价值行
+    if (_logPipeline.TryEnqueue(priority, line)) return;
 
     // 入队失败（队列满/管线已停）回退阶段一同步三层降级链，关键日志不丢
     LogFallbackChain.Write(
@@ -168,12 +170,6 @@ public sealed class GuardianLoop
       _fallbackLogPath,
       line);
   }
-
-  private static LogPriority MapPriority(LogLevel level) => level switch
-  {
-    LogLevel.Warn or LogLevel.Error or LogLevel.Critical => LogPriority.High,
-    _ => LogPriority.Normal,
-  };
 
   private bool WriteBatchToDisk(IReadOnlyList<string> lines)
   {

@@ -10,11 +10,15 @@ public static class GlobalExceptionHandlers
     AppDomain.CurrentDomain.UnhandledException += (_, e) =>
     {
       if (e.ExceptionObject is Exception ex)
+      {
+        try { CrashRingBuffer.Instance.FlushToSync(CrashRingBuffer.CrashRingLogFile); } catch { } // 崩溃路径极简，全异常隔离
         CrashLogWriter.Write(component, ResolveMainLog(root), ex);
+      }
     };
 
     TaskScheduler.UnobservedTaskException += (_, e) =>
     {
+      try { CrashRingBuffer.Instance.FlushToSync(CrashRingBuffer.CrashRingLogFile); } catch { }
       CrashLogWriter.Write(component, ResolveMainLog(root), e.Exception);
       e.SetObserved();
     };

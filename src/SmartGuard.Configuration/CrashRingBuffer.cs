@@ -7,6 +7,12 @@ namespace SmartGuard.Configuration;
 /// </summary>
 public sealed class CrashRingBuffer
 {
+  /// <summary>进程级单例：供 GuardianLoop 写入高优先级行、GlobalExceptionHandlers 崩溃时 flush。</summary>
+  public static readonly CrashRingBuffer Instance = new();
+
+  /// <summary>崩溃环形缓冲落盘路径，与 CrashLogWriter.CrashLogFile 同模式（%TEMP%\SmartGuard）。</summary>
+  public static string CrashRingLogFile => Path.Combine(Path.GetTempPath(), "SmartGuard", "crash-ring.log");
+
   private readonly string[] _slots;
   private readonly int _capacity;
   private int _head;   // 下一个写入位置
@@ -44,7 +50,7 @@ public sealed class CrashRingBuffer
     }
   }
 
-  public bool FlushToSync(EmergencySyncWriter writer, string path)
+  public bool FlushToSync(string path)
   {
     var snapshot = Drain();
     if (snapshot.Count == 0) return true;

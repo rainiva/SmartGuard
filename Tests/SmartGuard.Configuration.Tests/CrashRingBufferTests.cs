@@ -67,7 +67,7 @@ public class CrashRingBufferTests
       buffer.Add("crash-line-1");
       buffer.Add("crash-line-2");
 
-      var result = buffer.FlushToSync(new EmergencySyncWriter(), path);
+      var result = buffer.FlushToSync(path);
       result.Should().BeTrue();
       File.ReadAllLines(path).Should().ContainInOrder("crash-line-1", "crash-line-2");
     }
@@ -83,7 +83,14 @@ public class CrashRingBufferTests
     var buffer = new CrashRingBuffer(capacity: 10);
     buffer.Add("line");
     // 写入非法路径（目录不存在且无法创建）
-    var result = buffer.FlushToSync(new EmergencySyncWriter(), @"Z:\nonexistent\crash.log");
+    var result = buffer.FlushToSync(@"Z:\nonexistent\crash.log");
     result.Should().BeFalse();
+  }
+
+  [Fact]
+  public void Instance_exposes_process_wide_singleton_and_crash_ring_log_path()
+  {
+    CrashRingBuffer.Instance.Should().NotBeNull();
+    CrashRingBuffer.CrashRingLogFile.Should().EndWith("crash-ring.log");
   }
 }

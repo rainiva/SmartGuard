@@ -69,4 +69,12 @@ public class ArchitectureContractLoggingPhase3Tests
     source.Should().Contain("ExecuteWithRecovery",
       "管线消费回调必须经 LogConsumerRecovery.ExecuteWithRecovery 包装，否则消费恢复状态机未接入生产路径");
   }
+
+  [Fact]
+  public void GlobalExceptionHandlers_flushes_crash_ring_before_crash_log()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/GlobalExceptionHandlers.cs");
+    source.Should().Contain("FlushToSync",
+      "崩溃回调必须在 CrashLogWriter.Write 前 flush 环形缓冲，否则 CrashRingBuffer 未接入崩溃路径");
+  }
 }
