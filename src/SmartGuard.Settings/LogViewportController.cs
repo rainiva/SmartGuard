@@ -30,6 +30,8 @@ internal sealed class LogViewportController
   private bool _pendingInitialTailScroll;
   private bool _pendingInitialTailScrollInvalidated;
   private bool _dataApplyInProgress;
+  private Action? _nearTopHandler;
+  private bool _nearTopRaised;
 
   internal bool FollowLatest { get; private set; } = true;
 
@@ -75,6 +77,30 @@ internal sealed class LogViewportController
     _getFollowCheckBox = getFollowCheckBox;
     _refreshLogView = refreshLogView;
   }
+
+  internal void SetNearTopHandler(Action? handler)
+  {
+    _nearTopHandler = handler;
+    _nearTopRaised = false;
+  }
+
+  internal void NotifyNearTopIfNeeded(ScrollViewer scrollViewer)
+  {
+    if (!LogViewScrollState.IsNearTop(scrollViewer))
+    {
+      _nearTopRaised = false;
+      return;
+    }
+
+    if (_nearTopRaised)
+      return;
+
+    _nearTopRaised = true;
+    _nearTopHandler?.Invoke();
+  }
+
+  internal void TryRaiseNearTopReached(ScrollViewer scrollViewer)
+    => NotifyNearTopIfNeeded(scrollViewer);
 
   internal ScrollViewer? EnsureHooked(ListBox? listBox, LogViewListPresenter? presenter)
   {
@@ -448,6 +474,8 @@ internal sealed class LogViewportController
   {
     if (_scrollViewer is null)
       return;
+
+    NotifyNearTopIfNeeded(_scrollViewer);
 
     // Negative VerticalChange during a deferred initial tail scroll usually means the
     // user forced the viewport back into history (including inside SuppressFollowAutoSync).

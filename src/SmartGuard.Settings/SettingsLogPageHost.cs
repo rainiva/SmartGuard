@@ -3,7 +3,7 @@ using System.Windows.Controls;
 
 namespace SmartGuard.Settings;
 
-internal sealed class SettingsLogPageHost
+internal sealed partial class SettingsLogPageHost
 {
   internal const string LoadingStatusText = "正在加载日志…";
   internal const string LoadFailedStatusText = "日志加载失败";
@@ -24,6 +24,7 @@ internal sealed class SettingsLogPageHost
   private int? _logIdleSeconds;
   private bool _logStatusMayBeStale;
   private TextBlock? _lblLogStatus;
+  private Border? _logTopLoadingIndicator;
   private ScrollViewer? _logScrollViewer;
   private string? _logPath;
   private string? _fallbackLogPath;
@@ -45,6 +46,8 @@ internal sealed class SettingsLogPageHost
 
   internal static void ResetTestMetricsForTests() => ForceRefreshLogViewCountForTests = 0;
 
+  // Control wiring uses SettingsLogPageInitializer via EnsureLogViewInitialized (Refresh partial).
+
   internal SettingsLogPageHost(
     Window window,
     string root,
@@ -57,13 +60,13 @@ internal sealed class SettingsLogPageHost
     _toastService = toastService;
     _logPath = logPath;
     _fallbackLogPath = fallbackLogPath;
-    _searchCoordinator = new SettingsLogSearchCoordinator(window, () => RefreshLogView());
+    _searchCoordinator = new SettingsLogSearchCoordinator(window, () => OnFilterRefresh());
     _logViewport = new LogViewportController(
       window,
       () => _lstLogView,
       () => _logListPresenter,
       () => _chkLogFollowTail,
-      forceRedraw => RefreshLogView(forceRedraw));
+      forceRedraw => OnFilterRefresh(forceRedraw));
     _refreshPipeline = new SettingsLogRefreshPipeline(
       window,
       () => _disposed,
@@ -81,8 +84,9 @@ internal sealed class SettingsLogPageHost
         if (_lblLogStatus is not null)
           _lblLogStatus.Text = $"{LoadFailedStatusText}：{failure.Message}";
       },
-      ApplySnapshot,
-      () => _logViewport.ApplyFollowLatestIfEnabled(fromRefreshPipeline: true));
+      ApplyRefreshResult,
+      () => _logViewport.ApplyFollowLatestIfEnabled(fromRefreshPipeline: true),
+      SetTopLoadingIndicator);
   }
 
   private LogViewController? GetRefreshableController() =>
@@ -143,7 +147,7 @@ internal sealed class SettingsLogPageHost
     if (isFirstVisit && _lblLogStatus is not null)
       _lblLogStatus.Text = LoadingStatusText;
 
-    ScheduleLogRefresh(forceRefresh: false, forceRedraw: isFirstVisit);
+    ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: isFirstVisit, forceRefresh: isFirstVisit);
     if (!isFirstVisit)
       _logViewport.ApplyFollowLatestIfEnabled();
   }
@@ -153,7 +157,7 @@ internal sealed class SettingsLogPageHost
     if (_disposed)
       return;
 
-    ScheduleLogRefresh(forceRefresh: false, forceRedraw: true);
+    OnFilterRefresh(forceRedraw: true);
   }
 
   internal void EnsureLogScrollViewerHooked()
@@ -162,6 +166,13 @@ internal sealed class SettingsLogPageHost
       return;
 
     _logScrollViewer = _logViewport.EnsureHooked(_lstLogView, _logListPresenter);
+    _logViewport.SetNearTopHandler(() =>
+    {
+      if (_disposed || !_logPageActive)
+        return;
+
+      ScheduleLogRefresh(LogViewRefreshKind.Older);
+    });
   }
 
   internal void Dispose()
@@ -176,118 +187,6 @@ internal sealed class SettingsLogPageHost
     _searchCoordinator.Dispose();
   }
 
-  private void EnsureLogViewInitialized()
-  {
-    if (_disposed || _logViewInitialized || _logPath is null)
-      return;
-
-    _logViewInitialized = true;
-    var controls = SettingsLogPageInitializer.Initialize(
-      _window,
-      _logPath,
-      _fallbackLogPath,
-      AddLogTagFilter,
-      () =>
-      {
-        EnsureLogScrollViewerHooked();
-        _logViewport.ApplyFollowLatestIfEnabled();
-      },
-      () => RefreshLogView());
-    _logController = controls.Controller;
-    _logSearchFilterBar = controls.SearchFilterBar;
-    _lstLogView = controls.ListView;
-    _logListPresenter = controls.ListPresenter;
-    _lblLogStatus = controls.StatusLabel;
-    _chkLogFollowTail = controls.FollowTailCheckBox;
-    _cmbLogTimeRange = controls.TimeRangeComboBox;
-    _panelLogCustomRange = controls.CustomRangePanel;
-    _txtLogRangeStart = controls.RangeStartTextBox;
-    _txtLogRangeEnd = controls.RangeEndTextBox;
-    _chkLogSearchCaseSensitive = controls.CaseSensitiveCheckBox;
-    _logTimer = controls.RefreshTimer;
-    _logExportCoordinator = new SettingsLogExportCoordinator(
-      _window,
-      _toastService,
-      () => _refreshPipeline.UiRefreshInFlight,
-      () => _logController,
-      () => _logSearchFilterBar,
-      () => _chkLogSearchCaseSensitive,
-      () => _cmbLogTimeRange,
-      () => _txtLogRangeStart,
-      () => _txtLogRangeEnd,
-      _logPath,
-      _fallbackLogPath);
-
-    SettingsLogPageHostWiring.WireToolbarButtons(
-      _window,
-      _chkLogFollowTail,
-      _logViewport,
-      () => _logExportCoordinator.CopyVisible(),
-      () => _logExportCoordinator.ExportVisible(),
-      () => _logExportCoordinator.OpenFolder(),
-      ForceRefreshLogView);
-    SettingsLogPageHostWiring.WireSearchAndFilterEvents(
-      _logSearchFilterBar,
-      _searchCoordinator,
-      _cmbLogTimeRange,
-      _panelLogCustomRange,
-      _txtLogRangeStart,
-      _txtLogRangeEnd,
-      _chkLogSearchCaseSensitive,
-      () => RefreshLogView());
-    _logViewport.SyncFollowLatestFromUi();
-    if (_logController is not null)
-      _logController.FollowTail = _logViewport.FollowLatest;
-  }
-
-  internal void RefreshLogView(bool forceRedraw = false)
-  {
-    if (_disposed)
-      return;
-
-    ScheduleLogRefresh(forceRefresh: false, forceRedraw: forceRedraw);
-  }
-
-  private void ScheduleLogRefresh(bool forceRefresh, bool forceRedraw) =>
-    _refreshPipeline.Schedule(forceRefresh, forceRedraw);
-
-  private void ApplySnapshot(LogViewSnapshot snapshot, bool forceRedraw)
-  {
-    if (_disposed)
-    {
-      _refreshPipeline.RecordApplyAfterDispose();
-      return;
-    }
-
-    if (_logController is null || _logListPresenter is null || _lblLogStatus is null)
-      return;
-
-    var forceCount = ForceRefreshLogViewCountForTests;
-    SettingsLogViewRefresher.Apply(
-      snapshot,
-      _logController,
-      _logListPresenter,
-      _lblLogStatus,
-      _root,
-      ref _logIdleSeconds,
-      ref _logStatusMayBeStale,
-      ref _lastDisplayedLines,
-      ref forceCount,
-      _logViewport,
-      forceRedraw);
-    ForceRefreshLogViewCountForTests = forceCount;
-  }
-
-  internal void ForceRefreshLogView()
-  {
-    if (_disposed)
-      return;
-
-    _lastDisplayedLines = Array.Empty<string>();
-    if (_lblLogStatus is not null)
-      _lblLogStatus.Text = LoadingStatusText;
-    ScheduleLogRefresh(forceRefresh: true, forceRedraw: true);
-  }
   internal void ExportVisibleLogToPath(string destinationPath)
   {
     if (_disposed)

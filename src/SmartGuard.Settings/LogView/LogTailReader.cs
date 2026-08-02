@@ -70,6 +70,7 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
   private LogEventPage ReadLatest(LogReadRequest request, CancellationToken cancellationToken)
   {
+    LogTailReaderTestMetrics.MaybeDelayForTests();
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 
@@ -100,6 +101,7 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
   private LogEventPage ReadOlder(LogReadRequest request, CancellationToken cancellationToken)
   {
+    LogTailReaderTestMetrics.MaybeDelayForTests();
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 
@@ -132,6 +134,7 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
   private LogEventPage ReadNewer(LogReadRequest request, CancellationToken cancellationToken)
   {
+    LogTailReaderTestMetrics.MaybeDelayForTests();
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 

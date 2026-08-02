@@ -5,7 +5,7 @@ namespace SmartGuard.Settings;
 internal static class SettingsLogViewRefresher
 {
   internal static void Apply(
-    LogViewSnapshot snapshot,
+    LogViewRefreshResult refreshResult,
     LogViewController controller,
     LogViewListPresenter listPresenter,
     TextBlock statusLabel,
@@ -17,6 +17,7 @@ internal static class SettingsLogViewRefresher
     LogViewportController viewport,
     bool forceRedraw)
   {
+    var snapshot = refreshResult.Snapshot;
     if (forceRedraw)
       forceRefreshCountForTests++;
 
@@ -26,9 +27,11 @@ internal static class SettingsLogViewRefresher
     logStatusMayBeStale = idleRead.StatusMayBeStale;
 
     var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, logIdleSeconds, logStatusMayBeStale);
-    var plan = LogViewUpdatePlanner.CreatePlan(lastDisplayedLines, snapshot.DisplayLines, forceRedraw);
 
-    if (!forceRedraw && !snapshot.ContentChanged && plan.Mode == LogViewUpdateMode.NoChange)
+    if (!forceRedraw
+        && !refreshResult.ContentChanged
+        && refreshResult.WindowDelta.IsEmpty
+        && snapshot.EmptyStateMessage is null)
     {
       statusLabel.Text = statusText;
       return;
@@ -36,11 +39,15 @@ internal static class SettingsLogViewRefresher
 
     viewport.BeginDataApply();
     var capturedAnchor = viewport.CaptureAnchorIfNeeded();
-    var applyResult = listPresenter.Apply(plan);
+    LogViewApplyResult applyResult;
+    if (snapshot.EmptyStateMessage is not null && snapshot.FilteredLines.Count == 0)
+      applyResult = listPresenter.Apply(LogViewUpdatePlan.ReplaceAll(snapshot.DisplayLines));
+    else
+      applyResult = listPresenter.ApplyDelta(refreshResult.WindowDelta);
+
     lastDisplayedLines = snapshot.DisplayLines.ToArray();
     statusLabel.Text = statusText;
     viewport.OnDataApplied(applyResult, capturedAnchor);
-
     controller.FollowTail = viewport.FollowLatest;
   }
 }

@@ -43,7 +43,7 @@ public sealed class LogLineDisplayItem
 
     public static LogLineDisplayItem FromEvent(LogEvent logEvent)
     {
-        var lineText = LogEventDisplayFormatter.FormatDisplayLine(logEvent);
+        var lineText = LogViewEventFilter.GetDisplayLine(logEvent);
         var tagToken = SeverityToken(logEvent.Severity);
         var bodyText = ExtractBodyText(lineText, tagToken);
 

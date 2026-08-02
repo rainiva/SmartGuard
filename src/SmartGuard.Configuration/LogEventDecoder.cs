@@ -10,6 +10,10 @@ public static class LogEventDecoder
     @"^\[(?<level>\w+)\]\s+(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\[?(?<category>\w+)\]?\s*(?<remainder>.*)$",
     RegexOptions.Compiled);
 
+  private static readonly Regex PlainTimestampPattern = new(
+    @"^(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?<message>.*)$",
+    RegexOptions.Compiled);
+
   private static readonly Regex OpPattern = new(@"op=(?<value>\S+)", RegexOptions.Compiled);
   private static readonly Regex TracePattern = new(@"trace=(?<value>\S+)", RegexOptions.Compiled);
   private static readonly Regex SpanPattern = new(@"span=(?<value>\S+)", RegexOptions.Compiled);
@@ -39,7 +43,10 @@ public static class LogEventDecoder
     if (TryDecodeLegacyLine(line, out var legacy))
       return legacy;
 
-    return CreateCompatibilityEvent(line, text);
+    if (TryDecodePlainTimestampLine(line, out var plain))
+      return plain;
+
+    return CreateCompatibilityEvent(line, text, asRaw: true);
   }
 
   private static bool TryDecodeLegacyLine(LogPhysicalLine line, out LogEvent logEvent)
@@ -59,9 +66,21 @@ public static class LogEventDecoder
 
     var category = match.Groups["category"].Value;
     var remainder = match.Groups["remainder"].Value;
-    var component = LogComponentRegistry.IsRegistered(category)
-      ? category
-      : LogComponentRegistry.Legacy;
+    string component;
+    if (LogComponentRegistry.IsRegistered(category))
+    {
+      component = category;
+    }
+    else
+    {
+      component = LogComponentRegistry.Legacy;
+      if (!string.IsNullOrEmpty(category))
+      {
+        remainder = string.IsNullOrEmpty(remainder)
+          ? category
+          : $"{category} {remainder}";
+      }
+    }
 
     var eventNamePart = remainder.Split(' ')[0];
     string? eventName = !string.IsNullOrEmpty(eventNamePart)
@@ -78,6 +97,11 @@ public static class LogEventDecoder
       else if (remainder.Equals(eventName, StringComparison.Ordinal))
         message = string.Empty;
     }
+
+    var levelToken = match.Groups["level"].Value;
+    if (levelToken.Equals("HEART", StringComparison.OrdinalIgnoreCase)
+        || levelToken.Equals("DIAG", StringComparison.OrdinalIgnoreCase))
+      message = line.Text;
 
     logEvent = new LogEvent(
       LogEvent.CurrentSchemaVersion,
@@ -99,7 +123,52 @@ public static class LogEventDecoder
     return true;
   }
 
-  private static LogEvent CreateCompatibilityEvent(LogPhysicalLine line, string message)
+  private static bool TryDecodePlainTimestampLine(LogPhysicalLine line, out LogEvent logEvent)
+  {
+    logEvent = null!;
+    var match = PlainTimestampPattern.Match(line.Text);
+    if (!match.Success)
+      return false;
+
+    if (!DateTimeOffset.TryParseExact(
+          match.Groups["timestamp"].Value,
+          "yyyy-MM-dd HH:mm:ss",
+          CultureInfo.InvariantCulture,
+          DateTimeStyles.AssumeLocal,
+          out var timestamp))
+      return false;
+
+    var message = match.Groups["message"].Value;
+    logEvent = new LogEvent(
+      LogEvent.CurrentSchemaVersion,
+      LogEventId.ComputeLegacyEventId(line.Source, line.ByteOffset, line.Text, line.Ordinal),
+      timestamp,
+      InferSeverityFromPlainMessage(message),
+      LogComponentRegistry.Legacy,
+      LogChannelRegistry.Compatibility,
+      EventName: null,
+      message,
+      Exception: null,
+      OperationId: null,
+      TraceId: null,
+      SpanId: null,
+      UserActionId: null,
+      ProcessId: null,
+      ThreadId: null,
+      LogEvent.EmptyProperties);
+    return true;
+  }
+
+  private static LogSeverity InferSeverityFromPlainMessage(string message)
+  {
+    if (message.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
+      return LogSeverity.Error;
+    if (message.StartsWith("WARN:", StringComparison.OrdinalIgnoreCase))
+      return LogSeverity.Warn;
+    return LogSeverity.Info;
+  }
+
+  private static LogEvent CreateCompatibilityEvent(LogPhysicalLine line, string message, bool asRaw = false)
     => new(
       LogEvent.CurrentSchemaVersion,
       LogEventId.ComputeLegacyEventId(line.Source, line.ByteOffset, line.Text, line.Ordinal),
@@ -107,7 +176,7 @@ public static class LogEventDecoder
       LogSeverity.Info,
       LogComponentRegistry.Legacy,
       LogChannelRegistry.Compatibility,
-      EventName: null,
+      asRaw ? "raw" : null,
       string.IsNullOrWhiteSpace(message) ? line.Text : message,
       Exception: null,
       OperationId: null,

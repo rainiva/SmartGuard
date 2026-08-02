@@ -100,18 +100,17 @@ public class LogViewControllerTests : IDisposable
     {
         var builder = new System.Text.StringBuilder();
         for (var i = 0; i < 3000; i++)
-            builder.AppendLine($"[INFO] 2026-06-19 10:00:{i % 60:D2} line {i}");
+            builder.AppendLine($"[INFO] 2026-06-19 10:00:{i % 60:D2} entry {i}");
 
         File.WriteAllText(_logPath, builder.ToString());
 
         var controller = new LogViewController(_logPath, _fallbackPath);
         var snapshot = controller.GetSnapshot();
 
-        snapshot.DisplayLines.Should().HaveCount(3000);
-        snapshot.DisplayLines[0].Should().Contain("line 0");
-        snapshot.DisplayLines[^1].Should().Contain("line 2999");
+        snapshot.DisplayLines.Should().HaveCount(LogTailReader.DefaultTargetEventCount);
+        snapshot.HasOlderHistory.Should().BeTrue();
         snapshot.IsDisplayTruncated.Should().BeFalse();
-        snapshot.MatchedLineCount.Should().Be(3000);
+        snapshot.MatchedLineCount.Should().Be(LogTailReader.DefaultTargetEventCount);
     }
 
     [Fact]
@@ -120,7 +119,7 @@ public class LogViewControllerTests : IDisposable
         var builder = new System.Text.StringBuilder();
         var firstTimestamp = new DateTime(2026, 7, 29, 10, 0, 0);
         for (var i = 0; i < 700; i++)
-            builder.AppendLine($"[INFO] {firstTimestamp.AddSeconds(i):yyyy-MM-dd HH:mm:ss} line {i}");
+            builder.AppendLine($"[INFO] {firstTimestamp.AddSeconds(i):yyyy-MM-dd HH:mm:ss} [Engine] entry {i}");
 
         File.WriteAllText(_logPath, builder.ToString());
 
@@ -131,9 +130,9 @@ public class LogViewControllerTests : IDisposable
 
         var snapshot = controller.GetSnapshot();
 
-        snapshot.DisplayLines.Should().HaveCount(700);
-        snapshot.DisplayLines[0].Should().Contain("line 0");
-        snapshot.DisplayLines[^1].Should().Contain("line 699");
+        snapshot.DisplayLines.Should().HaveCount(LogTailReader.DefaultTargetEventCount);
+        snapshot.DisplayLines[^1].Should().Contain("entry 699");
+        snapshot.HasOlderHistory.Should().BeTrue();
     }
 
     [Fact]
@@ -230,16 +229,16 @@ public class LogViewControllerTests : IDisposable
         var controller = new LogViewController(_logPath, _fallbackPath);
         controller.GetFilteredLines();
 
-        for (var i = 0; i < 400; i++)
+        for (var i = 0; i < 2500; i++)
         {
             File.AppendAllText(
                 _logPath,
-                $"[INFO] 2026-06-19 10:{i % 60:D2}:{i % 60:D2} padded line {i} {new string('x', 900)}\n");
+                $"[INFO] 2026-06-19 10:{i % 60:D2}:{i % 60:D2} [Engine] padded entry {i} {new string('x', 900)}\n");
             controller.RefreshFromDisk();
         }
 
-        controller.CachedTextLengthForTests.Should().BeLessThanOrEqualTo(LogViewCachedTextTrimmer.DefaultMaxCachedBytes);
-        controller.GetFilteredLines().Should().Contain(line => line.Contains("padded line 399"));
+        controller.LoadedEventCountForTests.Should().BeLessThanOrEqualTo(LogEventWindow.MaxEventCount);
+        controller.GetFilteredLines().Should().Contain(line => line.Contains("padded entry 2499"));
         controller.GetFilteredLines().Should().NotContain(line => line.Contains("seed line"));
     }
 

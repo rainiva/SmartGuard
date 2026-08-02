@@ -99,6 +99,27 @@ public class LogViewStatusTextBuilderTests
     }
 
     [Fact]
+    public void Build_includes_older_history_hint_when_has_older()
+    {
+        var snapshot = new LogViewSnapshot(
+            ["[INFO] 2026-06-21 10:00:00 heartbeat"],
+            200,
+            false,
+            @"C:\SmartGuard\SmartGuard.log",
+            false,
+            "",
+            null,
+            LogViewTimeRange.All,
+            1,
+            false,
+            null,
+            HasOlderHistory: true);
+
+        LogViewStatusTextBuilder.Build(snapshot, new DateTime(2026, 6, 21, 10, 2, 24))
+            .Should().Contain("仍有更早记录");
+    }
+
+    [Fact]
     public void Build_omits_idle_seconds_when_not_provided()
     {
         var snapshot = new LogViewSnapshot(

@@ -2,8 +2,6 @@ using System.Windows;
 
 namespace SmartGuard.Settings;
 
-// 日志刷新状态机：调度合并、后台读取、UI 线程完成与生命周期取消。
-// 由 SettingsLogPageHost 拥有；Dispose 语义经 Shutdown 传入。
 internal sealed class SettingsLogRefreshPipeline
 {
   private readonly Window _window;
@@ -12,23 +10,25 @@ internal sealed class SettingsLogRefreshPipeline
   private readonly Func<LogViewController?> _getRefreshableController;
   private readonly Action<LogViewController> _applyFilters;
   private readonly Action<Exception> _showFailure;
-  private readonly Action<LogViewSnapshot, bool> _applySnapshot;
+  private readonly Action<LogViewRefreshResult, bool> _applyRefreshResult;
   private readonly Action _applyScrollIfEnabled;
+  private readonly Action<bool>? _setTopLoadingIndicator;
   private readonly object _refreshLifetimeLock = new();
 
   private int _refreshGeneration;
+  private int _filterGeneration;
   private bool _refreshInFlight;
   private bool _pendingRefresh;
+  private LogViewRefreshKind _pendingKind = LogViewRefreshKind.Newer;
   private bool _pendingForceRefresh;
   private bool _pendingForceRedraw;
+  private int _olderInFlight;
   private CancellationTokenSource? _refreshCancellation;
   private Task? _activeRefreshTask;
   private int _activeRefreshCount;
   private int _applyAfterDisposeCount;
-  // 诊断插桩：记录最近一次 flight 的阶段与时刻，仅供测试超时信息定位卡点。
   private volatile string _flightStage = "idle";
   private long _flightStageAtUtcTicks = DateTime.UtcNow.Ticks;
-  // 进程级 flight 计数：区分“泄漏 controller 的 flight 泛滥”与“纯负载慢”。
   private static int _globalRunningFlightCount;
   private static int _globalStartedFlightCount;
 
@@ -43,8 +43,9 @@ internal sealed class SettingsLogRefreshPipeline
     Func<LogViewController?> getRefreshableController,
     Action<LogViewController> applyFilters,
     Action<Exception> showFailure,
-    Action<LogViewSnapshot, bool> applySnapshot,
-    Action applyScrollIfEnabled)
+    Action<LogViewRefreshResult, bool> applyRefreshResult,
+    Action applyScrollIfEnabled,
+    Action<bool>? setTopLoadingIndicator = null)
   {
     _window = window;
     _isDisposed = isDisposed;
@@ -52,8 +53,9 @@ internal sealed class SettingsLogRefreshPipeline
     _getRefreshableController = getRefreshableController;
     _applyFilters = applyFilters;
     _showFailure = showFailure;
-    _applySnapshot = applySnapshot;
+    _applyRefreshResult = applyRefreshResult;
     _applyScrollIfEnabled = applyScrollIfEnabled;
+    _setTopLoadingIndicator = setTopLoadingIndicator;
   }
 
   internal bool IsRefreshInFlight =>
@@ -74,6 +76,9 @@ internal sealed class SettingsLogRefreshPipeline
     }
   }
 
+  internal void NotifyFilterGenerationChanged() =>
+    Interlocked.Increment(ref _filterGeneration);
+
   private void MarkStage(string stage)
   {
     _flightStage = stage;
@@ -92,27 +97,50 @@ internal sealed class SettingsLogRefreshPipeline
     _pendingRefresh = false;
     _pendingForceRefresh = false;
     _pendingForceRedraw = false;
+    _setTopLoadingIndicator?.Invoke(false);
   }
 
   internal void Schedule(bool forceRefresh, bool forceRedraw)
+    => Schedule(forceRefresh ? LogViewRefreshKind.Latest : LogViewRefreshKind.Newer, forceRedraw, forceRefresh);
+
+  internal void Schedule(LogViewRefreshKind kind, bool forceRedraw = false, bool forceRefresh = false)
   {
     if (_isDisposed() || _getRefreshableController() is null)
       return;
 
     Interlocked.Increment(ref _refreshGeneration);
+    CancelActiveRefresh();
 
     if (_refreshInFlight)
     {
       _pendingRefresh = true;
+      _pendingKind = MergeKind(_pendingKind, kind);
       _pendingForceRefresh |= forceRefresh;
       _pendingForceRedraw |= forceRedraw;
       return;
     }
 
-    StartRefreshFlight(forceRefresh, forceRedraw);
+    StartRefreshFlight(kind, forceRedraw, forceRefresh);
   }
 
-  private void StartRefreshFlight(bool forceRefresh, bool forceRedraw)
+  private void CancelActiveRefresh()
+  {
+    lock (_refreshLifetimeLock)
+      _refreshCancellation?.Cancel();
+  }
+
+  private static LogViewRefreshKind MergeKind(LogViewRefreshKind current, LogViewRefreshKind incoming)
+  {
+    if (incoming == LogViewRefreshKind.Latest || current == LogViewRefreshKind.Latest)
+      return LogViewRefreshKind.Latest;
+    if (incoming == LogViewRefreshKind.Older || current == LogViewRefreshKind.Older)
+      return LogViewRefreshKind.Older;
+    if (incoming == LogViewRefreshKind.Refilter || current == LogViewRefreshKind.Refilter)
+      return LogViewRefreshKind.Refilter;
+    return LogViewRefreshKind.Newer;
+  }
+
+  private void StartRefreshFlight(LogViewRefreshKind kind, bool forceRedraw, bool forceRefresh)
   {
     var controller = _getRefreshableController();
     if (_isDisposed() || controller is null)
@@ -120,8 +148,12 @@ internal sealed class SettingsLogRefreshPipeline
 
     _refreshInFlight = true;
     var generation = Volatile.Read(ref _refreshGeneration);
+    var filterGeneration = Volatile.Read(ref _filterGeneration);
 
     _applyFilters(controller);
+
+    if (kind == LogViewRefreshKind.Older)
+      _setTopLoadingIndicator?.Invoke(true);
 
     var refreshCancellation = new CancellationTokenSource();
     var cancellationToken = refreshCancellation.Token;
@@ -132,44 +164,73 @@ internal sealed class SettingsLogRefreshPipeline
     Interlocked.Increment(ref _globalRunningFlightCount);
     Interlocked.Increment(ref _globalStartedFlightCount);
     MarkStage("queued");
-    var refreshTask = Task.Run(() =>
+
+    var refreshTask = Task.Run(async () =>
     {
       MarkStage("reading");
       cancellationToken.ThrowIfCancellationRequested();
-      if (forceRefresh)
-        controller.ForceRefresh();
+
+      LogViewRefreshResult result;
+      if (forceRefresh || kind == LogViewRefreshKind.Latest)
+      {
+        result = await controller.RefreshAsync(LogViewRefreshKind.Latest, cancellationToken);
+      }
+      else if (kind == LogViewRefreshKind.Older)
+      {
+        if (Interlocked.CompareExchange(ref _olderInFlight, 1, 0) != 0)
+          return null;
+
+        try
+        {
+          result = await controller.RefreshAsync(LogViewRefreshKind.Older, cancellationToken);
+        }
+        finally
+        {
+          Interlocked.Exchange(ref _olderInFlight, 0);
+        }
+      }
+      else if (kind == LogViewRefreshKind.Refilter)
+      {
+        result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, cancellationToken);
+      }
       else
+      {
         controller.RefreshFromDisk();
+        result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, cancellationToken);
+      }
+
       cancellationToken.ThrowIfCancellationRequested();
-      MarkStage("snapshotting");
-      var result = controller.GetSnapshot();
       MarkStage("read-done");
-      return result;
+      return new RefreshFlightResult(result, filterGeneration);
     });
+
     lock (_refreshLifetimeLock)
       _activeRefreshTask = refreshTask;
+
     _ = ObserveRefreshCompletionAsync(
       refreshTask,
       refreshCancellation,
       cancellationToken,
       generation,
-      forceRedraw);
+      forceRedraw,
+      kind);
   }
 
   private async Task ObserveRefreshCompletionAsync(
-    Task<LogViewSnapshot> refreshTask,
+    Task<RefreshFlightResult?> refreshTask,
     CancellationTokenSource refreshCancellation,
     CancellationToken cancellationToken,
     int generation,
-    bool forceRedraw)
+    bool forceRedraw,
+    LogViewRefreshKind kind)
   {
-    LogViewSnapshot? snapshot = null;
+    RefreshFlightResult? flightResult = null;
     Exception? failure = null;
     var canceled = false;
 
     try
     {
-      snapshot = await refreshTask.ConfigureAwait(false);
+      flightResult = await refreshTask.ConfigureAwait(false);
       MarkStage("awaited");
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -182,6 +243,9 @@ internal sealed class SettingsLogRefreshPipeline
     }
     finally
     {
+      if (kind == LogViewRefreshKind.Older)
+        _setTopLoadingIndicator?.Invoke(false);
+
       lock (_refreshLifetimeLock)
       {
         if (ReferenceEquals(_activeRefreshTask, refreshTask))
@@ -190,43 +254,35 @@ internal sealed class SettingsLogRefreshPipeline
           _refreshCancellation = null;
         refreshCancellation.Dispose();
       }
+
       Interlocked.Decrement(ref _activeRefreshCount);
       Interlocked.Decrement(ref _globalRunningFlightCount);
     }
 
-    if (canceled || _isDisposed() || cancellationToken.IsCancellationRequested)
-      return;
-
-    _ = _window.Dispatcher.BeginInvoke(() =>
+    if (canceled || _isDisposed() || _window.Dispatcher.HasShutdownStarted)
     {
-      MarkStage("ui-dispatched");
-      if (_isDisposed() || cancellationToken.IsCancellationRequested)
-        return;
+      FinishRefreshFlight(generation);
+      return;
+    }
 
-      CompleteRefreshOnUi(snapshot, failure, cancellationToken, generation, forceRedraw);
-    });
+    _ = _window.Dispatcher.BeginInvoke(
+      () =>
+      {
+        MarkStage("ui-dispatched");
+        CompleteRefreshOnUi(flightResult, failure, generation, forceRedraw);
+      },
+      System.Windows.Threading.DispatcherPriority.Background);
   }
 
   private void CompleteRefreshOnUi(
-    LogViewSnapshot? snapshot,
+    RefreshFlightResult? flightResult,
     Exception? failure,
-    CancellationToken cancellationToken,
     int generation,
     bool forceRedraw)
   {
-    if (_isDisposed() || cancellationToken.IsCancellationRequested)
-      return;
-
     try
     {
-      // Flights are serialized by _refreshInFlight, so this snapshot is
-      // always the newest completed result. A stale generation only means
-      // another refresh request arrived meanwhile; the finally block
-      // restarts a flight for it. Discarding the result here instead would
-      // livelock the page ("loading" forever) whenever requests keep
-      // arriving faster than completions, e.g. the 2s auto-refresh timer
-      // on a loaded machine.
-      if (!_isLogPageActive())
+      if (_isDisposed() || !_isLogPageActive())
         return;
 
       if (failure is not null)
@@ -235,25 +291,40 @@ internal sealed class SettingsLogRefreshPipeline
         return;
       }
 
-      if (snapshot is null)
+      if (flightResult is null)
         return;
 
-      _applySnapshot(snapshot, forceRedraw);
+      if (flightResult.FilterGeneration != Volatile.Read(ref _filterGeneration))
+        return;
+
+      _applyRefreshResult(flightResult.Result, forceRedraw);
       _applyScrollIfEnabled();
     }
     finally
     {
       MarkStage("completed");
-      _refreshInFlight = false;
-      if (!_isDisposed() && (_pendingRefresh || Volatile.Read(ref _refreshGeneration) != generation))
-      {
-        var nextForceRefresh = _pendingForceRefresh;
-        var nextForceRedraw = _pendingForceRedraw;
-        _pendingRefresh = false;
-        _pendingForceRefresh = false;
-        _pendingForceRedraw = false;
-        StartRefreshFlight(nextForceRefresh, nextForceRedraw);
-      }
+      FinishRefreshFlight(generation);
     }
   }
+
+  private void FinishRefreshFlight(int generation)
+  {
+    _refreshInFlight = false;
+    if (_isDisposed())
+      return;
+
+    if (_pendingRefresh || Volatile.Read(ref _refreshGeneration) != generation)
+    {
+      var nextKind = _pendingKind;
+      var nextForceRefresh = _pendingForceRefresh;
+      var nextForceRedraw = _pendingForceRedraw;
+      _pendingRefresh = false;
+      _pendingKind = LogViewRefreshKind.Newer;
+      _pendingForceRefresh = false;
+      _pendingForceRedraw = false;
+      StartRefreshFlight(nextKind, nextForceRedraw, nextForceRefresh);
+    }
+  }
+
+  private sealed record RefreshFlightResult(LogViewRefreshResult Result, int FilterGeneration);
 }
