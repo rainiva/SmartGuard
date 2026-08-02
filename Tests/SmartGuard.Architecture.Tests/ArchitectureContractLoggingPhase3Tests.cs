@@ -95,6 +95,14 @@ public class ArchitectureContractLoggingPhase3Tests
   }
 
   [Fact]
+  public void GuardianIterationRunner_assigns_operation_id_into_status_payload()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs");
+    source.Should().Contain("operationId = OperationIdContext.Current",
+      "StatusPayload 必须把当前 OperationId 写入 operationId 字段，否则跨进程日志中继丢失源头，且仅生成不赋值门禁无法拦截");
+  }
+
+  [Fact]
   public void GuardianLoop_enables_pipeline_health_reporting()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");

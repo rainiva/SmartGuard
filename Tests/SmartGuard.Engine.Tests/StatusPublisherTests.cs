@@ -97,6 +97,25 @@ public class StatusPublisherTests : IDisposable
         File.ReadAllText(_statusPath).Should().NotBe(firstJson);
     }
 
+    [Fact]
+    public void Publish_skips_write_when_only_operation_id_changes()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var planGuid = Guid.NewGuid().ToString();
+        var first = CreatePayload(idleSeconds: 10, batteryPercent: 80, planGuid);
+        first.operationId = "op-iteration-1";
+        publisher.Publish(first);
+
+        var firstJson = File.ReadAllText(_statusPath);
+
+        var second = CreatePayload(idleSeconds: 10, batteryPercent: 80, planGuid);
+        second.operationId = "op-iteration-2";
+        publisher.Publish(second);
+
+        File.ReadAllText(_statusPath).Should().Be(firstJson,
+            "operationId 每轮迭代都会 GenerateNew，若纳入去重比较将导致状态无实质变化仍每轮重写 status.json");
+    }
+
     private static StatusPayload CreatePayload(int idleSeconds, int batteryPercent, string planGuid)
     {
         return new StatusPayload
