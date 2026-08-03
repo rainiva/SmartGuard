@@ -78,4 +78,32 @@ public class LogFilterBuilderTests
     spec.Page.Should().Be(2);
     spec.PageSize.Should().Be(100);
   }
+
+  [Fact]
+  public void BuildExpression_matches_equivalent_text_query()
+  {
+    var spec = LogFilterBuilder.Create()
+      .WithLevel("ERROR")
+      .WithCategory("Engine")
+      .WithKeyword("timeout")
+      .Build();
+
+    var fromChips = spec.ToExpression();
+    var fromText = LogQueryParser.Parse("level:ERROR component:Engine timeout").Expression;
+
+    fromText.Should().NotBeNull();
+
+    var events = new[]
+    {
+      LogEventFactory.Create(LogSeverity.Error, LogComponentRegistry.Engine, LogChannelRegistry.Diagnostics, EventNameRegistry.AppStarted, "timeout while starting"),
+      LogEventFactory.Create(LogSeverity.Error, LogComponentRegistry.Tray, LogChannelRegistry.Diagnostics, EventNameRegistry.AppStarted, "timeout while starting"),
+      LogEventFactory.Create(LogSeverity.Info, LogComponentRegistry.Engine, LogChannelRegistry.Diagnostics, EventNameRegistry.AppStarted, "healthy"),
+    };
+
+    foreach (var logEvent in events)
+    {
+      LogQueryExpressionEvaluator.Matches(logEvent, fromChips)
+        .Should().Be(LogQueryExpressionEvaluator.Matches(logEvent, fromText!));
+    }
+  }
 }

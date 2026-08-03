@@ -274,7 +274,7 @@ public sealed class LogViewController
             LogTailReader.DefaultMaxBytes);
 
     private LogViewFilterState GetFilterState()
-        => new(
+        => LogViewFilterState.FromLegacyFields(
             SearchKeyword,
             SearchCaseSensitive,
             _activeTagFilters,

@@ -15,6 +15,7 @@ public sealed class LogFilterBuilder
   private string? _eventName;
   private DateTimeOffset? _startTime;
   private DateTimeOffset? _endTime;
+  private string? _textExpression;
   private int _page = 1;
   private int _pageSize = 50;
 
@@ -34,5 +35,11 @@ public sealed class LogFilterBuilder
   public LogQueryFilterSpec Build() => new(
     _keyword, _level, _category, _operationId, _traceId,
     _processId, _threadId, _eventName, _startTime, _endTime,
-    _page, _pageSize);
+    _page, _pageSize, _textExpression);
+
+  public LogFilterBuilder WithTextExpression(string textExpression)
+  {
+    _textExpression = textExpression;
+    return this;
+  }
 }

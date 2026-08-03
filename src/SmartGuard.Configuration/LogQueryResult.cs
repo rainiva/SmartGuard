@@ -7,4 +7,8 @@ public sealed record LogQueryResult(
   IReadOnlyList<LogIndexEntry> Matches,
   int TotalCount,
   int Page,
-  int PageSize);
+  int PageSize,
+  int MatchCount = 0,
+  int? ExactTotalCount = null,
+  bool IsScanComplete = true,
+  LogQueryCursor? NextCursor = null);

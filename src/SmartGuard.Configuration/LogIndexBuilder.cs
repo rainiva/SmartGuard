@@ -45,9 +45,11 @@ public sealed class LogIndexBuilder
       logEvent.Timestamp,
       logEvent.Severity.ToString().ToUpperInvariant(),
       logEvent.Component,
+      logEvent.Channel,
       logEvent.EventName,
       logEvent.OperationId,
       logEvent.TraceId,
+      logEvent.UserActionId,
       logEvent.ProcessId,
       logEvent.ThreadId);
   }

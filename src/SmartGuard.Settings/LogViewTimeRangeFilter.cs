@@ -29,4 +29,19 @@ public static class LogViewTimeRangeFilter
 
         return true;
     }
+
+    public static (DateTime? Start, DateTime? End) ResolveBounds(
+        LogViewTimeRange mode,
+        DateTime now,
+        DateTime? customStart,
+        DateTime? customEnd)
+    {
+        return mode switch
+        {
+            LogViewTimeRange.Today => (now.Date, now),
+            LogViewTimeRange.LastHour => (now.AddHours(-1), now),
+            LogViewTimeRange.Custom => (customStart, customEnd),
+            _ => (null, null),
+        };
+    }
 }

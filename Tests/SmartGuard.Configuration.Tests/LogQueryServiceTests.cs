@@ -25,8 +25,10 @@ public class LogQueryServiceTests
       timestamp,
       level,
       category,
+      LogChannelRegistry.Diagnostics,
       eventName,
       operationId,
+      null,
       null,
       processId,
       threadId);

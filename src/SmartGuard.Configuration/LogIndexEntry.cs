@@ -10,8 +10,10 @@ public sealed record LogIndexEntry(
   DateTimeOffset Timestamp,
   string Level,
   string Category,
+  string Channel,
   string? EventName,
   string? OperationId,
   string? TraceId,
+  string? UserActionId,
   int? ProcessId,
   int? ThreadId);
