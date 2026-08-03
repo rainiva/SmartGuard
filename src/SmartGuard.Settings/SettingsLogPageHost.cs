@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using SmartGuard.Configuration;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
 
@@ -207,4 +209,14 @@ internal sealed partial class SettingsLogPageHost
 
     _logExportCoordinator?.ExportToPath(destinationPath);
   }
+
+  internal ILogEventSource GetDiagnosticEventSource()
+  {
+    EnsureLogViewInitialized();
+    return _logController?.EventSourceForCorrelation
+      ?? new LogTailReader(_logPath!, _fallbackLogPath);
+  }
+
+  internal LogSourceCatalog? GetDiagnosticCatalogSnapshot()
+    => _logController?.CatalogSnapshotForDiagnostics;
 }

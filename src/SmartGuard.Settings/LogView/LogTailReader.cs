@@ -24,6 +24,8 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
     _catalog = LogSourceCatalog.Build(logPath, startupFallbackPath);
   }
 
+  public LogSourceCatalog Catalog => _catalog;
+
   internal LogSourceCatalog CatalogForTests => _catalog;
 
   public Task<LogEventPage> ReadLatestAsync(LogReadRequest request, CancellationToken cancellationToken)

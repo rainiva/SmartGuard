@@ -88,7 +88,9 @@
 | `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`）；publish 结束后调用 `SystemEventsRidAssetGuard.EnsureAligned` |
 | `SystemEventsRidAssetGuard` | `SmartGuard.Configuration.Build` | 确保 `bin/Microsoft.Win32.SystemEvents.dll` 与 `runtimes/win/lib/net8.0/` 同名文件 SHA256 一致；`StagingLayoutValidator` 复用 `Validate` |
 | `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
-| `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 剔除 `GitHubToken` / `GitHubTokenProtected` |
+| `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 经 `DiagnosticRedactor` 剔除 token/secret；日志事件经注入的 `ILogEventSource` 读取 |
+| `DiagnosticBundleRequest` | `SmartGuard.Configuration` | 诊断包导出范围/过滤/覆盖策略请求 DTO |
+| `DiagnosticRedactor` | `SmartGuard.Configuration` | 诊断包导出脱敏（路径用户名、token/password/secret、命令行敏感参数） |
 | `BrandIconLoader.SaveEmbeddedIconToFile` | `SmartGuard.Configuration` | 安装时将嵌入 .ico 提取到 `{root}/bin/SmartGuard.ico`，供 AUMID `IconUri`（Toast 标题栏图标真源）消费 |
 | `ExceptionFormatter` | `SmartGuard.Configuration` | 异常完整链格式化（类型/消息/StackTrace/InnerException/AggregateException 展开）唯一入口 |
 | `SmartGuardLogWriter` | `SmartGuard.Configuration` | 统一日志追加：命名 Mutex + FileShare 重试 + 永不抛出 |
@@ -472,7 +474,7 @@
 | LOG-WB-HISTORY | 已关闭 | `LogTailReader` 为 configured 主日志与同目录归档历史读取唯一实现；扩展 cursor 分页时仍禁止第二套主日志 `FileStream` reader；startup 为只读兼容 source，由 `LogTailReader` 合并 |
 | LOG-WB-QUERY | 已关闭 | `LogIndexBuilder` + `LogQueryService` 为日志查询与内存索引唯一真源；UI 筛选与诊断查询准备不得另建 query service |
 | LOG-WB-CONFIG | 已关闭 | 日志筛选器、视图偏好及相关 config 字段只经 `GuardConfigRepository.TryLoad` / `Save` 持久化；禁止旁路全量写或 Engine/Tray 直读磁盘 config 决定日志 UI 状态 |
-| LOG-WB-EXPORT | 已关闭 | `DiagnosticBundleExporter` 为诊断包 zip 唯一真源；`logs/SmartGuard.jsonl` 为导出规范化视图，不是第二实时日志物理源 |
+| LOG-WB-EXPORT | 已关闭 | `DiagnosticBundleExporter` 为诊断包 zip 唯一真源；UI 只构造 `DiagnosticBundleRequest` 并注入共享 `ILogEventSource`；exporter 禁止自行打开 configured 主日志/归档，允许读取 config/status 与 request 显式包含的 startup/emergency/crash |
 | LOG-WB-VIEWPORT | 已关闭 | `LogViewportController` 为日志 ScrollViewer 唯一滚动 mutation 所有者；`SettingsLogRefreshPipeline` 只提交 delta/状态 |
 | LOG-WB-EVENT | 已关闭 | `LogEvent` + `LogEventDecoder` + `LogJsonlFormatter` 为结构化事件真源；configured 主日志物理追加只经 `SmartGuardLogWriter` |
 | DOC-LOG-WB | 已关闭 | 本文档 §23 + ADR `0001-log-workbench-architecture.md` + `LoggingWorkbenchArchitectureTests` + `LogWorkbenchPerformanceTests` |

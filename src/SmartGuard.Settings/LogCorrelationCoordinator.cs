@@ -23,6 +23,8 @@ internal sealed class LogCorrelationCoordinator
   internal string? ActiveTitle =>
     _activeKey is null ? null : LogOperationProjector.BuildContextTitle(_activeKey);
 
+  internal LogOperationCorrelationKey? ActiveKey => _activeKey;
+
   internal bool TryEnterCorrelationView(LogEvent anchorEvent, LogCorrelationMainViewState mainViewState)
   {
     var key = LogOperationGraph.ResolveCorrelationKey(anchorEvent);

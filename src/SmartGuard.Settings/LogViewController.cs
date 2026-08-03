@@ -142,6 +142,12 @@ public sealed class LogViewController
 
     internal ILogEventSource EventSourceForCorrelation => _eventSource;
 
+    internal LogSourceCatalog? CatalogSnapshotForDiagnostics =>
+      _eventSource is LogTailReader reader ? reader.Catalog : null;
+
+    internal IReadOnlyList<LogEvent> WindowEventsForDiagnostics =>
+      _eventWindow.Events.ToArray();
+
     internal void LoadCorrelatedEvents(IReadOnlyList<LogEvent> events)
     {
         _olderCursor = null;

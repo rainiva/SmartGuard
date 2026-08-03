@@ -5,6 +5,8 @@ internal static class LogQueryExpressionComparer
   public static bool AreEquivalent(LogQueryExpression left, LogQueryExpression right)
     => Normalize(left) == Normalize(right);
 
+  internal static string ToCanonicalText(LogQueryExpression expression) => Normalize(expression);
+
   private static string Normalize(LogQueryExpression expression) => expression switch
   {
     LogQueryAndExpression and => $"AND({Normalize(and.Left)},{Normalize(and.Right)})",

@@ -24,10 +24,14 @@ public class SettingsDiagnosticExportCoordinatorTests
 
       var zipPath = Path.Combine(dir, "export.zip");
       string? toastMessage = null;
+      var eventSource = new TestLogEventSource([
+        CreateEvent("startup ok", DateTimeOffset.UtcNow),
+      ]);
       var coordinator = new SettingsDiagnosticExportCoordinator(
         dir,
         () => "1.1.0",
-        (message, _) => toastMessage = message);
+        (message, _) => toastMessage = message,
+        () => eventSource);
 
       coordinator.ExportToPath(zipPath);
 
@@ -52,19 +56,69 @@ public class SettingsDiagnosticExportCoordinatorTests
     {
       var dir = CreateTempDir();
       var zipPath = Path.Combine(dir, "picked.zip");
+      var eventSource = new TestLogEventSource([
+        CreateEvent("picked", DateTimeOffset.UtcNow),
+      ]);
       var window = new Window();
       var button = new Button();
       var coordinator = new SettingsDiagnosticExportCoordinator(
         dir,
         () => "1.1.0",
         (_, _) => { },
-        _ => zipPath);
+        () => eventSource,
+        pickDestinationPath: _ => zipPath);
 
       coordinator.WireAboutPage(window, button);
       button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
       File.Exists(zipPath).Should().BeTrue();
     });
+  }
+
+  private static LogEvent CreateEvent(string message, DateTimeOffset timestamp)
+    => new(
+      LogEvent.CurrentSchemaVersion,
+      Guid.NewGuid().ToString("N"),
+      timestamp,
+      LogSeverity.Info,
+      "Engine",
+      "Lifecycle",
+      "AppStarted",
+      message,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      LogEvent.EmptyProperties);
+
+  private sealed class TestLogEventSource : ILogEventSource
+  {
+    private readonly IReadOnlyList<LogEvent> _events;
+
+    internal TestLogEventSource(IReadOnlyList<LogEvent> events) => _events = events;
+
+    public Task<LogEventPage> ReadLatestAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public Task<LogEventPage> ReadOlderAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public Task<LogEventPage> ReadNewerAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public async IAsyncEnumerable<LogEvent> StreamAsync(
+      LogReadScope scope,
+      [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+      foreach (var logEvent in _events)
+      {
+        yield return logEvent;
+        await Task.Yield();
+      }
+    }
   }
 
   private static string CreateTempDir()

@@ -178,7 +178,9 @@ public sealed class SettingsWindowController
     var diagnosticExportCoordinator = new SettingsDiagnosticExportCoordinator(
       root,
       SettingsAboutCoordinator.GetDisplayVersion,
-      (message, isError) => toastService.Show(message, isError));
+      (message, isError) => toastService.Show(message, isError),
+      () => logPageHost.GetDiagnosticEventSource(),
+      () => logPageHost.GetDiagnosticCatalogSnapshot());
     diagnosticExportCoordinator.WireAboutPage(window);
 
     WireThemeToggles(window, themeCoordinator);

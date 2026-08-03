@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -8,6 +9,7 @@ namespace SmartGuard.Configuration;
 
 public static class DiagnosticBundleExporter
 {
+  public const int ManifestSchemaVersion = 2;
   public const int MainLogTailMaxBytes = 512 * 1024;
 
   private static readonly JsonSerializerOptions JsonWriteOptions = new() { WriteIndented = true };
@@ -16,38 +18,212 @@ public static class DiagnosticBundleExporter
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(root);
     ArgumentException.ThrowIfNullOrWhiteSpace(destinationZipPath);
+    throw new NotSupportedException(
+      "Direct Export without ILogEventSource is no longer supported. Construct a DiagnosticBundleRequest and call ExportAsync.");
+  }
 
-    var destinationDirectory = Path.GetDirectoryName(destinationZipPath);
+  public static Task ExportAsync(
+    DiagnosticBundleRequest request,
+    IProgress<DiagnosticBundleProgress>? progress = null,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    ArgumentException.ThrowIfNullOrWhiteSpace(request.Root);
+    ArgumentException.ThrowIfNullOrWhiteSpace(request.DestinationZipPath);
+    ArgumentNullException.ThrowIfNull(request.EventSource);
+
+    if (request.Scope == DiagnosticBundleScope.CurrentOperation && request.OperationKey is null)
+      throw new ArgumentException("OperationKey is required for CurrentOperation scope.", nameof(request));
+
+    if (File.Exists(request.DestinationZipPath) && !request.OverwriteExisting)
+    {
+      throw new InvalidOperationException(
+        "Destination already exists and OverwriteExisting is false.");
+    }
+
+    return ExportCoreAsync(request, progress, cancellationToken);
+  }
+
+  internal static string SanitizeConfigJson(string configJson) => DiagnosticRedactor.RedactConfigJson(configJson);
+
+  private static async Task ExportCoreAsync(
+    DiagnosticBundleRequest request,
+    IProgress<DiagnosticBundleProgress>? progress,
+    CancellationToken cancellationToken)
+  {
+    var destinationDirectory = Path.GetDirectoryName(request.DestinationZipPath);
     if (!string.IsNullOrEmpty(destinationDirectory))
       Directory.CreateDirectory(destinationDirectory);
 
-    if (File.Exists(destinationZipPath))
-      File.Delete(destinationZipPath);
-
+    var tempPath = request.DestinationZipPath + ".tmp-" + Guid.NewGuid().ToString("N") + ".zip";
     var fileEntries = new List<ManifestFileEntry>();
-    using (var stream = new FileStream(destinationZipPath, FileMode.CreateNew, FileAccess.Write))
-    using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
-    {
-      AddConfigEntry(root, archive, fileEntries);
-      AddStatusEntry(root, archive, fileEntries);
-      AddMainLogEntry(root, archive, fileEntries);
-      AddStartupLogEntry(root, archive, fileEntries);
-      AddJsonlLogEntry(root, archive, fileEntries);
 
-      var manifestJson = BuildManifestJson(appVersion, fileEntries);
-      WriteTextEntry(archive, "manifest.json", manifestJson);
+    try
+    {
+      progress?.Report(new DiagnosticBundleProgress("collecting", 0, 4));
+      cancellationToken.ThrowIfCancellationRequested();
+
+      await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
+      using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+      {
+        AddConfigEntry(request.Root, archive, fileEntries);
+        AddStatusEntry(request.Root, archive, fileEntries);
+
+        progress?.Report(new DiagnosticBundleProgress("streaming-logs", 1, 4));
+        await AddScopedLogEntriesAsync(request, archive, fileEntries, cancellationToken);
+
+        if (request.IncludeStartupLog)
+          AddOptionalRedactedFileEntry(SmartGuardPaths.StartupLogFile(request.Root), "logs/SmartGuard.startup.log", archive, fileEntries);
+
+        if (request.IncludeEmergencyLog)
+          AddOptionalRedactedFileEntry(LogFallbackChain.EmergencyLogFile, "logs/SmartGuard.emergency.log", archive, fileEntries);
+
+        if (request.IncludeCrashLog)
+          AddOptionalRedactedFileEntry(CrashLogWriter.CrashLogFile, "logs/SmartGuard.crash.log", archive, fileEntries);
+
+        progress?.Report(new DiagnosticBundleProgress("manifest", 3, 4));
+        var manifestJson = BuildManifestJson(request, fileEntries);
+        WriteTextEntry(archive, "manifest.json", manifestJson, fileEntries, ManifestFileEntry.Included("manifest.json"));
+      }
+
+      progress?.Report(new DiagnosticBundleProgress("complete", 4, 4));
+
+      if (File.Exists(request.DestinationZipPath))
+        File.Delete(request.DestinationZipPath);
+
+      File.Move(tempPath, request.DestinationZipPath);
+    }
+    catch (OperationCanceledException)
+    {
+      TryDeleteFile(tempPath);
+      throw;
+    }
+    catch
+    {
+      TryDeleteFile(tempPath);
+      throw;
     }
   }
 
-  internal static string SanitizeConfigJson(string configJson)
+  private static async Task AddScopedLogEntriesAsync(
+    DiagnosticBundleRequest request,
+    ZipArchive archive,
+    List<ManifestFileEntry> fileEntries,
+    CancellationToken cancellationToken)
   {
-    var node = JsonNode.Parse(configJson);
-    if (node is not JsonObject obj)
-      return configJson;
+    var effectiveExpression = ResolveEffectiveExpression(request);
+    var collected = new List<LogEvent>();
+    var truncated = false;
 
-    obj.Remove(GitHubTokenProtector.LegacyFieldName);
-    obj.Remove(GitHubTokenProtector.ProtectedFieldName);
-    return obj.ToJsonString(JsonWriteOptions);
+    if (request.Scope == DiagnosticBundleScope.RecentWindow)
+    {
+      foreach (var logEvent in request.RecentWindowEvents ?? Array.Empty<LogEvent>())
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!MatchesTimeRange(logEvent, request))
+          continue;
+        if (!LogQueryExpressionEvaluator.Matches(logEvent, effectiveExpression))
+          continue;
+        collected.Add(DiagnosticRedactor.RedactEvent(logEvent));
+      }
+    }
+    else
+    {
+      var readScope = BuildReadScope(request);
+      await foreach (var logEvent in request.EventSource.StreamAsync(readScope, cancellationToken))
+      {
+        if (!MatchesTimeRange(logEvent, request))
+          continue;
+        if (!LogQueryExpressionEvaluator.Matches(logEvent, effectiveExpression))
+          continue;
+
+        collected.Add(DiagnosticRedactor.RedactEvent(logEvent));
+        var payloadBytes = EstimatePayloadBytes(collected);
+        if (payloadBytes > MainLogTailMaxBytes)
+        {
+          truncated = true;
+          while (collected.Count > 0 && EstimatePayloadBytes(collected) > MainLogTailMaxBytes)
+            collected.RemoveAt(0);
+        }
+      }
+    }
+
+    if (collected.Count == 0)
+    {
+      fileEntries.Add(ManifestFileEntry.Missing("logs/SmartGuard.jsonl"));
+      fileEntries.Add(ManifestFileEntry.Missing("logs/SmartGuard.log"));
+      return;
+    }
+
+    var jsonl = string.Join("\n", collected.Select(LogJsonlFormatter.FormatLine));
+    var logText = string.Join("\n", collected.Select(LogEventDisplayFormatter.FormatDisplayLine));
+
+    AddJsonlLogEntry(archive, fileEntries, jsonl, truncated);
+    AddMainLogEntry(archive, fileEntries, logText, truncated);
+  }
+
+  private static void AddJsonlLogEntry(
+    ZipArchive archive,
+    List<ManifestFileEntry> fileEntries,
+    string jsonl,
+    bool truncated)
+  {
+    WriteTextEntry(archive, "logs/SmartGuard.jsonl", jsonl, fileEntries,
+      truncated
+        ? ManifestFileEntry.TruncatedEntry("logs/SmartGuard.jsonl", ComputeSha256Hex(jsonl))
+        : ManifestFileEntry.Included("logs/SmartGuard.jsonl", ComputeSha256Hex(jsonl)));
+  }
+
+  private static void AddMainLogEntry(
+    ZipArchive archive,
+    List<ManifestFileEntry> fileEntries,
+    string logText,
+    bool truncated)
+  {
+    WriteTextEntry(archive, "logs/SmartGuard.log", logText, fileEntries,
+      truncated
+        ? ManifestFileEntry.TruncatedEntry("logs/SmartGuard.log", ComputeSha256Hex(logText))
+        : ManifestFileEntry.Included("logs/SmartGuard.log", ComputeSha256Hex(logText)));
+  }
+
+  private static LogQueryExpression ResolveEffectiveExpression(DiagnosticBundleRequest request)
+  {
+    return request.Scope switch
+    {
+      DiagnosticBundleScope.CurrentOperation =>
+        LogOperationGraph.CombineWithBase(
+          request.FilterExpression,
+          LogOperationGraph.BuildCorrelationExpression(request.OperationKey!)),
+      _ => request.FilterExpression ?? LogQueryMatchAllExpression.Instance,
+    };
+  }
+
+  private static LogReadScope BuildReadScope(DiagnosticBundleRequest request)
+  {
+    if (request.CatalogSnapshot is null)
+      return new LogReadScope(Array.Empty<LogSourceIdentity>());
+
+    return new LogReadScope(
+      request.CatalogSnapshot.MainHistoryOldestFirst
+        .Select(source => source.Identity)
+        .ToArray());
+  }
+
+  private static bool MatchesTimeRange(LogEvent logEvent, DiagnosticBundleRequest request)
+  {
+    if (request.TimeRangeStart is { } start && logEvent.Timestamp < start)
+      return false;
+    if (request.TimeRangeEnd is { } end && logEvent.Timestamp > end)
+      return false;
+    return true;
+  }
+
+  private static int EstimatePayloadBytes(IReadOnlyList<LogEvent> events)
+  {
+    var total = 0;
+    foreach (var logEvent in events)
+      total += Encoding.UTF8.GetByteCount(LogJsonlFormatter.FormatLine(logEvent));
+    return total;
   }
 
   private static void AddConfigEntry(string root, ZipArchive archive, List<ManifestFileEntry> fileEntries)
@@ -61,8 +237,7 @@ public static class DiagnosticBundleExporter
     }
 
     var sanitized = SanitizeConfigJson(File.ReadAllText(sourcePath));
-    WriteTextEntry(archive, entryPath, sanitized);
-    fileEntries.Add(ManifestFileEntry.Included(entryPath));
+    WriteTextEntry(archive, entryPath, sanitized, fileEntries, ManifestFileEntry.Included(entryPath, ComputeSha256Hex(sanitized)));
   }
 
   private static void AddStatusEntry(string root, ZipArchive archive, List<ManifestFileEntry> fileEntries)
@@ -75,129 +250,63 @@ public static class DiagnosticBundleExporter
       return;
     }
 
-    WriteBinaryEntry(archive, entryPath, File.ReadAllBytes(sourcePath));
-    fileEntries.Add(ManifestFileEntry.Included(entryPath));
+    var bytes = File.ReadAllBytes(sourcePath);
+    WriteBinaryEntry(archive, entryPath, bytes, fileEntries, ManifestFileEntry.Included(entryPath, ComputeSha256Hex(bytes)));
   }
 
-  private static void AddMainLogEntry(string root, ZipArchive archive, List<ManifestFileEntry> fileEntries)
+  private static void AddOptionalRedactedFileEntry(
+    string sourcePath,
+    string entryPath,
+    ZipArchive archive,
+    List<ManifestFileEntry> fileEntries)
   {
-    const string entryPath = "logs/SmartGuard.log";
-    var config = new GuardConfigRepository(SmartGuardPaths.ConfigFile(root)).TryLoad();
-    var sourcePath = config is null
-      ? SmartGuardPaths.DefaultLogFile(root)
-      : SmartGuardPaths.ResolveLogFile(config, root);
-
     if (!File.Exists(sourcePath))
     {
       fileEntries.Add(ManifestFileEntry.Missing(entryPath));
       return;
     }
 
-    var fileInfo = new FileInfo(sourcePath);
-    if (fileInfo.Length <= MainLogTailMaxBytes)
-    {
-      WriteBinaryEntry(archive, entryPath, File.ReadAllBytes(sourcePath));
-      fileEntries.Add(ManifestFileEntry.Included(entryPath));
-      return;
-    }
-
-    var tailBytes = ReadTailBytes(sourcePath, MainLogTailMaxBytes);
-    WriteBinaryEntry(archive, entryPath, tailBytes);
-    fileEntries.Add(ManifestFileEntry.TruncatedEntry(entryPath));
+    var redacted = DiagnosticRedactor.RedactText(File.ReadAllText(sourcePath));
+    WriteTextEntry(archive, entryPath, redacted, fileEntries, ManifestFileEntry.Included(entryPath, ComputeSha256Hex(redacted)));
   }
 
-  private static void AddStartupLogEntry(string root, ZipArchive archive, List<ManifestFileEntry> fileEntries)
-  {
-    const string entryPath = "logs/SmartGuard.startup.log";
-    var sourcePath = SmartGuardPaths.StartupLogFile(root);
-    if (!File.Exists(sourcePath))
-    {
-      fileEntries.Add(ManifestFileEntry.Missing(entryPath));
-      return;
-    }
-
-    WriteBinaryEntry(archive, entryPath, File.ReadAllBytes(sourcePath));
-    fileEntries.Add(ManifestFileEntry.Included(entryPath));
-  }
-
-  private static void AddJsonlLogEntry(string root, ZipArchive archive, List<ManifestFileEntry> fileEntries)
-  {
-    const string entryPath = "logs/SmartGuard.jsonl";
-    var config = new GuardConfigRepository(SmartGuardPaths.ConfigFile(root)).TryLoad();
-    var sourcePath = config is null
-      ? SmartGuardPaths.DefaultLogFile(root)
-      : SmartGuardPaths.ResolveLogFile(config, root);
-
-    if (!File.Exists(sourcePath))
-    {
-      fileEntries.Add(ManifestFileEntry.Missing(entryPath));
-      return;
-    }
-
-    var tailBytes = ReadTailBytes(sourcePath, MainLogTailMaxBytes);
-    var tailText = Encoding.UTF8.GetString(tailBytes);
-    var rawLines = tailText.Split('\n');
-    var source = LogSourceIdentity.FromFilePath(sourcePath);
-    var startIndex = new FileInfo(sourcePath).Length > MainLogTailMaxBytes ? 1 : 0;
-    var jsonlLines = new List<string>();
-    long byteOffset = 0;
-    for (var i = startIndex; i < rawLines.Length; i++)
-    {
-      var line = rawLines[i].TrimEnd('\r');
-      if (string.IsNullOrWhiteSpace(line))
-      {
-        byteOffset += Encoding.UTF8.GetByteCount(rawLines[i]) + 1;
-        continue;
-      }
-
-      if (LogJsonlFormatter.TryParseEvent(line, out var structured) && structured is not null)
-      {
-        jsonlLines.Add(LogJsonlFormatter.FormatLine(structured));
-      }
-      else
-      {
-        var decoded = LogEventDecoder.Decode(new LogPhysicalLine(source, byteOffset, line, true));
-        jsonlLines.Add(LogJsonlFormatter.FormatLine(decoded));
-      }
-
-      byteOffset += Encoding.UTF8.GetByteCount(rawLines[i]) + 1;
-    }
-
-    if (jsonlLines.Count == 0)
-    {
-      fileEntries.Add(ManifestFileEntry.Missing(entryPath));
-      return;
-    }
-
-    WriteTextEntry(archive, entryPath, string.Join("\n", jsonlLines));
-    fileEntries.Add(ManifestFileEntry.Included(entryPath));
-  }
-
-  private static byte[] ReadTailBytes(string sourcePath, int maxBytes)
-  {
-    using var stream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-    var length = stream.Length;
-    var bytesToRead = (int)Math.Min(maxBytes, length);
-    stream.Seek(-bytesToRead, SeekOrigin.End);
-    var buffer = new byte[bytesToRead];
-    var read = stream.Read(buffer, 0, bytesToRead);
-    if (read == bytesToRead)
-      return buffer;
-
-    var trimmed = new byte[read];
-    Array.Copy(buffer, trimmed, read);
-    return trimmed;
-  }
-
-  private static string BuildManifestJson(string? appVersion, IReadOnlyList<ManifestFileEntry> files)
+  private static string BuildManifestJson(DiagnosticBundleRequest request, IReadOnlyList<ManifestFileEntry> files)
   {
     var manifest = new JsonObject
     {
+      ["schemaVersion"] = ManifestSchemaVersion,
       ["exportedAt"] = DateTimeOffset.Now.ToString("o"),
-      ["appVersion"] = appVersion ?? ResolveAppVersion(),
+      ["appVersion"] = request.AppVersion ?? ResolveAppVersion(),
       ["osVersion"] = RuntimeInformation.OSDescription,
+      ["scope"] = request.Scope.ToString(),
       ["files"] = new JsonArray(files.Select(f => f.ToJson()).ToArray()),
     };
+
+    if (request.FilterExpression is not null and not LogQueryMatchAllExpression)
+      manifest["filterExpression"] = LogQueryExpressionComparer.ToCanonicalText(request.FilterExpression);
+
+    if (request.TimeRangeStart is not null || request.TimeRangeEnd is not null)
+    {
+      manifest["timeRange"] = new JsonObject
+      {
+        ["start"] = request.TimeRangeStart?.ToString("o"),
+        ["end"] = request.TimeRangeEnd?.ToString("o"),
+      };
+    }
+
+    if (request.CatalogSnapshot is not null)
+    {
+      manifest["sourceCatalog"] = new JsonArray(
+        request.CatalogSnapshot.MainHistoryOldestFirst
+          .Select(source => new JsonObject
+          {
+            ["path"] = Path.GetFileName(source.FilePath),
+            ["kind"] = source.Kind.ToString(),
+            ["identity"] = source.Identity.ContentHashHex,
+          })
+          .ToArray<JsonNode?>());
+    }
+
     return manifest.ToJsonString(JsonWriteOptions);
   }
 
@@ -212,21 +321,58 @@ public static class DiagnosticBundleExporter
       : $"{version.Major}.{version.Minor}";
   }
 
-  private static void WriteTextEntry(ZipArchive archive, string entryPath, string content)
-    => WriteBinaryEntry(archive, entryPath, Encoding.UTF8.GetBytes(content));
+  private static void WriteTextEntry(
+    ZipArchive archive,
+    string entryPath,
+    string content,
+    List<ManifestFileEntry> fileEntries,
+    ManifestFileEntry manifestEntry)
+  {
+    WriteBinaryEntry(archive, entryPath, Encoding.UTF8.GetBytes(content), fileEntries, manifestEntry);
+  }
 
-  private static void WriteBinaryEntry(ZipArchive archive, string entryPath, byte[] content)
+  private static void WriteBinaryEntry(
+    ZipArchive archive,
+    string entryPath,
+    byte[] content,
+    List<ManifestFileEntry> fileEntries,
+    ManifestFileEntry manifestEntry)
   {
     var entry = archive.CreateEntry(entryPath, CompressionLevel.Optimal);
     using var entryStream = entry.Open();
     entryStream.Write(content, 0, content.Length);
+    fileEntries.Add(manifestEntry);
   }
 
-  private sealed record ManifestFileEntry(string Path, string Status, bool Truncated)
+  private static string ComputeSha256Hex(string content)
+    => ComputeSha256Hex(Encoding.UTF8.GetBytes(content));
+
+  private static string ComputeSha256Hex(byte[] content)
+    => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+
+  private static void TryDeleteFile(string path)
   {
-    internal static ManifestFileEntry Included(string path) => new(path, "included", false);
-    internal static ManifestFileEntry Missing(string path) => new(path, "missing", false);
-    internal static ManifestFileEntry TruncatedEntry(string path) => new(path, "truncated", true);
+    try
+    {
+      if (File.Exists(path))
+        File.Delete(path);
+    }
+    catch
+    {
+      // Best-effort cleanup for cancelled/failed exports.
+    }
+  }
+
+  private sealed record ManifestFileEntry(string Path, string Status, bool Truncated, string? Sha256Hex)
+  {
+    internal static ManifestFileEntry Included(string path, string? sha256Hex = null)
+      => new(path, "included", false, sha256Hex);
+
+    internal static ManifestFileEntry Missing(string path)
+      => new(path, "missing", false, null);
+
+    internal static ManifestFileEntry TruncatedEntry(string path, string? sha256Hex = null)
+      => new(path, "truncated", true, sha256Hex);
 
     internal JsonObject ToJson()
     {
@@ -237,6 +383,8 @@ public static class DiagnosticBundleExporter
       };
       if (Truncated)
         node["truncated"] = true;
+      if (!string.IsNullOrWhiteSpace(Sha256Hex))
+        node["sha256"] = Sha256Hex;
       return node;
     }
   }

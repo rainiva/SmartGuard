@@ -37,6 +37,7 @@ internal sealed partial class SettingsLogPageHost
     _logTimer = controls.RefreshTimer;
     _logExportCoordinator = new SettingsLogExportCoordinator(
       _window,
+      _root,
       _toastService,
       () => _refreshPipeline.UiRefreshInFlight,
       () => _logController,
@@ -45,6 +46,7 @@ internal sealed partial class SettingsLogPageHost
       () => _cmbLogTimeRange,
       () => _txtLogRangeStart,
       () => _txtLogRangeEnd,
+      () => _correlationCoordinator,
       _logPath,
       _fallbackLogPath);
 

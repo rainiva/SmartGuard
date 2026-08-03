@@ -1,4 +1,6 @@
+using System.IO;
 using System.Windows;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
@@ -49,6 +51,32 @@ internal static class SettingsLogExportActions
     {
       toast.Show($"导出失败：{ex.Message}", isError: true);
     }
+  }
+
+  internal static void ExportDiagnosticBundle(
+    Window window,
+    ToastNotificationService toast,
+    DiagnosticBundleRequest requestTemplate,
+    Action<string, DiagnosticBundleRequest> exportToPath)
+  {
+    var dialog = new Microsoft.Win32.SaveFileDialog
+    {
+      Filter = "ZIP 压缩文件 (*.zip)|*.zip",
+      FileName = $"SmartGuard-diagnostic-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+      DefaultExt = ".zip",
+    };
+
+    if (dialog.ShowDialog(window) != true)
+      return;
+
+    var overwriteExisting = File.Exists(dialog.FileName);
+    exportToPath(
+      dialog.FileName,
+      requestTemplate with
+      {
+        DestinationZipPath = dialog.FileName,
+        OverwriteExisting = overwriteExisting,
+      });
   }
 
   internal static void OpenLogFolder(string? logPath, string? fallbackLogPath, ToastNotificationService toast)
