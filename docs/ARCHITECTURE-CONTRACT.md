@@ -124,9 +124,11 @@
 | `LogQueryResult` | `SmartGuard.Configuration` | 日志查询结果 record：匹配条目 + 总数 + 分页信息 |
 | `LogQueryService` | `SmartGuard.Configuration` | 日志查询服务：消费 LogIndex 按多条件过滤 + 分页返回（D2 裁决） |
 | `LogViewBackgroundQuery` | `SmartGuard.Settings.LogView` | 后台日志查询：Task 线程执行过滤 + CancellationToken 取消（可复用后台查询原语，页面主刷新走 `SettingsLogRefreshPipeline`） |
-| `LogTailReader` | `SmartGuard.Settings.LogView` | 日志页历史读取唯一入口：当前日志 + 同目录日期归档 `.bak` + startup 回退，合并后受最近 256KB 预算约束 |
-| `LogJsonlEntry` | `SmartGuard.Configuration` | 结构化日志条目 record：与参考标准文档 §3 LogEvent record 对齐 |
-| `LogJsonlFormatter` | `SmartGuard.Configuration` | 日志行与 JSONL 双向转换（D1 落点：主日志保持纯文本，JSONL 为独立诊断文件 `logs/SmartGuard.jsonl`） |
+| `LogTailReader` | `SmartGuard.Settings.LogView` | 日志页历史读取唯一入口：`ILogEventSource` 实现，消费 configured 主日志 + 归档 + startup 兼容源 |
+| `LogEvent` | `SmartGuard.Configuration` | 结构化日志 canonical record：schemaVersion/eventId/timestamp/severity/component/channel/message 与关联字段 |
+| `LogEventWindow` | `SmartGuard.Settings.LogView` | 有界显示窗口：2,000 条或 4MB 上限，产出 append/prepend delta，禁止 Reset |
+| `LogViewportController` | `SmartGuard.Settings` | 日志 ScrollViewer 唯一滚动命令所有者 |
+| `LogJsonlFormatter` | `SmartGuard.Configuration` | versioned JSONL 编解码：只处理纯 JSONL；legacy 文本由 `LogEventDecoder` 负责 |
 | `LogQueryFilterSpec` | `SmartGuard.Configuration` | 结构化筛选规格 record：时间/等级/模块/事件/OperationId/TraceId/PID/TID/关键词 + 分页 |
 | `LogFilterBuilder` | `SmartGuard.Configuration` | 流式筛选构建器：链式 With 方法构建 LogQueryFilterSpec |
 
@@ -467,8 +469,10 @@
 
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
-| LOG-WB-HISTORY | 阻断 | `LogTailReader` 为 configured 主日志与同目录归档历史读取唯一实现；扩展 cursor 分页时仍禁止第二套主日志 `FileStream` reader；startup 为只读兼容 source，由 `LogTailReader` 合并 |
-| LOG-WB-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 为日志查询与内存索引唯一真源；UI 筛选与诊断查询准备不得另建 query service |
-| LOG-WB-CONFIG | 阻断 | 日志筛选器、视图偏好及相关 config 字段只经 `GuardConfigRepository.TryLoad` / `Save` 持久化；禁止旁路全量写或 Engine/Tray 直读磁盘 config 决定日志 UI 状态 |
-| LOG-WB-EXPORT | 阻断 | `DiagnosticBundleExporter` 为诊断包 zip 唯一真源；`logs/SmartGuard.jsonl` 为导出规范化视图，不是第二实时日志物理源 |
-| DOC-LOG-WB | 登记 | 本文档 §23 + ADR `0001-log-workbench-architecture.md` + `LoggingWorkbenchArchitectureTests`；P0 阶段未关闭，视口/typed-event/writer 门禁分别在 P0-06/P0-02/P0-03 同切片 RED→GREEN |
+| LOG-WB-HISTORY | 已关闭 | `LogTailReader` 为 configured 主日志与同目录归档历史读取唯一实现；扩展 cursor 分页时仍禁止第二套主日志 `FileStream` reader；startup 为只读兼容 source，由 `LogTailReader` 合并 |
+| LOG-WB-QUERY | 已关闭 | `LogIndexBuilder` + `LogQueryService` 为日志查询与内存索引唯一真源；UI 筛选与诊断查询准备不得另建 query service |
+| LOG-WB-CONFIG | 已关闭 | 日志筛选器、视图偏好及相关 config 字段只经 `GuardConfigRepository.TryLoad` / `Save` 持久化；禁止旁路全量写或 Engine/Tray 直读磁盘 config 决定日志 UI 状态 |
+| LOG-WB-EXPORT | 已关闭 | `DiagnosticBundleExporter` 为诊断包 zip 唯一真源；`logs/SmartGuard.jsonl` 为导出规范化视图，不是第二实时日志物理源 |
+| LOG-WB-VIEWPORT | 已关闭 | `LogViewportController` 为日志 ScrollViewer 唯一滚动 mutation 所有者；`SettingsLogRefreshPipeline` 只提交 delta/状态 |
+| LOG-WB-EVENT | 已关闭 | `LogEvent` + `LogEventDecoder` + `LogJsonlFormatter` 为结构化事件真源；configured 主日志物理追加只经 `SmartGuardLogWriter` |
+| DOC-LOG-WB | 已关闭 | 本文档 §23 + ADR `0001-log-workbench-architecture.md` + `LoggingWorkbenchArchitectureTests` + `LogWorkbenchPerformanceTests` |

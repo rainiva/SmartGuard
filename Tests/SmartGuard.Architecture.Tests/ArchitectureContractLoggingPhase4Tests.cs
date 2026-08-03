@@ -91,7 +91,7 @@ public class ArchitectureContractLoggingPhase4Tests
   public void Contract_registers_log_jsonl_formatter()
   {
     ContractContent.Should().Contain("LogJsonlFormatter");
-    ContractContent.Should().Contain("LogJsonlEntry");
+    ContractContent.Should().Contain("LogEvent");
   }
 
   [Fact]

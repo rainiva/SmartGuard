@@ -72,49 +72,6 @@ public static class LogEventId
   }
 }
 
-public static class LogJsonlEntryExtensions
-{
-  public static LogEvent ToLogEvent(this LogJsonlEntry entry)
-  {
-    var severity = LogSeverityParser.Parse(entry.Level);
-    var component = LogComponentRegistry.IsRegistered(entry.Category)
-      ? entry.Category
-      : LogComponentRegistry.Legacy;
-
-    return new LogEvent(
-      LogEvent.CurrentSchemaVersion,
-      LogEventFactory.CreateStructuredEventId(),
-      entry.Timestamp.ToUniversalTime(),
-      severity,
-      component,
-      LogChannelRegistry.Compatibility,
-      entry.EventName,
-      entry.Message,
-      Exception: null,
-      entry.OperationId,
-      entry.TraceId,
-      entry.SpanId,
-      entry.UserActionId,
-      entry.ProcessId,
-      entry.ThreadId,
-      LogEvent.EmptyProperties);
-  }
-
-  public static LogJsonlEntry FromLogEvent(LogEvent logEvent)
-    => new(
-      logEvent.Timestamp,
-      logEvent.Severity.ToString(),
-      logEvent.Component,
-      logEvent.EventName,
-      logEvent.Message,
-      logEvent.OperationId,
-      logEvent.TraceId,
-      logEvent.SpanId,
-      logEvent.UserActionId,
-      logEvent.ProcessId,
-      logEvent.ThreadId);
-}
-
 internal static class LogSeverityParser
 {
   internal static LogSeverity Parse(string? value)

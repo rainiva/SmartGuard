@@ -69,8 +69,8 @@ public class LoggingWorkbenchArchitectureTests
     ContractContent.Should().Contain("GuardConfigRepository");
     ContractContent.Should().Contain("DiagnosticBundleExporter");
     ContractContent.Should().Contain("LoggingWorkbenchArchitectureTests");
-    ContractContent.Should().NotContain("DOC-LOG-WB | 已关闭",
-      "P0 log workbench stage must remain open until later slices close it");
+    ContractContent.Should().Contain("DOC-LOG-WB | 已关闭",
+      "P0 log workbench stage must be closed after P0-08");
 
     var configRepositories = SourceScanHelper.EnumerateCsFilesUnder("src")
       .Where(path => File.ReadAllText(path).Contains("class GuardConfigRepository", StringComparison.Ordinal))
@@ -110,6 +110,22 @@ public class LoggingWorkbenchArchitectureTests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewListPresenter.cs");
     source.Should().NotContain("_items.Clear(",
       "incremental log list updates must not reset the observable collection");
+  }
+
+  [Fact]
+  public void LogJsonlEntry_migration_shell_is_removed()
+  {
+    File.Exists(Path.Combine(SourceScanHelper.RepoRoot, "src/SmartGuard.Configuration/LogJsonlEntry.cs"))
+      .Should().BeFalse("P0-08 removes the LogJsonlEntry adapter shell in favor of LogEvent");
+
+    var references = SourceScanHelper.EnumerateCsFilesUnder("src")
+      .Where(path => File.ReadAllText(path).Contains("LogJsonlEntry", StringComparison.Ordinal))
+      .Select(path => Path.GetRelativePath(SourceScanHelper.RepoRoot, path))
+      .ToList();
+
+    references.Should().BeEmpty(
+      "LogJsonlEntry must not remain in production code after P0-08; found: "
+      + string.Join(", ", references));
   }
 
   [Fact]

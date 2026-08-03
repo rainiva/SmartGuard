@@ -9,14 +9,14 @@ public class LogJsonlFormatterTests
   [Fact]
   public void FormatLine_produces_valid_json()
   {
-    var entry = LogJsonlEntryExtensions.FromLogEvent(LogEventFactory.Create(
+    var logEvent = LogEventFactory.Create(
       LogSeverity.Info,
       LogComponentRegistry.Engine,
       LogChannelRegistry.Lifecycle,
       EventNameRegistry.AppStarted,
-      "Application started"));
+      "Application started");
 
-    var json = LogJsonlFormatter.FormatLine(entry);
+    var json = LogJsonlFormatter.FormatLine(logEvent);
 
     var parsed = JsonDocument.Parse(json);
     parsed.RootElement.GetProperty("severity").GetString().Should().Be("Info");
@@ -28,7 +28,7 @@ public class LogJsonlFormatterTests
   [Fact]
   public void FormatLine_includes_optional_fields_when_present()
   {
-    var entry = LogJsonlEntryExtensions.FromLogEvent(LogEventFactory.Create(
+    var logEvent = LogEventFactory.Create(
       LogSeverity.Warn,
       LogComponentRegistry.Engine,
       LogChannelRegistry.Recovery,
@@ -39,9 +39,9 @@ public class LogJsonlFormatterTests
       spanId: "span-456",
       userActionId: "ua-789",
       processId: 1234,
-      threadId: 5678));
+      threadId: 5678);
 
-    var json = LogJsonlFormatter.FormatLine(entry);
+    var json = LogJsonlFormatter.FormatLine(logEvent);
 
     var parsed = JsonDocument.Parse(json);
     parsed.RootElement.GetProperty("operationId").GetString().Should().Be("op-abc");
@@ -55,14 +55,14 @@ public class LogJsonlFormatterTests
   [Fact]
   public void FormatLine_omits_null_fields()
   {
-    var entry = LogJsonlEntryExtensions.FromLogEvent(LogEventFactory.Create(
+    var logEvent = LogEventFactory.Create(
       LogSeverity.Info,
       LogComponentRegistry.Engine,
       LogChannelRegistry.Lifecycle,
       EventNameRegistry.AppStarted,
-      "Simple message"));
+      "Simple message");
 
-    var json = LogJsonlFormatter.FormatLine(entry);
+    var json = LogJsonlFormatter.FormatLine(logEvent);
 
     var parsed = JsonDocument.Parse(json);
     parsed.RootElement.TryGetProperty("processId", out _).Should().BeFalse();
@@ -80,20 +80,20 @@ public class LogJsonlFormatterTests
       "Degraded",
       operationId: "op-abc");
 
-    var result = LogJsonlFormatter.TryParseLine(LogJsonlFormatter.FormatLine(original), out var entry);
+    var result = LogJsonlFormatter.TryParseLine(LogJsonlFormatter.FormatLine(original), out var logEvent);
 
     result.Should().BeTrue();
-    entry!.Category.Should().Be("Engine");
-    entry.Level.Should().Be("Warn");
-    entry.OperationId.Should().Be("op-abc");
+    logEvent!.Component.Should().Be("Engine");
+    logEvent.Severity.Should().Be(LogSeverity.Warn);
+    logEvent.OperationId.Should().Be("op-abc");
   }
 
   [Fact]
   public void TryParseLine_returns_false_for_malformed_line()
   {
-    var result = LogJsonlFormatter.TryParseLine("garbage line", out var entry);
+    var result = LogJsonlFormatter.TryParseLine("garbage line", out var logEvent);
     result.Should().BeFalse();
-    entry.Should().BeNull();
+    logEvent.Should().BeNull();
   }
 
   [Fact]
@@ -101,9 +101,9 @@ public class LogJsonlFormatterTests
   {
     var line = "[ERROR] 2026-08-01 10:02:00 [GuardianLoop] IterationError op=op-abc trace=trace-xyz span=span-456";
 
-    var result = LogJsonlFormatter.TryParseLine(line, out var entry);
+    var result = LogJsonlFormatter.TryParseLine(line, out var logEvent);
 
     result.Should().BeFalse();
-    entry.Should().BeNull();
+    logEvent.Should().BeNull();
   }
 }

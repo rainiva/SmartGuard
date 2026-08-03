@@ -208,9 +208,10 @@ public class LogEventTests
       LogChannelRegistry.Lifecycle,
       EventNameRegistry.AppStarted,
       "started");
-    LogJsonlFormatter.TryParseLine(LogJsonlFormatter.FormatLine(structured), out var entry)
+    LogJsonlFormatter.TryParseLine(LogJsonlFormatter.FormatLine(structured), out var logEvent)
       .Should().BeTrue();
-    entry.Should().NotBeNull();
+    logEvent.Should().NotBeNull();
+    logEvent!.Component.Should().Be(LogComponentRegistry.Engine);
   }
 
   [Fact]

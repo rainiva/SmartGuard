@@ -15,6 +15,47 @@ public class SettingsLogNavResponsivenessTests
     private const string LoadingStatusText = "正在加载日志…";
 
     [Fact]
+    public void NavigateTo_logs_with_large_fixture_returns_before_disk_read_completes()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            using var fixture = LogWorkbenchPerformanceFixture.Create(
+                archiveCount: 30,
+                eventsPerArchive: 2000,
+                currentLogTargetBytes: 10 * 1024 * 1024);
+
+            SettingsWindowController? controller = null;
+            try
+            {
+                LogTailReaderTestMetrics.Reset();
+                LogTailReaderTestMetrics.ArtificialDelayMs = 500;
+
+                controller = CreateControllerForLogPath(fixture.LogPath);
+                WpfStaTestHost.Track(controller!);
+                var window = GetWindow(controller!);
+                WpfStaTestHost.ShowAndWait(window);
+
+                var sw = Stopwatch.StartNew();
+                controller!.NavigateTo("logs");
+                sw.Stop();
+
+                sw.Elapsed.Should().BeLessThan(
+                    TimeSpan.FromMilliseconds(200),
+                    "navigating to logs with a 10MB + 30 archive fixture must not block the UI thread on disk I/O");
+
+                var status = window.FindName("lblLogStatus") as TextBlock;
+                status.Should().NotBeNull();
+                status!.Text.Should().Be(LoadingStatusText);
+            }
+            finally
+            {
+                LogTailReaderTestMetrics.Reset();
+                CloseControllerWindow(controller);
+            }
+        });
+    }
+
+    [Fact]
     public void NavigateTo_logs_returns_before_slow_disk_read_completes()
     {
         WpfStaTestHost.Run(() =>
@@ -203,11 +244,22 @@ public class SettingsLogNavResponsivenessTests
     }
 
     private static SettingsWindowController? CreateController(string installRoot)
+        => CreateControllerForLogPath(Path.Combine(installRoot, "SmartGuard.log"), installRoot);
+
+    private static SettingsWindowController? CreateControllerForLogPath(string logPath, string? installRoot = null)
     {
+        installRoot ??= Path.GetDirectoryName(logPath)!;
+        Directory.CreateDirectory(installRoot);
+        Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+        if (!File.Exists(logPath))
+            File.WriteAllText(logPath, "[INFO] 2026-06-21 10:00:00 placeholder\n");
+
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
         File.WriteAllText(
             configPath,
-            "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000,\"ThemeFollowSystem\":false,\"ThemeIsDark\":false}");
+            "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000,\"ThemeFollowSystem\":false,\"ThemeIsDark\":false,\"LogFile\":\"" +
+            logPath.Replace("\\", "\\\\") +
+            "\"}");
         var repository = new GuardConfigRepository(configPath);
         var config = repository.LoadOrDefault(installRoot);
         return SettingsWindowController.TryCreate(installRoot, repository, config);

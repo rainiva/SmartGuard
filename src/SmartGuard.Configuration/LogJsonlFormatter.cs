@@ -18,18 +18,8 @@ public static class LogJsonlFormatter
   public static string FormatLine(LogEvent logEvent)
     => JsonSerializer.Serialize(ToPayload(logEvent), JsonOptions);
 
-  public static string FormatLine(LogJsonlEntry entry)
-    => FormatLine(entry.ToLogEvent());
-
-  public static bool TryParseLine(string logLine, out LogJsonlEntry? entry)
-  {
-    entry = null;
-    if (!TryParseEvent(logLine, out var logEvent) || logEvent is null)
-      return false;
-
-    entry = LogJsonlEntryExtensions.FromLogEvent(logEvent);
-    return true;
-  }
+  public static bool TryParseLine(string logLine, out LogEvent? logEvent)
+    => TryParseEvent(logLine, out logEvent);
 
   public static bool TryParseEvent(string logLine, out LogEvent? logEvent)
   {
