@@ -28,7 +28,7 @@ public class LogLineDisplayItemTests
         var items = lines.Select(LogLineDisplayItem.Parse).ToList();
         items.Select(item => item.LineText).Should().Equal(lines);
 
-        string.Join(Environment.NewLine, items.Select(item => item.LineText))
+        string.Join(Environment.NewLine, items.Select(item => item.ExportLineText))
             .Should().Be(string.Join(Environment.NewLine, lines));
     }
 }

@@ -178,6 +178,18 @@ internal static class SettingsLogPageHostWiring
     WireMatchNavigationKeys(filterBar, searchCoordinator, listPresenter, viewport, loadMatchPage);
   }
 
+  internal static void WireExceptionFoldEvents(ListBox listView, LogViewListPresenter listPresenter)
+  {
+    listView.MouseDoubleClick += (_, e) =>
+    {
+      if (listView.SelectedItem is not LogLineDisplayItem item || !item.IsExceptionRoot)
+        return;
+
+      listPresenter.ToggleExceptionFold(item.EventId);
+      e.Handled = true;
+    };
+  }
+
   internal static void WireMatchNavigationKeys(
     LogSearchFilterBar filterBar,
     SettingsLogSearchCoordinator searchCoordinator,

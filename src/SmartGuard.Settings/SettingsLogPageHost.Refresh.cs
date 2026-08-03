@@ -67,6 +67,8 @@ internal sealed partial class SettingsLogPageHost
       () => OnFilterRefresh(),
       _logListPresenter,
       _logViewport);
+    if (_lstLogView is not null && _logListPresenter is not null)
+      SettingsLogPageHostWiring.WireExceptionFoldEvents(_lstLogView, _logListPresenter);
     _logViewport.SyncFollowLatestFromUi();
     if (_logController is not null)
       _logController.FollowTail = _logViewport.FollowLatest;

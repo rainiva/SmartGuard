@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
@@ -17,6 +18,8 @@ public enum LogViewApplyResult
 public sealed class LogViewListPresenter
 {
     private readonly ObservableCollection<LogLineDisplayItem> _items = new();
+    private readonly List<LogEvent> _sourceEvents = [];
+    private readonly LogExceptionFoldState _exceptionFoldState = new();
     private ListBox? _listBox;
 
     public ReadOnlyObservableCollection<LogLineDisplayItem> Items { get; }
@@ -77,22 +80,29 @@ public sealed class LogViewListPresenter
 
         if (delta.IsInitialize)
         {
-            ReplaceItemsWithoutReset(delta.InitializeEvents.Select(LogLineDisplayItem.FromEvent));
+            _sourceEvents.Clear();
+            _sourceEvents.AddRange(delta.InitializeEvents);
+            ReplaceItemsWithoutReset(ProjectCurrentItems());
             NotifyContentChanged();
             return LogViewApplyResult.Replaced;
         }
 
-        ApplyRemovals(delta.RemovedHeadCount, delta.RemovedTailCount);
+        for (var i = 0; i < delta.RemovedHeadCount && _sourceEvents.Count > 0; i++)
+            _sourceEvents.RemoveAt(0);
+
+        for (var i = 0; i < delta.RemovedTailCount && _sourceEvents.Count > 0; i++)
+            _sourceEvents.RemoveAt(_sourceEvents.Count - 1);
 
         if (delta.PrependedEvents.Count > 0)
         {
             for (var i = delta.PrependedEvents.Count - 1; i >= 0; i--)
-                _items.Insert(0, LogLineDisplayItem.FromEvent(delta.PrependedEvents[i]));
+                _sourceEvents.Insert(0, delta.PrependedEvents[i]);
         }
 
-        foreach (var logEvent in delta.AppendedEvents)
-            _items.Add(LogLineDisplayItem.FromEvent(logEvent));
+        if (delta.AppendedEvents.Count > 0)
+            _sourceEvents.AddRange(delta.AppendedEvents);
 
+        ReplaceItemsWithoutReset(ProjectCurrentItems());
         NotifyContentChanged();
 
         return delta.AppendedEvents.Count > 0 || delta.PrependedEvents.Count > 0
@@ -100,8 +110,63 @@ public sealed class LogViewListPresenter
             : LogViewApplyResult.Replaced;
     }
 
+    public void ToggleExceptionFold(string rootEventId)
+    {
+        var expanded = _exceptionFoldState.Toggle(rootEventId);
+        var rootIndex = FindIndexByEventId(rootEventId);
+        if (rootIndex < 0)
+            return;
+
+        var group = LogExceptionGroupProjector.BuildGroups(_sourceEvents)
+            .FirstOrDefault(candidate => candidate.RootEvent.EventId == rootEventId);
+        if (group is null || !group.HasFoldableContent)
+            return;
+
+        _items[rootIndex] = LogLineDisplayItem.FromExceptionGroup(group, expanded, includeContinuations: expanded);
+
+        if (expanded)
+        {
+            var insertAt = rootIndex + 1;
+            if (group.IsStructured && group.RootEvent.Exception is not null)
+            {
+                foreach (var line in group.RootEvent.Exception.FormatExpandedLines().Skip(1))
+                    _items.Insert(insertAt++, LogLineDisplayItem.FromStructuredExceptionLine(group, line));
+            }
+            else
+            {
+                foreach (var continuation in group.ContinuationEvents)
+                    _items.Insert(insertAt++, LogLineDisplayItem.FromExceptionContinuation(group, continuation));
+            }
+        }
+        else
+        {
+            for (var i = _items.Count - 1; i > rootIndex; i--)
+            {
+                if (_items[i].IsExceptionContinuation
+                    && string.Equals(_items[i].ExceptionGroupRootEventId, rootEventId, StringComparison.Ordinal))
+                    _items.RemoveAt(i);
+            }
+        }
+
+        NotifyContentChanged();
+    }
+
     public string GetPlainText()
-        => string.Join(Environment.NewLine, _items.Select(item => item.LineText));
+        => string.Join(Environment.NewLine, _items.Select(item => item.ExportLineText));
+
+    internal string GetFullExportPlainText()
+    {
+        var lines = new List<string>();
+        foreach (var group in LogExceptionGroupProjector.BuildGroups(_sourceEvents))
+        {
+            if (group.HasFoldableContent)
+                lines.Add(LogLineDisplayItem.BuildExportText(group, includeContinuations: true));
+            else
+                lines.Add(LogViewEventFilter.GetDisplayLine(group.RootEvent));
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
 
     internal string? GetEventIdAt(int index)
         => index >= 0 && index < _items.Count ? _items[index].EventId : null;
@@ -142,9 +207,7 @@ public sealed class LogViewListPresenter
     {
         ScrollViewer = FindScrollViewer(listBox);
         if (ScrollViewer is not null)
-        {
             ScrollBarAutoHide.Attach(ScrollViewer);
-        }
     }
 
     private LogViewApplyResult AppendTail(LogViewUpdatePlan plan)
@@ -169,10 +232,14 @@ public sealed class LogViewListPresenter
 
     private LogViewApplyResult ReplaceAll(LogViewUpdatePlan plan)
     {
+        _sourceEvents.Clear();
         ReplaceItemsWithoutReset(plan.AllLines.Select(LogLineDisplayItem.Parse));
         NotifyContentChanged();
         return LogViewApplyResult.Replaced;
     }
+
+    private IEnumerable<LogLineDisplayItem> ProjectCurrentItems()
+        => LogExceptionGroupProjector.Project(_sourceEvents, _exceptionFoldState);
 
     private void ReplaceItemsWithoutReset(IEnumerable<LogLineDisplayItem> nextItems)
     {
@@ -181,15 +248,6 @@ public sealed class LogViewListPresenter
 
         foreach (var item in nextItems)
             _items.Add(item);
-    }
-
-    private void ApplyRemovals(int removedHeadCount, int removedTailCount)
-    {
-        for (var i = 0; i < removedHeadCount && _items.Count > 0; i++)
-            _items.RemoveAt(0);
-
-        for (var i = 0; i < removedTailCount && _items.Count > 0; i++)
-            _items.RemoveAt(_items.Count - 1);
     }
 
     private void NotifyContentChanged()
