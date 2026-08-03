@@ -348,6 +348,7 @@
 | 日志阶段三结构化与可观测 | `ArchitectureContractLoggingPhase3Tests` |
 | 日志阶段四 UI 与查询升级 | `ArchitectureContractLoggingPhase4Tests` |
 | 日志工作台 P0 唯一真源 | `LoggingWorkbenchArchitectureTests` |
+| 日志工作台 P1 诊断工作流 | `LoggingWorkbenchArchitectureTests`、`LogWorkbenchP1AcceptanceTests`、`DiagnosticBundleExporterArchitectureTests` |
 
 ---
 
@@ -478,3 +479,19 @@
 | LOG-WB-VIEWPORT | 已关闭 | `LogViewportController` 为日志 ScrollViewer 唯一滚动 mutation 所有者；`SettingsLogRefreshPipeline` 只提交 delta/状态 |
 | LOG-WB-EVENT | 已关闭 | `LogEvent` + `LogEventDecoder` + `LogJsonlFormatter` 为结构化事件真源；configured 主日志物理追加只经 `SmartGuardLogWriter` |
 | DOC-LOG-WB | 已关闭 | 本文档 §23 + ADR `0001-log-workbench-architecture.md` + `LoggingWorkbenchArchitectureTests` + `LogWorkbenchPerformanceTests` |
+
+---
+
+## 24. 日志工作台 P1（组合查询、关联与诊断包）（2026-08-03）
+
+**关联 ADR：** [docs/decisions/0001-log-workbench-architecture.md](decisions/0001-log-workbench-architecture.md)
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-WB-P1-AST | 已关闭 | `LogQueryParser` + `LogQueryExpression` + `LogQueryService.QueryAsync` 为组合查询唯一 AST/执行真源；`LogFilterBuilder`/`LogQueryFilterSpec` 编译到同一 AST；无效表达式保留上次有效结果 |
+| LOG-WB-P1-REGEX | 已关闭 | `LogRegexSpec` 为安全正则唯一规格；优先 `RegexOptions.NonBacktracking`；回溯 pattern 100ms timeout + 首次 timeout 终止整次查询 |
+| LOG-WB-P1-MATCH | 已关闭 | `LogMatchNavigator` + `SettingsLogSearchCoordinator` 为匹配导航与 query generation 唯一协调入口；扫描中 `M+`、完成后精确总数 |
+| LOG-WB-P1-EXCEPTION | 已关闭 | `LogExceptionGroupProjector` 为异常折叠/归组唯一投影；折叠仅影响视图，复制/导出保留完整 stack |
+| LOG-WB-P1-CORRELATION | 已关闭 | `LogCorrelationCoordinator` + `LogOperationProjector` 为 Operation/Trace/UserAction 关联唯一入口；返回主视图恢复 cursor/anchor/selection |
+| LOG-WB-P1-DIAGNOSTIC | 已关闭 | `DiagnosticBundleRequest` + `DiagnosticRedactor` + `DiagnosticBundleExporter.ExportAsync` 为 scoped 诊断包唯一链路；UI 只构造 request 并注入共享 `ILogEventSource`；取消删除临时 zip、默认不覆盖既有目标 |
+| DOC-LOG-WB-P1 | 已关闭 | 本文档 §24 + `LoggingWorkbenchArchitectureTests` + `LogWorkbenchP1AcceptanceTests` + `DiagnosticBundleExporterArchitectureTests` |

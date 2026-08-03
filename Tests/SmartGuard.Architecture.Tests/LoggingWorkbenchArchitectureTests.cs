@@ -71,6 +71,11 @@ public class LoggingWorkbenchArchitectureTests
     ContractContent.Should().Contain("LoggingWorkbenchArchitectureTests");
     ContractContent.Should().Contain("DOC-LOG-WB | 已关闭",
       "P0 log workbench stage must be closed after P0-08");
+    ContractContent.Should().Contain("## 24.");
+    ContractContent.Should().Contain("LOG-WB-P1-AST");
+    ContractContent.Should().Contain("LOG-WB-P1-DIAGNOSTIC");
+    ContractContent.Should().Contain("DOC-LOG-WB-P1 | 已关闭",
+      "P1 log workbench stage must be closed after P1-06");
 
     var configRepositories = SourceScanHelper.EnumerateCsFilesUnder("src")
       .Where(path => File.ReadAllText(path).Contains("class GuardConfigRepository", StringComparison.Ordinal))
