@@ -49,7 +49,7 @@ public class ArchitectureContractLoggingPhase3Tests
   [Fact]
   public void GuardianLoop_WriteLog_uses_registered_event_names()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var source = SourceScanHelper.ReadGuardianLoopSource();
     source.Should().Contain("EventNameRegistry.",
       "WriteLog 调用点必须使用 EventNameRegistry 常量，禁止硬编码事件名");
   }
@@ -67,7 +67,7 @@ public class ArchitectureContractLoggingPhase3Tests
   [Fact]
   public void GuardianLoop_WriteBatch_uses_consumer_recovery()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var source = SourceScanHelper.ReadGuardianLoopSource();
     source.Should().Contain("ExecuteWithRecovery",
       "管线消费回调必须经 LogConsumerRecovery.ExecuteWithRecovery 包装，否则消费恢复状态机未接入生产路径");
   }
@@ -107,23 +107,23 @@ public class ArchitectureContractLoggingPhase3Tests
   [Fact]
   public void GuardianLoop_enables_pipeline_health_reporting()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var source = SourceScanHelper.ReadGuardianLoopSource();
     source.Should().Contain("StartHealthReporting",
       "GuardianLoop 启动管线后必须调 StartHealthReporting，否则 LogPipelineHealth 定时落盘未在生产启用");
   }
 
   [Fact]
-  public void LogPipeline_health_reporting_uses_standard_log_line_formatter()
+  public void LogPipeline_health_reporting_uses_structured_health_event()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogPipeline.cs");
-    source.Should().Contain("FormatLogLine",
-      "健康记录必须携带标准标签和时间戳，不能再以裸 JSON 混入主日志");
+    source.Should().Contain("CreateHealthEvent",
+      "健康记录必须经结构化 LogEvent 入队，不能再以裸 JSON 字符串混入主日志");
   }
 
   [Fact]
   public void GuardianLoop_writes_to_crash_ring_buffer()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var source = SourceScanHelper.ReadGuardianLoopSource();
     source.Should().Contain("CrashRingBuffer.Instance",
       "高优先级日志行必须同步 Add 到 CrashRingBuffer.Instance，否则崩溃现场环形缓冲未接入生产路径");
   }

@@ -1,16 +1,27 @@
+using SmartGuard.Configuration;
 using SmartGuard.Engine.Infrastructure;
 
 namespace SmartGuard.Engine.Tests;
 
 public class LogConsumerRecoveryTests
 {
+  private static LogEvent Event(string message)
+    => LogEventFactory.Create(
+      LogSeverity.Info,
+      LogComponentRegistry.Engine,
+      LogChannelRegistry.Lifecycle,
+      EventNameRegistry.AppStarted,
+      message);
+
+  private static LogEvent[] Batch(string message) => new[] { Event(message) };
+
   [Fact]
   public void ExecuteWithRecovery_returns_true_when_batch_succeeds()
   {
     var sm = new LogRecoveryStateMachine(failureThreshold: 3);
     var recovery = new LogConsumerRecovery(sm);
 
-    var result = recovery.ExecuteWithRecovery(_ => true, new[] { "line1" }, "fallback.log");
+    var result = recovery.ExecuteWithRecovery(_ => true, Batch("line1"), "fallback.log");
     result.Should().BeTrue();
     sm.State.Should().Be(RecoveryState.Healthy);
   }
@@ -21,7 +32,7 @@ public class LogConsumerRecoveryTests
     var sm = new LogRecoveryStateMachine(failureThreshold: 3);
     var recovery = new LogConsumerRecovery(sm);
 
-    recovery.ExecuteWithRecovery(_ => false, new[] { "line1" }, "fallback.log");
+    recovery.ExecuteWithRecovery(_ => false, Batch("line1"), "fallback.log");
     sm.State.Should().Be(RecoveryState.Degraded);
   }
 
@@ -30,7 +41,7 @@ public class LogConsumerRecoveryTests
   {
     var sm = new LogRecoveryStateMachine(failureThreshold: 2);
     var recovery = new LogConsumerRecovery(sm);
-    var batch = new[] { "line1" };
+    var batch = Batch("line1");
 
     recovery.ExecuteWithRecovery(_ => false, batch, "fallback.log");
     recovery.ExecuteWithRecovery(_ => false, batch, "fallback.log");
@@ -45,10 +56,10 @@ public class LogConsumerRecoveryTests
 
     var result = recovery.ExecuteWithRecovery(
       _ => throw new InvalidOperationException("disk error"),
-      new[] { "line1" },
+      Batch("line1"),
       "fallback.log");
 
-    result.Should().BeTrue(); // 降级处置完毕，不让管线重复计失败
+    result.Should().BeTrue();
     sm.State.Should().Be(RecoveryState.Degraded);
   }
 }

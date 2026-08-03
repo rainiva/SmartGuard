@@ -22,7 +22,7 @@ public class GuardianLoopArchitectureTests
         "GuardianExceptionStormHandler.cs"))
       .Should().BeTrue();
 
-    var loop = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var loop = SourceScanHelper.ReadGuardianLoopSource();
     loop.Should().Contain("GuardianFirstRunInitializer");
     loop.Should().Contain("GuardianExceptionStormHandler");
     loop.Should().NotContain("INIT: 开始首次初始化");
@@ -39,7 +39,7 @@ public class GuardianLoopArchitectureTests
   [Fact]
   public void GuardianLoop_WriteLog_uses_ResolveLogFile()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var source = SourceScanHelper.ReadGuardianLoopSource();
     source.Should().Contain("ResolveLogFile");
   }
 
@@ -49,7 +49,7 @@ public class GuardianLoopArchitectureTests
     // A bare PowerCfgExecutor.GetCurrentPlanGuid() call in the main loop let a
     // transient powercfg timeout crash the whole engine (0xE0434352); the probe
     // must go through GuardianPlanProbe so failures degrade instead of killing.
-    var loop = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var loop = SourceScanHelper.ReadGuardianLoopSource();
     loop.Should().Contain("GuardianPlanProbe.ProbeOrKeep");
     loop.Should().NotContain("= PowerCfgExecutor.GetCurrentPlanGuid()");
   }

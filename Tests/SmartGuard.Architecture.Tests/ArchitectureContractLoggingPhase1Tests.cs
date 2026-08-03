@@ -48,10 +48,10 @@ public class ArchitectureContractLoggingPhase1Tests
   [Fact]
   public void GuardianLoop_WriteLog_uses_three_layer_fallback_chain()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
-    source.Should().Contain("LogFallbackChain.Write",
+    var source = SourceScanHelper.ReadGuardianLoopSource();
+    source.Should().Contain("LogFallbackChain.WriteEvent",
       "WriteLog 必须走三层降级链而非单层 fallback");
-    source.Should().Contain("FileLogger.TryWrite",
-      "主层写入必须使用可上报成败的 TryWrite");
+    source.Should().Contain("LogStructuredSink.TryWriteBatch",
+      "主层写入必须使用结构化 sink 批量落盘");
   }
 }

@@ -5,9 +5,9 @@ namespace SmartGuard.Configuration;
 
 public sealed class LogPipeline
 {
-  private readonly Channel<string> _normalQueue;
-  private readonly Channel<string> _highQueue;
-  private readonly Func<IReadOnlyList<string>, bool> _writeBatch;
+  private readonly Channel<LogEvent> _normalQueue;
+  private readonly Channel<LogEvent> _highQueue;
+  private readonly Func<IReadOnlyList<LogEvent>, bool> _writeBatch;
   private readonly LogPipelineOptions _options;
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
   private readonly ConcurrentQueue<TaskCompletionSource<bool>> _flushWaiters = new();
@@ -21,12 +21,12 @@ public sealed class LogPipeline
   private long _failedBatches;
   private System.Timers.Timer? _healthTimer;
 
-  public LogPipeline(Func<IReadOnlyList<string>, bool> writeBatch, LogPipelineOptions? options = null)
+  public LogPipeline(Func<IReadOnlyList<LogEvent>, bool> writeBatch, LogPipelineOptions? options = null)
   {
     _writeBatch = writeBatch ?? throw new ArgumentNullException(nameof(writeBatch));
     _options = options ?? new LogPipelineOptions();
-    _normalQueue = Channel.CreateBounded<string>(CreateBoundedOptions(_options.NormalQueueCapacity));
-    _highQueue = Channel.CreateBounded<string>(CreateBoundedOptions(_options.HighQueueCapacity));
+    _normalQueue = Channel.CreateBounded<LogEvent>(CreateBoundedOptions(_options.NormalQueueCapacity));
+    _highQueue = Channel.CreateBounded<LogEvent>(CreateBoundedOptions(_options.HighQueueCapacity));
   }
 
   public LogPipelineState State => (LogPipelineState)Volatile.Read(ref _state);
@@ -46,29 +46,27 @@ public sealed class LogPipeline
     if (Interlocked.CompareExchange(
           ref _state, (int)LogPipelineState.Running, (int)LogPipelineState.Starting)
         != (int)LogPipelineState.Starting)
-      return; // 幂等：仅 Starting→Running 起一次消费者
+      return;
     _consumerTask = Task.Run(ConsumeLoopAsync);
   }
 
-  public bool TryEnqueue(LogPriority priority, string line)
+  public bool TryEnqueue(LogPriority priority, LogEvent logEvent)
   {
     if (State is LogPipelineState.Flushing or LogPipelineState.Stopped)
     {
       CountDrop(priority);
-      return false; // 关闭中/已关闭：停止接收
+      return false;
     }
 
     var queue = priority == LogPriority.High ? _highQueue : _normalQueue;
-    if (queue.Writer.TryWrite(line))
+    if (queue.Writer.TryWrite(logEvent))
     {
       Interlocked.Increment(ref _enqueued);
       if (Interlocked.Increment(ref _pendingSinceFlush) >= _options.MaxBatchSize)
-        _wakeSignal.Release(); // 凑满一批立即唤醒消费者，不等定时器
+        _wakeSignal.Release();
       return true;
     }
 
-    // FullMode.Wait + TryWrite：队列满时 TryWrite 返回 false，可精确计数丢弃；
-    // 禁用 DropWrite（其 TryWrite 恒 true，静默丢行且无法计数）。
     CountDrop(priority);
     return false;
   }
@@ -77,7 +75,7 @@ public sealed class LogPipeline
   {
     if (_consumerTask is null || State == LogPipelineState.Stopped)
     {
-      FlushOnce(); // 无消费者线程：同步兑底
+      FlushOnce();
       return Task.CompletedTask;
     }
 
@@ -95,13 +93,13 @@ public sealed class LogPipeline
       AutoReset = true,
       Enabled = true
     };
-    _healthTimer.Elapsed += (s, e) =>
+    _healthTimer.Elapsed += (_, _) =>
     {
       try
       {
         var snapshot = health.TakeSnapshot(this);
-        var logLine = health.FormatLogLine(snapshot, DateTime.Now);
-        TryEnqueue(LogPriority.High, logLine);
+        var logEvent = health.CreateHealthEvent(snapshot);
+        TryEnqueue(LogPriority.High, logEvent);
       }
       catch
       {
@@ -123,7 +121,6 @@ public sealed class LogPipeline
   public async Task<bool> StopAsync()
   {
     StopHealthReporting();
-    // Running→Flushing（停止接收）；Starting→Stopped（从未启动，同步排空）
     Interlocked.CompareExchange(
       ref _state, (int)LogPipelineState.Flushing, (int)LogPipelineState.Running);
     Interlocked.CompareExchange(
@@ -138,11 +135,11 @@ public sealed class LogPipeline
       return true;
     }
 
-    _wakeSignal.Release(); // 唤醒消费者进入收尾分支
+    _wakeSignal.Release();
     var finished = await Task.WhenAny(consumer, Task.Delay(_options.ShutdownTimeoutMs))
       .ConfigureAwait(false) == consumer;
     if (!finished)
-      Interlocked.Exchange(ref _state, (int)LogPipelineState.Stopped); // 超时：置 Stopped，消费者随后自行收敛退出
+      Interlocked.Exchange(ref _state, (int)LogPipelineState.Stopped);
     return finished;
   }
 
@@ -171,17 +168,16 @@ public sealed class LogPipeline
     {
       await _wakeSignal.WaitAsync(TimeSpan.FromMilliseconds(_options.FlushIntervalMs))
         .ConfigureAwait(false);
-      while (_wakeSignal.Wait(0)) { } // 合并积压唤醒，一次 flush 处理
+      while (_wakeSignal.Wait(0)) { }
 
-      var waitersBeforeFlush = _flushWaiters.Count; // 快照：只完成 flush 前已登记的等待者
+      var waitersBeforeFlush = _flushWaiters.Count;
       Interlocked.Exchange(ref _pendingSinceFlush, 0);
       FlushOnce();
       CompleteFlushWaiters(waitersBeforeFlush);
 
       if (State is LogPipelineState.Flushing or LogPipelineState.Stopped)
       {
-        // 含 Stopped：StopAsync 超时后消费者也必须自行收敛退出，避免任务泄漏
-        FlushOnce(); // 收尾：把停止接收前最后入队的行也排空
+        FlushOnce();
         Volatile.Write(ref _state, (int)LogPipelineState.Stopped);
         CompleteFlushWaiters(int.MaxValue);
         return;
@@ -201,9 +197,9 @@ public sealed class LogPipeline
     else Interlocked.Increment(ref _droppedNormal);
   }
 
-  private List<string> TryFillBatch()
+  private List<LogEvent> TryFillBatch()
   {
-    var batch = new List<string>(_options.MaxBatchSize);
+    var batch = new List<LogEvent>(_options.MaxBatchSize);
     while (batch.Count < _options.MaxBatchSize && _highQueue.Reader.TryRead(out var high))
       batch.Add(high);
     while (batch.Count < _options.MaxBatchSize && _normalQueue.Reader.TryRead(out var normal))
@@ -213,8 +209,8 @@ public sealed class LogPipeline
 
   private static BoundedChannelOptions CreateBoundedOptions(int capacity) => new(capacity)
   {
-    FullMode = BoundedChannelFullMode.Wait, // 满时 TryWrite=false，由调用方计数丢弃
-    SingleReader = true,  // 唯一后台消费者
-    SingleWriter = false, // 业务线程多写者
+    FullMode = BoundedChannelFullMode.Wait,
+    SingleReader = true,
+    SingleWriter = false,
   };
 }

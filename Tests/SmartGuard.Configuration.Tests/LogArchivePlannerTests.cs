@@ -1,14 +1,24 @@
-using SmartGuard.Engine.Infrastructure;
+using SmartGuard.Configuration;
 
-namespace SmartGuard.Engine.Tests;
+namespace SmartGuard.Configuration.Tests;
 
 public class LogArchivePlannerTests
 {
   [Fact]
-  public void GetArchivePath_appends_yyyyMMdd_bak_suffix()
+  public void AllocateArchivePath_starts_at_sequence_001_for_empty_directory()
   {
-    LogArchivePlanner.GetArchivePath(@"D:\logs\SmartGuard.log", new DateOnly(2026, 6, 16))
-      .Should().Be(@"D:\logs\SmartGuard.log.20260616.bak");
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var logPath = Path.Combine(dir, "SmartGuard.log");
+    try
+    {
+      LogArchivePlanner.AllocateArchivePath(logPath, new DateOnly(2026, 6, 16))
+        .Should().Be(Path.Combine(dir, "SmartGuard.log.20260616.001.bak"));
+    }
+    finally
+    {
+      if (Directory.Exists(dir)) Directory.Delete(dir, true);
+    }
   }
 
   [Theory]
@@ -37,11 +47,20 @@ public class LogArchivePlannerTests
   }
 
   [Fact]
-  public void TryParseArchiveDate_reads_yyyyMMdd_from_archive_name()
+  public void TryParseArchiveDate_reads_legacy_yyyyMMdd_bak()
   {
     LogArchivePlanner.TryParseArchiveDate(@"D:\SmartGuard.log.20260616.bak", out var date)
       .Should().BeTrue();
     date.Should().Be(new DateOnly(2026, 6, 16));
+  }
+
+  [Fact]
+  public void TryParseArchiveIdentity_reads_sequenced_archive_name()
+  {
+    LogArchivePlanner.TryParseArchiveIdentity(@"D:\SmartGuard.log.20260616.003.bak", out var date, out var sequence)
+      .Should().BeTrue();
+    date.Should().Be(new DateOnly(2026, 6, 16));
+    sequence.Should().Be(3);
   }
 
   [Fact]
@@ -85,7 +104,7 @@ public class LogArchivePlannerTests
     var doomed = LogArchivePlanner.SelectArchivesOverBudget(
       archives, currentLogSizeBytes: 100, maxDirectoryBytes: 1_000);
 
-    doomed.Should().Equal(@"C:\logs\a.log.20260728.bak"); // 总量 1300 > 1000，删最旧 400 后 900 ≤ 1000
+    doomed.Should().Equal(@"C:\logs\a.log.20260728.bak");
   }
 
   [Fact]

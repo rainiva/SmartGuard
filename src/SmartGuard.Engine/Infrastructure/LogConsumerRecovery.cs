@@ -16,19 +16,17 @@ public sealed class LogConsumerRecovery
   }
 
   public bool ExecuteWithRecovery(
-    Func<IReadOnlyList<string>, bool> writeBatch,
-    IReadOnlyList<string> batch,
+    Func<IReadOnlyList<LogEvent>, bool> writeBatch,
+    IReadOnlyList<LogEvent> batch,
     string fallbackLogPath)
   {
-    // Failed 态下尝试恢复探测
     if (_stateMachine.State == RecoveryState.Failed)
     {
       if (!_stateMachine.TryRecover())
       {
-        // 仍在 Failed 态：降级到同步写入
-        foreach (var line in batch)
-          LogFallbackChain.Write(() => false, fallbackLogPath, line);
-        return true; // 已降级处置，不让管线重复计失败批次
+        foreach (var logEvent in batch)
+          LogFallbackChain.WriteEvent(() => false, fallbackLogPath, logEvent);
+        return true;
       }
     }
 
@@ -40,17 +38,16 @@ public sealed class LogConsumerRecovery
         return true;
       }
       _stateMachine.RecordFailure();
-      // 降级处置每行
-      foreach (var line in batch)
-        LogFallbackChain.Write(() => false, fallbackLogPath, line);
-      return true; // 已降级处置完毕
+      foreach (var logEvent in batch)
+        LogFallbackChain.WriteEvent(() => false, fallbackLogPath, logEvent);
+      return true;
     }
     catch
     {
       _stateMachine.RecordFailure();
-      foreach (var line in batch)
-        LogFallbackChain.Write(() => false, fallbackLogPath, line);
-      return true; // 异常隔离，不让管线上抛
+      foreach (var logEvent in batch)
+        LogFallbackChain.WriteEvent(() => false, fallbackLogPath, logEvent);
+      return true;
     }
   }
 }

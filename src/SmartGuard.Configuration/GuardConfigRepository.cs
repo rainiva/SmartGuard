@@ -109,10 +109,20 @@ public sealed class GuardConfigRepository
     var logPath = SmartGuardPaths.ResolveLogFile(config, root);
     if (string.IsNullOrWhiteSpace(logPath))
       logPath = fallbackLogPath ?? SmartGuardPaths.DefaultLogFile(root);
-    var dir = Path.GetDirectoryName(logPath);
-    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    var line = $"[INFO] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
-    SmartGuardLogWriter.TryAppendLine(logPath, line);
+    var logEvent = LogStructuredSink.CreateComponentEvent(
+      LogSeverity.Info,
+      LogComponentRegistry.Configuration,
+      LogChannelRegistry.Policy,
+      EventNameRegistry.ConfigMutationLogged,
+      message);
+    var retention = LogRetentionPolicy.FromGuardConfig(config);
+    if (!LogStructuredSink.TryWriteBatch(logPath, new[] { logEvent }, retention))
+    {
+      LogFallbackChain.WriteEvent(
+        () => false,
+        fallbackLogPath ?? SmartGuardPaths.StartupLogFile(root),
+        logEvent);
+    }
   }
 
   private JsonObject LoadOrCreateNode()

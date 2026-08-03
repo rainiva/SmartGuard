@@ -5,7 +5,7 @@ using SmartGuard.Engine.Infrastructure;
 
 namespace SmartGuard.Engine.Worker;
 
-public sealed class GuardianLoop
+public sealed partial class GuardianLoop
 {
   private readonly string _rootPath;
   private readonly string _configPath;
@@ -63,7 +63,9 @@ public sealed class GuardianLoop
       LoadConfig,
       (c, l, m) => WriteLog(c, l, m, EventNameRegistry.HeartbeatTick),
       _powerCfgBrightnessSupported);
-    _logPipeline = new LogPipeline(lines => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, lines, _fallbackLogPath), _logOptions); // 默认参数：200 条/100ms 先到先触发，关闭超时 3s
+    _logPipeline = new LogPipeline(
+      batch => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, batch, _fallbackLogPath),
+      _logOptions);
   }
 
   public void Run(CancellationToken cancellationToken = default)
@@ -77,7 +79,6 @@ public sealed class GuardianLoop
     {
       EnsureConfigExists();
       var config = LoadConfig();
-      _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
       var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
       WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}", EventNameRegistry.AppStarted);
 
@@ -101,7 +102,7 @@ public sealed class GuardianLoop
           }
           catch
           {
-            FileLogger.Write(LogLevel.Error, _fallbackLogPath, ex.Message, long.MaxValue);
+            SmartGuardLogWriter.TryAppendLine(_fallbackLogPath, $"[ERROR] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {ex.Message}");
           }
         }
 
@@ -114,7 +115,6 @@ public sealed class GuardianLoop
     }
     finally
     {
-      // 受控关闭：停止接收 → 排空队列 → Flush → Stopped（3s 超时上限，超时也不阻塞退出）
       await _logPipeline.StopAsync();
     }
   }
@@ -148,50 +148,5 @@ public sealed class GuardianLoop
     if (!Directory.Exists(_rootPath)) Directory.CreateDirectory(_rootPath);
     if (File.Exists(_configPath)) return;
     _configRepository.Save(GuardConfig.CreateDefault(_rootPath));
-  }
-
-  private void WriteLog(GuardConfig config, LogLevel level, string message, string eventName = EventNameRegistry.IterationError)
-  {
-    if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
-      return;
-    if (level == LogLevel.Heart
-        && !_heartSampler.ShouldPersist(DateTime.Now, TimeSpan.FromSeconds(Math.Max(0, config.LogHeartMinIntervalSec))))
-      return;
-    var fp = message.Trim().ToLowerInvariant();
-    if (!_deduplication.TryAccept(fp, message, out var dedupMessage)) return;
-    var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-    var line = LogLineFormatter.Format(DateTime.Now, level, dedupMessage!, TraceIdContext.Current, SpanIdContext.Current, OperationIdContext.Current, UserActionIdContext.Current);
-    var priority = level is LogLevel.Warn or LogLevel.Error or LogLevel.Critical ? LogPriority.High : LogPriority.Normal;
-    if (priority == LogPriority.High) CrashRingBuffer.Instance.Add(line); // 崩溃现场环形缓冲：高优先级行同步留存
-    if (priority == LogPriority.Normal && _backpressure.ShouldThrottle(_logPipeline.NormalQueueDepth, _logOptions.NormalQueueCapacity)) return; // 背压：丢弃 Normal 低价值行
-    if (_logPipeline.TryEnqueue(priority, line)) return;
-
-    // 入队失败（队列满/管线已停）回退阶段一同步三层降级链，关键日志不丢
-    LogFallbackChain.Write(
-      () => FileLogger.TryWrite(level, logPath, dedupMessage!, config.LogMaxBytes),
-      _fallbackLogPath,
-      line);
-  }
-
-  private bool WriteBatchToDisk(IReadOnlyList<string> lines)
-  {
-    try
-    {
-      var config = LoadConfig();
-      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-      if (FileLogger.TryWriteLines(logPath, lines, config.LogMaxBytes))
-      {
-        FileLogger.EnforceArchiveLimits(logPath, config.LogMaxArchiveFiles, config.LogDirectoryMaxBytes);
-        return true;
-      }
-
-      foreach (var line in lines)
-        LogFallbackChain.Write(() => false, _fallbackLogPath, line); // 主层已失败，逐行走 startup/emergency 降级
-      return true; // 已降级处置完毕，不让管线重复计失败批次
-    }
-    catch
-    {
-      return false; // 未预期异常：计入 FailedBatches，绝不上抛到消费线程
-    }
   }
 }

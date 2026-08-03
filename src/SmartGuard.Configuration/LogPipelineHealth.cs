@@ -50,9 +50,12 @@ public sealed class LogPipelineHealth
       HighQueueDepth: pipeline.HighQueueDepth,
       EnqueueRatePerSec: Math.Round(enqueueRate, 2),
       WriteRatePerSec: Math.Round(writeRate, 2),
-      AverageLatencyMs: 0, // 延迟跟踪需管线内部插桩，阶段三简化为零
-      P99LatencyMs: 0);    // P99 同上，留接口供后续精确实现
+      AverageLatencyMs: 0,
+      P99LatencyMs: 0);
   }
+
+  public LogEvent CreateHealthEvent(LogHealthSnapshot snapshot)
+    => LogStructuredSink.CreatePipelineHealthEvent(snapshot);
 
   public string FormatJson(LogHealthSnapshot snapshot)
   {

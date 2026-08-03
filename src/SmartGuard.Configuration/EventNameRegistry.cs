@@ -26,6 +26,9 @@ public static class EventNameRegistry
   public const string RecoveryRestored = nameof(RecoveryRestored);
   public const string LogBackpressureApplied = nameof(LogBackpressureApplied);
   public const string LogDeduplicationEmitted = nameof(LogDeduplicationEmitted);
+  public const string ConfigMutationLogged = nameof(ConfigMutationLogged);
+  public const string PipelineHealthSampled = nameof(PipelineHealthSampled);
+  public const string InstallProgressLogged = nameof(InstallProgressLogged);
 
   static EventNameRegistry()
   {
@@ -43,6 +46,9 @@ public static class EventNameRegistry
     Register(RecoveryRestored);
     Register(LogBackpressureApplied);
     Register(LogDeduplicationEmitted);
+    Register(ConfigMutationLogged);
+    Register(PipelineHealthSampled);
+    Register(InstallProgressLogged);
   }
 
   public static void Register(string name)

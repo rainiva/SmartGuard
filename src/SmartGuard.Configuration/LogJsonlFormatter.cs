@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -11,6 +12,7 @@ public static class LogJsonlFormatter
   {
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
   };
 
   public static string FormatLine(LogEvent logEvent)

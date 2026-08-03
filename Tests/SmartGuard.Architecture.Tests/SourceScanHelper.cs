@@ -14,6 +14,15 @@ internal static class SourceScanHelper
     return File.ReadAllText(path);
   }
 
+  internal static string ReadGuardianLoopSource()
+  {
+    var dir = Path.Combine(RepoRoot, "src", "SmartGuard.Engine", "Worker");
+    return string.Concat(Directory
+      .EnumerateFiles(dir, "GuardianLoop*.cs", SearchOption.TopDirectoryOnly)
+      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+      .Select(File.ReadAllText));
+  }
+
   internal static IEnumerable<string> EnumerateCsFilesUnder(string relativeDir)
   {
     var root = Path.Combine(RepoRoot, relativeDir.Replace('/', Path.DirectorySeparatorChar));

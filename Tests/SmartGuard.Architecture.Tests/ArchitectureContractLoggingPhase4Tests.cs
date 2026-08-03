@@ -18,9 +18,10 @@ public class ArchitectureContractLoggingPhase4Tests
   [Fact]
   public void GuardianLoop_WriteLog_passes_context_to_formatter()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var source = SourceScanHelper.ReadGuardianLoopSource();
     source.Should().Contain("TraceIdContext.Current",
-      "WriteLog 必须传入 TraceIdContext.Current 给 LogLineFormatter.Format");
+      "WriteLog 必须传入 TraceIdContext.Current 给结构化事件工厂");
+    source.Should().Contain("EngineLogEvents.Create");
     source.Should().Contain("SpanIdContext.Current");
   }
 

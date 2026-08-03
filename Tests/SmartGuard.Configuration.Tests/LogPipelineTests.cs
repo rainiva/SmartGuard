@@ -4,6 +4,14 @@ namespace SmartGuard.Configuration.Tests;
 
 public class LogPipelineTests
 {
+  private static LogEvent Event(string message)
+    => LogEventFactory.Create(
+      LogSeverity.Info,
+      LogComponentRegistry.Engine,
+      LogChannelRegistry.Lifecycle,
+      EventNameRegistry.AppStarted,
+      message);
+
   private static LogPipelineOptions TinyOptions(
     int normalCapacity = 8, int highCapacity = 8, int maxBatchSize = 200) => new()
   {
@@ -16,28 +24,28 @@ public class LogPipelineTests
   [Fact]
   public void FlushOnce_delivers_lines_in_enqueue_order()
   {
-    var written = new List<string>();
+    var written = new List<LogEvent>();
     var pipeline = new LogPipeline(batch => { written.AddRange(batch); return true; }, TinyOptions());
 
-    pipeline.TryEnqueue(LogPriority.Normal, "a").Should().BeTrue();
-    pipeline.TryEnqueue(LogPriority.Normal, "b").Should().BeTrue();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("a")).Should().BeTrue();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("b")).Should().BeTrue();
     pipeline.FlushOnce().Should().BeTrue();
 
-    written.Should().Equal("a", "b");
+    written.Select(e => e.Message).Should().Equal("a", "b");
   }
 
   [Fact]
   public void FlushOnce_drains_high_priority_before_normal()
   {
-    var written = new List<string>();
+    var written = new List<LogEvent>();
     var pipeline = new LogPipeline(batch => { written.AddRange(batch); return true; }, TinyOptions());
 
-    pipeline.TryEnqueue(LogPriority.Normal, "normal-1");
-    pipeline.TryEnqueue(LogPriority.High, "high-1");
-    pipeline.TryEnqueue(LogPriority.Normal, "normal-2");
+    pipeline.TryEnqueue(LogPriority.Normal, Event("normal-1"));
+    pipeline.TryEnqueue(LogPriority.High, Event("high-1"));
+    pipeline.TryEnqueue(LogPriority.Normal, Event("normal-2"));
     pipeline.FlushOnce();
 
-    written.Should().Equal("high-1", "normal-1", "normal-2");
+    written.Select(e => e.Message).Should().Equal("high-1", "normal-1", "normal-2");
   }
 
   [Fact]
@@ -45,9 +53,9 @@ public class LogPipelineTests
   {
     var pipeline = new LogPipeline(_ => true, TinyOptions(normalCapacity: 2));
 
-    pipeline.TryEnqueue(LogPriority.Normal, "1").Should().BeTrue();
-    pipeline.TryEnqueue(LogPriority.Normal, "2").Should().BeTrue();
-    pipeline.TryEnqueue(LogPriority.Normal, "3").Should().BeFalse("队列满时必须非阻塞拒绝，不得阻塞业务线程");
+    pipeline.TryEnqueue(LogPriority.Normal, Event("1")).Should().BeTrue();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("2")).Should().BeTrue();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("3")).Should().BeFalse("队列满时必须非阻塞拒绝，不得阻塞业务线程");
 
     pipeline.Diagnostics.DroppedNormal.Should().Be(1);
     pipeline.Diagnostics.Enqueued.Should().Be(2);
@@ -58,8 +66,8 @@ public class LogPipelineTests
   {
     var pipeline = new LogPipeline(_ => true, TinyOptions(highCapacity: 1));
 
-    pipeline.TryEnqueue(LogPriority.High, "1").Should().BeTrue();
-    pipeline.TryEnqueue(LogPriority.High, "2").Should().BeFalse();
+    pipeline.TryEnqueue(LogPriority.High, Event("1")).Should().BeTrue();
+    pipeline.TryEnqueue(LogPriority.High, Event("2")).Should().BeFalse();
 
     pipeline.Diagnostics.DroppedHigh.Should().Be(1);
   }
@@ -72,7 +80,7 @@ public class LogPipelineTests
       batch => { batchSizes.Add(batch.Count); return true; }, TinyOptions(maxBatchSize: 2));
 
     for (var i = 0; i < 5; i++)
-      pipeline.TryEnqueue(LogPriority.Normal, $"line-{i}");
+      pipeline.TryEnqueue(LogPriority.Normal, Event($"line-{i}"));
     pipeline.FlushOnce();
 
     batchSizes.Should().Equal(2, 2, 1);
@@ -83,7 +91,7 @@ public class LogPipelineTests
   {
     var pipeline = new LogPipeline(_ => false, TinyOptions());
 
-    pipeline.TryEnqueue(LogPriority.Normal, "doomed");
+    pipeline.TryEnqueue(LogPriority.Normal, Event("doomed"));
     pipeline.FlushOnce().Should().BeFalse();
 
     pipeline.Diagnostics.FailedBatches.Should().Be(1);
@@ -95,8 +103,8 @@ public class LogPipelineTests
   {
     var pipeline = new LogPipeline(_ => true, TinyOptions());
 
-    pipeline.TryEnqueue(LogPriority.Normal, "1");
-    pipeline.TryEnqueue(LogPriority.High, "2");
+    pipeline.TryEnqueue(LogPriority.Normal, Event("1"));
+    pipeline.TryEnqueue(LogPriority.High, Event("2"));
     pipeline.FlushOnce();
 
     pipeline.Diagnostics.WrittenLines.Should().Be(2);

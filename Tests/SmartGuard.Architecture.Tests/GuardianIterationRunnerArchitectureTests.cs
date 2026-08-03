@@ -7,7 +7,7 @@ public class GuardianIterationRunnerArchitectureTests
   [Fact]
   public void GuardianLoop_delegates_iteration_to_GuardianIterationRunner()
   {
-    var loop = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var loop = SourceScanHelper.ReadGuardianLoopSource();
     loop.Should().NotContain("private async Task ProcessIterationAsync");
     loop.Should().Contain("GuardianIterationRunner");
 

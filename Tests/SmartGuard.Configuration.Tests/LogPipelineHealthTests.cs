@@ -4,13 +4,21 @@ namespace SmartGuard.Configuration.Tests;
 
 public class LogPipelineHealthTests
 {
+  private static LogEvent Event(string message)
+    => LogEventFactory.Create(
+      LogSeverity.Info,
+      LogComponentRegistry.Engine,
+      LogChannelRegistry.Lifecycle,
+      EventNameRegistry.AppStarted,
+      message);
+
   [Fact]
   public void TakeSnapshot_captures_current_diagnostics()
   {
     var pipeline = new LogPipeline(_ => true);
     pipeline.Start();
-    pipeline.TryEnqueue(LogPriority.Normal, "line1");
-    pipeline.TryEnqueue(LogPriority.High, "line2");
+    pipeline.TryEnqueue(LogPriority.Normal, Event("line1"));
+    pipeline.TryEnqueue(LogPriority.High, Event("line2"));
     pipeline.FlushAsync().GetAwaiter().GetResult();
 
     var health = new LogPipelineHealth();
@@ -46,7 +54,7 @@ public class LogPipelineHealthTests
     json.Should().Contain("\"enqueuedTotal\"");
     json.Should().Contain("\"droppedNormal\"");
     json.Should().Contain("\"p99LatencyMs\"");
-    json.Should().NotContain("\n"); // 单行 JSON
+    json.Should().NotContain("\n");
   }
 
   [Fact]
@@ -59,7 +67,7 @@ public class LogPipelineHealthTests
     var snap1 = health.TakeSnapshot(pipeline);
 
     for (var i = 0; i < 10; i++)
-      pipeline.TryEnqueue(LogPriority.Normal, $"line-{i}");
+      pipeline.TryEnqueue(LogPriority.Normal, Event($"line-{i}"));
     pipeline.FlushAsync().GetAwaiter().GetResult();
 
     var snap2 = health.TakeSnapshot(pipeline);
@@ -69,13 +77,13 @@ public class LogPipelineHealthTests
   }
 
   [Fact]
-  public async Task StartHealthReporting_emits_timestamped_diag_line_after_interval()
+  public async Task StartHealthReporting_emits_structured_health_event_after_interval()
   {
-    var writtenLines = new System.Collections.Concurrent.ConcurrentQueue<string>();
-    var pipeline = new LogPipeline(lines =>
+    var writtenEvents = new System.Collections.Concurrent.ConcurrentQueue<LogEvent>();
+    var pipeline = new LogPipeline(batch =>
     {
-      foreach (var line in lines)
-        writtenLines.Enqueue(line);
+      foreach (var logEvent in batch)
+        writtenEvents.Enqueue(logEvent);
       return true;
     });
     pipeline.Start();
@@ -83,18 +91,16 @@ public class LogPipelineHealthTests
     var health = new LogPipelineHealth();
     pipeline.StartHealthReporting(health, TimeSpan.FromMilliseconds(100));
 
-    // 等待至少 2 个周期（200ms）+ 余量
     await Task.Delay(1000);
 
     pipeline.StopHealthReporting();
     pipeline.StopAsync().GetAwaiter().GetResult();
 
-    // 健康记录必须使用标准日志包头，才能按时间排序和筛选。
     pipeline.Diagnostics.WrittenLines.Should().BeGreaterThanOrEqualTo(2);
-    writtenLines.Should().Contain(line =>
-      System.Text.RegularExpressions.Regex.IsMatch(
-        line,
-        "^\\[DIAG\\] \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\{\\\"health\\\":\\\"LogPipeline\\\""));
+    writtenEvents.Should().Contain(logEvent =>
+      logEvent.EventName == EventNameRegistry.PipelineHealthSampled
+      && logEvent.Component == LogComponentRegistry.Configuration
+      && logEvent.Channel == LogChannelRegistry.Diagnostics);
   }
 
   [Fact]
@@ -105,14 +111,13 @@ public class LogPipelineHealthTests
 
     var health = new LogPipelineHealth();
     pipeline.StartHealthReporting(health, TimeSpan.FromMilliseconds(100));
-    await Task.Delay(300); // 等待若干周期
+    await Task.Delay(300);
 
     var enqueuedBeforeStop = pipeline.Diagnostics.Enqueued;
     pipeline.StopHealthReporting();
 
-    await Task.Delay(500); // 停止后再等待
+    await Task.Delay(500);
 
-    // 落盘计数可能在停止后继续排空停止前的队列；发射计数才是定时器是否仍在产生日志的口径。
     var enqueuedAfterStop = pipeline.Diagnostics.Enqueued;
     (enqueuedAfterStop - enqueuedBeforeStop).Should().BeLessThanOrEqualTo(1);
 

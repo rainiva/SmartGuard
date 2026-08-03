@@ -20,6 +20,12 @@ public static class LogFallbackChain
     catch { /* 应急层异常隔离，最终不再上抛 */ }
   }
 
+  public static void WriteEvent(Func<bool> tryPrimary, string fallbackLogPath, LogEvent logEvent)
+  {
+    var emergencyLine = LogStructuredSink.FormatTextFallback(logEvent);
+    Write(tryPrimary, fallbackLogPath, emergencyLine);
+  }
+
   private static string EffectiveEmergencyLogFile =>
     EmergencyLogFileOverrideForTests ?? EmergencyLogFile;
 }
