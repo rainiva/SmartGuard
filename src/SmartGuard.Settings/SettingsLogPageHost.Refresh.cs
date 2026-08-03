@@ -68,7 +68,14 @@ internal sealed partial class SettingsLogPageHost
       _logListPresenter,
       _logViewport);
     if (_lstLogView is not null && _logListPresenter is not null)
+    {
       SettingsLogPageHostWiring.WireExceptionFoldEvents(_lstLogView, _logListPresenter);
+      SettingsLogPageHostWiring.WireCorrelationEvents(
+        _lstLogView,
+        item => EnterCorrelationView(item.SourceEvent));
+    }
+
+    WireCorrelationUi();
     _logViewport.SyncFollowLatestFromUi();
     if (_logController is not null)
       _logController.FollowTail = _logViewport.FollowLatest;

@@ -1216,6 +1216,30 @@
                 <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
               </StackPanel>
 
+              <Border x:Name="logCorrelationBanner"
+                      Margin="0,0,0,8"
+                      Padding="10,8"
+                      CornerRadius="4"
+                      Visibility="Collapsed"
+                      Background="{DynamicResource NumberBoxBackground}"
+                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                      BorderThickness="1">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock x:Name="lblLogCorrelationTitle"
+                             FontSize="12"
+                             Foreground="{DynamicResource TextSecondary}"
+                             VerticalAlignment="Center"/>
+                  <Button x:Name="btnLogCorrelationBack"
+                          Grid.Column="1"
+                          Content="&#x8FD4;&#x56DE;&#x4E3B;&#x89C6;&#x56FE;"
+                          Style="{StaticResource LogToolbarCompactButton}"/>
+                </Grid>
+              </Border>
+
               <TextBlock x:Name="lblLogStatus" Text="&#x6682;&#x65E0;&#x65E5;&#x5FD7;" FontSize="11" Foreground="{DynamicResource TextTertiary}" Margin="0,0,0,8"/>
             </StackPanel>
 

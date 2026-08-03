@@ -140,6 +140,22 @@ public sealed class LogViewController
 
     public LogViewSnapshot GetSnapshot() => BuildSnapshot();
 
+    internal ILogEventSource EventSourceForCorrelation => _eventSource;
+
+    internal void LoadCorrelatedEvents(IReadOnlyList<LogEvent> events)
+    {
+        _olderCursor = null;
+        _newerCursor = null;
+        _hasOlderHistory = false;
+        _hasNewerHistory = false;
+        _isTailTruncated = false;
+        _loadFailed = false;
+        _loadFailureMessage = null;
+        _isLoaded = true;
+        _lastDelta = _eventWindow.Initialize(events);
+        _contentChanged = true;
+    }
+
     public IReadOnlyList<string> GetFilteredLines()
     {
         EnsureLoaded();

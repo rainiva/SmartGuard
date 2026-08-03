@@ -190,6 +190,26 @@ internal static class SettingsLogPageHostWiring
     };
   }
 
+  internal static void WireCorrelationEvents(ListBox listView, Action<LogLineDisplayItem> enterCorrelationView)
+  {
+    var menuItem = new MenuItem { Header = "查看本次操作" };
+    menuItem.Click += (_, _) =>
+    {
+      if (listView.SelectedItem is LogLineDisplayItem item && item.HasCorrelationKey)
+        enterCorrelationView(item);
+    };
+
+    var contextMenu = new ContextMenu();
+    contextMenu.Opened += (_, _) =>
+    {
+      menuItem.IsEnabled = listView.SelectedItem is LogLineDisplayItem selected
+        && selected.HasCorrelationKey
+        && !selected.IsEmptyState;
+    };
+    contextMenu.Items.Add(menuItem);
+    listView.ContextMenu = contextMenu;
+  }
+
   internal static void WireMatchNavigationKeys(
     LogSearchFilterBar filterBar,
     SettingsLogSearchCoordinator searchCoordinator,

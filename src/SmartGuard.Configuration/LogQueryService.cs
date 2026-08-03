@@ -262,4 +262,23 @@ public sealed class LogQueryService
       logEvent.ProcessId,
       logEvent.ThreadId);
   }
+
+  public async Task<IReadOnlyList<LogEvent>> QueryMatchingEventsAsync(
+    ILogEventSource eventSource,
+    LogQueryExpression expression,
+    CancellationToken cancellationToken)
+  {
+    var matches = new List<LogEvent>();
+
+    await foreach (var logEvent in eventSource.StreamAsync(
+                     new LogReadScope(Array.Empty<LogSourceIdentity>()),
+                     cancellationToken))
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      if (LogQueryExpressionEvaluator.Matches(logEvent, expression))
+        matches.Add(logEvent);
+    }
+
+    return LogOperationProjector.OrderCorrelatedEvents(matches);
+  }
 }

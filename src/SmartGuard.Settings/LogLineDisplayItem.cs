@@ -29,6 +29,8 @@ public sealed class LogLineDisplayItem
 
     public string? ExceptionGroupRootEventId { get; }
 
+    public bool HasCorrelationKey => LogOperationGraph.ResolveCorrelationKey(SourceEvent) is not null;
+
     public System.Windows.Media.SolidColorBrush TagBrush { get; }
 
     public System.Windows.Media.SolidColorBrush BodyBrush { get; }
