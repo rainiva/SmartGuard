@@ -5,6 +5,7 @@ public enum LogQueryOperator
   Equals,
   NotEquals,
   Contains,
+  Regex,
   GreaterThan,
   GreaterThanOrEqual,
   LessThan,
@@ -17,7 +18,7 @@ public static class LogQueryOperatorTokens
   {
     ":" or "=" => LogQueryOperator.Equals,
     "!=" => LogQueryOperator.NotEquals,
-    "~" => LogQueryOperator.Contains,
+    "~" => LogQueryOperator.Regex,
     ">" => LogQueryOperator.GreaterThan,
     ">=" => LogQueryOperator.GreaterThanOrEqual,
     "<" => LogQueryOperator.LessThan,

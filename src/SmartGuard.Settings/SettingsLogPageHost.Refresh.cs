@@ -64,7 +64,9 @@ internal sealed partial class SettingsLogPageHost
       _txtLogRangeStart,
       _txtLogRangeEnd,
       _chkLogSearchCaseSensitive,
-      () => OnFilterRefresh());
+      () => OnFilterRefresh(),
+      _logListPresenter,
+      _logViewport);
     _logViewport.SyncFollowLatestFromUi();
     if (_logController is not null)
       _logController.FollowTail = _logViewport.FollowLatest;

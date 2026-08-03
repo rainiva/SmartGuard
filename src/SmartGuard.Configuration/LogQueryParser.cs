@@ -150,7 +150,7 @@ public static class LogQueryParser
         if (!SupportedFields.Contains(identifier) && !SupportedFields.Contains(field))
           throw new ParseException(start, $"Unknown field '{identifier}'.");
 
-        var value = ReadValue();
+        var value = op == LogQueryOperator.Regex ? ReadRegexValue() : ReadValue();
         return new LogQueryFieldExpression(field, op, value);
       }
 
@@ -164,6 +164,58 @@ public static class LogQueryParser
         return quoted;
 
       return ReadBareValue();
+    }
+
+    private string ReadRegexValue()
+    {
+      SkipWhitespace();
+      if (TryReadQuotedString(out var quoted))
+        return quoted;
+
+      return ReadBalancedBareValue();
+    }
+
+    private string ReadBalancedBareValue()
+    {
+      SkipWhitespace();
+      var start = _index;
+      var depth = 0;
+      while (_index < _text.Length)
+      {
+        var ch = _text[_index];
+        if (ch == '(')
+        {
+          depth++;
+          _index++;
+          continue;
+        }
+
+        if (ch == ')')
+        {
+          if (depth == 0)
+            break;
+
+          depth--;
+          _index++;
+          continue;
+        }
+
+        if (depth == 0)
+        {
+          if (char.IsWhiteSpace(ch))
+            break;
+
+          if (IsKeywordAt(_index, "AND") || IsKeywordAt(_index, "OR") || IsKeywordAt(_index, "NOT"))
+            break;
+        }
+
+        _index++;
+      }
+
+      if (_index == start)
+        throw new ParseException(_index, "Expected value after operator.");
+
+      return _text[start.._index];
     }
 
     private string ReadBareValue()

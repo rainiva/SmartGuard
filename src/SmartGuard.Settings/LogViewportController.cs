@@ -207,6 +207,29 @@ internal sealed class LogViewportController
     }
   }
 
+  internal void ScrollToEvent(string eventId)
+  {
+    var listBox = _getListBox();
+    var presenter = _getPresenter();
+    if (listBox is null || presenter is null)
+      return;
+
+    var index = presenter.FindIndexByEventId(eventId);
+    if (index < 0)
+      return;
+
+    _pendingUserScrollAwayFromTail = false;
+    FollowLatest = false;
+    SyncFollowCheckBox();
+    Interlocked.Increment(ref _scrollGeneration);
+    listBox.UpdateLayout();
+
+    if (listBox.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement element)
+      element.BringIntoView();
+    else if (index < listBox.Items.Count)
+      listBox.ScrollIntoView(listBox.Items[index]);
+  }
+
   internal void ApplyFollowLatestIfEnabled(bool fromDataApply = false, bool fromRefreshPipeline = false)
   {
     if (fromRefreshPipeline

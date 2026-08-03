@@ -28,27 +28,63 @@ public sealed class LogQueryService
     return new LogQueryResult(pageItems, totalCount, page, pageSize, totalCount, totalCount, true);
   }
 
-  public async Task<LogQueryResult> QueryAsync(
+  public Task<LogQueryResult> QueryAsync(
     ILogEventSource eventSource,
     LogQueryExpression expression,
     LogQueryCursor? cursor,
     int pageSize,
     IProgress<LogQueryProgress>? progress,
     CancellationToken cancellationToken)
+    => QueryAsync(eventSource, expression, cursor, pageSize, progress, cancellationToken, ignoreCase: true);
+
+  public async Task<LogQueryResult> QueryAsync(
+    ILogEventSource eventSource,
+    LogQueryExpression expression,
+    LogQueryCursor? cursor,
+    int pageSize,
+    IProgress<LogQueryProgress>? progress,
+    CancellationToken cancellationToken,
+    bool ignoreCase,
+    string? originalExpressionText = null)
   {
     pageSize = Math.Max(1, pageSize);
+    if (originalExpressionText is not null)
+    {
+      var validation = LogQueryExpressionValidator.Validate(expression, originalExpressionText);
+      if (!validation.IsValid)
+      {
+        return new LogQueryResult(
+          Array.Empty<LogIndexEntry>(),
+          0,
+          1,
+          pageSize,
+          ErrorMessage: validation.ErrorMessage);
+      }
+    }
+
+    var evaluationContext = new LogQueryEvaluationContext(ignoreCase);
     var matches = new List<LogIndexEntry>();
+    var orderedMatches = new List<LogMatch>();
     var scannedCount = 0;
     var matchCount = 0;
     var skipUntilCursor = cursor is not null;
     LogQueryCursor? nextCursor = null;
+
+    bool EventMatches(LogEvent logEvent)
+    {
+      evaluationContext.ResetTimeout();
+      var matched = LogQueryExpressionEvaluator.Matches(logEvent, expression, evaluationContext);
+      if (evaluationContext.RegexTimedOut)
+        return false;
+      return matched;
+    }
 
     if (eventSource is ILogPhysicalLineSource lineSource)
     {
       foreach (var line in lineSource.EnumeratePhysicalLines(new LogReadScope(Array.Empty<LogSourceIdentity>()), cancellationToken))
       {
         if (cancellationToken.IsCancellationRequested)
-          return CreatePartialResult(matches, matchCount, pageSize, false, nextCursor);
+          return CreatePartialResult(matches, matchCount, pageSize, false, nextCursor, orderedMatches, scannedCount);
 
         scannedCount++;
         var logEvent = LogEventDecoder.Decode(line);
@@ -60,13 +96,25 @@ public sealed class LogQueryService
             continue;
         }
 
-        if (!LogQueryExpressionEvaluator.Matches(logEvent, expression))
+        if (!EventMatches(logEvent))
         {
+          if (evaluationContext.RegexTimedOut)
+          {
+            return CreateTimeoutResult(
+              matches,
+              matchCount,
+              pageSize,
+              nextCursor,
+              orderedMatches,
+              scannedCount);
+          }
+
           ReportProgress(progress, scannedCount, matchCount, false, null);
           continue;
         }
 
         matchCount++;
+        orderedMatches.Add(new LogMatch(matchCount, logEvent.EventId, line.Source, line.ByteOffset));
         var entry = LogIndexBuilder.FromDecoded(logEvent, line);
         if (entry is not null && matches.Count < pageSize)
           matches.Add(entry);
@@ -82,7 +130,7 @@ public sealed class LogQueryService
         await foreach (var logEvent in eventSource.StreamAsync(new LogReadScope(Array.Empty<LogSourceIdentity>()), cancellationToken))
         {
           if (cancellationToken.IsCancellationRequested)
-            return CreatePartialResult(matches, matchCount, pageSize, false, nextCursor);
+            return CreatePartialResult(matches, matchCount, pageSize, false, nextCursor, orderedMatches, scannedCount);
 
           scannedCount++;
           if (skipUntilCursor)
@@ -93,14 +141,26 @@ public sealed class LogQueryService
               continue;
           }
 
-          if (!LogQueryExpressionEvaluator.Matches(logEvent, expression))
+          if (!EventMatches(logEvent))
           {
+            if (evaluationContext.RegexTimedOut)
+            {
+              return CreateTimeoutResult(
+                matches,
+                matchCount,
+                pageSize,
+                nextCursor,
+                orderedMatches,
+                scannedCount);
+            }
+
             ReportProgress(progress, scannedCount, matchCount, false, null);
             continue;
           }
 
           matchCount++;
           var entry = CreateSparseEntry(logEvent);
+          orderedMatches.Add(new LogMatch(matchCount, logEvent.EventId, entry.Source, entry.ByteOffset));
           if (matches.Count < pageSize)
             matches.Add(entry);
 
@@ -110,7 +170,7 @@ public sealed class LogQueryService
       }
       catch (OperationCanceledException)
       {
-        return CreatePartialResult(matches, matchCount, pageSize, false, nextCursor);
+        return CreatePartialResult(matches, matchCount, pageSize, false, nextCursor, orderedMatches, scannedCount);
       }
     }
 
@@ -123,7 +183,9 @@ public sealed class LogQueryService
       matchCount,
       matchCount,
       true,
-      nextCursor);
+      nextCursor,
+      orderedMatches,
+      ScannedCount: scannedCount);
   }
 
   private static LogQueryResult CreatePartialResult(
@@ -131,8 +193,41 @@ public sealed class LogQueryService
     int matchCount,
     int pageSize,
     bool isComplete,
-    LogQueryCursor? nextCursor)
-    => new(matches, matchCount, 1, pageSize, matchCount, null, isComplete, nextCursor);
+    LogQueryCursor? nextCursor,
+    IReadOnlyList<LogMatch> orderedMatches,
+    int scannedCount)
+    => new(
+      matches,
+      matchCount,
+      1,
+      pageSize,
+      matchCount,
+      null,
+      isComplete,
+      nextCursor,
+      orderedMatches,
+      ScannedCount: scannedCount);
+
+  private static LogQueryResult CreateTimeoutResult(
+    IReadOnlyList<LogIndexEntry> matches,
+    int matchCount,
+    int pageSize,
+    LogQueryCursor? nextCursor,
+    IReadOnlyList<LogMatch> orderedMatches,
+    int scannedCount)
+    => new(
+      matches,
+      matchCount,
+      1,
+      pageSize,
+      matchCount,
+      null,
+      false,
+      nextCursor,
+      orderedMatches,
+      ErrorMessage: "Regex evaluation timed out after 100ms.",
+      AbortedDueToRegexTimeout: true,
+      ScannedCount: scannedCount);
 
   private static void ReportProgress(
     IProgress<LogQueryProgress>? progress,

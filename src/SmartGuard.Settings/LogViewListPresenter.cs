@@ -156,6 +156,17 @@ public sealed class LogViewListPresenter
         return LogViewApplyResult.Appended;
     }
 
+    internal int FindIndexByEventId(string eventId)
+    {
+        for (var i = 0; i < _items.Count; i++)
+        {
+            if (string.Equals(_items[i].EventId, eventId, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
+    }
+
     private LogViewApplyResult ReplaceAll(LogViewUpdatePlan plan)
     {
         ReplaceItemsWithoutReset(plan.AllLines.Select(LogLineDisplayItem.Parse));

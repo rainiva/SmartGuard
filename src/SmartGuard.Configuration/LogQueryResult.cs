@@ -11,4 +11,8 @@ public sealed record LogQueryResult(
   int MatchCount = 0,
   int? ExactTotalCount = null,
   bool IsScanComplete = true,
-  LogQueryCursor? NextCursor = null);
+  LogQueryCursor? NextCursor = null,
+  IReadOnlyList<LogMatch>? OrderedMatches = null,
+  string? ErrorMessage = null,
+  bool AbortedDueToRegexTimeout = false,
+  int ScannedCount = 0);

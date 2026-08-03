@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
@@ -149,7 +150,10 @@ internal static class SettingsLogPageHostWiring
     TextBox? rangeStart,
     TextBox? rangeEnd,
     CheckBox? caseSensitiveCheckBox,
-    Action refreshLogView)
+    Action refreshLogView,
+    LogViewListPresenter? listPresenter = null,
+    LogViewportController? viewport = null,
+    Action<LogQueryCursor>? loadMatchPage = null)
   {
     filterBar.FiltersChanged += (_, _) => searchCoordinator.QueueSearchRefresh();
     if (timeRangeComboBox is not null)
@@ -170,5 +174,24 @@ internal static class SettingsLogPageHostWiring
       caseSensitiveCheckBox.Checked += (_, _) => refreshLogView();
       caseSensitiveCheckBox.Unchecked += (_, _) => refreshLogView();
     }
+
+    WireMatchNavigationKeys(filterBar, searchCoordinator, listPresenter, viewport, loadMatchPage);
+  }
+
+  internal static void WireMatchNavigationKeys(
+    LogSearchFilterBar filterBar,
+    SettingsLogSearchCoordinator searchCoordinator,
+    LogViewListPresenter? listPresenter,
+    LogViewportController? viewport,
+    Action<LogQueryCursor>? loadMatchPage = null)
+  {
+    void Navigate(LogMatchNavigationDirection direction)
+      => searchCoordinator.NavigateMatch(direction, listPresenter, viewport, loadMatchPage);
+
+    filterBar.PreviewKeyDown += (_, e) =>
+    {
+      if (LogMatchNavigationCommands.TryHandleKeyDown(e, Navigate))
+        e.Handled = true;
+    };
   }
 }

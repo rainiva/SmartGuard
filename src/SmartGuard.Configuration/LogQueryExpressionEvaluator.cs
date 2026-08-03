@@ -5,13 +5,19 @@ namespace SmartGuard.Configuration;
 public static class LogQueryExpressionEvaluator
 {
   public static bool Matches(LogEvent logEvent, LogQueryExpression expression)
+    => Matches(logEvent, expression, context: null);
+
+  public static bool Matches(
+    LogEvent logEvent,
+    LogQueryExpression expression,
+    LogQueryEvaluationContext? context)
     => expression switch
     {
       LogQueryMatchAllExpression => true,
-      LogQueryAndExpression and => Matches(logEvent, and.Left) && Matches(logEvent, and.Right),
-      LogQueryOrExpression or => Matches(logEvent, or.Left) || Matches(logEvent, or.Right),
-      LogQueryNotExpression not => !Matches(logEvent, not.Operand),
-      LogQueryFieldExpression field => MatchesField(logEvent, field),
+      LogQueryAndExpression and => Matches(logEvent, and.Left, context) && Matches(logEvent, and.Right, context),
+      LogQueryOrExpression or => Matches(logEvent, or.Left, context) || Matches(logEvent, or.Right, context),
+      LogQueryNotExpression not => !Matches(logEvent, not.Operand, context),
+      LogQueryFieldExpression field => MatchesField(logEvent, field, context),
       _ => false,
     };
 
@@ -26,20 +32,23 @@ public static class LogQueryExpressionEvaluator
       _ => false,
     };
 
-  private static bool MatchesField(LogEvent logEvent, LogQueryFieldExpression field)
+  private static bool MatchesField(
+    LogEvent logEvent,
+    LogQueryFieldExpression field,
+    LogQueryEvaluationContext? context)
   {
     return field.Field switch
     {
-      "severity" => CompareString(LogSeverityParser.ToToken(logEvent.Severity), field),
-      "component" => CompareString(logEvent.Component, field),
-      "channel" => CompareString(logEvent.Channel, field),
-      "eventname" => CompareString(logEvent.EventName, field),
-      "operationid" => CompareString(logEvent.OperationId, field),
-      "traceid" => CompareString(logEvent.TraceId, field),
-      "useractionid" => CompareString(logEvent.UserActionId, field),
+      "severity" => CompareString(LogSeverityParser.ToToken(logEvent.Severity), field, context),
+      "component" => CompareString(logEvent.Component, field, context),
+      "channel" => CompareString(logEvent.Channel, field, context),
+      "eventname" => CompareString(logEvent.EventName, field, context),
+      "operationid" => CompareString(logEvent.OperationId, field, context),
+      "traceid" => CompareString(logEvent.TraceId, field, context),
+      "useractionid" => CompareString(logEvent.UserActionId, field, context),
       "processid" => CompareInt(logEvent.ProcessId, field),
       "threadid" => CompareInt(logEvent.ThreadId, field),
-      "message" => CompareString(logEvent.Message, field),
+      "message" => CompareString(logEvent.Message, field, context),
       "time" => CompareTime(logEvent.Timestamp, field),
       _ => false,
     };
@@ -49,13 +58,13 @@ public static class LogQueryExpressionEvaluator
   {
     return field.Field switch
     {
-      "severity" => CompareString(entry.Level, field),
-      "component" => CompareString(entry.Category, field),
-      "channel" => CompareString(entry.Channel, field),
-      "eventname" => CompareString(entry.EventName, field),
-      "operationid" => CompareString(entry.OperationId, field),
-      "traceid" => CompareString(entry.TraceId, field),
-      "useractionid" => CompareString(entry.UserActionId, field),
+      "severity" => CompareString(entry.Level, field, context: null),
+      "component" => CompareString(entry.Category, field, context: null),
+      "channel" => CompareString(entry.Channel, field, context: null),
+      "eventname" => CompareString(entry.EventName, field, context: null),
+      "operationid" => CompareString(entry.OperationId, field, context: null),
+      "traceid" => CompareString(entry.TraceId, field, context: null),
+      "useractionid" => CompareString(entry.UserActionId, field, context: null),
       "processid" => CompareInt(entry.ProcessId, field),
       "threadid" => CompareInt(entry.ThreadId, field),
       "time" => CompareTime(entry.Timestamp, field),
@@ -64,7 +73,10 @@ public static class LogQueryExpressionEvaluator
     };
   }
 
-  private static bool CompareString(string? actual, LogQueryFieldExpression field)
+  private static bool CompareString(
+    string? actual,
+    LogQueryFieldExpression field,
+    LogQueryEvaluationContext? context)
   {
     actual ??= string.Empty;
     return field.Operator switch
@@ -72,12 +84,35 @@ public static class LogQueryExpressionEvaluator
       LogQueryOperator.Equals => actual.Equals(field.Value, StringComparison.OrdinalIgnoreCase),
       LogQueryOperator.NotEquals => !actual.Equals(field.Value, StringComparison.OrdinalIgnoreCase),
       LogQueryOperator.Contains => actual.Contains(field.Value, StringComparison.OrdinalIgnoreCase),
+      LogQueryOperator.Regex => EvaluateRegex(actual, field.Value, context),
       LogQueryOperator.GreaterThan => string.Compare(actual, field.Value, StringComparison.OrdinalIgnoreCase) > 0,
       LogQueryOperator.GreaterThanOrEqual => string.Compare(actual, field.Value, StringComparison.OrdinalIgnoreCase) >= 0,
       LogQueryOperator.LessThan => string.Compare(actual, field.Value, StringComparison.OrdinalIgnoreCase) < 0,
       LogQueryOperator.LessThanOrEqual => string.Compare(actual, field.Value, StringComparison.OrdinalIgnoreCase) <= 0,
       _ => false,
     };
+  }
+
+  private static bool EvaluateRegex(
+    string actual,
+    string pattern,
+    LogQueryEvaluationContext? context)
+  {
+    if (context is null)
+      return LogRegexSpec.TryCreate(pattern, ignoreCase: true).Spec?.IsMatch(actual) == true;
+
+    var regex = context.GetRegex(pattern);
+    if (regex is null)
+      return false;
+
+    if (!regex.TryIsMatch(actual, CancellationToken.None, out var timedOut))
+    {
+      if (timedOut)
+        context.MarkRegexTimedOut();
+      return false;
+    }
+
+    return true;
   }
 
   private static bool CompareInt(int? actual, LogQueryFieldExpression field)
