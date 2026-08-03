@@ -87,6 +87,7 @@ public sealed class LogViewController
             _loadFailed = true;
             _loadFailureMessage = ex.Message;
             _lastDelta = LogWindowDelta.None;
+            _isLoaded = true;
             return CreateRefreshResult();
         }
     }
@@ -248,7 +249,7 @@ public sealed class LogViewController
 
     private void EnsureLoaded()
     {
-        if (_isLoaded)
+        if (_isLoaded || _loadFailed)
             return;
 
         ForceRefresh();

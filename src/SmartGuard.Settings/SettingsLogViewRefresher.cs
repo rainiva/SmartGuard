@@ -31,7 +31,8 @@ internal static class SettingsLogViewRefresher
     if (!forceRedraw
         && !refreshResult.ContentChanged
         && refreshResult.WindowDelta.IsEmpty
-        && snapshot.EmptyStateMessage is null)
+        && snapshot.EmptyStateMessage is null
+        && !snapshot.LoadFailed)
     {
       statusLabel.Text = statusText;
       return;
@@ -40,7 +41,8 @@ internal static class SettingsLogViewRefresher
     viewport.BeginDataApply();
     var capturedAnchor = viewport.CaptureAnchorIfNeeded();
     LogViewApplyResult applyResult;
-    if (snapshot.EmptyStateMessage is not null && snapshot.FilteredLines.Count == 0)
+    if (forceRedraw
+        || (snapshot.EmptyStateMessage is not null && snapshot.FilteredLines.Count == 0))
       applyResult = listPresenter.Apply(LogViewUpdatePlan.ReplaceAll(snapshot.DisplayLines));
     else
       applyResult = listPresenter.ApplyDelta(refreshResult.WindowDelta);

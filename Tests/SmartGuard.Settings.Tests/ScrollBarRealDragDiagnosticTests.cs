@@ -191,7 +191,7 @@ public class ScrollBarRealDragDiagnosticTests
     {
         var logContent = manyLines
             ? BuildManyLines()
-            : "[INFO] 2026-07-04 09:00:00 START-" + new string('x', 500) + "-END";
+            : "[INFO] 2026-07-04 09:00:00 START-" + new string('x', 500) + "-END\n";
         var ctx = CreateControllerContext(out var controller, out window, logContent);
         window.Width = manyLines ? 760 : 360;
         window.Height = 520;

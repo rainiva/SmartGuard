@@ -70,7 +70,9 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
   private LogEventPage ReadLatest(LogReadRequest request, CancellationToken cancellationToken)
   {
-    LogTailReaderTestMetrics.MaybeDelayForTests();
+    // Delay hooks live in ReadFromOffset/ReadRecentTail so one Latest flight
+    // matches the lifetime-test expectation of ~1-2 physical reads, not an
+    // extra bookkeeping hit at the entry point.
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 
@@ -101,7 +103,6 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
   private LogEventPage ReadOlder(LogReadRequest request, CancellationToken cancellationToken)
   {
-    LogTailReaderTestMetrics.MaybeDelayForTests();
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 
@@ -134,7 +135,6 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
   private LogEventPage ReadNewer(LogReadRequest request, CancellationToken cancellationToken)
   {
-    LogTailReaderTestMetrics.MaybeDelayForTests();
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 

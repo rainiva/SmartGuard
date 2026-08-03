@@ -1693,8 +1693,8 @@ public class SettingsWindowControllerTests
         RunOnSta(() =>
         {
             var tempRoot = CreateTempSettingsRootWithLog(
-                "[INFO] System idle detected\r\n" +
-                "[WARN] Battery low warning\r\n");
+                "[INFO] 2026-06-21 10:00:00 System idle detected\r\n" +
+                "[WARN] 2026-06-21 10:01:00 Battery low warning\r\n");
 
             try
             {

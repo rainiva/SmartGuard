@@ -48,6 +48,8 @@ internal sealed partial class SettingsLogPageHost
 
   // Control wiring uses SettingsLogPageInitializer via EnsureLogViewInitialized (Refresh partial).
 
+  private bool _logAutoRefreshStarted;
+
   internal SettingsLogPageHost(
     Window window,
     string root,
@@ -66,7 +68,7 @@ internal sealed partial class SettingsLogPageHost
       () => _lstLogView,
       () => _logListPresenter,
       () => _chkLogFollowTail,
-      forceRedraw => OnFilterRefresh(forceRedraw));
+      forceRedraw => RefreshLogView(forceRedraw));
     _refreshPipeline = new SettingsLogRefreshPipeline(
       window,
       () => _disposed,
@@ -134,7 +136,6 @@ internal sealed partial class SettingsLogPageHost
       _logViewport.MarkPendingInitialTailScroll();
     else
       _logViewport.ClearPendingInitialTailScroll();
-    _logTimer.Start();
     EnsureLogScrollViewerHooked();
 
     if (reason == LogPageActivationReason.WindowRestored && _lastDisplayedLines.Count > 0)
@@ -144,12 +145,24 @@ internal sealed partial class SettingsLogPageHost
     }
 
     var isFirstVisit = _lastDisplayedLines.Count == 0;
+    if (!isFirstVisit)
+      EnsureLogAutoRefreshStarted();
+
     if (isFirstVisit && _lblLogStatus is not null)
       _lblLogStatus.Text = LoadingStatusText;
 
     ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: isFirstVisit, forceRefresh: isFirstVisit);
     if (!isFirstVisit)
       _logViewport.ApplyFollowLatestIfEnabled();
+  }
+
+  internal void EnsureLogAutoRefreshStarted()
+  {
+    if (_logAutoRefreshStarted || _disposed || !_logPageActive || _logTimer is null)
+      return;
+
+    _logAutoRefreshStarted = true;
+    _logTimer.Start();
   }
 
   internal void RefreshLogViewForThemeChange()

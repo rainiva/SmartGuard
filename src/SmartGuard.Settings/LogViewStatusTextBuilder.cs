@@ -16,7 +16,7 @@ public static class LogViewStatusTextBuilder
                 ? "读取失败"
                 : snapshot.LoadFailureMessage;
             var failedLogName = Path.GetFileName(snapshot.LogPath);
-            return $"日志读取失败：{failure} | {failedLogName} | 刷新: {refreshedAt:HH:mm:ss}";
+            return $"日志加载失败：{failure} | {failedLogName} | 刷新: {refreshedAt:HH:mm:ss}";
         }
 
         var truncationHint = snapshot.IsTailTruncated ? " | 仅最近 256KB" : string.Empty;

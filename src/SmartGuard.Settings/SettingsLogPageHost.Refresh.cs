@@ -35,7 +35,6 @@ internal sealed partial class SettingsLogPageHost
     _txtLogRangeEnd = controls.RangeEndTextBox;
     _chkLogSearchCaseSensitive = controls.CaseSensitiveCheckBox;
     _logTimer = controls.RefreshTimer;
-    _logTimer.Tick += (_, _) => ScheduleLogRefresh(LogViewRefreshKind.Newer);
     _logExportCoordinator = new SettingsLogExportCoordinator(
       _window,
       _toastService,
@@ -76,7 +75,7 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed)
       return;
 
-    OnFilterRefresh(forceRedraw);
+    ScheduleLogRefresh(LogViewRefreshKind.Newer, forceRedraw);
   }
 
   private void OnFilterRefresh(bool forceRedraw = false)
@@ -116,6 +115,7 @@ internal sealed partial class SettingsLogPageHost
       _logViewport,
       forceRedraw);
     ForceRefreshLogViewCountForTests = forceCount;
+    EnsureLogAutoRefreshStarted();
   }
 
   internal void ForceRefreshLogView()

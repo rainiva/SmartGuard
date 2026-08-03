@@ -209,6 +209,17 @@ internal sealed class LogViewportController
 
   internal void ApplyFollowLatestIfEnabled(bool fromDataApply = false, bool fromRefreshPipeline = false)
   {
+    if (fromRefreshPipeline
+        && _scrollViewer is not null
+        && _scrollViewer.ScrollableHeight > 0
+        && !LogViewScrollState.IsAtTail(_scrollViewer))
+    {
+      ClearPendingInitialTailScroll();
+      FollowLatest = false;
+      SyncFollowCheckBox();
+      return;
+    }
+
     SyncFollowLatestFromUi();
     if (!FollowLatest)
     {
@@ -221,19 +232,6 @@ internal sealed class LogViewportController
         && _scrollViewer is not null
         && !LogViewScrollState.IsAtTail(_scrollViewer))
     {
-      FollowLatest = false;
-      SyncFollowCheckBox();
-      return;
-    }
-
-    if (fromRefreshPipeline
-        && PendingInitialTailScroll
-        && _pendingInitialTailScrollInvalidated
-        && _scrollViewer is not null
-        && _scrollViewer.ScrollableHeight > 0
-        && !LogViewScrollState.IsAtTail(_scrollViewer))
-    {
-      ClearPendingInitialTailScroll();
       FollowLatest = false;
       SyncFollowCheckBox();
       return;
@@ -347,6 +345,13 @@ internal sealed class LogViewportController
       _savedVerticalOffsetBeforeApply,
       _getListBox()?.Items.Count ?? 0);
 
+    if (_scrollViewer is not null)
+    {
+      var horizontal = _scrollViewer.HorizontalOffset;
+      if (horizontal > 0.01)
+        RecordUserHorizontalOffset(horizontal);
+    }
+
     if (!_wasAtTailBeforeApply)
       Interlocked.Increment(ref _scrollGeneration);
   }
@@ -375,6 +380,21 @@ internal sealed class LogViewportController
 
       if (FollowLatest
           && PendingInitialTailScroll
+          && !_wasAtTailBeforeApply)
+      {
+        FollowLatest = false;
+        ClearPendingInitialTailScroll();
+        SyncFollowCheckBox();
+        if (capturedAnchor is not null)
+          RestoreAnchor(capturedAnchor);
+        else
+          RestoreSavedVerticalOffsetIfNeeded();
+        RestorePreferredHorizontalOffset();
+        return;
+      }
+
+      if (FollowLatest
+          && PendingInitialTailScroll
           && _pendingInitialTailScrollInvalidated)
       {
         FollowLatest = false;
@@ -388,7 +408,7 @@ internal sealed class LogViewportController
         return;
       }
 
-      if (FollowLatest && PendingInitialTailScroll)
+      if (FollowLatest && PendingInitialTailScroll && _wasAtTailBeforeApply)
       {
         ApplyFollowLatestIfEnabled(fromDataApply: true);
         return;

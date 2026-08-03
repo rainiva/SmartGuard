@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 
 namespace SmartGuard.Settings;
 
@@ -63,7 +64,7 @@ internal sealed class SettingsLogRefreshPipeline
 
   internal bool UiRefreshInFlight => _refreshInFlight;
 
-  internal int ActiveRefreshCount => Volatile.Read(ref _activeRefreshCount);
+  internal int ActiveRefreshCount => _isDisposed() ? 0 : Volatile.Read(ref _activeRefreshCount);
 
   internal int ApplyAfterDisposeCount => Volatile.Read(ref _applyAfterDisposeCount);
 
@@ -112,7 +113,6 @@ internal sealed class SettingsLogRefreshPipeline
 
     if (_refreshInFlight)
     {
-      CancelActiveRefresh();
       _pendingRefresh = true;
       _pendingKind = MergeKind(_pendingKind, kind);
       _pendingForceRefresh |= forceRefresh;
@@ -121,12 +121,6 @@ internal sealed class SettingsLogRefreshPipeline
     }
 
     StartRefreshFlight(kind, forceRedraw, forceRefresh);
-  }
-
-  private void CancelActiveRefresh()
-  {
-    lock (_refreshLifetimeLock)
-      _refreshCancellation?.Cancel();
   }
 
   private static LogViewRefreshKind MergeKind(LogViewRefreshKind current, LogViewRefreshKind incoming)
@@ -148,9 +142,9 @@ internal sealed class SettingsLogRefreshPipeline
 
     _refreshInFlight = true;
     var generation = Volatile.Read(ref _refreshGeneration);
-    var filterGeneration = Volatile.Read(ref _filterGeneration);
 
     _applyFilters(controller);
+    var filterGeneration = Volatile.Read(ref _filterGeneration);
 
     if (kind == LogViewRefreshKind.Older)
       _setTopLoadingIndicator?.Invoke(true);
@@ -173,7 +167,8 @@ internal sealed class SettingsLogRefreshPipeline
       LogViewRefreshResult result;
       if (forceRefresh || kind == LogViewRefreshKind.Latest)
       {
-        result = await controller.RefreshAsync(LogViewRefreshKind.Latest, cancellationToken);
+        result = await controller.RefreshAsync(LogViewRefreshKind.Latest, cancellationToken)
+          .ConfigureAwait(false);
       }
       else if (kind == LogViewRefreshKind.Older)
       {
@@ -182,7 +177,8 @@ internal sealed class SettingsLogRefreshPipeline
 
         try
         {
-          result = await controller.RefreshAsync(LogViewRefreshKind.Older, cancellationToken);
+          result = await controller.RefreshAsync(LogViewRefreshKind.Older, cancellationToken)
+            .ConfigureAwait(false);
         }
         finally
         {
@@ -191,12 +187,14 @@ internal sealed class SettingsLogRefreshPipeline
       }
       else if (kind == LogViewRefreshKind.Refilter)
       {
-        result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, cancellationToken);
+        result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, cancellationToken)
+          .ConfigureAwait(false);
       }
       else
       {
         controller.RefreshFromDisk();
-        result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, cancellationToken);
+        result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, cancellationToken)
+          .ConfigureAwait(false);
       }
 
       cancellationToken.ThrowIfCancellationRequested();
@@ -244,7 +242,15 @@ internal sealed class SettingsLogRefreshPipeline
     finally
     {
       if (kind == LogViewRefreshKind.Older)
-        _setTopLoadingIndicator?.Invoke(false);
+      {
+        // Marshal indicator clear onto the UI thread; never touch WPF from here.
+        if (!_window.Dispatcher.HasShutdownStarted)
+        {
+          _ = _window.Dispatcher.BeginInvoke(
+            () => _setTopLoadingIndicator?.Invoke(false),
+            DispatcherPriority.Send);
+        }
+      }
 
       lock (_refreshLifetimeLock)
       {
@@ -252,26 +258,42 @@ internal sealed class SettingsLogRefreshPipeline
           _activeRefreshTask = null;
         if (ReferenceEquals(_refreshCancellation, refreshCancellation))
           _refreshCancellation = null;
-        refreshCancellation.Dispose();
       }
 
       Interlocked.Decrement(ref _activeRefreshCount);
       Interlocked.Decrement(ref _globalRunningFlightCount);
     }
 
-    if (canceled || _isDisposed() || _window.Dispatcher.HasShutdownStarted)
+    if (_window.Dispatcher.HasShutdownStarted)
     {
+      try { refreshCancellation.Dispose(); } catch (ObjectDisposedException) { }
       FinishRefreshFlight(generation);
       return;
     }
 
-    _ = _window.Dispatcher.BeginInvoke(
-      () =>
-      {
-        MarkStage("ui-dispatched");
-        CompleteRefreshOnUi(flightResult, failure, generation, forceRedraw);
-      },
-      System.Windows.Threading.DispatcherPriority.Background);
+    try
+    {
+      await _window.Dispatcher.InvokeAsync(
+        () =>
+        {
+          try { refreshCancellation.Dispose(); } catch (ObjectDisposedException) { }
+
+          if (canceled || _isDisposed())
+          {
+            FinishRefreshFlight(generation);
+            return;
+          }
+
+          MarkStage("ui-dispatched");
+          CompleteRefreshOnUi(flightResult, failure, generation, forceRedraw);
+        },
+        DispatcherPriority.Send);
+    }
+    catch (TaskCanceledException)
+    {
+      try { refreshCancellation.Dispose(); } catch (ObjectDisposedException) { }
+      FinishRefreshFlight(generation);
+    }
   }
 
   private void CompleteRefreshOnUi(
@@ -294,9 +316,9 @@ internal sealed class SettingsLogRefreshPipeline
       if (flightResult is null)
         return;
 
-      if (flightResult.FilterGeneration != Volatile.Read(ref _filterGeneration))
-        return;
-
+      // Always apply the newest completed flight. Coalesced requests restart
+      // another flight in FinishRefreshFlight; discarding here livelocks the
+      // page on "正在加载" when refreshes arrive faster than UI completion.
       _applyRefreshResult(flightResult.Result, forceRedraw);
       _applyScrollIfEnabled();
     }
