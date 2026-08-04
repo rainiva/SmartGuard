@@ -39,6 +39,8 @@ public sealed class GuardConfig
   [JsonPropertyName("ManualHighPerformanceUntil")]
   public DateTime? ManualHighPerformanceUntil { get; set; }
 
+  public LogViewPreferences LogViewPreferences { get; set; } = new();
+
   public bool IsManualHighPerformanceActive(DateTime now)
     => ManualHighPerformanceUntil is { } until && until > now;
 

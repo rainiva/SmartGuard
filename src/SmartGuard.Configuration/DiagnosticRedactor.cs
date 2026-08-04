@@ -43,6 +43,7 @@ public static partial class DiagnosticRedactor
 
     obj.Remove(GitHubTokenProtector.LegacyFieldName);
     obj.Remove(GitHubTokenProtector.ProtectedFieldName);
+    RedactSavedLogFilters(obj);
     RedactJsonObjectSecrets(obj);
     return RedactText(obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
   }
@@ -101,6 +102,42 @@ public static partial class DiagnosticRedactor
         RedactJsonObjectSecrets(childObject);
       else if (property.Value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var text))
         obj[property.Key] = RedactText(text);
+    }
+  }
+
+  private static void RedactSavedLogFilters(JsonObject configNode)
+  {
+    if (configNode["LogViewPreferences"] is not JsonObject prefsNode)
+      return;
+
+    if (prefsNode["DefaultFilterId"] is JsonValue defaultFilterId)
+      prefsNode["DefaultFilterId"] = RedactedSecretValue;
+
+    if (prefsNode["SavedFilters"] is not JsonArray savedFilters)
+      return;
+
+    foreach (var entry in savedFilters)
+    {
+      if (entry is not JsonObject filterObject)
+        continue;
+
+      if (filterObject["Name"] is JsonValue)
+        filterObject["Name"] = RedactedSecretValue;
+
+      if (filterObject["Query"] is JsonObject queryObject)
+        RedactSavedFilterQuery(queryObject);
+    }
+  }
+
+  private static void RedactSavedFilterQuery(JsonObject queryObject)
+  {
+    if (queryObject["Value"] is JsonValue)
+      queryObject["Value"] = RedactedSecretValue;
+
+    foreach (var property in queryObject.ToList())
+    {
+      if (property.Value is JsonObject childObject)
+        RedactSavedFilterQuery(childObject);
     }
   }
 }

@@ -1,12 +1,17 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Encodings.Web;
 
 namespace SmartGuard.Configuration;
 
 public sealed class GuardConfigRepository
 {
   private readonly string _configPath;
-  private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+  private static readonly JsonSerializerOptions WriteOptions = new()
+  {
+    WriteIndented = true,
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+  };
   private GuardConfig? _readCache;
   private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
   private readonly FileSystemWatcher? _configWatcher;
@@ -49,6 +54,7 @@ public sealed class GuardConfigRepository
       {
         ApplyNotificationMigration(result, obj);
         ApplyThemeMigration(result, obj);
+        ApplyLogViewPreferencesMigration(result, obj);
         result.GitHubToken = ReadGitHubTokenFromNode(obj) ?? string.Empty;
         MigrateLegacyGitHubTokenIfNeeded(obj, result);
       }
@@ -81,6 +87,12 @@ public sealed class GuardConfigRepository
       config.ThemeFollowSystem = true;
     if (!node.ContainsKey("ThemeIsDark"))
       config.ThemeIsDark = false;
+  }
+
+  internal static void ApplyLogViewPreferencesMigration(GuardConfig config, JsonObject node)
+  {
+    if (!node.ContainsKey("LogViewPreferences") || config.LogViewPreferences is null)
+      config.LogViewPreferences = new LogViewPreferences();
   }
 
   public void Save(GuardConfig config)
@@ -163,11 +175,33 @@ public sealed class GuardConfigRepository
     node["AutoStartEnabled"] = config.AutoStartEnabled;
     node["ThemeFollowSystem"] = config.ThemeFollowSystem;
     node["ThemeIsDark"] = config.ThemeIsDark;
+    ApplyLogViewPreferences(node, config.LogViewPreferences);
     ApplyGitHubTokenToNode(node, config);
     if (config.ManualHighPerformanceUntil is { } until)
       node["ManualHighPerformanceUntil"] = until.ToString("o");
     else
       node.Remove("ManualHighPerformanceUntil");
+  }
+
+  private static void ApplyLogViewPreferences(JsonObject node, LogViewPreferences preferences)
+  {
+    JsonObject prefsNode;
+    if (node["LogViewPreferences"] is JsonObject existing)
+      prefsNode = existing;
+    else
+    {
+      prefsNode = new JsonObject();
+      node["LogViewPreferences"] = prefsNode;
+    }
+
+    if (preferences.DefaultFilterId is null)
+      prefsNode.Remove("DefaultFilterId");
+    else
+      prefsNode["DefaultFilterId"] = preferences.DefaultFilterId;
+
+    prefsNode["SavedFilters"] = JsonSerializer.SerializeToNode(
+      preferences.SavedFilters,
+      GuardConfig.JsonOptions) ?? new JsonArray();
   }
 
   private void WriteNode(JsonObject node) => WriteNode(node.ToJsonString(WriteOptions));

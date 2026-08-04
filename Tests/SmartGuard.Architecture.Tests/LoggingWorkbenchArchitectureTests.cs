@@ -134,6 +134,15 @@ public class LoggingWorkbenchArchitectureTests
   }
 
   [Fact]
+  public void SavedLogFilterCoordinator_writes_only_via_GuardConfigRepository()
+  {
+    var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SavedLogFilterCoordinator.cs");
+    source.Should().Contain("_repository.Save(");
+    source.Should().NotContain("File.WriteAllText(");
+    source.Should().NotContain("GuardConfigAtomicFileWriter");
+  }
+
+  [Fact]
   public void Log_viewport_scroll_mutations_are_owned_by_LogViewportController_only()
   {
     var scrollApis = new[]

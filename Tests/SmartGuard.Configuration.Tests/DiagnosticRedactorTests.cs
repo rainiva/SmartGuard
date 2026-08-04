@@ -52,6 +52,40 @@ public class DiagnosticRedactorTests
   }
 
   [Fact]
+  public void RedactConfigJson_redacts_saved_filter_names_and_query_values()
+  {
+    var json = """
+      {
+        "BalancedThresholdSec": 300,
+        "LogViewPreferences": {
+          "DefaultFilterId": "secret-filter",
+          "SavedFilters": [
+            {
+              "Id": "secret-filter",
+              "Name": "C:\\Users\\alice\\敏感关键词",
+              "Query": {
+                "SchemaVersion": 1,
+                "Kind": "field",
+                "Field": "message",
+                "Operator": "Contains",
+                "Value": "C:\\Users\\alice\\token=super-secret"
+              }
+            }
+          ]
+        }
+      }
+      """;
+
+    var sanitized = DiagnosticRedactor.RedactConfigJson(json);
+
+    sanitized.Should().NotContain("alice");
+    sanitized.Should().NotContain("敏感关键词");
+    sanitized.Should().NotContain("super-secret");
+    sanitized.Should().Contain("LogViewPreferences");
+    sanitized.Should().Contain(DiagnosticRedactor.RedactedSecretValue);
+  }
+
+  [Fact]
   public void RedactEvent_redacts_message_and_property_secrets_without_mutating_original()
   {
     var properties = new Dictionary<string, System.Text.Json.JsonElement>
