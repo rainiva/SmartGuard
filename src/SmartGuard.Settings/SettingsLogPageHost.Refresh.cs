@@ -78,6 +78,7 @@ internal sealed partial class SettingsLogPageHost
     }
 
     WireCorrelationUi();
+    WireSessionUi();
     _logViewport.SyncFollowLatestFromUi();
     if (_logController is not null)
       _logController.FollowTail = _logViewport.FollowLatest;

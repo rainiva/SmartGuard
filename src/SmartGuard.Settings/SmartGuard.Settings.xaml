@@ -1216,6 +1216,39 @@
                 <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
               </StackPanel>
 
+              <Expander x:Name="logSessionInspector"
+                        Header="会话"
+                        IsExpanded="False"
+                        Margin="0,0,0,8">
+                <ComboBox x:Name="cmbLogSession"
+                          MinWidth="240"
+                          Style="{StaticResource SettingsComboBox}"/>
+              </Expander>
+
+              <Border x:Name="logSessionBanner"
+                      Margin="0,0,0,8"
+                      Padding="10,8"
+                      CornerRadius="4"
+                      Visibility="Collapsed"
+                      Background="{DynamicResource NumberBoxBackground}"
+                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                      BorderThickness="1">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock x:Name="lblLogSessionTitle"
+                             FontSize="12"
+                             Foreground="{DynamicResource TextSecondary}"
+                             VerticalAlignment="Center"/>
+                  <Button x:Name="btnLogSessionBack"
+                          Grid.Column="1"
+                          Content="&#x8FD4;&#x56DE;&#x4E3B;&#x89C6;&#x56FE;"
+                          Style="{StaticResource LogToolbarCompactButton}"/>
+                </Grid>
+              </Border>
+
               <Border x:Name="logCorrelationBanner"
                       Margin="0,0,0,8"
                       Padding="10,8"

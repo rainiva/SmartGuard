@@ -281,4 +281,20 @@ public sealed class LogQueryService
 
     return LogOperationProjector.OrderCorrelatedEvents(matches);
   }
+
+  public async Task<IReadOnlyList<LogSessionMetadata>> ProjectSessionsAsync(
+    ILogEventSource eventSource,
+    CancellationToken cancellationToken)
+  {
+    var builder = LogSessionProjector.CreateProjectionBuilder();
+    await foreach (var logEvent in eventSource.StreamAsync(
+                     new LogReadScope(Array.Empty<LogSourceIdentity>()),
+                     cancellationToken))
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      builder.Add(logEvent);
+    }
+
+    return builder.Build();
+  }
 }

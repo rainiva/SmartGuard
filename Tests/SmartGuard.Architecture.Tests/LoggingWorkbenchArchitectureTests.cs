@@ -143,6 +143,19 @@ public class LoggingWorkbenchArchitectureTests
   }
 
   [Fact]
+  public void LogSessionProjector_is_the_single_session_boundary_owner()
+  {
+    var projectors = SourceScanHelper.EnumerateCsFilesUnder("src")
+      .Where(path => File.ReadAllText(path).Contains("class LogSessionProjector", StringComparison.Ordinal))
+      .Select(path => Path.GetRelativePath(SourceScanHelper.RepoRoot, path))
+      .ToList();
+
+    projectors.Should().ContainSingle(
+      "session boundaries must stay on LogSessionProjector; found: "
+      + string.Join(", ", projectors));
+  }
+
+  [Fact]
   public void Log_viewport_scroll_mutations_are_owned_by_LogViewportController_only()
   {
     var scrollApis = new[]
