@@ -495,3 +495,16 @@
 | LOG-WB-P1-CORRELATION | 已关闭 | `LogCorrelationCoordinator` + `LogOperationProjector` 为 Operation/Trace/UserAction 关联唯一入口；返回主视图恢复 cursor/anchor/selection |
 | LOG-WB-P1-DIAGNOSTIC | 已关闭 | `DiagnosticBundleRequest` + `DiagnosticRedactor` + `DiagnosticBundleExporter.ExportAsync` 为 scoped 诊断包唯一链路；UI 只构造 request 并注入共享 `ILogEventSource`；取消删除临时 zip、默认不覆盖既有目标 |
 | DOC-LOG-WB-P1 | 已关闭 | 本文档 §24 + `LoggingWorkbenchArchitectureTests` + `LogWorkbenchP1AcceptanceTests` + `DiagnosticBundleExporterArchitectureTests` |
+
+## 25. 日志工作台 P2（保存、会话、统计与键盘无障碍）
+
+**关联 ADR：** [docs/decisions/0001-log-workbench-architecture.md](decisions/0001-log-workbench-architecture.md)
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-WB-P2-CONFIG | 已关闭 | `SavedLogFilterCoordinator` 经 `GuardConfigRepository` 保存筛选器与视图偏好；禁止旁路 config 写入 |
+| LOG-WB-P2-SESSION | 已关闭 | `LogSessionCoordinator` 将会话选择编译为既有查询 clause；会话元数据懒加载，不复制事件集合 |
+| LOG-WB-P2-STATS | 已关闭 | `LogAggregationService` 按当前 query/session 聚合；`LogStatisticsPresenter` 只负责 WPF 原生轻量投影，不改变事件窗口 cursor |
+| LOG-WB-P2-INTERACTION | 已关闭 | `LogWorkbenchCommands` 是快捷键 RoutedCommand 真源；`SettingsLogPageHostWiring` 统一接入搜索、匹配、导出、视口和临时层；`LogViewportController` 仍是唯一滚动 mutation owner |
+| LOG-WB-P2-A11Y | 已关闭 | 日志查询、列表、状态和每条日志行提供 Automation Name/HelpText；状态使用 Polite LiveRegion；焦点样式与键盘 Tab 顺序由 Settings/WPF 原生控件提供 |
+| DOC-LOG-WB-P2 | 进行中 | P2.5 仍需完成全量 Run-Tests、真实窗口/Narrator/高对比度/200% DPI 验收与用户文档收口 |

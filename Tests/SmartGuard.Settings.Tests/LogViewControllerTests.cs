@@ -540,8 +540,8 @@ public class LogViewControllerTests : IDisposable
     }
 
   [Fact]
-  public void ApplyFilterSpec_maps_time_range_and_level_to_ui_properties()
-  {
+    public void ApplyFilterSpec_maps_time_range_and_level_to_ui_properties()
+    {
     var controller = new LogViewController("nonexistent.log");
     var spec = new SmartGuard.Configuration.LogQueryFilterSpec(
       Keyword: "boom", Level: "ERROR", Category: null,
@@ -557,5 +557,31 @@ public class LogViewControllerTests : IDisposable
     controller.CustomRangeStart.Should().Be(spec.StartTime!.Value.LocalDateTime);
     controller.CustomRangeEnd.Should().Be(spec.EndTime!.Value.LocalDateTime);
     controller.ActiveTagFilters.Should().ContainSingle().Which.Should().Be("ERROR");
+  }
+
+  [Fact]
+  public async Task History_boundary_refreshes_can_reach_both_physical_ends()
+  {
+    var builder = new System.Text.StringBuilder();
+    for (var i = 0; i < 4000; i++)
+      builder.AppendLine($"[INFO] 2026-08-01 10:00:00 entry-{i:D4} {new string('x', 80)}");
+
+    File.WriteAllText(_logPath, builder.ToString());
+
+    var controller = new LogViewController(_logPath, _fallbackPath);
+    await controller.RefreshAsync(LogViewRefreshKind.Latest, CancellationToken.None);
+
+    var start = await controller.RefreshAsync(
+      LogViewRefreshKind.HistoryStart,
+      CancellationToken.None);
+
+    start.Snapshot.HasOlderHistory.Should().BeFalse();
+    start.Snapshot.DisplayLines.Should().Contain(line => line.Contains("0000"));
+
+    var end = await controller.RefreshAsync(
+      LogViewRefreshKind.HistoryEnd,
+      CancellationToken.None);
+
+    end.Snapshot.DisplayLines.Should().Contain(line => line.Contains("3999"));
   }
 }

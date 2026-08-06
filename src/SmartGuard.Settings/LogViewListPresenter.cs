@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation;
+using System.Windows.Input;
 using System.Windows.Media;
 using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
@@ -57,6 +59,13 @@ public sealed class LogViewListPresenter
         listBox.Padding = new Thickness(12);
         listBox.FontFamily = new FontFamily("Consolas, Microsoft YaHei Mono");
         listBox.FontSize = 12;
+        listBox.Focusable = true;
+        KeyboardNavigation.SetIsTabStop(listBox, true);
+        AutomationProperties.SetName(listBox, "日志列表");
+        AutomationProperties.SetHelpText(
+            listBox,
+            "使用 Home/End 浏览当前窗口，Ctrl+Home/Ctrl+End 浏览历史首尾");
+        listBox.FocusVisualStyle = CreateFocusVisualStyle();
 
         var itemsPanel = new ItemsPanelTemplate(new FrameworkElementFactory(typeof(VirtualizingStackPanel)));
         listBox.ItemsPanel = itemsPanel;
@@ -262,6 +271,12 @@ public sealed class LogViewListPresenter
 
         var factory = new FrameworkElementFactory(typeof(StackPanel));
         factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+        factory.SetBinding(
+            AutomationProperties.NameProperty,
+            new System.Windows.Data.Binding(nameof(LogLineDisplayItem.LineText)));
+        factory.SetBinding(
+            AutomationProperties.HelpTextProperty,
+            new System.Windows.Data.Binding(nameof(LogLineDisplayItem.TagLabel)));
 
         var tagFactory = new FrameworkElementFactory(typeof(TextBlock));
         tagFactory.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(LogLineDisplayItem.TagLabel)));
@@ -278,5 +293,20 @@ public sealed class LogViewListPresenter
         template.VisualTree = factory;
         template.Seal();
         return template;
+    }
+
+    private static Style CreateFocusVisualStyle()
+    {
+        var template = new ControlTemplate(typeof(Control));
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        border.SetValue(Border.BorderBrushProperty, SystemColors.HighlightBrush);
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(2));
+        border.SetValue(Border.MarginProperty, new Thickness(1));
+        template.VisualTree = border;
+
+        var style = new Style(typeof(Control));
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        return style;
     }
 }

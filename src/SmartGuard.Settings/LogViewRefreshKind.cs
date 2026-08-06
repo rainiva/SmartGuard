@@ -6,4 +6,6 @@ public enum LogViewRefreshKind
     Older,
     Newer,
     Refilter,
+    HistoryStart,
+    HistoryEnd,
 }

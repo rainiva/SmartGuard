@@ -69,6 +69,7 @@ internal sealed partial class SettingsLogPageHost
       () => OnFilterRefresh(),
       _logListPresenter,
       _logViewport);
+    WireLogWorkbenchCommands();
     if (_lstLogView is not null && _logListPresenter is not null)
     {
       SettingsLogPageHostWiring.WireExceptionFoldEvents(_lstLogView, _logListPresenter);
@@ -131,6 +132,7 @@ internal sealed partial class SettingsLogPageHost
       _logViewport,
       forceRedraw);
     ForceRefreshLogViewCountForTests = forceCount;
+    ApplyPendingHistoryBoundary();
     EnsureLogAutoRefreshStarted();
   }
 

@@ -70,6 +70,12 @@ public sealed class LogViewController
                 LogViewRefreshKind.Older => await LoadOlderAsync(cancellationToken),
                 LogViewRefreshKind.Newer => await LoadNewerAsync(cancellationToken),
                 LogViewRefreshKind.Refilter => Refilter(),
+                LogViewRefreshKind.HistoryStart => await LoadHistoryBoundaryAsync(
+                    LogReadDirection.Older,
+                    cancellationToken),
+                LogViewRefreshKind.HistoryEnd => await LoadHistoryBoundaryAsync(
+                    LogReadDirection.Newer,
+                    cancellationToken),
                 _ => LogWindowDelta.None,
             };
 
@@ -232,6 +238,46 @@ public sealed class LogViewController
         UpdateFromPage(page);
         _trackedFileLength = LogTailReader.GetFileLength(_logPath);
         return _eventWindow.Append(page.Events);
+    }
+
+    private async Task<LogWindowDelta> LoadHistoryBoundaryAsync(
+        LogReadDirection direction,
+        CancellationToken cancellationToken)
+    {
+        var changed = false;
+        if (!_isLoaded)
+        {
+            await LoadLatestAsync(cancellationToken);
+            changed = true;
+        }
+
+        while (direction == LogReadDirection.Older
+            ? _hasOlderHistory || _olderCursor is not null
+            : _hasNewerHistory || _newerCursor is not null)
+        {
+            var page = direction == LogReadDirection.Older
+                ? await _eventSource.ReadOlderAsync(
+                    CreateReadRequest(_olderCursor, direction),
+                    cancellationToken)
+                : await _eventSource.ReadNewerAsync(
+                    CreateReadRequest(_newerCursor, direction),
+                    cancellationToken);
+
+            UpdateFromPage(page);
+            if (page.Events.Count == 0)
+                break;
+
+            if (direction == LogReadDirection.Older)
+                _eventWindow.Prepend(page.Events);
+            else
+                _eventWindow.Append(page.Events);
+
+            changed = true;
+        }
+
+        return changed
+            ? LogWindowDelta.Initialize(_eventWindow.Events)
+            : LogWindowDelta.None;
     }
 
     private LogWindowDelta Refilter()

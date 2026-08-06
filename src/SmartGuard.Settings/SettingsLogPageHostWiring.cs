@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
@@ -176,6 +177,69 @@ internal static class SettingsLogPageHostWiring
     }
 
     WireMatchNavigationKeys(filterBar, searchCoordinator, listPresenter, viewport, loadMatchPage);
+  }
+
+  internal static void WireKeyboardCommands(
+    Window window,
+    Func<bool> isLogPageActive,
+    Func<bool> isTextInputFocused,
+    Action focusSearch,
+    Action navigateNext,
+    Action navigatePrevious,
+    Action exportVisibleLog,
+    Action scrollWindowTop,
+    Action scrollWindowBottom,
+    Action scrollHistoryStart,
+    Action scrollHistoryEnd,
+    Action closeTransientLayer)
+  {
+    Bind(LogWorkbenchCommands.FocusSearchCommand, focusSearch);
+    Bind(LogWorkbenchCommands.NavigateNextCommand, navigateNext);
+    Bind(LogWorkbenchCommands.NavigatePreviousCommand, navigatePrevious);
+    Bind(LogWorkbenchCommands.ExportCommand, exportVisibleLog);
+    Bind(LogWorkbenchCommands.ScrollWindowTopCommand, scrollWindowTop);
+    Bind(LogWorkbenchCommands.ScrollWindowBottomCommand, scrollWindowBottom);
+    Bind(LogWorkbenchCommands.ScrollHistoryStartCommand, scrollHistoryStart);
+    Bind(LogWorkbenchCommands.ScrollHistoryEndCommand, scrollHistoryEnd);
+    Bind(
+      LogWorkbenchCommands.CloseTransientLayerCommand,
+      () =>
+      {
+        var flyout = window.FindName("logMoreFlyout") as Border;
+        var layer = window.FindName("logMoreFlyoutLayer") as Canvas;
+        if (flyout?.Visibility == Visibility.Visible)
+        {
+          flyout.Visibility = Visibility.Collapsed;
+          if (layer is not null)
+            layer.IsHitTestVisible = false;
+          return;
+        }
+
+        closeTransientLayer();
+      });
+
+    window.PreviewKeyDown += (_, e) =>
+    {
+      if (!isLogPageActive()
+          || !LogWorkbenchCommands.TryResolve(
+            e.Key,
+            e.KeyboardDevice.Modifiers,
+            isTextInputFocused(),
+            out var command))
+        return;
+
+      command.Execute(null, window);
+      e.Handled = true;
+    };
+
+    void Bind(RoutedCommand command, Action action)
+      => window.CommandBindings.Add(new CommandBinding(command, (_, _) => action()));
+  }
+
+  internal static bool IsTextInputFocused()
+  {
+    var focused = Keyboard.FocusedElement;
+    return focused is TextBoxBase or PasswordBox or ComboBox;
   }
 
   internal static void WireExceptionFoldEvents(ListBox listView, LogViewListPresenter listPresenter)
