@@ -506,5 +506,5 @@
 | LOG-WB-P2-SESSION | 已关闭 | `LogSessionCoordinator` 将会话选择编译为既有查询 clause；会话元数据懒加载，不复制事件集合 |
 | LOG-WB-P2-STATS | 已关闭 | `LogAggregationService` 按当前 query/session 聚合；`LogStatisticsPresenter` 只负责 WPF 原生轻量投影，不改变事件窗口 cursor |
 | LOG-WB-P2-INTERACTION | 已关闭 | `LogWorkbenchCommands` 是快捷键 RoutedCommand 真源；`SettingsLogPageHostWiring` 统一接入搜索、匹配、导出、视口和临时层；`LogViewportController` 仍是唯一滚动 mutation owner |
-| LOG-WB-P2-A11Y | 已关闭 | 日志查询、列表、状态和每条日志行提供 Automation Name/HelpText；状态使用 Polite LiveRegion；焦点样式与键盘 Tab 顺序由 Settings/WPF 原生控件提供 |
-| DOC-LOG-WB-P2 | 进行中 | P2.5 仍需完成全量 Run-Tests、真实窗口/Narrator/高对比度/200% DPI 验收与用户文档收口 |
+| LOG-WB-P2-A11Y | 自动化已关闭，人工阻断 | 日志查询、列表、状态和每条日志行提供 Automation Name/HelpText；状态使用 Polite LiveRegion；焦点样式与键盘 Tab 顺序由 Settings/WPF 原生控件提供；原生 UIA 已部分执行基础焦点/输入/快捷键，完整真实窗口验收因 Computer Use `EnumWindows 0x80070003` 未完成 |
+| DOC-LOG-WB-P2 | 阻断 | 自动化门禁已全绿且用户说明已收口；恢复可枚举 Windows 桌面的环境后仍需完成真实窗口、Narrator、高对比度和 200% DPI 验收 |
