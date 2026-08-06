@@ -79,6 +79,7 @@ internal sealed partial class SettingsLogPageHost
 
     WireCorrelationUi();
     WireSessionUi();
+    WireStatisticsUi();
     _logViewport.SyncFollowLatestFromUi();
     if (_logController is not null)
       _logController.FollowTail = _logViewport.FollowLatest;
@@ -96,6 +97,7 @@ internal sealed partial class SettingsLogPageHost
   {
     _refreshPipeline.NotifyFilterGenerationChanged();
     ScheduleLogRefresh(LogViewRefreshKind.Refilter, forceRedraw);
+    ScheduleStatisticsRefresh();
   }
 
   private void ScheduleLogRefresh(
