@@ -1143,6 +1143,18 @@ print(json.dumps(result))" $icon $officialDir
             $runTests | Should -Not -Match '\.GetNewClosure\(\)'
         }
 
+        It 'PowerShell scripts check out with CRLF so PS 5.1 keeps line breaks after Chinese comments' {
+            # eol=lf + BOM-less UTF-8 makes Windows PowerShell 5.1 decode .ps1
+            # as ANSI/GBK; the trailing byte 0x82 of a Chinese full stop then
+            # swallows a bare LF, gluing the next statement into the comment
+            # (observed: "$failures = 1" vanished in Invoke-TestStabilityGate
+            # on a fresh checkout while the CRLF worktree copy behaved).
+            $root = Split-Path -Parent $PSScriptRoot
+            $attributes = Get-Content -LiteralPath (Join-Path $root '.gitattributes') -Raw -Encoding UTF8
+            $attributes | Should -Match '\*\.ps1\s+text\s+eol=crlf'
+            $attributes | Should -Not -Match '\*\.ps1\s+text\s+eol=lf'
+        }
+
         It 'Test-SmartGuardElevatedPesterResult rejects a Passed result with zero discovered tests' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'scripts\Test-IsProcessElevated.ps1')
