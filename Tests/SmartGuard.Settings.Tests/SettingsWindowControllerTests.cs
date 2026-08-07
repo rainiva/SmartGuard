@@ -876,9 +876,7 @@ public class SettingsWindowControllerTests
                 controller.Should().NotBeNull();
 
                 var window = GetWindowField(controller!);
-                var navList = window.FindName("navList") as ListBox;
-                navList!.SelectedIndex = 3;
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
+                NavigateToLogsPage(controller!, window);
 
                 var scrollViewer = GetLogScrollViewer(window, controller!);
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
