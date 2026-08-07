@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -34,6 +35,62 @@ public class SettingsWindowResizeStabilityTests
         xaml.Should().MatchRegex(
             "x:Name=\"pageLogs\"[\\s\\S]{0,220}VerticalAlignment=\"Stretch\"",
             "logs page should stretch when the window is resized");
+    }
+
+    [Fact]
+    public void Log_status_stays_within_window_bounds_when_high_dpi_layout_is_constrained()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            var lines = Enumerable.Range(1, 200)
+                .Select(index => $"[INFO] 2026-08-07 10:00:{index % 60:00} Uninstall event {index}")
+                .ToArray();
+            File.WriteAllText(
+                Path.Combine(installRoot, "SmartGuard.log"),
+                string.Join(Environment.NewLine, lines),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                try
+                {
+                    window.Width = 800;
+                    window.Height = 640;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("logs");
+                    window.UpdateLayout();
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                    WpfStaTestHost.WaitForRender();
+
+                    var pageLogs = window.FindName("pageLogs") as FrameworkElement;
+                    var status = window.FindName("lblLogStatus") as FrameworkElement;
+                    pageLogs.Should().NotBeNull();
+                    status.Should().NotBeNull();
+
+                    var statusOrigin = status!.TranslatePoint(new Point(0, 0), window);
+                    var statusRight = statusOrigin.X + status.ActualWidth;
+
+                    statusRight.Should().BeLessThanOrEqualTo(
+                        window.ActualWidth + 1.0,
+                        "the status summary must remain reachable inside the window at high DPI");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
     }
 
     [Fact]

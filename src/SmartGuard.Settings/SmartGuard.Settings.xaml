@@ -1326,6 +1326,8 @@
                          FontSize="11"
                          Foreground="{DynamicResource TextTertiary}"
                          Margin="0,0,0,8"
+                         TextWrapping="Wrap"
+                         TextTrimming="CharacterEllipsis"
                          AutomationProperties.Name="日志状态"
                          AutomationProperties.HelpText="朗读日志加载、匹配和错误状态"
                          AutomationProperties.LiveSetting="Polite"/>
