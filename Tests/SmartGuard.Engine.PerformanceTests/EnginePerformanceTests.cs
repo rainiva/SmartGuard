@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using FluentAssertions;
 using SmartGuard.Configuration;
 
@@ -45,6 +46,28 @@ public class EnginePerformanceTests : IDisposable
         sw.ElapsedMilliseconds.Should().BeLessThan(5000);
     }
 
+    [Fact]
+    public void Appended_log_scan_keeps_marker_when_many_lines_follow()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "existing line" + Environment.NewLine);
+            var startBytes = new FileInfo(path).Length;
+            File.AppendAllText(
+                path,
+                "startup-marker" + Environment.NewLine +
+                string.Join(Environment.NewLine, Enumerable.Range(1, 8).Select(i => $"later line {i}")) +
+                Environment.NewLine);
+
+            ReadAppendedText(path, startBytes).Should().Contain("startup-marker");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [SkippableFact]
     public void Memory_should_be_below_20MB()
     {
@@ -73,23 +96,28 @@ public class EnginePerformanceTests : IDisposable
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            if (File.Exists(_logPath) && new FileInfo(_logPath).Length > startBytes)
+            if (File.Exists(_logPath))
             {
-                var tail = ReadTail(_logPath, 3);
-                if (tail.Contains(marker, StringComparison.Ordinal)) return true;
+                var appended = ReadAppendedText(_logPath, startBytes);
+                if (appended.Contains(marker, StringComparison.Ordinal)) return true;
             }
             Thread.Sleep(50);
         }
         return false;
     }
 
-    private static string ReadTail(string path, int lines)
+    private static string ReadAppendedText(string path, long startBytes)
     {
         try
         {
-            var all = File.ReadAllLines(path);
-            var take = Math.Min(lines, all.Length);
-            return string.Join(Environment.NewLine, all[^take..]);
+            using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            stream.Seek(startBytes <= stream.Length ? startBytes : 0, SeekOrigin.Begin);
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            return reader.ReadToEnd();
         }
         catch
         {
