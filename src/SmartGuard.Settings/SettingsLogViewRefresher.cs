@@ -34,7 +34,7 @@ internal static class SettingsLogViewRefresher
         && snapshot.EmptyStateMessage is null
         && !snapshot.LoadFailed)
     {
-      statusLabel.Text = statusText;
+      LogStatusLiveRegion.Set(statusLabel, statusText);
       return;
     }
 
@@ -48,7 +48,7 @@ internal static class SettingsLogViewRefresher
       applyResult = listPresenter.ApplyDelta(refreshResult.WindowDelta);
 
     lastDisplayedLines = snapshot.DisplayLines.ToArray();
-    statusLabel.Text = statusText;
+    LogStatusLiveRegion.Set(statusLabel, statusText);
     viewport.OnDataApplied(applyResult, capturedAnchor);
     controller.FollowTail = viewport.FollowLatest;
   }

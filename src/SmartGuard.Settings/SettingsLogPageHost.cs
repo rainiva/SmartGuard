@@ -86,7 +86,7 @@ internal sealed partial class SettingsLogPageHost
       failure =>
       {
         if (_lblLogStatus is not null)
-          _lblLogStatus.Text = $"{LoadFailedStatusText}：{failure.Message}";
+          LogStatusLiveRegion.Set(_lblLogStatus, $"{LoadFailedStatusText}：{failure.Message}");
       },
       ApplyRefreshResult,
       () => _logViewport.ApplyFollowLatestIfEnabled(fromRefreshPipeline: true),
@@ -151,7 +151,7 @@ internal sealed partial class SettingsLogPageHost
       EnsureLogAutoRefreshStarted();
 
     if (isFirstVisit && _lblLogStatus is not null)
-      _lblLogStatus.Text = LoadingStatusText;
+      LogStatusLiveRegion.Set(_lblLogStatus, LoadingStatusText);
 
     ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: isFirstVisit, forceRefresh: isFirstVisit);
     if (!isFirstVisit)

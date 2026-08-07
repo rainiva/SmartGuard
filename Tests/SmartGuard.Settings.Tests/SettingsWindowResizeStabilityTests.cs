@@ -2,8 +2,10 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
 
@@ -80,6 +82,81 @@ public class SettingsWindowResizeStabilityTests
                     statusRight.Should().BeLessThanOrEqualTo(
                         window.ActualWidth + 1.0,
                         "the status summary must remain reachable inside the window at high DPI");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void Log_status_refresh_raises_live_region_changed_event()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            File.WriteAllText(
+                Path.Combine(installRoot, "SmartGuard.log"),
+                "[INFO] 2026-08-07 10:00:00 live region test",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                try
+                {
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("logs");
+                    var status = window.FindName("lblLogStatus") as TextBlock;
+                    status.Should().NotBeNull();
+                    WpfStaTestHost.WaitUntil(
+                        () =>
+                            controller.ActiveLogRefreshCountForTests == 0 &&
+                            status!.Text != "正在加载日志…",
+                        TimeSpan.FromSeconds(10),
+                        "the log status to settle after navigation");
+
+                    var automationWindow = AutomationElement.FromHandle(new WindowInteropHelper(window).Handle);
+                    var statusElement = automationWindow.FindFirst(
+                        TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "lblLogStatus"));
+                    statusElement.Should().NotBeNull();
+
+                    var eventCount = 0;
+                    AutomationEventHandler handler = (_, _) => Interlocked.Increment(ref eventCount);
+                    Automation.AddAutomationEventHandler(
+                        AutomationElementIdentifiers.LiveRegionChangedEvent,
+                        statusElement!,
+                        TreeScope.Element,
+                        handler);
+                    try
+                    {
+                        controller.ForceRefreshLogView();
+                        WpfStaTestHost.WaitUntil(
+                            () => eventCount > 0,
+                            TimeSpan.FromSeconds(10),
+                            "the log status live-region event to be raised after refresh");
+                    }
+                    finally
+                    {
+                        Automation.RemoveAutomationEventHandler(
+                            AutomationElementIdentifiers.LiveRegionChangedEvent,
+                            statusElement!,
+                            handler);
+                    }
+
+                    eventCount.Should().BeGreaterThan(0);
                 }
                 finally
                 {

@@ -79,7 +79,7 @@ internal sealed partial class SettingsLogPageHost
     if (!_correlationCoordinator.TryEnterCorrelationView(anchorEvent, CaptureMainViewState()))
       return;
 
-    _lblLogStatus.Text = "正在加载关联事件…";
+    LogStatusLiveRegion.Set(_lblLogStatus, "正在加载关联事件…");
     UpdateCorrelationBannerVisibility(true);
 
     try
@@ -103,7 +103,7 @@ internal sealed partial class SettingsLogPageHost
     {
       _correlationCoordinator.ExitCorrelationView();
       UpdateCorrelationBannerVisibility(false);
-      _lblLogStatus.Text = $"{LoadFailedStatusText}：{ex.Message}";
+      LogStatusLiveRegion.Set(_lblLogStatus, $"{LoadFailedStatusText}：{ex.Message}");
     }
   }
 

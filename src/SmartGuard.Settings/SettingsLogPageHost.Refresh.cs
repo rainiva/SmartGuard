@@ -143,7 +143,7 @@ internal sealed partial class SettingsLogPageHost
 
     _lastDisplayedLines = Array.Empty<string>();
     if (_lblLogStatus is not null)
-      _lblLogStatus.Text = LoadingStatusText;
+      LogStatusLiveRegion.Set(_lblLogStatus, LoadingStatusText);
     ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: true, forceRefresh: true);
   }
 

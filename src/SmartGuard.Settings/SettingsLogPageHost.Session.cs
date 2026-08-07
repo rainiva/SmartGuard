@@ -79,7 +79,7 @@ internal sealed partial class SettingsLogPageHost
 
     EnsureSessionControls();
     _sessionCoordinator.SelectSession(session, CaptureSessionMainViewState());
-    _lblLogStatus.Text = "正在加载会话事件…";
+    LogStatusLiveRegion.Set(_lblLogStatus, "正在加载会话事件…");
     UpdateSessionBannerVisibility(true);
 
     try
@@ -103,7 +103,7 @@ internal sealed partial class SettingsLogPageHost
     {
       _sessionCoordinator.ExitSessionView();
       UpdateSessionBannerVisibility(false);
-      _lblLogStatus.Text = $"{LoadFailedStatusText}：{ex.Message}";
+      LogStatusLiveRegion.Set(_lblLogStatus, $"{LoadFailedStatusText}：{ex.Message}");
     }
   }
 
