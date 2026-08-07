@@ -506,5 +506,5 @@
 | LOG-WB-P2-SESSION | 已关闭 | `LogSessionCoordinator` 将会话选择编译为既有查询 clause；会话元数据懒加载，不复制事件集合 |
 | LOG-WB-P2-STATS | 已关闭 | `LogAggregationService` 按当前 query/session 聚合；`LogStatisticsPresenter` 只负责 WPF 原生轻量投影，不改变事件窗口 cursor |
 | LOG-WB-P2-INTERACTION | 已关闭 | `LogWorkbenchCommands` 是快捷键 RoutedCommand 真源；`SettingsLogPageHostWiring` 统一接入搜索、匹配、导出、视口和临时层；`LogViewportController` 仍是唯一滚动 mutation owner |
-| LOG-WB-P2-A11Y | 自动化已关闭，人工部分通过/阻断 | 日志查询、列表、状态和每条日志行提供 Automation Name/HelpText；状态使用 Polite LiveRegion；焦点样式与键盘 Tab 顺序由 Settings/WPF 原生控件提供；2026-08-07 原生 UIA 干净复测通过 200% DPI 状态边界、无匹配/有效匹配、Ctrl+F/F3 焦点、滚动边界和跟随最新切换；UIA provider 的 LiveSetting 仍返回 null，且 100% DPI、Narrator、高对比度、减少动画和完整视觉闭环尚未完成，Computer Use `EnumWindows 0x80070003` 仍阻断 |
-| DOC-LOG-WB-P2 | 阻断 | 自动化门禁已全绿（Pester 118/118、.NET 1368/1368、Tray 2/2、Installer 9/9；高 DPI 修复提交 `02ab477`）且用户说明已收口；恢复可枚举 Windows 桌面的环境后仍需完成第 7.3 节的 100% DPI、Narrator、高对比度、减少动画和完整真实视觉验收 |
+| LOG-WB-P2-A11Y | 自动化已关闭，人工部分通过/阻断 | 日志查询、列表、状态和每条日志行提供 Automation Name/HelpText；状态使用 `AutomationProperties.LiveSetting=Polite`，所有状态更新经 `LogStatusLiveRegion.Set` 写入文本并显式触发 `LiveRegionChanged`；2026-08-07 原生 UIA 干净复测通过 200% DPI 状态边界、无匹配/有效匹配、Ctrl+F/F3 焦点、滚动边界和跟随最新切换，独立 UIA 客户端收到 `LiveRegionChanged`；100% DPI、Narrator、高对比度、减少动画和完整视觉闭环尚未完成，Computer Use `EnumWindows 0x80070003` 仍阻断 |
+| DOC-LOG-WB-P2 | 阻断 | 自动化门禁已全绿（Pester 118/118、.NET 1369/1369、Tray 2/2、Installer 9/9；高 DPI 修复提交 `02ab477`、LiveRegionChanged 修复提交 `031e74c`）且用户说明已收口；恢复可枚举 Windows 桌面的环境后仍需完成第 7.3 节的 100% DPI、Narrator、高对比度、减少动画和完整真实视觉验收 |
