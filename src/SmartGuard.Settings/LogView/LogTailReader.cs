@@ -644,13 +644,6 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
     if (snapshotSource.Kind == LogSourceKind.StartupFallback)
       matches = matches.Where(source => source.Kind == LogSourceKind.StartupFallback).ToList();
 
-    if (matches.Count == 0 && snapshotSource.Kind is LogSourceKind.Current or LogSourceKind.StartupFallback)
-    {
-      matches = currentSources
-        .Where(source => source.Kind == snapshotSource.Kind)
-        .ToList();
-    }
-
     return matches.Count switch
     {
       1 => matches[0],

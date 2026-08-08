@@ -46,11 +46,13 @@ public sealed class LogTailReaderSnapshotTests
   {
     var root = CreateRoot();
     var logPath = Path.Combine(root, "SmartGuard.log");
+    var first = LegacyLine(10, 0, 0, new string('A', 4500));
+    var second = LegacyLine(10, 0, 1, "second");
     File.WriteAllText(
       logPath,
       string.Join('\n', [
-        LegacyLine(10, 0, 0, "first"),
-        LegacyLine(10, 0, 1, "second"),
+        first,
+        second,
       ]) + "\n",
       Utf8NoBom);
 
@@ -67,8 +69,8 @@ public sealed class LogTailReaderSnapshotTests
         .ToList();
 
       lines.Select(line => line.Text).Should().Equal(
-        LegacyLine(10, 0, 0, "first"),
-        LegacyLine(10, 0, 1, "second"));
+        first,
+        second);
       lines.Should().NotContain(line => line.Text.Contains("after-capture", StringComparison.Ordinal));
     }
     finally
@@ -115,6 +117,36 @@ public sealed class LogTailReaderSnapshotTests
       lines.Select(line => line.Text).Should().Equal(
         LegacyLine(10, 0, 0, "before-rotate-1"),
         LegacyLine(10, 0, 1, "before-rotate-2"));
+    }
+    finally
+    {
+      CleanupRoot(root);
+    }
+  }
+
+  [Fact]
+  public void Snapshot_scan_rejects_missing_current_identity_even_when_replacement_matches_boundary()
+  {
+    var root = CreateRoot();
+    var logPath = Path.Combine(root, "SmartGuard.log");
+    var original = LegacyLine(10, 0, 0, "replacement-boundary") + "\n";
+    File.WriteAllText(logPath, original, Utf8NoBom);
+    var originalCreatedAtUtc = File.GetCreationTimeUtc(logPath);
+
+    try
+    {
+      var reader = new LogTailReader(logPath);
+      var snapshotReader = SnapshotReader(reader);
+      var snapshot = snapshotReader.CaptureSnapshot();
+      File.Delete(logPath);
+      File.WriteAllText(logPath, original, Utf8NoBom);
+      File.SetCreationTimeUtc(logPath, originalCreatedAtUtc.AddMinutes(1));
+
+      Action act = () => snapshotReader
+        .EnumeratePhysicalLines(AllSources(snapshot), snapshot, LogReadDirection.Newer, cursor: null, CancellationToken.None)
+        .ToList();
+
+      act.Should().Throw<LogSnapshotInvalidatedException>();
     }
     finally
     {
