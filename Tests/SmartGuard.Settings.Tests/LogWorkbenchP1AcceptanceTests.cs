@@ -92,12 +92,23 @@ public class LogWorkbenchP1AcceptanceTests
         CancellationToken.None);
 
       numberedPage.Events.Should().NotBeEmpty();
-      numberedPage.Events.Count.Should().BeInRange(1, 50);
+      numberedPage.Events.Should().HaveCount(50);
       numberedPage.ExactTotalCount.Should().Be(index.ExactTotalCount);
       index.ExactTotalCount.Should().BeGreaterThan(30 * 2000);
-      numberedPage.Events.Should().Contain(logEvent => logEvent.Message.StartsWith("current-", StringComparison.Ordinal));
-      oldestPage.Events.Should().Contain(logEvent => logEvent.Message.StartsWith("archive-", StringComparison.Ordinal));
+      numberedPage.Events.Should().OnlyContain(logEvent => logEvent.Message.StartsWith("current-", StringComparison.Ordinal));
+      numberedPage.Events[0].Message.Should().Be("current-tail");
+      numberedPage.Events.Select(logEvent => logEvent.Timestamp).Should().BeInDescendingOrder();
+
+      oldestPage.Events.Select(logEvent => logEvent.Message).Should().Equal(
+        Enumerable.Range(1, 50).Select(index => $"archive-{index}"));
+
       clampedPage.PageNumber.Should().Be(clampedPage.TotalPages);
+      clampedPage.Events.Should().HaveCount(
+        index.ExactTotalCount % 50 == 0 ? 50 : index.ExactTotalCount % 50);
+      clampedPage.Events.Select(logEvent => logEvent.Message).Should().Equal(
+        Enumerable.Range(1, 50).Select(index => $"archive-{index}")
+          .Take(clampedPage.Events.Count)
+          .Reverse());
       clampedPage.HasNextPage.Should().BeFalse();
     }
     finally
