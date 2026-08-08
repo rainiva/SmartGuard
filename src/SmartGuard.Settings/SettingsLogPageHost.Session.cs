@@ -53,9 +53,9 @@ internal sealed partial class SettingsLogPageHost
         _logController.EventSourceForCorrelation,
         CancellationToken.None);
 
-      _cmbLogSession.DisplayMemberPath = nameof(LogSessionListItem.Title);
+      _cmbLogSession.DisplayMemberPath = nameof(LogSessionPickerItem.Title);
       _cmbLogSession.ItemsSource = sessions
-        .Select(session => new LogSessionListItem(session))
+        .Select(LogSessionPickerItem.ForSession)
         .ToList();
     }
     catch
@@ -66,7 +66,10 @@ internal sealed partial class SettingsLogPageHost
 
   private void OnSessionSelectionChanged()
   {
-    if (_disposed || _cmbLogSession?.SelectedItem is not LogSessionListItem selected)
+    if (_disposed || _cmbLogSession?.SelectedItem is not LogSessionPickerItem selected)
+      return;
+
+    if (!selected.IsSelectable || selected.Session is null)
       return;
 
     SelectSession(selected.Session);
@@ -223,12 +226,5 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     _logSessionBanner.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-  }
-
-  private sealed class LogSessionListItem(LogSessionMetadata session)
-  {
-    internal LogSessionMetadata Session { get; } = session;
-
-    internal string Title => LogSessionProjector.BuildSessionTitle(Session);
   }
 }
