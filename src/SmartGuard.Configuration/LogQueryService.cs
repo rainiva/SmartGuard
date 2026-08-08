@@ -188,6 +188,151 @@ public sealed class LogQueryService
       ScannedCount: scannedCount);
   }
 
+  public Task<IReadOnlyList<LogEvent>> ReadPreviewPageAsync(
+    ILogEventSource eventSource,
+    LogQueryExpression expression,
+    LogReadScope scope,
+    LogSourceSnapshot snapshot,
+    int pageSize,
+    bool ignoreCase,
+    CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(expression);
+    ArgumentNullException.ThrowIfNull(scope);
+    ArgumentNullException.ThrowIfNull(snapshot);
+    var snapshotSource = RequireSnapshotSource(eventSource);
+    cancellationToken.ThrowIfCancellationRequested();
+
+    if (pageSize <= 0)
+      return Task.FromResult<IReadOnlyList<LogEvent>>(Array.Empty<LogEvent>());
+
+    return Task.Run(
+      () => ReadPreviewPage(
+        snapshotSource,
+        expression,
+        scope,
+        snapshot,
+        pageSize,
+        ignoreCase,
+        cancellationToken),
+      cancellationToken);
+  }
+
+  public Task<LogQueryPageIndex> BuildPageIndexAsync(
+    ILogEventSource eventSource,
+    LogQueryExpression expression,
+    LogReadScope scope,
+    LogSourceSnapshot snapshot,
+    bool ignoreCase,
+    IProgress<LogQueryProgress>? progress,
+    CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(expression);
+    ArgumentNullException.ThrowIfNull(scope);
+    ArgumentNullException.ThrowIfNull(snapshot);
+    var snapshotSource = RequireSnapshotSource(eventSource);
+    cancellationToken.ThrowIfCancellationRequested();
+
+    return Task.Run(
+      () => BuildPageIndex(
+        snapshotSource,
+        expression,
+        scope,
+        snapshot,
+        ignoreCase,
+        progress,
+        cancellationToken),
+      cancellationToken);
+  }
+
+  private static IReadOnlyList<LogEvent> ReadPreviewPage(
+    ILogSnapshotPhysicalLineSource snapshotSource,
+    LogQueryExpression expression,
+    LogReadScope scope,
+    LogSourceSnapshot snapshot,
+    int pageSize,
+    bool ignoreCase,
+    CancellationToken cancellationToken)
+  {
+    var evaluationContext = new LogQueryEvaluationContext(ignoreCase);
+    var matches = new List<LogEvent>(pageSize);
+    foreach (var line in snapshotSource.EnumeratePhysicalLines(
+               scope,
+               snapshot,
+               LogReadDirection.Latest,
+               cursor: null,
+               cancellationToken))
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      if (!line.IsComplete)
+        continue;
+
+      var logEvent = LogEventDecoder.Decode(line);
+      if (!MatchesSnapshotExpression(logEvent, expression, evaluationContext))
+        continue;
+
+      matches.Add(logEvent);
+      if (matches.Count >= pageSize)
+        break;
+    }
+
+    cancellationToken.ThrowIfCancellationRequested();
+    return matches;
+  }
+
+  private static LogQueryPageIndex BuildPageIndex(
+    ILogSnapshotPhysicalLineSource snapshotSource,
+    LogQueryExpression expression,
+    LogReadScope scope,
+    LogSourceSnapshot snapshot,
+    bool ignoreCase,
+    IProgress<LogQueryProgress>? progress,
+    CancellationToken cancellationToken)
+  {
+    var evaluationContext = new LogQueryEvaluationContext(ignoreCase);
+    var anchors = new List<LogQueryAnchor>();
+    var scannedCount = 0;
+    var matchCount = 0;
+
+    foreach (var line in snapshotSource.EnumeratePhysicalLines(
+               scope,
+               snapshot,
+               LogReadDirection.Newer,
+               cursor: null,
+               cancellationToken))
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      scannedCount++;
+      if (line.IsComplete)
+      {
+        var logEvent = LogEventDecoder.Decode(line);
+        if (MatchesSnapshotExpression(logEvent, expression, evaluationContext))
+        {
+          matchCount++;
+          if (matchCount % 256 == 0)
+          {
+            anchors.Add(new LogQueryAnchor(
+              matchCount,
+              new LogReadCursor(line.Source, line.ByteOffset, logEvent.EventId)));
+          }
+        }
+      }
+
+      ReportProgress(progress, scannedCount, matchCount, isComplete: false, exactTotal: null);
+    }
+
+    cancellationToken.ThrowIfCancellationRequested();
+    ReportProgress(progress, scannedCount, matchCount, isComplete: true, exactTotal: matchCount);
+    return new LogQueryPageIndex(
+      snapshot,
+      scope,
+      expression,
+      ignoreCase,
+      matchCount,
+      scannedCount,
+      anchors);
+  }
+
   private static LogQueryResult CreatePartialResult(
     IReadOnlyList<LogIndexEntry> matches,
     int matchCount,
@@ -228,6 +373,23 @@ public sealed class LogQueryService
       ErrorMessage: "Regex evaluation timed out after 100ms.",
       AbortedDueToRegexTimeout: true,
       ScannedCount: scannedCount);
+
+  private static ILogSnapshotPhysicalLineSource RequireSnapshotSource(ILogEventSource eventSource)
+  {
+    ArgumentNullException.ThrowIfNull(eventSource);
+    return eventSource as ILogSnapshotPhysicalLineSource
+      ?? throw new InvalidOperationException(
+        $"Snapshot-backed query operations require {nameof(ILogSnapshotPhysicalLineSource)}.");
+  }
+
+  private static bool MatchesSnapshotExpression(
+    LogEvent logEvent,
+    LogQueryExpression expression,
+    LogQueryEvaluationContext evaluationContext)
+  {
+    evaluationContext.ResetTimeout();
+    return LogQueryExpressionEvaluator.Matches(logEvent, expression, evaluationContext);
+  }
 
   private static void ReportProgress(
     IProgress<LogQueryProgress>? progress,
