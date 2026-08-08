@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using SmartGuard.Settings;
@@ -115,6 +116,181 @@ public class LogWorkbenchCommandsTests
             navigated.Should().Be(1);
             keyEvent.Handled.Should().BeTrue();
         });
+    }
+
+    [Fact]
+    public void Expanded_focused_combobox_keeps_escape_for_wpf_dropdown_handling()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var comboBox = new ComboBox
+            {
+                ItemsSource = new[] { "全部会话", "当前会话" },
+            };
+            var window = new Window
+            {
+                Width = 320,
+                Height = 80,
+                Content = comboBox,
+            };
+            var transientLayerClosed = 0;
+
+            WpfStaTestHost.ShowAndWait(window);
+            comboBox.Focus();
+            Keyboard.Focus(comboBox).Should().BeSameAs(comboBox);
+            comboBox.IsDropDownOpen = true;
+            WpfStaTestHost.WaitForRender();
+            comboBox.IsDropDownOpen.Should().BeTrue();
+
+            var windowPreviewObserved = false;
+            object? windowPreviewSource = null;
+            object? windowPreviewOriginalSource = null;
+            window.AddHandler(
+                Keyboard.PreviewKeyDownEvent,
+                new KeyEventHandler((_, e) =>
+                {
+                    windowPreviewObserved = true;
+                    windowPreviewSource = e.Source;
+                    windowPreviewOriginalSource = e.OriginalSource;
+                }),
+                handledEventsToo: true);
+
+            SettingsLogPageHostWiring.WireKeyboardCommands(
+                window,
+                isLogPageActive: () => true,
+                isTextInputFocused: SettingsLogPageHostWiring.IsTextInputFocused,
+                focusSearch: () => { },
+                navigateNext: () => { },
+                navigatePrevious: () => { },
+                exportVisibleLog: () => { },
+                scrollWindowTop: () => { },
+                scrollWindowBottom: () => { },
+                scrollHistoryStart: () => { },
+                scrollHistoryEnd: () => { },
+                closeTransientLayer: () => transientLayerClosed++);
+
+            var keyEvent = ProcessKeyInput(comboBox, Key.Escape);
+
+            windowPreviewObserved.Should().BeTrue();
+            windowPreviewSource.Should().BeSameAs(comboBox);
+            windowPreviewOriginalSource.Should().BeSameAs(comboBox);
+            comboBox.IsDropDownOpen.Should().BeFalse();
+            transientLayerClosed.Should().Be(0);
+            keyEvent.Handled.Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public void Non_combobox_escape_still_closes_transient_layer_at_window_route()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var button = new Button { Content = "日志" };
+            var window = new Window
+            {
+                Width = 320,
+                Height = 80,
+                Content = button,
+            };
+            var transientLayerClosed = 0;
+
+            WpfStaTestHost.ShowAndWait(window);
+            button.Focus().Should().BeTrue();
+            Keyboard.FocusedElement.Should().BeSameAs(button);
+
+            SettingsLogPageHostWiring.WireKeyboardCommands(
+                window,
+                isLogPageActive: () => true,
+                isTextInputFocused: SettingsLogPageHostWiring.IsTextInputFocused,
+                focusSearch: () => { },
+                navigateNext: () => { },
+                navigatePrevious: () => { },
+                exportVisibleLog: () => { },
+                scrollWindowTop: () => { },
+                scrollWindowBottom: () => { },
+                scrollHistoryStart: () => { },
+                scrollHistoryEnd: () => { },
+                closeTransientLayer: () => transientLayerClosed++);
+
+            var keyEvent = ProcessKeyInput(button, Key.Escape);
+
+            transientLayerClosed.Should().Be(1);
+            keyEvent.Handled.Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public void Collapsed_combobox_escape_still_closes_transient_layer_at_window_route()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var comboBox = new ComboBox
+            {
+                ItemsSource = new[] { "全部会话", "当前会话" },
+            };
+            var window = new Window
+            {
+                Width = 320,
+                Height = 80,
+                Content = comboBox,
+            };
+            var transientLayerClosed = 0;
+
+            WpfStaTestHost.ShowAndWait(window);
+            comboBox.Focus().Should().BeTrue();
+            Keyboard.FocusedElement.Should().BeSameAs(comboBox);
+            comboBox.IsDropDownOpen.Should().BeFalse();
+
+            SettingsLogPageHostWiring.WireKeyboardCommands(
+                window,
+                isLogPageActive: () => true,
+                isTextInputFocused: SettingsLogPageHostWiring.IsTextInputFocused,
+                focusSearch: () => { },
+                navigateNext: () => { },
+                navigatePrevious: () => { },
+                exportVisibleLog: () => { },
+                scrollWindowTop: () => { },
+                scrollWindowBottom: () => { },
+                scrollHistoryStart: () => { },
+                scrollHistoryEnd: () => { },
+                closeTransientLayer: () => transientLayerClosed++);
+
+            var keyEvent = ProcessKeyInput(comboBox, Key.Escape);
+
+            transientLayerClosed.Should().Be(1);
+            keyEvent.Handled.Should().BeTrue();
+        });
+    }
+
+    private static KeyEventArgs ProcessKeyInput(UIElement target, Key key)
+    {
+        var keyEvent = new KeyEventArgs(
+            Keyboard.PrimaryDevice,
+            PresentationSource.FromVisual(target)!,
+            0,
+            key)
+        {
+            RoutedEvent = Keyboard.PreviewKeyDownEvent,
+            Source = target,
+        };
+        target.RaiseEvent(keyEvent);
+
+        if (!keyEvent.Handled)
+        {
+            var bubbleEvent = new KeyEventArgs(
+                Keyboard.PrimaryDevice,
+                PresentationSource.FromVisual(target)!,
+                0,
+                key)
+            {
+                RoutedEvent = Keyboard.KeyDownEvent,
+                Source = target,
+            };
+            target.RaiseEvent(bubbleEvent);
+            keyEvent = bubbleEvent;
+        }
+
+        return keyEvent;
     }
 
     private static void Resolve(Key key, ModifierKeys modifiers, RoutedCommand expected)

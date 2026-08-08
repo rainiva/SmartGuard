@@ -220,6 +220,11 @@ internal static class SettingsLogPageHostWiring
 
     window.PreviewKeyDown += (_, e) =>
     {
+      if (e.Key == Key.Escape
+          && Keyboard.FocusedElement is ComboBox comboBox
+          && comboBox.IsDropDownOpen)
+        return;
+
       if (!isLogPageActive()
           || !LogWorkbenchCommands.TryResolve(
             e.Key,
