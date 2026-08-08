@@ -3,6 +3,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using SmartGuard.Configuration;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -145,19 +146,77 @@ public sealed class LogSessionPickerWpfTests
   }
 
   [Fact]
-  public void Statistics_source_uses_independent_inspector_dirty_flag_and_generation_cancellation()
+  public void Active_session_metadata_reload_updates_active_scope_without_overwriting_main_view_snapshot()
   {
-    var source = File.ReadAllText(
-      Path.Combine(SettingsSourcePaths.RepoRoot(), "src", "SmartGuard.Settings", "SettingsLogPageHost.Statistics.cs"),
-      Utf8NoBom);
+    WpfStaTestHost.Run(() =>
+    {
+      var installRoot = CreateInstallRoot();
+      SettingsWindowController? controller = null;
 
-    source.Should().Contain("_logStatisticsInspector");
-    source.Should().Contain("_statisticsDirty");
-    source.Should().Contain("_logStatisticsInspector.Expanded");
-    source.Should().Contain("_logStatisticsInspector.IsExpanded");
-    source.Should().Contain("_statisticsCancellation?.Cancel()");
-    source.Should().Contain("generation != _statisticsGeneration");
-    source.Should().NotContain("_logSessionInspector.Expanded");
+      try
+      {
+        WriteActiveLog(installRoot);
+        controller = CreateController(installRoot);
+        WpfStaTestHost.Track(controller);
+        var window = GetWindow(controller);
+        WpfStaTestHost.ShowAndWait(window);
+
+        controller.NavigateTo("logs");
+        var combo = RequireCombo(window);
+        var host = (SettingsLogPageHost)GetLogPageHost(controller);
+        var searchBar = GetPrivateField<LogSearchFilterBar>(host, "_logSearchFilterBar");
+        var logController = GetPrivateField<LogViewController>(host, "_logController");
+
+        InvokePrivate(host, "OnSessionComboDropDownOpened", combo, EventArgs.Empty);
+        WpfStaTestHost.WaitUntil(
+          () => combo.Items.OfType<LogSessionPickerItem>().Any(item => item.Kind == LogSessionPickerItemKind.Session),
+          TimeSpan.FromSeconds(10),
+          "initial active session metadata to load");
+
+        var activeItem = combo.Items.OfType<LogSessionPickerItem>()
+          .Single(item => item.Kind == LogSessionPickerItemKind.Session);
+        activeItem.Session!.IsActive.Should().BeTrue("the fixture starts before an AppStopping event");
+
+        searchBar.SetKeyword("main-before");
+        combo.SelectedItem = activeItem;
+        WpfStaTestHost.WaitUntil(
+          () => host.SessionCoordinatorForTests.ActiveSession?.SessionId == activeItem.Session.SessionId,
+          TimeSpan.FromSeconds(10),
+          "session selection to become active");
+
+        searchBar.SetKeyword("inside-session");
+        var end = new DateTimeOffset(2026, 8, 2, 10, 2, 0, activeItem.Session.StartTimestamp.Offset);
+        AppendStopForActiveLog(installRoot);
+
+        SetPrivateField(host, "_sessionMetadataLoaded", false);
+        InvokePrivate(host, "OnSessionComboDropDownOpened", combo, EventArgs.Empty);
+        WpfStaTestHost.WaitUntil(
+          () => combo.SelectedItem is LogSessionPickerItem { Session.IsActive: false },
+          TimeSpan.FromSeconds(10),
+          "reloaded metadata for the same active session id to close the active session");
+
+        host.SessionCoordinatorForTests.ActiveSession.Should().NotBeNull();
+        host.SessionCoordinatorForTests.ActiveSession!.EndTimestamp.Should().Be(end);
+        logController.ScopeExpression.Should().NotBeNull();
+        LogQueryExpressionEvaluator.Matches(
+          CreateEvent("after-updated-session", end.AddMinutes(1)),
+          logController.ScopeExpression!).Should().BeFalse(
+            "the active controller scope should use the reloaded session end boundary");
+
+        combo.SelectedIndex = 0;
+        WpfStaTestHost.WaitUntil(
+          () => !host.SessionCoordinatorForTests.IsActive,
+          TimeSpan.FromSeconds(10),
+          "session view to exit through the standard All selection");
+        searchBar.Keyword.Should().Be("main-before",
+          "reloading metadata for the active SessionId must not overwrite the first main-view snapshot");
+      }
+      finally
+      {
+        controller?.Dispose();
+        TryDelete(installRoot);
+      }
+    });
   }
 
   private static SettingsWindowController CreateController(string installRoot)
@@ -189,6 +248,22 @@ public sealed class LogSessionPickerWpfTests
       Utf8NoBom);
   }
 
+  private static void WriteActiveLog(string installRoot)
+  {
+    File.WriteAllText(
+      Path.Combine(installRoot, "SmartGuard.log"),
+      "[INFO] 2026-08-02 10:00:00 [Engine] AppStarted\n[INFO] 2026-08-02 10:01:00 [Engine] session body\n",
+      Utf8NoBom);
+  }
+
+  private static void AppendStopForActiveLog(string installRoot)
+  {
+    File.AppendAllText(
+      Path.Combine(installRoot, "SmartGuard.log"),
+      "[INFO] 2026-08-02 10:02:00 [Engine] AppStopping\n",
+      Utf8NoBom);
+  }
+
   private static ComboBox RequireCombo(Window window)
     => window.FindName("cmbLogSession") as ComboBox
        ?? throw new InvalidOperationException("cmbLogSession was not found.");
@@ -201,12 +276,49 @@ public sealed class LogSessionPickerWpfTests
     return (Window)field!.GetValue(controller)!;
   }
 
+  private static LogEvent CreateEvent(string eventId, DateTimeOffset timestamp)
+    => new(
+      LogEvent.CurrentSchemaVersion,
+      eventId,
+      timestamp,
+      LogSeverity.Info,
+      "Engine",
+      "Runtime",
+      "TestEvent",
+      "test event",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      LogEvent.EmptyProperties);
+
   private static object GetLogPageHost(SettingsWindowController controller)
   {
     var field = typeof(SettingsWindowController).GetField(
       "_logPageHost",
       BindingFlags.NonPublic | BindingFlags.Instance);
     return field!.GetValue(controller)!;
+  }
+
+  private static T GetPrivateField<T>(object instance, string fieldName)
+  {
+    var field = instance.GetType().GetField(
+      fieldName,
+      BindingFlags.NonPublic | BindingFlags.Instance);
+    field.Should().NotBeNull();
+    return (T)field!.GetValue(instance)!;
+  }
+
+  private static void SetPrivateField<T>(object instance, string fieldName, T value)
+  {
+    var field = instance.GetType().GetField(
+      fieldName,
+      BindingFlags.NonPublic | BindingFlags.Instance);
+    field.Should().NotBeNull();
+    field!.SetValue(instance, value);
   }
 
   private static void InvokePrivate(object instance, string methodName, params object[] args)

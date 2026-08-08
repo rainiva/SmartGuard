@@ -99,6 +99,9 @@ internal sealed partial class SettingsLogPageHost
             LogStatusLiveRegion.Set(_lblLogStatus, "当前运行会话已不在日志中，已恢复全部会话。");
           return;
         }
+
+        if (items[selectedIndex].Session is { } reloadedSession && reloadedSession != activeSession)
+          RefreshActiveSessionMetadata(reloadedSession);
       }
 
       SetSessionPickerItems(items, selectedIndex);
@@ -114,6 +117,15 @@ internal sealed partial class SettingsLogPageHost
       _sessionMetadataLoaded = false;
       SetSessionPickerItems([LogSessionPickerItem.AllSessions(), LogSessionPickerItem.Error()], selectedIndex: 0);
     }
+  }
+
+  private void RefreshActiveSessionMetadata(LogSessionMetadata session)
+  {
+    if (_logController is null)
+      return;
+
+    _sessionCoordinator.SelectSession(session, CaptureSessionMainViewState());
+    _logController.ScopeExpression = LogSessionProjector.BuildSessionExpression(session);
   }
 
   private void OnSessionComboDropDownOpened(object? sender, EventArgs e) => LoadSessionMetadataIfNeeded();
