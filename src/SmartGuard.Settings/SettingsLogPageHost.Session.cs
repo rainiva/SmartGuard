@@ -7,6 +7,13 @@ namespace SmartGuard.Settings;
 
 internal sealed partial class SettingsLogPageHost
 {
+  internal enum SessionSelectionAction
+  {
+    Ignore,
+    ExitSessionView,
+    SelectSession,
+  }
+
   private readonly LogSessionCoordinator _sessionCoordinator = new();
   private Expander? _logSessionInspector;
   private ComboBox? _cmbLogSession;
@@ -69,10 +76,31 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed || _cmbLogSession?.SelectedItem is not LogSessionPickerItem selected)
       return;
 
-    if (!selected.IsSelectable || selected.Session is null)
-      return;
+    switch (GetSessionSelectionAction(selected))
+    {
+      case SessionSelectionAction.ExitSessionView:
+        ExitSessionView();
+        return;
+      case SessionSelectionAction.SelectSession when selected.Session is not null:
+        SelectSession(selected.Session);
+        return;
+      default:
+        return;
+    }
+  }
 
-    SelectSession(selected.Session);
+  internal static SessionSelectionAction GetSessionSelectionAction(LogSessionPickerItem selected)
+  {
+    if (!selected.IsSelectable)
+      return SessionSelectionAction.Ignore;
+
+    if (selected.Kind == LogSessionPickerItemKind.All)
+      return SessionSelectionAction.ExitSessionView;
+
+    if (selected.Session is not null)
+      return SessionSelectionAction.SelectSession;
+
+    return SessionSelectionAction.Ignore;
   }
 
   private async void SelectSession(LogSessionMetadata session)

@@ -53,6 +53,20 @@ public class LogSessionPickerItemTests
     });
   }
 
+  [Fact]
+  public void All_sessions_item_requests_exit_session_consumer_action()
+  {
+    var action = SettingsLogPageHost.GetSessionSelectionAction(LogSessionPickerItem.AllSessions());
+
+    action.Should().Be(SettingsLogPageHost.SessionSelectionAction.ExitSessionView);
+    SettingsLogPageHost.GetSessionSelectionAction(LogSessionPickerItem.Loading())
+      .Should().Be(SettingsLogPageHost.SessionSelectionAction.Ignore);
+    SettingsLogPageHost.GetSessionSelectionAction(LogSessionPickerItem.Empty())
+      .Should().Be(SettingsLogPageHost.SessionSelectionAction.Ignore);
+    SettingsLogPageHost.GetSessionSelectionAction(LogSessionPickerItem.Error())
+      .Should().Be(SettingsLogPageHost.SessionSelectionAction.Ignore);
+  }
+
   private static LogSessionMetadata CreateSession()
     => new(
       "s:e:start",
