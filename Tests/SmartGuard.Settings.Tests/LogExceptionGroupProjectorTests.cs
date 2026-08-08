@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Text;
 using FluentAssertions;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
@@ -204,6 +205,18 @@ public class LogExceptionGroupProjectorTests
 
             presenter.GetEventIdAt(presenter.FindIndexByEventId(anchorEventId)).Should().Be(anchorBefore);
         });
+    }
+
+    [Fact]
+    public void Exception_double_click_expands_only_the_selected_page_row()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(SettingsSourcePaths.RepoRoot(), "src/SmartGuard.Settings/SettingsLogPageHostWiring.cs"),
+            Encoding.UTF8);
+
+        source.Should().Contain("WireLogTableExceptionFold");
+        source.Should().Contain("DataGridRow");
+        source.Should().Contain("DetailsVisibility");
     }
 
     private static ResetCounter TrackResetCount(System.Collections.Specialized.INotifyCollectionChanged items)

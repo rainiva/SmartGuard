@@ -93,7 +93,7 @@ public class LogCorrelationCoordinatorTests
   }
 
   [Fact]
-  public void ExitCorrelationView_restores_saved_cursor_anchor_and_selection()
+    public void ExitCorrelationView_restores_saved_cursor_anchor_and_selection()
   {
     var coordinator = new LogCorrelationCoordinator();
     var mainState = CreateMainState(selectedEventId: "e:keep", anchor: new LogViewportAnchor("e:keep", 2, 80, 5));
@@ -106,8 +106,31 @@ public class LogCorrelationCoordinatorTests
     restored!.SelectedEventId.Should().Be("e:keep");
     restored.Anchor!.EventId.Should().Be("e:keep");
     restored.SearchKeyword.Should().Be("severity:INFO");
-    restored.ActiveTags.Should().Equal("INFO");
-  }
+        restored.ActiveTags.Should().Equal("INFO");
+    }
+
+    [Fact]
+    public void Correlation_view_back_restores_page_filter_sort_and_selected_event()
+    {
+        var coordinator = new LogCorrelationCoordinator();
+        var mainState = CreateMainState() with
+        {
+            PageNumber = 31,
+            SortDirection = LogSortDirection.OldestFirst,
+        };
+
+        coordinator.TryEnterCorrelationView(
+          CreateEvent("e:anchor", operationId: "op-1"),
+          mainState).Should().BeTrue();
+
+        var restored = coordinator.ExitCorrelationView();
+
+        restored.Should().NotBeNull();
+        restored!.PageNumber.Should().Be(31);
+        restored.SortDirection.Should().Be(LogSortDirection.OldestFirst);
+        restored.SearchKeyword.Should().Be("severity:INFO");
+        restored.SelectedEventId.Should().Be("e:anchor");
+    }
 
   [Fact]
   public void EnterCorrelationView_returns_false_when_no_correlation_key()

@@ -47,6 +47,8 @@ internal sealed class SettingsLogPaginationCoordinator : IDisposable
 
   internal LogPaginationState State => _state;
 
+  internal LogSortDirection SortDirection => _sortDirection;
+
   internal LogSourceSnapshot? CurrentSnapshot => _currentSnapshot;
 
   internal LogQueryPageIndex? CurrentIndex => _currentIndex;
@@ -66,17 +68,27 @@ internal sealed class SettingsLogPaginationCoordinator : IDisposable
     return ScheduleAsync(captureNewSnapshot: true);
   }
 
-  internal Task ApplyFilterAsync(LogQueryExpression expression, LogReadScope scope, bool ignoreCase)
+  internal Task ApplyFilterAsync(
+    LogQueryExpression expression,
+    LogReadScope scope,
+    bool ignoreCase,
+    LogSortDirection? sortDirection = null)
   {
     SetQuery(expression, scope, ignoreCase);
     _currentIndex = null;
     _lastError = null;
+    if (sortDirection is LogSortDirection requestedSortDirection)
+      _sortDirection = requestedSortDirection;
     _state = _state.ResetForFilterChange().StartNavigation(1);
     return ScheduleAsync(captureNewSnapshot: false);
   }
 
-  internal Task ApplySessionAsync(LogQueryExpression expression, LogReadScope scope, bool ignoreCase)
-    => ApplyFilterAsync(expression, scope, ignoreCase);
+  internal Task ApplySessionAsync(
+    LogQueryExpression expression,
+    LogReadScope scope,
+    bool ignoreCase,
+    LogSortDirection? sortDirection = null)
+    => ApplyFilterAsync(expression, scope, ignoreCase, sortDirection);
 
   internal Task GoToPageAsync(int pageNumber)
   {

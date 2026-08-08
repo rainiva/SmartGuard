@@ -125,6 +125,15 @@ public sealed class LogSessionPickerWpfTests
         combo.SelectedItem = sessionItem;
         window.UpdateLayout();
 
+        var paginationCoordinator = ((SettingsLogPageHost)GetLogPageHost(controller)).PaginationCoordinatorForTests
+          ?? throw new InvalidOperationException("The log page must create its pagination coordinator.");
+        WpfStaTestHost.WaitUntil(
+          () => paginationCoordinator.State.IsScanComplete,
+          TimeSpan.FromSeconds(10),
+          "session selection to rebuild the exact paged query");
+        paginationCoordinator.State.ExactTotalCount.Should().NotBeNull();
+        paginationCoordinator.State.TotalPages.Should().BeGreaterThanOrEqualTo(1);
+
         combo.ActualWidth.Should().BeGreaterThan(0);
         scopePanel.ActualWidth.Should().BeGreaterThan(0);
         var scopeBounds = scopePanel.TransformToAncestor(window)

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using SmartGuard.Configuration;
@@ -22,6 +23,11 @@ internal sealed class SettingsLogExportCoordinator
   private readonly Func<LogCorrelationCoordinator> _getCorrelationCoordinator;
   private readonly string? _logPath;
   private readonly string? _fallbackLogPath;
+  private readonly Func<LogTablePresenter?> _getTablePresenter;
+  private readonly Func<LogQueryPageIndex?> _getPageIndex;
+  private readonly Func<ILogEventSource?> _getEventSource;
+  private readonly Func<LogSortDirection> _getSortDirection;
+  private readonly Func<int> _getPageSize;
 
   internal SettingsLogExportCoordinator(
     Window window,
@@ -36,7 +42,12 @@ internal sealed class SettingsLogExportCoordinator
     Func<TextBox?> getRangeEndTextBox,
     Func<LogCorrelationCoordinator> getCorrelationCoordinator,
     string? logPath,
-    string? fallbackLogPath)
+    string? fallbackLogPath,
+    Func<LogTablePresenter?>? getTablePresenter = null,
+    Func<LogQueryPageIndex?>? getPageIndex = null,
+    Func<ILogEventSource?>? getEventSource = null,
+    Func<LogSortDirection>? getSortDirection = null,
+    Func<int>? getPageSize = null)
   {
     _window = window;
     _root = root;
@@ -51,6 +62,11 @@ internal sealed class SettingsLogExportCoordinator
     _getCorrelationCoordinator = getCorrelationCoordinator;
     _logPath = logPath;
     _fallbackLogPath = fallbackLogPath;
+    _getTablePresenter = getTablePresenter ?? (() => null);
+    _getPageIndex = getPageIndex ?? (() => null);
+    _getEventSource = getEventSource ?? (() => null);
+    _getSortDirection = getSortDirection ?? (() => LogSortDirection.NewestFirst);
+    _getPageSize = getPageSize ?? (() => 20);
   }
 
   internal void CopyVisible()
@@ -65,6 +81,93 @@ internal sealed class SettingsLogExportCoordinator
     var snapshot = TryBuildSnapshot();
     if (snapshot is not null)
       SettingsLogExportActions.ExportVisible(snapshot, _window, _toastService, ExportToPath);
+  }
+
+  internal void CopyCurrentPage()
+  {
+    var rows = _getTablePresenter()?.Rows;
+    if (rows is not null)
+      SettingsLogExportActions.CopyCurrentPage(rows, _toastService);
+  }
+
+  internal void ExportCurrentPage()
+  {
+    var rows = _getTablePresenter()?.Rows;
+    if (rows is not null)
+      SettingsLogExportActions.ExportCurrentPage(rows, _window, _toastService, ExportCurrentPageToPath);
+  }
+
+  internal void ExportAllMatches()
+  {
+    if (_isRefreshInFlight())
+    {
+      _toastService.Show(StillLoadingToastText, isError: false);
+      return;
+    }
+
+    if (_getPageIndex() is null || _getEventSource() is null)
+    {
+      _toastService.Show("当前日志查询尚未完成", isError: false);
+      return;
+    }
+
+    var dialog = new Microsoft.Win32.SaveFileDialog
+    {
+      Filter = "文本文件 (*.txt)|*.txt",
+      FileName = "SmartGuard.log.all.txt",
+      DefaultExt = ".txt",
+    };
+    if (dialog.ShowDialog(_window) == true)
+      _ = ExportAllMatchesToPathAsync(dialog.FileName);
+  }
+
+  internal void ExportCurrentPageToPath(string destinationPath)
+  {
+    try
+    {
+      var rows = _getTablePresenter()?.Rows
+        ?? throw new InvalidOperationException("当前页尚未加载。");
+      LogViewToolbarActions.ExportVisibleText(
+        LogViewToolbarActions.BuildCurrentPageText(rows),
+        destinationPath);
+      _toastService.Show("当前页日志已导出", isError: false);
+    }
+    catch (Exception ex)
+    {
+      _toastService.Show($"导出失败：{ex.Message}", isError: true);
+    }
+  }
+
+  internal async Task ExportAllMatchesToPathAsync(string destinationPath)
+  {
+    try
+    {
+      var eventSource = _getEventSource()
+        ?? throw new InvalidOperationException("日志源尚未初始化。");
+      var pageIndex = _getPageIndex()
+        ?? throw new InvalidOperationException("当前日志查询尚未完成。");
+
+      await using var writer = new StreamWriter(
+        destinationPath,
+        append: false,
+        new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+      var service = new LogQueryService();
+      await foreach (var logEvent in service.StreamMatchingEventsAsync(
+                       eventSource,
+                       pageIndex,
+                       _getSortDirection(),
+                       _getPageSize(),
+                       CancellationToken.None))
+      {
+        await writer.WriteLineAsync(LogViewEventFilter.GetDisplayLine(logEvent));
+      }
+
+      _toastService.Show("全部匹配日志已导出", isError: false);
+    }
+    catch (Exception ex)
+    {
+      _toastService.Show($"导出失败：{ex.Message}", isError: true);
+    }
   }
 
   internal void ExportDiagnosticBundle(DiagnosticBundleScope scope)

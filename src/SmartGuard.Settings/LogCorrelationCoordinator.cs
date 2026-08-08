@@ -11,7 +11,12 @@ internal sealed record LogCorrelationMainViewState(
   DateTime? CustomRangeEnd,
   bool SearchCaseSensitive,
   LogViewportAnchor? Anchor,
-  string? SelectedEventId);
+  string? SelectedEventId)
+{
+  internal int PageNumber { get; init; } = 1;
+
+  internal LogSortDirection SortDirection { get; init; } = LogSortDirection.NewestFirst;
+}
 
 internal sealed class LogCorrelationCoordinator
 {

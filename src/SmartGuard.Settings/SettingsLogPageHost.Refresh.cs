@@ -1,12 +1,23 @@
+using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using SmartGuard.Configuration;
+using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings;
 
 internal sealed partial class SettingsLogPageHost
 {
   private SettingsLogPaginationCoordinator? _logPaginationCoordinator;
+  private DataGrid? _logTable;
+  private ComboBox? _cmbLogPageSize;
+  private TextBlock? _lblLogTotalCount;
+  private ItemsControl? _logPageNumberItems;
+  private bool _suppressPageSizeSelection;
+  private LogMatchNavigationDirection? _pendingPagedMatchNavigation;
+  private string? _pendingTableRowEventId;
 
   internal SettingsLogPaginationCoordinator? PaginationCoordinatorForTests => _logPaginationCoordinator;
 
@@ -26,21 +37,32 @@ internal sealed partial class SettingsLogPageHost
         EnsureLogScrollViewerHooked();
         _logViewport.ApplyFollowLatestIfEnabled();
       },
-      () => ScheduleLogRefresh(LogViewRefreshKind.Newer));
+      DetectPagedLogChanges);
     _logController = controls.Controller;
     _logPaginationCoordinator ??= new SettingsLogPaginationCoordinator(
       (intent, execute) => _refreshPipeline.SchedulePaged(intent, execute),
       ExecutePagedQueryAsync,
       () => _disposed);
-    _refreshPipeline.ConfigurePagedApply(_logPaginationCoordinator.ApplyModel);
-    if (_window.FindName("logTable") is DataGrid logTable)
+    _refreshPipeline.ConfigurePagedApply(ApplyPagedModel);
+    _logTable = _window.FindName("logTable") as DataGrid;
+    _cmbLogPageSize = _window.FindName("cmbLogPageSize") as ComboBox;
+    _lblLogTotalCount = _window.FindName("lblLogTotalCount") as TextBlock;
+    _logPageNumberItems = _window.FindName("logPageNumberItems") as ItemsControl;
+    if (_logTable is not null)
     {
+      _logTable.ItemsSource = _logTablePresenter.Rows;
+      _logTable.SelectionMode = DataGridSelectionMode.Single;
+      _logTable.SelectionUnit = DataGridSelectionUnit.FullRow;
       SettingsLogPageHostWiring.WireLogTableSorting(
-        logTable,
+        _logTable,
         () => _logPaginationCoordinator.ToggleSortAsync(),
         () => _logPaginationCoordinator.State.IsScanComplete);
       if (_window.FindName("chkLogWrap") is CheckBox wrapToggle)
-        SettingsLogPageHostWiring.WireLogTableWrapMode(logTable, wrapToggle);
+        SettingsLogPageHostWiring.WireLogTableWrapMode(_logTable, wrapToggle);
+      SettingsLogPageHostWiring.WireLogTableExceptionFold(_logTable);
+      SettingsLogPageHostWiring.WireLogTableCorrelationEvents(
+        _logTable,
+        row => EnterCorrelationView(row.SourceEvent));
     }
     SettingsLogPageHostWiring.WirePaginationCommands(
       _window,
@@ -86,16 +108,27 @@ internal sealed partial class SettingsLogPageHost
       () => _txtLogRangeEnd,
       () => _correlationCoordinator,
       _logPath,
-      _fallbackLogPath);
+      _fallbackLogPath,
+      () => _logTablePresenter,
+      () => _logPaginationCoordinator.CurrentIndex,
+      () => _logController?.EventSourceForCorrelation,
+      () => _logPaginationCoordinator.SortDirection,
+      () => _logPaginationCoordinator.State.PageSize);
 
     SettingsLogPageHostWiring.WireToolbarButtons(
       _window,
       _chkLogFollowTail,
       _logViewport,
-      () => _logExportCoordinator.CopyVisible(),
-      () => _logExportCoordinator.ExportVisible(),
+      () => _logExportCoordinator.CopyCurrentPage(),
+      () => _logExportCoordinator.ExportAllMatches(),
       () => _logExportCoordinator.OpenFolder(),
       ForceRefreshLogViewFromToolbar);
+    SettingsLogPageHostWiring.WirePagedLogActions(
+      _window,
+      ToggleLogFilterPanel,
+      pageSize => _logPaginationCoordinator.ChangePageSizeAsync(pageSize),
+      () => _logExportCoordinator.ExportCurrentPage(),
+      () => !_suppressPageSizeSelection);
     SettingsLogPageHostWiring.WireSearchAndFilterEvents(
       _logSearchFilterBar,
       _searchCoordinator,
@@ -129,18 +162,304 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed)
       return;
 
+    if (IsPagedLogSource())
+    {
+      RequestPagedQuery(captureNewSnapshot: forceRedraw);
+      return;
+    }
+
     ScheduleLogRefresh(LogViewRefreshKind.Newer, forceRedraw);
   }
 
   private void OnFilterRefresh(bool forceRedraw = false)
   {
     _refreshPipeline.NotifyFilterGenerationChanged();
+    if (_logPageActive && IsPagedLogSource())
+    {
+      RequestPagedQuery(captureNewSnapshot: false);
+      ScheduleStatisticsRefresh();
+      return;
+    }
+
     ScheduleLogRefresh(LogViewRefreshKind.Refilter, forceRedraw);
     ScheduleStatisticsRefresh();
   }
 
   private void OnLogMatchGenerationChanged(int _)
     => _logPaginationCoordinator?.MarkSnapshotStale();
+
+  private bool IsPagedLogSource()
+    => _logController?.EventSourceForCorrelation is ILogSnapshotPhysicalLineSource
+       && _logPaginationCoordinator is not null;
+
+  private LogQueryExpression BuildPaginationExpression()
+  {
+    if (_logController is null)
+      return LogQueryMatchAllExpression.Instance;
+
+    SettingsLogSearchCoordinator.ApplyFilters(
+      _logController,
+      _logSearchFilterBar,
+      _chkLogSearchCaseSensitive,
+      _cmbLogTimeRange,
+      _txtLogRangeStart,
+      _txtLogRangeEnd);
+
+    var filterState = LogViewFilterState.FromLegacyFields(
+      _logController.SearchKeyword,
+      _logController.SearchCaseSensitive,
+      _logController.ActiveTagFilters,
+      _logController.TimeRange,
+      _logController.CustomRangeStart,
+      _logController.CustomRangeEnd,
+      _logController.OperationIdFilter,
+      _logController.EventNameFilter,
+      _logController.ProcessIdFilter,
+      _logController.ThreadIdFilter,
+      _logController.NowProvider);
+    var parts = new List<LogQueryExpression> { filterState.QueryExpression };
+    foreach (var tag in filterState.ActiveTagFilters)
+    {
+      parts.Add(string.Equals(tag, "HEART", StringComparison.OrdinalIgnoreCase)
+        ? new LogQueryOrExpression(
+          new LogQueryFieldExpression("channel", LogQueryOperator.Contains, "HEART"),
+          new LogQueryFieldExpression("message", LogQueryOperator.Contains, "[HEART]"))
+        : new LogQueryFieldExpression("severity", LogQueryOperator.Equals, tag));
+    }
+
+    if (_logController.ScopeExpression is { } scope
+        && scope is not LogQueryMatchAllExpression)
+      parts.Add(scope);
+
+    return parts.Count == 1 ? parts[0] : LogQueryExpression.AndAll(parts);
+  }
+
+  private void RequestPagedQuery(
+    bool captureNewSnapshot,
+    LogSortDirection? sortDirection = null,
+    int? restorePage = null,
+    string? restoreSelectedEventId = null)
+  {
+    if (!_logPageActive || !IsPagedLogSource() || _logController is null || _logPaginationCoordinator is null)
+      return;
+
+    _pendingPageRestore = restorePage is > 1 ? restorePage : null;
+    _pendingTableRowEventId = restoreSelectedEventId;
+    var expression = BuildPaginationExpression();
+    var scope = new LogReadScope(Array.Empty<LogSourceIdentity>());
+    var ignoreCase = !_logController.SearchCaseSensitive;
+    if (sortDirection is not null)
+    {
+      _ = _logPaginationCoordinator.ApplyFilterAsync(expression, scope, ignoreCase, sortDirection);
+    }
+    else if (captureNewSnapshot)
+    {
+      _ = _logPaginationCoordinator.RefreshAsync(expression, scope, ignoreCase);
+    }
+    else
+    {
+      _ = _logPaginationCoordinator.ApplyFilterAsync(expression, scope, ignoreCase);
+    }
+  }
+
+  private void DetectPagedLogChanges()
+  {
+    if (!_logPageActive || !IsPagedLogSource() || _logPaginationCoordinator?.CurrentSnapshot is not { } snapshot)
+      return;
+
+    try
+    {
+      var source = (ILogSnapshotPhysicalLineSource)_logController!.EventSourceForCorrelation;
+      var current = source.CaptureSnapshot();
+      if (string.Equals(current.Fingerprint, snapshot.Fingerprint, StringComparison.Ordinal))
+        return;
+
+      _logPaginationCoordinator.MarkSnapshotStale();
+      if (_lblLogStatus is not null)
+        LogStatusLiveRegion.Set(_lblLogStatus, "有新日志，点击刷新查看。");
+    }
+    catch (IOException)
+    {
+    }
+    catch (UnauthorizedAccessException)
+    {
+    }
+  }
+
+  private void ApplyPagedModel(LogPaginationApplyModel model)
+  {
+    if (_disposed || _logPaginationCoordinator is null)
+      return;
+
+    _logPaginationCoordinator.ApplyModel(model);
+    if (model.ErrorMessage is not null)
+    {
+      if (_lblLogStatus is not null)
+        LogStatusLiveRegion.Set(_lblLogStatus, $"{LoadFailedStatusText}：{model.ErrorMessage}");
+      UpdatePagerControls();
+      return;
+    }
+
+    _logTablePresenter.ApplyPage(model.Events, model.PageSize);
+    _logListPresenter?.ApplyDelta(LogWindowDelta.Initialize(model.Events));
+    _logController?.LoadCorrelatedEvents(model.Events);
+    UpdatePagerControls();
+    if (_lblLogStatus is not null && model.IsProvisional)
+      LogStatusLiveRegion.Set(_lblLogStatus, "正在统计匹配日志…");
+
+    var applyRestoredTableSelection = !model.IsProvisional;
+    if (!model.IsProvisional && _pendingPageRestore is int restorePage)
+    {
+      _pendingPageRestore = null;
+      if (restorePage != _logPaginationCoordinator.State.CurrentPage
+          && restorePage <= _logPaginationCoordinator.State.TotalPages)
+      {
+        applyRestoredTableSelection = false;
+        _ = _logPaginationCoordinator.GoToPageAsync(restorePage);
+      }
+    }
+
+    if (applyRestoredTableSelection)
+      ApplyPendingRestoredTableSelection();
+
+    ApplyPendingPagedMatchNavigation();
+  }
+
+  private int? _pendingPageRestore;
+
+  private void ApplyPendingRestoredTableSelection()
+  {
+    if (string.IsNullOrWhiteSpace(_pendingTableRowEventId))
+      return;
+
+    var eventId = _pendingTableRowEventId;
+    _pendingTableRowEventId = null;
+    SelectTableRow(eventId);
+  }
+
+  private void UpdatePagerControls()
+  {
+    if (_logPaginationCoordinator is null)
+      return;
+
+    var state = _logPaginationCoordinator.State;
+    if (_lblLogTotalCount is not null)
+    {
+      _lblLogTotalCount.Text = state.ExactTotalCount is int exactCount
+        ? $"共 {exactCount:N0} 条日志"
+        : "正在统计日志…";
+    }
+
+    if (_cmbLogPageSize is not null)
+    {
+      _suppressPageSizeSelection = true;
+      try
+      {
+        _cmbLogPageSize.SelectedIndex = state.PageSize switch
+        {
+          50 => 1,
+          100 => 2,
+          _ => 0,
+        };
+      }
+      finally
+      {
+        _suppressPageSizeSelection = false;
+      }
+    }
+
+    RenderPagerTokens(state);
+    CommandManager.InvalidateRequerySuggested();
+  }
+
+  private void RenderPagerTokens(LogPaginationState state)
+  {
+    if (_logPageNumberItems is null)
+      return;
+
+    _logPageNumberItems.Items.Clear();
+    var buttonStyle = _window.FindResource("LogToolbarCompactButton") as Style;
+    foreach (var token in LogPagerTokenBuilder.Build(state.CurrentPage, state.TotalPages))
+    {
+      if (token is LogPageEllipsisToken)
+      {
+        _logPageNumberItems.Items.Add(new TextBlock
+        {
+          Text = "…",
+          Focusable = false,
+          IsHitTestVisible = false,
+          Foreground = _window.FindResource("TextSecondary") as System.Windows.Media.Brush,
+          VerticalAlignment = VerticalAlignment.Center,
+          Margin = new Thickness(0, 0, 8, 0),
+        });
+        continue;
+      }
+
+      var number = (LogPageNumberToken)token;
+      var button = new Button
+      {
+        Content = number.PageNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        Style = buttonStyle,
+        Command = LogPaginationCommands.GoToPage,
+        CommandParameter = number.PageNumber,
+        IsEnabled = !number.IsCurrent,
+        Margin = new Thickness(0, 0, 4, 0),
+      };
+      AutomationProperties.SetName(button, $"第 {number.PageNumber} 页");
+      _logPageNumberItems.Items.Add(button);
+    }
+  }
+
+  private void ApplyPendingPagedMatchNavigation()
+  {
+    if (_pendingPagedMatchNavigation is not LogMatchNavigationDirection direction
+        || _logPaginationCoordinator is null)
+      return;
+
+    _pendingPagedMatchNavigation = null;
+    var result = LogPagedMatchNavigator.Resolve(
+      _logTablePresenter.Rows,
+      _logSearchFilterBar?.Keyword,
+      direction == LogMatchNavigationDirection.Forward ? -1 : _logTablePresenter.Rows.Count,
+      direction == LogMatchNavigationDirection.Forward,
+      _logPaginationCoordinator.State);
+    if (result.RowIndex is int rowIndex && _logTable is not null)
+    {
+      _logTable.SelectedIndex = rowIndex;
+      _logViewport.BringTableSelectionIntoView(_logTable, _logTable.SelectedItem);
+    }
+  }
+
+  private void SelectTableRow(string eventId)
+  {
+    if (_logTable is null)
+      return;
+
+    var index = -1;
+    for (var rowIndex = 0; rowIndex < _logTablePresenter.Rows.Count; rowIndex++)
+    {
+      if (string.Equals(_logTablePresenter.Rows[rowIndex].EventId, eventId, StringComparison.Ordinal))
+      {
+        index = rowIndex;
+        break;
+      }
+    }
+    if (index < 0 || index >= _logTablePresenter.Rows.Count)
+      return;
+
+    _logTable.SelectedIndex = index;
+    _logViewport.BringTableSelectionIntoView(_logTable, _logTable.SelectedItem);
+  }
+
+  private void ToggleLogFilterPanel()
+  {
+    if (_window.FindName("logFilterScopePanel") is not UIElement panel)
+      return;
+
+    panel.Visibility = panel.Visibility == Visibility.Visible
+      ? Visibility.Collapsed
+      : Visibility.Visible;
+  }
 
   private async Task ExecutePagedQueryAsync(
     LogPaginationIntent intent,
@@ -283,6 +602,13 @@ internal sealed partial class SettingsLogPageHost
     _lastDisplayedLines = Array.Empty<string>();
     if (_lblLogStatus is not null)
       LogStatusLiveRegion.Set(_lblLogStatus, LoadingStatusText);
+
+    if (IsPagedLogSource())
+    {
+      RequestPagedQuery(captureNewSnapshot: true);
+      return;
+    }
+
     ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: true, forceRefresh: true);
   }
 

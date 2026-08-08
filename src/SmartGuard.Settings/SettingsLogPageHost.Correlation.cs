@@ -59,6 +59,8 @@ internal sealed partial class SettingsLogPageHost
     string? selectedEventId = null;
     if (_lstLogView?.SelectedItem is LogLineDisplayItem selectedItem)
       selectedEventId = selectedItem.EventId;
+    else if (_logTable?.SelectedItem is LogTableRow selectedTableRow)
+      selectedEventId = selectedTableRow.EventId;
 
     return new LogCorrelationMainViewState(
       filterState.QueryExpression,
@@ -69,7 +71,11 @@ internal sealed partial class SettingsLogPageHost
       controller.CustomRangeEnd,
       controller.SearchCaseSensitive,
       _logViewport.CaptureAnchor(),
-      selectedEventId);
+      selectedEventId)
+    {
+      PageNumber = _logPaginationCoordinator?.State.CurrentPage ?? 1,
+      SortDirection = _logPaginationCoordinator?.SortDirection ?? LogSortDirection.NewestFirst,
+    };
   }
 
   private async void EnterCorrelationView(LogEvent anchorEvent)
@@ -94,6 +100,15 @@ internal sealed partial class SettingsLogPageHost
     ScheduleStatisticsRefresh();
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载关联事件…");
     UpdateCorrelationBannerVisibility(true);
+
+    if (_logController.EventSourceForCorrelation is ILogSnapshotPhysicalLineSource)
+    {
+      if (!string.IsNullOrWhiteSpace(_correlationCoordinator.ActiveTitle)
+          && _lblLogCorrelationTitle is not null)
+        _lblLogCorrelationTitle.Text = _correlationCoordinator.ActiveTitle;
+      RequestPagedQuery(captureNewSnapshot: false);
+      return;
+    }
 
     try
     {
@@ -146,6 +161,8 @@ internal sealed partial class SettingsLogPageHost
       if (index >= 0)
         _lstLogView.SelectedIndex = index;
     }
+    if (!string.IsNullOrWhiteSpace(restored.SelectedEventId) && !IsPagedLogSource())
+      SelectTableRow(restored.SelectedEventId);
   }
 
   private LogCorrelationMainViewState? RestoreCorrelationViewWithoutRefresh()
@@ -166,7 +183,16 @@ internal sealed partial class SettingsLogPageHost
     ScheduleStatisticsRefresh();
 
     if (resetMainView)
-      ForceRefreshLogView();
+    {
+      if (IsPagedLogSource())
+        RequestPagedQuery(
+          false,
+          restored.SortDirection,
+          restored.PageNumber,
+          restored.SelectedEventId);
+      else
+        ForceRefreshLogView();
+    }
 
     return restored;
   }

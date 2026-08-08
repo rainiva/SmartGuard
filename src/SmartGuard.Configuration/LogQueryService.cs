@@ -555,6 +555,36 @@ public sealed class LogQueryService
     return LogOperationProjector.OrderCorrelatedEvents(matches);
   }
 
+  public async IAsyncEnumerable<LogEvent> StreamMatchingEventsAsync(
+    ILogEventSource eventSource,
+    LogQueryPageIndex index,
+    LogSortDirection sortDirection,
+    int pageSize,
+    [EnumeratorCancellation] CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(eventSource);
+    ArgumentNullException.ThrowIfNull(index);
+
+    var normalizedPageSize = Math.Clamp(pageSize, 1, 100);
+    var totalPages = Math.Max(
+      1,
+      (int)(((long)Math.Max(0, index.ExactTotalCount) + normalizedPageSize - 1) / normalizedPageSize));
+    for (var pageNumber = 1; pageNumber <= totalPages; pageNumber++)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      var page = await ReadPageAsync(
+        eventSource,
+        index,
+        new LogQueryPageRequest(pageNumber, normalizedPageSize, sortDirection),
+        cancellationToken).ConfigureAwait(false);
+      foreach (var logEvent in page.Events)
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return logEvent;
+      }
+    }
+  }
+
   public async Task<IReadOnlyList<LogSessionMetadata>> ProjectSessionsAsync(
     ILogEventSource eventSource,
     CancellationToken cancellationToken)

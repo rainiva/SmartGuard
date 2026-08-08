@@ -230,6 +230,14 @@ internal sealed class LogViewportController
       listBox.ScrollIntoView(listBox.Items[index]);
   }
 
+  internal void BringTableSelectionIntoView(DataGrid? table, object? selectedItem)
+  {
+    if (table is null || selectedItem is null)
+      return;
+
+    table.ScrollIntoView(selectedItem);
+  }
+
   internal void ApplyFollowLatestIfEnabled(bool fromDataApply = false, bool fromRefreshPipeline = false)
   {
     if (fromRefreshPipeline

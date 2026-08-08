@@ -168,6 +168,83 @@ internal static class SettingsLogPageHostWiring
     Apply();
   }
 
+  internal static void WireLogTableExceptionFold(DataGrid logTable)
+  {
+    ArgumentNullException.ThrowIfNull(logTable);
+
+    logTable.RowDetailsVisibilityMode = DataGridRowDetailsVisibilityMode.Collapsed;
+    logTable.RowDetailsTemplate = CreateExceptionDetailsTemplate();
+    logTable.MouseDoubleClick += (_, e) =>
+    {
+      if (logTable.SelectedItem is not LogTableRow row || !row.IsExceptionRoot)
+        return;
+
+      var visualRow = FindVisualChildren<DataGridRow>(logTable)
+        .FirstOrDefault(candidate => ReferenceEquals(candidate.Item, row));
+      if (visualRow is null)
+        return;
+
+      visualRow.DetailsVisibility = visualRow.DetailsVisibility == Visibility.Visible
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+      e.Handled = true;
+    };
+  }
+
+  internal static void WireLogTableCorrelationEvents(
+    DataGrid logTable,
+    Action<LogTableRow> enterCorrelationView)
+  {
+    ArgumentNullException.ThrowIfNull(logTable);
+    ArgumentNullException.ThrowIfNull(enterCorrelationView);
+
+    var menuItem = new MenuItem { Header = "查看本次操作" };
+    menuItem.Click += (_, _) =>
+    {
+      if (logTable.SelectedItem is LogTableRow row && row.HasCorrelationKey)
+        enterCorrelationView(row);
+    };
+
+    var contextMenu = new ContextMenu();
+    contextMenu.Opened += (_, _) =>
+    {
+      menuItem.IsEnabled = logTable.SelectedItem is LogTableRow row
+        && row.HasCorrelationKey;
+    };
+    contextMenu.Items.Add(menuItem);
+    logTable.ContextMenu = contextMenu;
+  }
+
+  internal static void WirePagedLogActions(
+    Window window,
+    Action toggleFilterPanel,
+    Func<int, Task> changePageSizeAsync,
+    Action exportCurrentPage,
+    Func<bool>? canHandlePageSizeChange = null)
+  {
+    ArgumentNullException.ThrowIfNull(window);
+    ArgumentNullException.ThrowIfNull(toggleFilterPanel);
+    ArgumentNullException.ThrowIfNull(changePageSizeAsync);
+    ArgumentNullException.ThrowIfNull(exportCurrentPage);
+
+    if (window.FindName("btnLogFilter") is Button filterButton)
+      filterButton.Click += (_, _) => toggleFilterPanel();
+    if (window.FindName("btnLogExport") is Button exportButton)
+      exportButton.Click += (_, _) => exportCurrentPage();
+    if (window.FindName("cmbLogPageSize") is ComboBox pageSizeCombo)
+    {
+      pageSizeCombo.SelectionChanged += (_, _) =>
+      {
+        if (canHandlePageSizeChange is not null && !canHandlePageSizeChange())
+          return;
+
+        if (pageSizeCombo.SelectedItem is ComboBoxItem { Content: object content }
+            && int.TryParse(content.ToString(), out var pageSize))
+          _ = changePageSizeAsync(pageSize);
+      };
+    }
+  }
+
   internal static void WirePaginationCommands(
     Window window,
     Func<LogPaginationState> getState,
@@ -240,6 +317,19 @@ internal static class SettingsLogPageHostWiring
       foreach (var descendant in FindVisualChildren<T>(child))
         yield return descendant;
     }
+  }
+
+  private static DataTemplate CreateExceptionDetailsTemplate()
+  {
+    var template = new DataTemplate(typeof(LogTableRow));
+    var text = new FrameworkElementFactory(typeof(TextBlock));
+    text.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(LogTableRow.ExportText)));
+    text.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+    text.SetValue(TextBlock.MaxHeightProperty, 88d);
+    text.SetValue(TextBlock.MarginProperty, new Thickness(12, 4, 12, 8));
+    template.VisualTree = text;
+    template.Seal();
+    return template;
   }
 
   internal static void WireSearchAndFilterEvents(

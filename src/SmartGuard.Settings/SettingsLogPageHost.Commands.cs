@@ -13,22 +13,46 @@ internal sealed partial class SettingsLogPageHost
       () => _logPageActive && !_disposed,
       SettingsLogPageHostWiring.IsTextInputFocused,
       () => _logSearchFilterBar?.FocusKeywordInput(),
-      () => _searchCoordinator.NavigateMatch(
-        LogMatchNavigationDirection.Forward,
-        _logListPresenter,
-        _logViewport,
-        loadPage: null),
-      () => _searchCoordinator.NavigateMatch(
-        LogMatchNavigationDirection.Backward,
-        _logListPresenter,
-        _logViewport,
-        loadPage: null),
+      () => NavigateMatch(LogMatchNavigationDirection.Forward),
+      () => NavigateMatch(LogMatchNavigationDirection.Backward),
       () => _logExportCoordinator?.ExportVisible(),
       _logViewport.ScrollToTop,
       _logViewport.ScrollToBottom,
       () => JumpToHistoryBoundary(LogViewRefreshKind.HistoryStart),
       () => JumpToHistoryBoundary(LogViewRefreshKind.HistoryEnd),
       CloseTransientLogLayer);
+  }
+
+  private void NavigateMatch(LogMatchNavigationDirection direction)
+  {
+    if (!IsPagedLogSource() || _logPaginationCoordinator is null)
+    {
+      _searchCoordinator.NavigateMatch(
+        direction,
+        _logListPresenter,
+        _logViewport,
+        loadPage: null);
+      return;
+    }
+
+    var result = LogPagedMatchNavigator.Resolve(
+      _logTablePresenter.Rows,
+      _logSearchFilterBar?.Keyword,
+      _logTable?.SelectedIndex ?? -1,
+      direction == LogMatchNavigationDirection.Forward,
+      _logPaginationCoordinator.State);
+    if (result.RowIndex is int rowIndex && _logTable is not null)
+    {
+      _logTable.SelectedIndex = rowIndex;
+      _logViewport.BringTableSelectionIntoView(_logTable, _logTable.SelectedItem);
+      return;
+    }
+
+    if (result.TargetPage is int targetPage)
+    {
+      _pendingPagedMatchNavigation = direction;
+      _ = _logPaginationCoordinator.GoToPageAsync(targetPage);
+    }
   }
 
   private void JumpToHistoryBoundary(LogViewRefreshKind boundary)

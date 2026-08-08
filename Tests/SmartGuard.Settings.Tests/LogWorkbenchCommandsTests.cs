@@ -42,6 +42,34 @@ public class LogWorkbenchCommandsTests
     }
 
     [Fact]
+    public void Paged_actions_wire_filter_page_size_and_current_page_export()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(SettingsSourcePaths.RepoRoot(), "src/SmartGuard.Settings/SettingsLogPageHostWiring.cs"),
+            System.Text.Encoding.UTF8);
+
+        source.Should().Contain("WirePagedLogActions");
+        source.Should().Contain("cmbLogPageSize");
+        File.ReadAllText(
+                Path.Combine(SettingsSourcePaths.RepoRoot(), "src/SmartGuard.Settings/SettingsLogPageHost.Refresh.cs"),
+                System.Text.Encoding.UTF8)
+            .Should().Contain("ExportCurrentPage");
+    }
+
+    [Fact]
+    public void Restored_table_selection_waits_for_the_numbered_page_to_apply()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(SettingsSourcePaths.RepoRoot(), "src/SmartGuard.Settings/SettingsLogPageHost.Refresh.cs"),
+            System.Text.Encoding.UTF8);
+
+        source.Should().Contain("_pendingTableRowEventId");
+        source.Should().Contain("ApplyPendingRestoredTableSelection");
+        source.Should().Contain("var applyRestoredTableSelection = !model.IsProvisional");
+        source.Should().Contain("if (applyRestoredTableSelection)");
+    }
+
+    [Fact]
     public void Home_end_gestures_distinguish_current_window_from_history()
     {
         Resolve(Key.Home, ModifierKeys.None, LogWorkbenchCommands.ScrollWindowTopCommand);

@@ -127,6 +127,8 @@ internal sealed partial class SettingsLogPageHost
     _sessionCoordinator.SelectSession(session, CaptureSessionMainViewState());
     _logController.ScopeExpression = LogSessionProjector.BuildSessionExpression(session);
     ScheduleStatisticsRefresh();
+    if (IsPagedLogSource())
+      RequestPagedQuery(captureNewSnapshot: false);
   }
 
   private void OnSessionComboDropDownOpened(object? sender, EventArgs e) => LoadSessionMetadataIfNeeded();
@@ -186,6 +188,15 @@ internal sealed partial class SettingsLogPageHost
     ScheduleStatisticsRefresh();
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载会话事件…");
 
+    if (SessionQueryOverrideForTests is null
+        && _logController.EventSourceForCorrelation is ILogSnapshotPhysicalLineSource)
+    {
+      RequestPagedQuery(
+        captureNewSnapshot: false,
+        sortDirection: _logPaginationCoordinator?.SortDirection);
+      return;
+    }
+
     try
     {
       var filterState = BuildCurrentLogFilterState();
@@ -244,7 +255,16 @@ internal sealed partial class SettingsLogPageHost
 
     RestoreSessionMainViewState(restored);
     if (refreshMainView)
-      ForceRefreshLogView();
+    {
+      if (IsPagedLogSource())
+        RequestPagedQuery(
+          false,
+          restored.SortDirection,
+          restored.PageNumber,
+          restored.SelectedEventId);
+      else
+        ForceRefreshLogView();
+    }
 
     if (refreshMainView && restored.Anchor is not null)
       _logViewport.RestoreAnchor(restored.Anchor);
@@ -255,6 +275,10 @@ internal sealed partial class SettingsLogPageHost
       if (index >= 0)
         _lstLogView.SelectedIndex = index;
     }
+    if (refreshMainView
+        && !string.IsNullOrWhiteSpace(restored.SelectedEventId)
+        && !IsPagedLogSource())
+      SelectTableRow(restored.SelectedEventId);
   }
 
   private Task<IReadOnlyList<LogEvent>> QuerySessionEventsAsync(
@@ -290,6 +314,8 @@ internal sealed partial class SettingsLogPageHost
     string? selectedEventId = null;
     if (_lstLogView?.SelectedItem is LogLineDisplayItem selectedItem)
       selectedEventId = selectedItem.EventId;
+    else if (_logTable?.SelectedItem is LogTableRow selectedTableRow)
+      selectedEventId = selectedTableRow.EventId;
 
     return new LogSessionMainViewState(
       filterState.QueryExpression,
@@ -300,7 +326,11 @@ internal sealed partial class SettingsLogPageHost
       controller.CustomRangeEnd,
       controller.SearchCaseSensitive,
       _logViewport.CaptureAnchor(),
-      selectedEventId);
+      selectedEventId)
+    {
+      PageNumber = _logPaginationCoordinator?.State.CurrentPage ?? 1,
+      SortDirection = _logPaginationCoordinator?.SortDirection ?? LogSortDirection.NewestFirst,
+    };
   }
 
   private LogViewFilterState BuildCurrentLogFilterState()

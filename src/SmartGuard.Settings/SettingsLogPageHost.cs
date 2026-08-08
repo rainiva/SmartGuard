@@ -17,6 +17,7 @@ internal sealed partial class SettingsLogPageHost
   private readonly LogViewportController _logViewport;
   private readonly SettingsLogRefreshPipeline _refreshPipeline;
   private LogViewController? _logController;
+  private readonly LogTablePresenter _logTablePresenter = new();
   private System.Windows.Threading.DispatcherTimer? _logTimer;
   private LogSearchFilterBar? _logSearchFilterBar;
   private ListBox? _lstLogView;
@@ -44,6 +45,7 @@ internal sealed partial class SettingsLogPageHost
   internal bool IsRefreshInFlightForTests => _refreshPipeline.IsRefreshInFlight;
   internal int ActiveRefreshCountForTests => _refreshPipeline.ActiveRefreshCount;
   internal int ApplyAfterDisposeCountForTests => _refreshPipeline.ApplyAfterDisposeCount;
+  internal LogTablePresenter TablePresenterForTests => _logTablePresenter;
   internal static int ForceRefreshLogViewCountForTests { get; private set; }
 
   internal static void ResetTestMetricsForTests() => ForceRefreshLogViewCountForTests = 0;
@@ -153,7 +155,10 @@ internal sealed partial class SettingsLogPageHost
     if (isFirstVisit && _lblLogStatus is not null)
       LogStatusLiveRegion.Set(_lblLogStatus, LoadingStatusText);
 
-    ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: isFirstVisit, forceRefresh: isFirstVisit);
+    if (IsPagedLogSource())
+      RequestPagedQuery(captureNewSnapshot: isFirstVisit);
+    else
+      ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: isFirstVisit, forceRefresh: isFirstVisit);
     if (!isFirstVisit)
       _logViewport.ApplyFollowLatestIfEnabled();
   }
