@@ -172,6 +172,7 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     EnsureSessionControls();
+    RestoreCorrelationViewWithoutRefresh();
     _sessionQueryCancellation?.Cancel();
     _sessionQueryCancellation?.Dispose();
     _sessionQueryCancellation = new CancellationTokenSource();
@@ -219,6 +220,12 @@ internal sealed partial class SettingsLogPageHost
   }
 
   private void RestoreSessionView(bool resetComboBox)
+    => RestoreSessionViewCore(resetComboBox, refreshMainView: true);
+
+  private void RestoreSessionViewWithoutRefresh(bool resetComboBox)
+    => RestoreSessionViewCore(resetComboBox, refreshMainView: false);
+
+  private void RestoreSessionViewCore(bool resetComboBox, bool refreshMainView)
   {
     _sessionQueryCancellation?.Cancel();
     ++_sessionQueryGeneration;
@@ -234,12 +241,13 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     RestoreSessionMainViewState(restored);
-    ForceRefreshLogView();
+    if (refreshMainView)
+      ForceRefreshLogView();
 
-    if (restored.Anchor is not null)
+    if (refreshMainView && restored.Anchor is not null)
       _logViewport.RestoreAnchor(restored.Anchor);
 
-    if (!string.IsNullOrWhiteSpace(restored.SelectedEventId) && _lstLogView is not null)
+    if (refreshMainView && !string.IsNullOrWhiteSpace(restored.SelectedEventId) && _lstLogView is not null)
     {
       var index = _logListPresenter?.FindIndexByEventId(restored.SelectedEventId) ?? -1;
       if (index >= 0)

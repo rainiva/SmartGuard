@@ -11,6 +11,8 @@ internal sealed partial class SettingsLogPageHost
   private Border? _logCorrelationBanner;
   private TextBlock? _lblLogCorrelationTitle;
   private Button? _btnLogCorrelationBack;
+  private CancellationTokenSource? _correlationQueryCancellation;
+  private int _correlationQueryGeneration;
 
   internal LogCorrelationCoordinator CorrelationCoordinatorForTests => _correlationCoordinator;
 
@@ -76,9 +78,20 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     EnsureCorrelationControls();
+    RestoreSessionViewWithoutRefresh(resetComboBox: true);
     if (!_correlationCoordinator.TryEnterCorrelationView(anchorEvent, CaptureMainViewState()))
       return;
 
+    _correlationQueryCancellation?.Cancel();
+    _correlationQueryCancellation?.Dispose();
+    _correlationQueryCancellation = new CancellationTokenSource();
+    var cancellationToken = _correlationQueryCancellation.Token;
+    var generation = ++_correlationQueryGeneration;
+    var activeKey = _correlationCoordinator.ActiveKey;
+    _logController.ScopeExpression = activeKey is null
+      ? null
+      : LogOperationGraph.BuildCorrelationExpression(activeKey);
+    ScheduleStatisticsRefresh();
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载关联事件…");
     UpdateCorrelationBannerVisibility(true);
 
@@ -89,7 +102,10 @@ internal sealed partial class SettingsLogPageHost
       var correlatedEvents = await service.QueryMatchingEventsAsync(
         _logController.EventSourceForCorrelation,
         query,
-        CancellationToken.None);
+        cancellationToken);
+
+      if (!IsCurrentCorrelationQuery(generation, activeKey, cancellationToken))
+        return;
 
       _logController.LoadCorrelatedEvents(correlatedEvents);
       var refreshResult = _logController.CreateRefreshResult();
@@ -99,10 +115,15 @@ internal sealed partial class SettingsLogPageHost
           && _lblLogCorrelationTitle is not null)
         _lblLogCorrelationTitle.Text = _correlationCoordinator.ActiveTitle;
     }
+    catch (OperationCanceledException)
+    {
+    }
     catch (Exception ex)
     {
-      _correlationCoordinator.ExitCorrelationView();
-      UpdateCorrelationBannerVisibility(false);
+      if (!IsCurrentCorrelationQuery(generation, activeKey, cancellationToken))
+        return;
+
+      RestoreCorrelationView(resetMainView: false);
       LogStatusLiveRegion.Set(_lblLogStatus, $"{LoadFailedStatusText}：{ex.Message}");
     }
   }
@@ -112,13 +133,9 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed)
       return;
 
-    var restored = _correlationCoordinator.ExitCorrelationView();
-    UpdateCorrelationBannerVisibility(false);
+    var restored = RestoreCorrelationView(resetMainView: true);
     if (restored is null || _logController is null || _logSearchFilterBar is null)
       return;
-
-    RestoreMainViewState(restored);
-    ForceRefreshLogView();
 
     if (restored.Anchor is not null)
       _logViewport.RestoreAnchor(restored.Anchor);
@@ -129,6 +146,29 @@ internal sealed partial class SettingsLogPageHost
       if (index >= 0)
         _lstLogView.SelectedIndex = index;
     }
+  }
+
+  private LogCorrelationMainViewState? RestoreCorrelationViewWithoutRefresh()
+    => RestoreCorrelationView(resetMainView: false);
+
+  private LogCorrelationMainViewState? RestoreCorrelationView(bool resetMainView)
+  {
+    _correlationQueryCancellation?.Cancel();
+    ++_correlationQueryGeneration;
+    var restored = _correlationCoordinator.ExitCorrelationView();
+    UpdateCorrelationBannerVisibility(false);
+    if (restored is null || _logController is null || _logSearchFilterBar is null)
+      return restored;
+
+    _logController.ScopeExpression = null;
+
+    RestoreMainViewState(restored);
+    ScheduleStatisticsRefresh();
+
+    if (resetMainView)
+      ForceRefreshLogView();
+
+    return restored;
   }
 
   private void RestoreMainViewState(LogCorrelationMainViewState state)
@@ -179,4 +219,13 @@ internal sealed partial class SettingsLogPageHost
 
     _logCorrelationBanner.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
   }
+
+  private bool IsCurrentCorrelationQuery(
+    int generation,
+    LogOperationCorrelationKey? activeKey,
+    CancellationToken cancellationToken)
+    => !_disposed
+       && !cancellationToken.IsCancellationRequested
+       && generation == _correlationQueryGeneration
+       && _correlationCoordinator.ActiveKey == activeKey;
 }

@@ -360,6 +360,243 @@ public sealed class SettingsLogPageHostLifetimeTests
     }
 
     [Fact]
+    public void Selecting_session_while_correlation_query_is_in_flight_cancels_correlation_and_keeps_session_active()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+            var eventSource = new ControllableCorrelationEventSource();
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+                WpfStaTestHost.WaitUntil(
+                    () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
+                    TimeSpan.FromSeconds(5),
+                    "initial log view refresh to settle before replacing the controller with a controllable fake");
+                CollapseStatisticsInspector(window);
+
+                var host = GetLogPageHost(controller);
+                StopLogTimer(host);
+                var logController = new LogViewController(
+                    eventSource,
+                    Path.Combine(installRoot, "SmartGuard.log"));
+                SetPrivateField(host, "_logController", logController);
+                SetPrivateProperty(
+                    host,
+                    "SessionQueryOverrideForTests",
+                    (Func<LogSessionMetadata, LogQueryExpression, CancellationToken, Task<IReadOnlyList<LogEvent>>>)
+                    ((session, _, _) => Task.FromResult<IReadOnlyList<LogEvent>>([
+                        CreateEvent("session:event", session.StartTimestamp.AddMinutes(1), "session result")
+                    ])));
+
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+                InvokePrivate(host, "EnterCorrelationView", CreateCorrelationEvent("correlation:anchor", baseTime, "op-session-switch"));
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightCount == 1,
+                    TimeSpan.FromSeconds(5),
+                    "correlation query to start with a cancellable token");
+
+                var session = CreateSession("s:from-correlation", baseTime);
+                InvokePrivate(host, "SelectSession", session);
+
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightAt(0).WasCancelled,
+                    TimeSpan.FromSeconds(5),
+                    "selecting a session to cancel the in-flight correlation query");
+                GetCorrelationCoordinator(host).IsActive.Should().BeFalse(
+                    "session and correlation drilldown modes must be mutually exclusive");
+                GetSessionCoordinator(host).IsActive.Should().BeTrue();
+                logController.ScopeExpression.Should().NotBeNull();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateEvent("session:inside", baseTime.AddMinutes(1), "session result"),
+                    logController.ScopeExpression!).Should().BeTrue();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateEvent("session:outside", baseTime.AddHours(1), "session result"),
+                    logController.ScopeExpression!).Should().BeFalse();
+            }
+            finally
+            {
+                eventSource.ReleaseAll();
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void Entering_correlation_while_session_query_is_in_flight_cancels_session_and_uses_correlation_scope()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+            var eventSource = new ControllableCorrelationEventSource();
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+                WpfStaTestHost.WaitUntil(
+                    () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
+                    TimeSpan.FromSeconds(5),
+                    "initial log view refresh to settle before replacing the controller with a controllable fake");
+                CollapseStatisticsInspector(window);
+
+                var host = GetLogPageHost(controller);
+                StopLogTimer(host);
+                var logController = new LogViewController(
+                    eventSource,
+                    Path.Combine(installRoot, "SmartGuard.log"));
+                SetPrivateField(host, "_logController", logController);
+                var sessionQueryStarted = new TaskCompletionSource();
+                var sessionCancelled = new TaskCompletionSource();
+                var sessionResult = new TaskCompletionSource<IReadOnlyList<LogEvent>>();
+                SetPrivateProperty(
+                    host,
+                    "SessionQueryOverrideForTests",
+                    (Func<LogSessionMetadata, LogQueryExpression, CancellationToken, Task<IReadOnlyList<LogEvent>>>)
+                    ((_, _, token) =>
+                    {
+                        sessionQueryStarted.SetResult();
+                        token.Register(() =>
+                        {
+                            sessionCancelled.TrySetResult();
+                            sessionResult.TrySetCanceled(token);
+                        });
+                        return sessionResult.Task;
+                    }));
+
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+                InvokePrivate(host, "SelectSession", CreateSession("s:to-correlation", baseTime));
+                sessionQueryStarted.Task.GetAwaiter().GetResult();
+
+                InvokePrivate(host, "EnterCorrelationView", CreateCorrelationEvent("correlation:anchor", baseTime, "op-correlation-switch"));
+                WpfStaTestHost.WaitUntil(
+                    () => sessionCancelled.Task.IsCompleted,
+                    TimeSpan.FromSeconds(5),
+                    "entering correlation to cancel the in-flight session query");
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightCount == 1,
+                    TimeSpan.FromSeconds(5),
+                    "correlation query to start after session cancellation");
+
+                GetSessionCoordinator(host).IsActive.Should().BeFalse(
+                    "correlation and session drilldown modes must be mutually exclusive");
+                GetCorrelationCoordinator(host).IsActive.Should().BeTrue();
+                logController.ScopeExpression.Should().NotBeNull();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateCorrelationEvent("correlation:inside", baseTime.AddMinutes(1), "op-correlation-switch"),
+                    logController.ScopeExpression!).Should().BeTrue();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateCorrelationEvent("correlation:outside", baseTime.AddMinutes(1), "other-op"),
+                    logController.ScopeExpression!).Should().BeFalse();
+            }
+            finally
+            {
+                eventSource.ReleaseAll();
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void Late_correlation_query_after_switch_does_not_replace_latest_correlation_results()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+            var eventSource = new ControllableCorrelationEventSource();
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+                WpfStaTestHost.WaitUntil(
+                    () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
+                    TimeSpan.FromSeconds(5),
+                    "initial log view refresh to settle before replacing the controller with a controllable fake");
+                CollapseStatisticsInspector(window);
+
+                var host = GetLogPageHost(controller);
+                StopLogTimer(host);
+                var logController = new LogViewController(
+                    eventSource,
+                    Path.Combine(installRoot, "SmartGuard.log"));
+                SetPrivateField(host, "_logController", logController);
+                var searchBar = GetSearchFilterBar(host);
+                searchBar.SetKeyword(string.Empty);
+                searchBar.ClearTagFilters();
+                logController.SearchKeyword = string.Empty;
+                logController.ActiveTagFilters = [];
+                logController.SearchCaseSensitive = false;
+                logController.TimeRange = LogViewTimeRange.All;
+                logController.CustomRangeStart = null;
+                logController.CustomRangeEnd = null;
+                SetTimeRangeComboToAll(host);
+                SetCaseSensitiveToFalse(host);
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+
+                InvokePrivate(host, "EnterCorrelationView", CreateCorrelationEvent("correlation:a-anchor", baseTime, "op-a"));
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightCount == 1,
+                    TimeSpan.FromSeconds(5),
+                    "correlation A query to start");
+
+                InvokePrivate(host, "EnterCorrelationView", CreateCorrelationEvent("correlation:b-anchor", baseTime, "op-b"));
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightCount == 2,
+                    TimeSpan.FromSeconds(5),
+                    "correlation B query to start");
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightAt(0).WasCancelled,
+                    TimeSpan.FromSeconds(5),
+                    "correlation B to cancel correlation A");
+
+                eventSource.ReleaseFlight(1, CreateCorrelationEvent("correlation:b-result", baseTime.AddMinutes(1), "op-b"));
+                WpfStaTestHost.WaitUntil(
+                    () => logController.EventWindowForTests.Events.Any(logEvent => logEvent.EventId == "correlation:b-result"),
+                    TimeSpan.FromSeconds(5),
+                    "latest correlation B result to reach the active controller event window");
+                eventSource.ReleaseFlight(0, CreateCorrelationEvent("correlation:a-late", baseTime.AddMinutes(1), "op-a"));
+                WpfStaTestHost.PumpDispatcher(window);
+
+                logController.EventWindowForTests.Events.Should().Contain(logEvent => logEvent.EventId == "correlation:b-result");
+                logController.EventWindowForTests.Events.Should().NotContain(logEvent => logEvent.EventId == "correlation:a-late");
+                logController.ScopeExpression.Should().NotBeNull();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateCorrelationEvent("correlation:b-inside", baseTime.AddMinutes(2), "op-b"),
+                    logController.ScopeExpression!).Should().BeTrue();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateCorrelationEvent("correlation:a-outside", baseTime.AddMinutes(2), "op-a"),
+                    logController.ScopeExpression!).Should().BeFalse();
+            }
+            finally
+            {
+                eventSource.ReleaseAll();
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void Active_session_statistics_use_current_filter_expression_and_session_clause()
     {
         WpfStaTestHost.Run(() =>
@@ -467,12 +704,53 @@ public sealed class SettingsLogPageHostLifetimeTests
         return (LogSessionCoordinator)property!.GetValue(host)!;
     }
 
+    private static LogCorrelationCoordinator GetCorrelationCoordinator(object host)
+    {
+        var property = host.GetType().GetProperty(
+            "CorrelationCoordinatorForTests",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return (LogCorrelationCoordinator)property!.GetValue(host)!;
+    }
+
     private static LogSearchFilterBar GetSearchFilterBar(object host)
     {
         var field = host.GetType().GetField(
             "_logSearchFilterBar",
             BindingFlags.NonPublic | BindingFlags.Instance);
         return (LogSearchFilterBar)field!.GetValue(host)!;
+    }
+
+    private static void CollapseStatisticsInspector(Window window)
+    {
+        if (window.FindName("logStatisticsInspector") is Expander statisticsInspector)
+            statisticsInspector.IsExpanded = false;
+    }
+
+    private static void StopLogTimer(object host)
+    {
+        var field = host.GetType().GetField(
+            "_logTimer",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        if (field?.GetValue(host) is System.Windows.Threading.DispatcherTimer timer)
+            timer.Stop();
+    }
+
+    private static void SetTimeRangeComboToAll(object host)
+    {
+        var field = host.GetType().GetField(
+            "_cmbLogTimeRange",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        if (field?.GetValue(host) is ComboBox combo)
+            combo.SelectedIndex = 0;
+    }
+
+    private static void SetCaseSensitiveToFalse(object host)
+    {
+        var field = host.GetType().GetField(
+            "_chkLogSearchCaseSensitive",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        if (field?.GetValue(host) is CheckBox checkBox)
+            checkBox.IsChecked = false;
     }
 
     private static LogAggregationRequest InvokeBuildAggregationRequest(object host)
@@ -491,6 +769,24 @@ public sealed class SettingsLogPageHostLifetimeTests
             BindingFlags.NonPublic | BindingFlags.Instance);
         method.Should().NotBeNull();
         method!.Invoke(instance, args);
+    }
+
+    private static void SetPrivateField<T>(object instance, string fieldName, T value)
+    {
+        var field = instance.GetType().GetField(
+            fieldName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        field.Should().NotBeNull();
+        field!.SetValue(instance, value);
+    }
+
+    private static void SetPrivateProperty<T>(object instance, string propertyName, T value)
+    {
+        var property = instance.GetType().GetProperty(
+            propertyName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        property.Should().NotBeNull();
+        property!.SetValue(instance, value);
     }
 
     private static LogSessionMetadata CreateSession(string sessionId, DateTimeOffset start)
@@ -523,8 +819,119 @@ public sealed class SettingsLogPageHostLifetimeTests
             ThreadId: null,
             LogEvent.EmptyProperties);
 
+    private static LogEvent CreateCorrelationEvent(
+        string eventId,
+        DateTimeOffset timestamp,
+        string operationId)
+        => new(
+            LogEvent.CurrentSchemaVersion,
+            eventId,
+            timestamp,
+            LogSeverity.Info,
+            LogComponentRegistry.Engine,
+            LogChannelRegistry.Lifecycle,
+            EventName: null,
+            "correlation",
+            Exception: null,
+            operationId,
+            TraceId: null,
+            SpanId: null,
+            UserActionId: null,
+            ProcessId: 100,
+            ThreadId: null,
+            LogEvent.EmptyProperties);
+
     private static void TryDelete(string path)
     {
         try { Directory.Delete(path, recursive: true); } catch { }
+    }
+
+    private sealed class ControllableCorrelationEventSource : ILogEventSource
+    {
+        private readonly object _lock = new();
+        private readonly List<CorrelationFlight> _flights = [];
+
+        internal int FlightCount
+        {
+            get
+            {
+                lock (_lock)
+                    return _flights.Count;
+            }
+        }
+
+        internal CorrelationFlight FlightAt(int index)
+        {
+            lock (_lock)
+                return _flights[index];
+        }
+
+        public Task<LogEventPage> ReadLatestAsync(LogReadRequest request, CancellationToken cancellationToken)
+            => Task.FromResult(LogEventPage.Empty);
+
+        public Task<LogEventPage> ReadOlderAsync(LogReadRequest request, CancellationToken cancellationToken)
+            => Task.FromResult(LogEventPage.Empty);
+
+        public Task<LogEventPage> ReadNewerAsync(LogReadRequest request, CancellationToken cancellationToken)
+            => Task.FromResult(LogEventPage.Empty);
+
+        public async IAsyncEnumerable<LogEvent> StreamAsync(
+            LogReadScope scope,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            var flight = new CorrelationFlight(cancellationToken);
+            lock (_lock)
+                _flights.Add(flight);
+
+            var events = await flight.WaitForReleaseAsync(cancellationToken);
+            foreach (var logEvent in events)
+                yield return logEvent;
+        }
+
+        internal void ReleaseAll()
+        {
+            lock (_lock)
+            {
+                foreach (var flight in _flights)
+                    flight.Release([]);
+            }
+        }
+
+        internal void ReleaseFlight(int index, params LogEvent[] events)
+            => FlightAt(index).Release(events);
+    }
+
+    private sealed class CorrelationFlight
+    {
+        private readonly CancellationTokenRegistration _registration;
+        private readonly TaskCompletionSource<IReadOnlyList<LogEvent>> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal CorrelationFlight(CancellationToken cancellationToken)
+        {
+            _registration = cancellationToken.Register(() => _cancelled.TrySetResult());
+        }
+
+        internal bool WasCancelled => _cancelled.Task.IsCompleted;
+
+        internal async Task<IReadOnlyList<LogEvent>> WaitForReleaseAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _release.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _cancelled.TrySetResult();
+                throw;
+            }
+            finally
+            {
+                _registration.Dispose();
+            }
+        }
+
+        internal void Release(IReadOnlyList<LogEvent> events)
+            => _release.TrySetResult(events);
     }
 }
