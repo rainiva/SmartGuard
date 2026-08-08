@@ -112,6 +112,22 @@ internal sealed record LogViewFilterState(
     return LogQueryExpressionEvaluator.Matches(logEvent, QueryExpression);
   }
 
+  internal LogViewFilterState WithScope(LogQueryExpression? scope)
+  {
+    if (scope is null or LogQueryMatchAllExpression)
+      return this;
+
+    var expression = QueryExpression is LogQueryMatchAllExpression
+      ? scope
+      : new LogQueryAndExpression(QueryExpression, scope);
+
+    return this with
+    {
+      QueryExpression = expression,
+      HasActiveFilters = true,
+    };
+  }
+
   private static bool MatchesTagFilter(string tag, IReadOnlyList<string> activeTags)
   {
     var active = activeTags.Select(v => v.ToUpperInvariant()).ToHashSet(StringComparer.OrdinalIgnoreCase);

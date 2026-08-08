@@ -27,7 +27,7 @@ internal sealed class LogSessionCoordinator
 
   internal void SelectSession(LogSessionMetadata session, LogSessionMainViewState mainViewState)
   {
-    _savedMainView = mainViewState;
+    _savedMainView ??= mainViewState;
     _activeSession = session;
   }
 
@@ -38,6 +38,15 @@ internal sealed class LogSessionCoordinator
 
     var sessionClause = LogSessionProjector.BuildSessionExpression(_activeSession);
     return LogSessionProjector.CombineWithBase(_savedMainView?.BaseExpression, sessionClause);
+  }
+
+  internal LogQueryExpression BuildActiveQuery(LogQueryExpression currentExpression)
+  {
+    if (_activeSession is null)
+      throw new InvalidOperationException("Session view is not active.");
+
+    var sessionClause = LogSessionProjector.BuildSessionExpression(_activeSession);
+    return LogSessionProjector.CombineWithBase(currentExpression, sessionClause);
   }
 
   internal LogSessionMainViewState? ExitSessionView()

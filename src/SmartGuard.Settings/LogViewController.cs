@@ -41,6 +41,8 @@ public sealed class LogViewController
     public DateTime? CustomRangeEnd { get; set; }
     public Func<DateTime>? NowProvider { get; set; }
 
+    internal LogQueryExpression? ScopeExpression { get; set; }
+
     internal int CachedTextLengthForTests => _eventWindow.EstimatedPayloadBytes;
 
     internal int LoadedEventCountForTests => _eventWindow.Count;
@@ -353,7 +355,8 @@ public sealed class LogViewController
             EventNameFilter,
             ProcessIdFilter,
             ThreadIdFilter,
-            NowProvider);
+            NowProvider)
+            .WithScope(ScopeExpression);
 
     private string? ResolveEmptyStateMessage(IReadOnlyList<string> filtered)
     {

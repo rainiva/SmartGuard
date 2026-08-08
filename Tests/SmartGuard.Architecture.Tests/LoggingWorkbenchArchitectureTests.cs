@@ -156,6 +156,28 @@ public class LoggingWorkbenchArchitectureTests
   }
 
   [Fact]
+  public void Log_session_scope_has_single_controller_entrypoint_and_contract()
+  {
+    ContractContent.Should().Contain("LOG-WB-SESSION-SCOPE");
+    ContractContent.Should().Contain("LogViewController.ScopeExpression");
+    ContractContent.Should().Contain("LogSessionCoordinator");
+
+    var filterState = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogView/LogViewFilterState.cs");
+    filterState.Should().Contain("WithScope(");
+    filterState.Should().Contain("LogQueryAndExpression");
+
+    var controller = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewController.cs");
+    controller.Should().Contain("ScopeExpression");
+    controller.Should().Contain(".WithScope(ScopeExpression)");
+
+    var sessionHost = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.Session.cs");
+    sessionHost.Should().NotContain("LogQueryExpressionEvaluator.Matches",
+      "host must not hand-filter session windows outside the controller scope pipeline");
+    sessionHost.Should().NotContain("new LogQueryAndExpression",
+      "host must not duplicate base AND session expression logic");
+  }
+
+  [Fact]
   public void Log_viewport_scroll_mutations_are_owned_by_LogViewportController_only()
   {
     var scrollApis = new[]

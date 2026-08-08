@@ -60,6 +60,46 @@ public class LogSessionCoordinatorTests
   }
 
   [Fact]
+  public void SelectSession_preserves_original_main_view_when_switching_between_sessions()
+  {
+    var coordinator = new LogSessionCoordinator();
+    var originalMainView = CreateMainState();
+    var changedWithinSession = originalMainView with
+    {
+      SearchKeyword = "severity:ERROR",
+      BaseExpression = LogQueryParser.Parse("severity:ERROR").Expression!,
+      ActiveTags = ["ERROR"],
+    };
+
+    coordinator.SelectSession(CreateSession(), originalMainView);
+    coordinator.SelectSession(CreateSession("s:e:second"), changedWithinSession);
+
+    coordinator.ExitSessionView().Should().BeEquivalentTo(originalMainView);
+  }
+
+  [Fact]
+  public void BuildActiveQuery_uses_call_time_expression_for_session_switches_and_in_session_search()
+  {
+    var coordinator = new LogSessionCoordinator();
+    coordinator.SelectSession(CreateSession(), CreateMainState());
+    var callTimeExpression = LogQueryParser.Parse("event:RecoveryDegraded").Expression!;
+
+    var method = typeof(LogSessionCoordinator).GetMethod(
+      "BuildActiveQuery",
+      System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+      binder: null,
+      types: [typeof(LogQueryExpression)],
+      modifiers: null);
+
+    method.Should().NotBeNull(
+      "session queries must combine the active session boundary with the current filter expression");
+    var query = (LogQueryExpression)method!.Invoke(coordinator, [callTimeExpression])!;
+
+    query.Should().BeOfType<LogQueryAndExpression>();
+    ((LogQueryAndExpression)query).Left.Should().Be(callTimeExpression);
+  }
+
+  [Fact]
   public async Task LoadSessionMetadataAsync_does_not_preload_session_events()
   {
     var coordinator = new LogSessionCoordinator();
@@ -99,6 +139,17 @@ public class LogSessionCoordinatorTests
       ProcessId: 100,
       ThreadId: null,
       LogEvent.EmptyProperties);
+
+  private static LogSessionMetadata CreateSession(string sessionId)
+    => new(
+      sessionId,
+      new DateTimeOffset(2026, 8, 2, 11, 0, 0, TimeSpan.Zero),
+      new DateTimeOffset(2026, 8, 2, 11, 30, 0, TimeSpan.Zero),
+      200,
+      LogComponentRegistry.Engine,
+      false,
+      sessionId + ":start",
+      sessionId + ":end");
 
   private sealed class FakeEventSource : ILogEventSource
   {

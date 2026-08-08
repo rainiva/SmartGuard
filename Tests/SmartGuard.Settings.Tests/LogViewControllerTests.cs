@@ -1,3 +1,5 @@
+using System.Reflection;
+using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
@@ -583,5 +585,174 @@ public class LogViewControllerTests : IDisposable
       CancellationToken.None);
 
     end.Snapshot.DisplayLines.Should().Contain(line => line.Contains("3999"));
+  }
+
+  [Fact]
+  public async Task ScopeExpression_filters_latest_results_with_current_base_expression()
+  {
+    var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+    var session = CreateSession(baseTime, baseTime.AddMinutes(10));
+    var source = new PagedEventSource
+    {
+      LatestPage = new LogEventPage(
+        [
+          CreateEvent("outside", baseTime.AddMinutes(20), "disk outside session"),
+          CreateEvent("inside-other", baseTime.AddMinutes(1), "network inside session"),
+          CreateEvent("inside-disk", baseTime.AddMinutes(2), "disk inside session"),
+        ],
+        OlderCursor: null,
+        NewerCursor: null,
+        HasOlder: false,
+        HasNewer: false),
+    };
+    var controller = new LogViewController(source, _logPath, _fallbackPath)
+    {
+      SearchKeyword = "disk",
+    };
+
+    SetScopeExpression(controller, LogSessionProjector.BuildSessionExpression(session));
+
+    var result = await controller.RefreshAsync(LogViewRefreshKind.Latest, CancellationToken.None);
+
+    result.Snapshot.DisplayLines.Should().ContainSingle(line => line.Contains("disk inside session"));
+    result.Snapshot.DisplayLines.Should().NotContain(line => line.Contains("outside session"));
+    result.Snapshot.DisplayLines.Should().NotContain(line => line.Contains("network inside"));
+  }
+
+  [Fact]
+  public async Task ScopeExpression_filters_newer_appends_with_current_base_expression()
+  {
+    var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+    var session = CreateSession(baseTime, baseTime.AddMinutes(10));
+    var source = new PagedEventSource
+    {
+      LatestPage = new LogEventPage(
+        [CreateEvent("inside-seed", baseTime.AddMinutes(1), "disk seed")],
+        OlderCursor: null,
+        NewerCursor: new LogReadCursor(LogSourceIdentity.FromContentPrefix(baseTime, "inside-seed"), 0, "inside-seed"),
+        HasOlder: false,
+        HasNewer: true),
+      NewerPage = new LogEventPage(
+        [
+          CreateEvent("outside-newer", baseTime.AddMinutes(20), "disk outside newer"),
+          CreateEvent("inside-newer", baseTime.AddMinutes(2), "disk inside newer"),
+        ],
+        OlderCursor: null,
+        NewerCursor: null,
+        HasOlder: false,
+        HasNewer: false),
+    };
+    var controller = new LogViewController(source, _logPath, _fallbackPath)
+    {
+      SearchKeyword = "disk",
+    };
+
+    SetScopeExpression(controller, LogSessionProjector.BuildSessionExpression(session));
+    await controller.RefreshAsync(LogViewRefreshKind.Latest, CancellationToken.None);
+
+    var result = await controller.RefreshAsync(LogViewRefreshKind.Newer, CancellationToken.None);
+
+    result.Snapshot.DisplayLines.Should().Contain(line => line.Contains("disk seed"));
+    result.Snapshot.DisplayLines.Should().Contain(line => line.Contains("disk inside newer"));
+    result.Snapshot.DisplayLines.Should().NotContain(line => line.Contains("outside newer"));
+  }
+
+  [Fact]
+  public async Task ScopeExpression_filters_refilter_results_with_current_base_expression()
+  {
+    var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+    var session = CreateSession(baseTime, baseTime.AddMinutes(10));
+    var source = new PagedEventSource
+    {
+      LatestPage = new LogEventPage(
+        [
+          CreateEvent("outside", baseTime.AddMinutes(20), "disk outside session"),
+          CreateEvent("inside-disk", baseTime.AddMinutes(2), "disk inside session"),
+          CreateEvent("inside-other", baseTime.AddMinutes(3), "network inside session"),
+        ],
+        OlderCursor: null,
+        NewerCursor: null,
+        HasOlder: false,
+        HasNewer: false),
+    };
+    var controller = new LogViewController(source, _logPath, _fallbackPath);
+
+    SetScopeExpression(controller, LogSessionProjector.BuildSessionExpression(session));
+    await controller.RefreshAsync(LogViewRefreshKind.Latest, CancellationToken.None);
+    controller.SearchKeyword = "disk";
+
+    var result = await controller.RefreshAsync(LogViewRefreshKind.Refilter, CancellationToken.None);
+
+    result.Snapshot.DisplayLines.Should().ContainSingle(line => line.Contains("disk inside session"));
+    result.Snapshot.DisplayLines.Should().NotContain(line => line.Contains("outside session"));
+    result.Snapshot.DisplayLines.Should().NotContain(line => line.Contains("network inside"));
+  }
+
+  private static void SetScopeExpression(LogViewController controller, LogQueryExpression? expression)
+  {
+    var property = typeof(LogViewController).GetProperty(
+      "ScopeExpression",
+      BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    property.Should().NotBeNull("LogViewController must expose a single session scope entrypoint");
+    property!.SetValue(controller, expression);
+  }
+
+  private static LogSessionMetadata CreateSession(DateTimeOffset start, DateTimeOffset end)
+    => new(
+      "s:scope",
+      start,
+      end,
+      100,
+      LogComponentRegistry.Engine,
+      false,
+      "start",
+      "end");
+
+  private static LogEvent CreateEvent(string eventId, DateTimeOffset timestamp, string message)
+    => new(
+      LogEvent.CurrentSchemaVersion,
+      eventId,
+      timestamp,
+      LogSeverity.Info,
+      LogComponentRegistry.Engine,
+      LogChannelRegistry.Lifecycle,
+      EventName: null,
+      message,
+      Exception: null,
+      OperationId: null,
+      TraceId: null,
+      SpanId: null,
+      UserActionId: null,
+      ProcessId: 100,
+      ThreadId: null,
+      LogEvent.EmptyProperties);
+
+  private sealed class PagedEventSource : ILogEventSource
+  {
+    public LogEventPage LatestPage { get; init; } = LogEventPage.Empty;
+    public LogEventPage OlderPage { get; init; } = LogEventPage.Empty;
+    public LogEventPage NewerPage { get; init; } = LogEventPage.Empty;
+
+    public Task<LogEventPage> ReadLatestAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LatestPage);
+
+    public Task<LogEventPage> ReadOlderAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(OlderPage);
+
+    public Task<LogEventPage> ReadNewerAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(NewerPage);
+
+    public async IAsyncEnumerable<LogEvent> StreamAsync(
+      LogReadScope scope,
+      [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+      foreach (var logEvent in LatestPage.Events.Concat(OlderPage.Events).Concat(NewerPage.Events))
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return logEvent;
+      }
+
+      await Task.CompletedTask;
+    }
   }
 }

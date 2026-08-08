@@ -225,6 +225,121 @@ public sealed class SettingsLogPageHostLifetimeTests
         });
     }
 
+    [Fact]
+    public void Late_session_query_after_switch_does_not_replace_active_session_results()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+
+                var host = GetLogPageHost(controller);
+                var queryOverride = host.GetType().GetProperty(
+                    "SessionQueryOverrideForTests",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                queryOverride.Should().NotBeNull(
+                    "host race tests need a controllable session query seam instead of fixed delays");
+
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+                var sessionA = CreateSession("s:a", baseTime);
+                var sessionB = CreateSession("s:b", baseTime.AddHours(1));
+                var aResult = new TaskCompletionSource<IReadOnlyList<LogEvent>>();
+                var bResult = new TaskCompletionSource<IReadOnlyList<LogEvent>>();
+                queryOverride!.SetValue(host, new Func<LogSessionMetadata, LogQueryExpression, CancellationToken, Task<IReadOnlyList<LogEvent>>>(
+                    (session, _, token) =>
+                    {
+                        token.Register(() =>
+                        {
+                            if (session.SessionId == sessionA.SessionId)
+                                aResult.TrySetCanceled(token);
+                        });
+                        return session.SessionId == sessionA.SessionId ? aResult.Task : bResult.Task;
+                    }));
+
+                InvokePrivate(host, "SelectSession", sessionA);
+                InvokePrivate(host, "SelectSession", sessionB);
+                bResult.SetResult([CreateEvent("b:event", baseTime.AddHours(1).AddMinutes(1), "session B result")]);
+
+                var list = (ListBox)window.FindName("lstLogView")!;
+                WpfStaTestHost.WaitUntil(
+                    () => list.Items.OfType<LogLineDisplayItem>().Any(item => item.EventId == "b:event"),
+                    TimeSpan.FromSeconds(10),
+                    "session B result to apply");
+
+                aResult.TrySetResult([CreateEvent("a:event", baseTime.AddMinutes(1), "session A late result")]);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                list.Items.OfType<LogLineDisplayItem>().Should().Contain(item => item.EventId == "b:event");
+                list.Items.OfType<LogLineDisplayItem>().Should().NotContain(item => item.EventId == "a:event");
+            }
+            finally
+            {
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void Dispose_during_session_query_cancels_without_late_apply()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+
+                var host = GetLogPageHost(controller);
+                var queryOverride = host.GetType().GetProperty(
+                    "SessionQueryOverrideForTests",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                queryOverride.Should().NotBeNull(
+                    "session query cancellation must be observable without fixed sleeps");
+
+                var queryStarted = new TaskCompletionSource();
+                var releaseQuery = new TaskCompletionSource<IReadOnlyList<LogEvent>>();
+                queryOverride!.SetValue(host, new Func<LogSessionMetadata, LogQueryExpression, CancellationToken, Task<IReadOnlyList<LogEvent>>>(
+                    (_, _, token) =>
+                    {
+                        queryStarted.SetResult();
+                        token.Register(() => releaseQuery.TrySetCanceled(token));
+                        return releaseQuery.Task;
+                    }));
+
+                InvokePrivate(host, "SelectSession", CreateSession("s:dispose", new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero)));
+                queryStarted.Task.GetAwaiter().GetResult();
+
+                controller.Dispose();
+                releaseQuery.TrySetResult([CreateEvent("late:event", new DateTimeOffset(2026, 8, 2, 10, 1, 0, TimeSpan.Zero), "late")]);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                controller.ApplyAfterDisposeCountForTests.Should().Be(0);
+            }
+            finally
+            {
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
     private static SettingsWindowController CreateController(string installRoot)
     {
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
@@ -261,6 +376,53 @@ public sealed class SettingsLogPageHostLifetimeTests
             BindingFlags.NonPublic | BindingFlags.Instance);
         return (Window)field!.GetValue(controller)!;
     }
+
+    private static object GetLogPageHost(SettingsWindowController controller)
+    {
+        var field = typeof(SettingsWindowController).GetField(
+            "_logPageHost",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return field!.GetValue(controller)!;
+    }
+
+    private static void InvokePrivate(object instance, string methodName, params object[] args)
+    {
+        var method = instance.GetType().GetMethod(
+            methodName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        method.Should().NotBeNull();
+        method!.Invoke(instance, args);
+    }
+
+    private static LogSessionMetadata CreateSession(string sessionId, DateTimeOffset start)
+        => new(
+            sessionId,
+            start,
+            start.AddMinutes(30),
+            100,
+            LogComponentRegistry.Engine,
+            false,
+            sessionId + ":start",
+            sessionId + ":end");
+
+    private static LogEvent CreateEvent(string eventId, DateTimeOffset timestamp, string message)
+        => new(
+            LogEvent.CurrentSchemaVersion,
+            eventId,
+            timestamp,
+            LogSeverity.Info,
+            LogComponentRegistry.Engine,
+            LogChannelRegistry.Lifecycle,
+            EventName: null,
+            message,
+            Exception: null,
+            OperationId: null,
+            TraceId: null,
+            SpanId: null,
+            UserActionId: null,
+            ProcessId: 100,
+            ThreadId: null,
+            LogEvent.EmptyProperties);
 
     private static void TryDelete(string path)
     {

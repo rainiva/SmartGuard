@@ -197,6 +197,15 @@ internal sealed partial class SettingsLogPageHost
 
     _disposed = true;
     _logPageActive = false;
+    _sessionMetadataCancellation?.Cancel();
+    _sessionMetadataCancellation?.Dispose();
+    _sessionMetadataCancellation = null;
+    _sessionQueryCancellation?.Cancel();
+    _sessionQueryCancellation?.Dispose();
+    _sessionQueryCancellation = null;
+    _statisticsCancellation?.Cancel();
+    _statisticsCancellation?.Dispose();
+    _statisticsCancellation = null;
     _refreshPipeline.Shutdown();
     _logTimer?.Stop();
     _searchCoordinator.Dispose();

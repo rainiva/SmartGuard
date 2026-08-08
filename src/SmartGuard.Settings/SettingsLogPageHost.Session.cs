@@ -20,8 +20,18 @@ internal sealed partial class SettingsLogPageHost
   private Border? _logSessionBanner;
   private TextBlock? _lblLogSessionTitle;
   private Button? _btnLogSessionBack;
+  private bool _sessionUiWired;
+  private bool _sessionMetadataLoaded;
+  private bool _suppressSessionSelectionChanged;
+  private CancellationTokenSource? _sessionMetadataCancellation;
+  private CancellationTokenSource? _sessionQueryCancellation;
+  private int _sessionMetadataGeneration;
+  private int _sessionQueryGeneration;
 
   internal LogSessionCoordinator SessionCoordinatorForTests => _sessionCoordinator;
+
+  private Func<LogSessionMetadata, LogQueryExpression, CancellationToken, Task<IReadOnlyList<LogEvent>>>?
+    SessionQueryOverrideForTests { get; set; }
 
   private void EnsureSessionControls()
   {
@@ -35,14 +45,25 @@ internal sealed partial class SettingsLogPageHost
   private void WireSessionUi()
   {
     EnsureSessionControls();
+    if (_cmbLogSession is not null)
+    {
+      _cmbLogSession.DisplayMemberPath = nameof(LogSessionPickerItem.Title);
+      SetSessionPickerItems([LogSessionPickerItem.AllSessions()], selectedIndex: 0);
+    }
+
+    if (_sessionUiWired)
+      return;
+
     if (_btnLogSessionBack is not null)
-      _btnLogSessionBack.Click += (_, _) => ExitSessionView();
+      _btnLogSessionBack.Click += OnSessionBackClicked;
 
     if (_cmbLogSession is not null)
-      _cmbLogSession.SelectionChanged += (_, _) => OnSessionSelectionChanged();
+    {
+      _cmbLogSession.SelectionChanged += OnSessionComboSelectionChanged;
+      _cmbLogSession.DropDownOpened += OnSessionComboDropDownOpened;
+    }
 
-    if (_logSessionInspector is not null)
-      _logSessionInspector.Expanded += (_, _) => LoadSessionMetadataIfNeeded();
+    _sessionUiWired = true;
   }
 
   private async void LoadSessionMetadataIfNeeded()
@@ -51,29 +72,56 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     EnsureSessionControls();
-    if (_cmbLogSession.Items.Count > 0)
+    if (_sessionMetadataLoaded)
       return;
+
+    _sessionMetadataCancellation?.Cancel();
+    _sessionMetadataCancellation?.Dispose();
+    _sessionMetadataCancellation = new CancellationTokenSource();
+    var cancellationToken = _sessionMetadataCancellation.Token;
+    var generation = ++_sessionMetadataGeneration;
+    SetSessionPickerItems([LogSessionPickerItem.AllSessions(), LogSessionPickerItem.Loading()], selectedIndex: 0);
 
     try
     {
       var sessions = await _sessionCoordinator.LoadSessionMetadataAsync(
         _logController.EventSourceForCorrelation,
-        CancellationToken.None);
+        cancellationToken);
 
-      _cmbLogSession.DisplayMemberPath = nameof(LogSessionPickerItem.Title);
-      _cmbLogSession.ItemsSource = sessions
-        .Select(LogSessionPickerItem.ForSession)
-        .ToList();
+      if (!IsCurrentSessionMetadataRequest(generation, cancellationToken))
+        return;
+
+      var items = new List<LogSessionPickerItem> { LogSessionPickerItem.AllSessions() };
+      if (sessions.Count == 0)
+        items.Add(LogSessionPickerItem.Empty());
+      else
+        items.AddRange(sessions.Select(LogSessionPickerItem.ForSession));
+
+      _sessionMetadataLoaded = true;
+      SetSessionPickerItems(items, selectedIndex: 0);
     }
-    catch
+    catch (OperationCanceledException)
     {
-      // Session metadata is optional; leave the inspector empty on failure.
+    }
+    catch (Exception)
+    {
+      if (!IsCurrentSessionMetadataRequest(generation, cancellationToken))
+        return;
+
+      _sessionMetadataLoaded = false;
+      SetSessionPickerItems([LogSessionPickerItem.AllSessions(), LogSessionPickerItem.Error()], selectedIndex: 0);
     }
   }
 
+  private void OnSessionBackClicked(object sender, RoutedEventArgs e) => ExitSessionView();
+
+  private void OnSessionComboDropDownOpened(object? sender, EventArgs e) => LoadSessionMetadataIfNeeded();
+
+  private void OnSessionComboSelectionChanged(object sender, SelectionChangedEventArgs e) => OnSessionSelectionChanged();
+
   private void OnSessionSelectionChanged()
   {
-    if (_disposed || _cmbLogSession?.SelectedItem is not LogSessionPickerItem selected)
+    if (_disposed || _suppressSessionSelectionChanged || _cmbLogSession?.SelectedItem is not LogSessionPickerItem selected)
       return;
 
     switch (GetSessionSelectionAction(selected))
@@ -85,6 +133,7 @@ internal sealed partial class SettingsLogPageHost
         SelectSession(selected.Session);
         return;
       default:
+        SelectSessionPickerIndex(0);
         return;
     }
   }
@@ -109,31 +158,43 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     EnsureSessionControls();
+    _sessionQueryCancellation?.Cancel();
+    _sessionQueryCancellation?.Dispose();
+    _sessionQueryCancellation = new CancellationTokenSource();
+    var cancellationToken = _sessionQueryCancellation.Token;
+    var generation = ++_sessionQueryGeneration;
     _sessionCoordinator.SelectSession(session, CaptureSessionMainViewState());
+    var activeSessionId = session.SessionId;
+    var sessionScope = LogSessionProjector.BuildSessionExpression(session);
+    _logController.ScopeExpression = sessionScope;
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载会话事件…");
     UpdateSessionBannerVisibility(true);
+    if (!string.IsNullOrWhiteSpace(_sessionCoordinator.ActiveTitle)
+        && _lblLogSessionTitle is not null)
+      _lblLogSessionTitle.Text = _sessionCoordinator.ActiveTitle;
 
     try
     {
-      var query = _sessionCoordinator.BuildActiveQuery();
-      var service = new LogQueryService();
-      var sessionEvents = await service.QueryMatchingEventsAsync(
-        _logController.EventSourceForCorrelation,
-        query,
-        CancellationToken.None);
+      var filterState = BuildCurrentLogFilterState();
+      var query = _sessionCoordinator.BuildActiveQuery(filterState.QueryExpression);
+      var sessionEvents = await QuerySessionEventsAsync(session, query, cancellationToken);
+
+      if (!IsCurrentSessionQuery(generation, activeSessionId, cancellationToken))
+        return;
 
       _logController.LoadCorrelatedEvents(sessionEvents);
       var refreshResult = _logController.CreateRefreshResult();
       ApplyRefreshResult(refreshResult, forceRedraw: true);
-
-      if (!string.IsNullOrWhiteSpace(_sessionCoordinator.ActiveTitle)
-          && _lblLogSessionTitle is not null)
-        _lblLogSessionTitle.Text = _sessionCoordinator.ActiveTitle;
+    }
+    catch (OperationCanceledException)
+    {
     }
     catch (Exception ex)
     {
-      _sessionCoordinator.ExitSessionView();
-      UpdateSessionBannerVisibility(false);
+      if (!IsCurrentSessionQuery(generation, activeSessionId, cancellationToken))
+        return;
+
+      RestoreSessionView(resetComboBox: true);
       LogStatusLiveRegion.Set(_lblLogStatus, $"{LoadFailedStatusText}：{ex.Message}");
     }
   }
@@ -143,10 +204,22 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed)
       return;
 
+    RestoreSessionView(resetComboBox: true);
+  }
+
+  private void RestoreSessionView(bool resetComboBox)
+  {
+    _sessionQueryCancellation?.Cancel();
+    ++_sessionQueryGeneration;
+
     var restored = _sessionCoordinator.ExitSessionView();
+    if (_logController is not null)
+      _logController.ScopeExpression = null;
     UpdateSessionBannerVisibility(false);
-    if (_cmbLogSession is not null)
-      _cmbLogSession.SelectedItem = null;
+    if (_lblLogSessionTitle is not null)
+      _lblLogSessionTitle.Text = string.Empty;
+    if (resetComboBox)
+      SelectSessionPickerIndex(0);
 
     if (restored is null || _logController is null || _logSearchFilterBar is null)
       return;
@@ -165,6 +238,21 @@ internal sealed partial class SettingsLogPageHost
     }
   }
 
+  private Task<IReadOnlyList<LogEvent>> QuerySessionEventsAsync(
+    LogSessionMetadata session,
+    LogQueryExpression query,
+    CancellationToken cancellationToken)
+  {
+    if (SessionQueryOverrideForTests is not null)
+      return SessionQueryOverrideForTests(session, query, cancellationToken);
+
+    var service = new LogQueryService();
+    return service.QueryMatchingEventsAsync(
+      _logController!.EventSourceForCorrelation,
+      query,
+      cancellationToken);
+  }
+
   private LogSessionMainViewState CaptureSessionMainViewState()
   {
     var controller = _logController
@@ -178,18 +266,7 @@ internal sealed partial class SettingsLogPageHost
       _txtLogRangeStart,
       _txtLogRangeEnd);
 
-    var filterState = LogViewFilterState.FromLegacyFields(
-      controller.SearchKeyword,
-      controller.SearchCaseSensitive,
-      controller.ActiveTagFilters,
-      controller.TimeRange,
-      controller.CustomRangeStart,
-      controller.CustomRangeEnd,
-      controller.OperationIdFilter,
-      controller.EventNameFilter,
-      controller.ProcessIdFilter,
-      controller.ThreadIdFilter,
-      controller.NowProvider);
+    var filterState = BuildCurrentLogFilterState();
 
     string? selectedEventId = null;
     if (_lstLogView?.SelectedItem is LogLineDisplayItem selectedItem)
@@ -205,6 +282,33 @@ internal sealed partial class SettingsLogPageHost
       controller.SearchCaseSensitive,
       _logViewport.CaptureAnchor(),
       selectedEventId);
+  }
+
+  private LogViewFilterState BuildCurrentLogFilterState()
+  {
+    var controller = _logController
+      ?? throw new InvalidOperationException("Log controller is not initialized.");
+
+    SettingsLogSearchCoordinator.ApplyFilters(
+      controller,
+      _logSearchFilterBar,
+      _chkLogSearchCaseSensitive,
+      _cmbLogTimeRange,
+      _txtLogRangeStart,
+      _txtLogRangeEnd);
+
+    return LogViewFilterState.FromLegacyFields(
+      controller.SearchKeyword,
+      controller.SearchCaseSensitive,
+      controller.ActiveTagFilters,
+      controller.TimeRange,
+      controller.CustomRangeStart,
+      controller.CustomRangeEnd,
+      controller.OperationIdFilter,
+      controller.EventNameFilter,
+      controller.ProcessIdFilter,
+      controller.ThreadIdFilter,
+      controller.NowProvider);
   }
 
   private void RestoreSessionMainViewState(LogSessionMainViewState state)
@@ -255,4 +359,51 @@ internal sealed partial class SettingsLogPageHost
 
     _logSessionBanner.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
   }
+
+  private void SetSessionPickerItems(IReadOnlyList<LogSessionPickerItem> items, int selectedIndex)
+  {
+    if (_cmbLogSession is null)
+      return;
+
+    _suppressSessionSelectionChanged = true;
+    try
+    {
+      _cmbLogSession.ItemsSource = items;
+      _cmbLogSession.SelectedIndex = selectedIndex;
+    }
+    finally
+    {
+      _suppressSessionSelectionChanged = false;
+    }
+  }
+
+  private void SelectSessionPickerIndex(int selectedIndex)
+  {
+    if (_cmbLogSession is null)
+      return;
+
+    _suppressSessionSelectionChanged = true;
+    try
+    {
+      _cmbLogSession.SelectedIndex = selectedIndex;
+    }
+    finally
+    {
+      _suppressSessionSelectionChanged = false;
+    }
+  }
+
+  private bool IsCurrentSessionMetadataRequest(int generation, CancellationToken cancellationToken)
+    => !_disposed
+       && !cancellationToken.IsCancellationRequested
+       && generation == _sessionMetadataGeneration;
+
+  private bool IsCurrentSessionQuery(
+    int generation,
+    string sessionId,
+    CancellationToken cancellationToken)
+    => !_disposed
+       && !cancellationToken.IsCancellationRequested
+       && generation == _sessionQueryGeneration
+       && string.Equals(_sessionCoordinator.ActiveSession?.SessionId, sessionId, StringComparison.Ordinal);
 }
