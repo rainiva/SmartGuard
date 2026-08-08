@@ -11,6 +11,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+[Console]::InputEncoding = $utf8
+$OutputEncoding = $utf8
+if ((chcp) -notmatch '65001') {
+    chcp 65001 | Out-Null
+}
+
 $transcriptStarted = $false
 $lifecycleEntered = $false
 $payload = [ordered]@{

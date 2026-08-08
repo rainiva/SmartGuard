@@ -1193,6 +1193,18 @@ print(json.dumps(result))" $icon $officialDir
                 Should -Not -Match '(?s)ArgumentList.*?-Command'
         }
 
+        It 'elevated Pester runner initializes UTF-8 for native command output' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $runner = Get-Content -LiteralPath (
+                Join-Path $root 'scripts\Invoke-ElevatedPesterFile.ps1') -Raw -Encoding UTF8
+
+            $runner | Should -Match '\$utf8\s*=\s*\[System\.Text\.UTF8Encoding\]::new\(\$false\)'
+            $runner | Should -Match '\[Console\]::OutputEncoding\s*=\s*\$utf8'
+            $runner | Should -Match '\[Console\]::InputEncoding\s*=\s*\$utf8'
+            $runner | Should -Match '\$OutputEncoding\s*=\s*\$utf8'
+            $runner | Should -Match 'chcp\s+65001'
+        }
+
         It 'Tray integration is elevated with an outer lifecycle and exact two-test acceptance' {
             $root = Split-Path -Parent $PSScriptRoot
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
