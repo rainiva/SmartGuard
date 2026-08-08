@@ -544,6 +544,7 @@
         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="MaxDropDownHeight" Value="240"/>
         <Setter Property="ItemContainerStyle" Value="{StaticResource SettingsComboBoxItem}"/>
         <Setter Property="Template">
           <Setter.Value>
@@ -604,7 +605,7 @@
                           BorderThickness="1"
                           CornerRadius="4"
                           MinWidth="{TemplateBinding ActualWidth}"
-                          MaxHeight="240">
+                          MaxHeight="{TemplateBinding MaxDropDownHeight}">
                     <ScrollViewer SnapsToDevicePixels="True">
                       <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
                     </ScrollViewer>
@@ -1206,9 +1207,33 @@
                 <WrapPanel x:Name="logTagFilterLinksPanel"/>
               </WrapPanel>
 
-              <WrapPanel x:Name="logFilterTimePanel" Margin="0,0,0,4">
+              <WrapPanel x:Name="logFilterScopePanel" Margin="0,0,0,4">
+                <TextBlock Text="&#x8303;&#x56F4;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                <ComboBox x:Name="cmbLogSession"
+                          MinWidth="180"
+                          MaxWidth="300"
+                          MaxDropDownHeight="280"
+                          KeyboardNavigation.IsTabStop="True"
+                          Focusable="True"
+                          AutomationProperties.Name="运行会话"
+                          AutomationProperties.HelpText="选择全部日志或某次运行会话"
+                          Margin="0,0,12,6"
+                          Style="{StaticResource SettingsComboBox}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding Title}"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip="{Binding Title}"/>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                  <ComboBox.ItemContainerStyle>
+                    <Style TargetType="ComboBoxItem" BasedOn="{StaticResource SettingsComboBoxItem}">
+                      <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                    </Style>
+                  </ComboBox.ItemContainerStyle>
+                </ComboBox>
                 <TextBlock Text="&#x65F6;&#x95F4;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,6" Style="{StaticResource SettingsComboBox}">
+                <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" Margin="0,0,12,6" KeyboardNavigation.IsTabStop="True" Focusable="True" Style="{StaticResource SettingsComboBox}">
                   <ComboBoxItem Content="&#x5168;&#x90E8;"/>
                   <ComboBoxItem Content="&#x4ECA;&#x5929;"/>
                   <ComboBoxItem Content="&#x6700;&#x8FD1;1&#x5C0F;&#x65F6;"/>
@@ -1224,23 +1249,11 @@
                 <TextBox x:Name="txtLogRangeEnd" Width="160" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="yyyy-MM-dd HH:mm:ss"/>
               </StackPanel>
 
-              <Expander x:Name="logSessionInspector"
-                        Header="会话与统计"
+              <Expander x:Name="logStatisticsInspector"
+                        Header="统计"
                         IsExpanded="False"
                         Margin="0,0,0,8">
                 <StackPanel>
-                  <TextBlock Text="会话"
-                             FontSize="12"
-                             Foreground="{DynamicResource TextSecondary}"
-                             Margin="0,0,0,4"/>
-                  <ComboBox x:Name="cmbLogSession"
-                            MinWidth="240"
-                            Margin="0,0,0,8"
-                            Style="{StaticResource SettingsComboBox}"/>
-                  <TextBlock Text="统计"
-                             FontSize="12"
-                             Foreground="{DynamicResource TextSecondary}"
-                             Margin="0,0,0,4"/>
                   <TextBlock x:Name="lblLogStatisticsEmpty"
                              FontSize="11"
                              Foreground="{DynamicResource TextTertiary}"
@@ -1272,30 +1285,6 @@
                   </ItemsControl>
                 </StackPanel>
               </Expander>
-
-              <Border x:Name="logSessionBanner"
-                      Margin="0,0,0,8"
-                      Padding="10,8"
-                      CornerRadius="4"
-                      Visibility="Collapsed"
-                      Background="{DynamicResource NumberBoxBackground}"
-                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
-                      BorderThickness="1">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                  </Grid.ColumnDefinitions>
-                  <TextBlock x:Name="lblLogSessionTitle"
-                             FontSize="12"
-                             Foreground="{DynamicResource TextSecondary}"
-                             VerticalAlignment="Center"/>
-                  <Button x:Name="btnLogSessionBack"
-                          Grid.Column="1"
-                          Content="&#x8FD4;&#x56DE;&#x4E3B;&#x89C6;&#x56FE;"
-                          Style="{StaticResource LogToolbarCompactButton}"/>
-                </Grid>
-              </Border>
 
               <Border x:Name="logCorrelationBanner"
                       Margin="0,0,0,8"

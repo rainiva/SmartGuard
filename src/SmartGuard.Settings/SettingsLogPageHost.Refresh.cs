@@ -57,7 +57,7 @@ internal sealed partial class SettingsLogPageHost
       () => _logExportCoordinator.CopyVisible(),
       () => _logExportCoordinator.ExportVisible(),
       () => _logExportCoordinator.OpenFolder(),
-      ForceRefreshLogView);
+      ForceRefreshLogViewFromToolbar);
     SettingsLogPageHostWiring.WireSearchAndFilterEvents(
       _logSearchFilterBar,
       _searchCoordinator,
@@ -145,6 +145,12 @@ internal sealed partial class SettingsLogPageHost
     if (_lblLogStatus is not null)
       LogStatusLiveRegion.Set(_lblLogStatus, LoadingStatusText);
     ScheduleLogRefresh(LogViewRefreshKind.Latest, forceRedraw: true, forceRefresh: true);
+  }
+
+  private void ForceRefreshLogViewFromToolbar()
+  {
+    _sessionMetadataLoaded = false;
+    ForceRefreshLogView();
   }
 
   private void SetTopLoadingIndicator(bool visible)

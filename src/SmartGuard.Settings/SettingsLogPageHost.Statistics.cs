@@ -9,8 +9,10 @@ internal sealed partial class SettingsLogPageHost
 {
   private readonly LogAggregationService _aggregationService = new();
   private readonly LogStatisticsPresenter _statisticsPresenter = new();
+  private Expander? _logStatisticsInspector;
   private CancellationTokenSource? _statisticsCancellation;
   private int _statisticsGeneration;
+  private bool _statisticsDirty = true;
 
   internal LogAggregationService AggregationServiceForTests => _aggregationService;
 
@@ -18,15 +20,19 @@ internal sealed partial class SettingsLogPageHost
 
   private void WireStatisticsUi()
   {
-    EnsureSessionControls();
+    _logStatisticsInspector ??= _window.FindName("logStatisticsInspector") as Expander;
     var componentDistribution = _window.FindName("logComponentDistribution") as ItemsControl;
     var errorTrendChart = _window.FindName("logErrorTrendChart") as LogErrorTrendChart;
     var emptyStateLabel = _window.FindName("lblLogStatisticsEmpty") as TextBlock;
 
     _statisticsPresenter.Attach(componentDistribution, errorTrendChart, emptyStateLabel);
 
-    if (_logSessionInspector is not null)
-      _logSessionInspector.Expanded += (_, _) => ScheduleStatisticsRefresh();
+    if (_logStatisticsInspector is not null)
+      _logStatisticsInspector.Expanded += (_, _) =>
+      {
+        if (_statisticsDirty)
+          ScheduleStatisticsRefresh();
+      };
   }
 
   private void ScheduleStatisticsRefresh()
@@ -34,6 +40,13 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed || _logController is null)
       return;
 
+    if (_logStatisticsInspector is null || !_logStatisticsInspector.IsExpanded)
+    {
+      _statisticsDirty = true;
+      return;
+    }
+
+    _statisticsDirty = false;
     _statisticsGeneration = _aggregationService.NotifyGenerationChanged();
     var generation = _statisticsGeneration;
 

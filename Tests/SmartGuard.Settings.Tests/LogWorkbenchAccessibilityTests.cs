@@ -20,9 +20,37 @@ public class LogWorkbenchAccessibilityTests
 
         xaml.Should().Contain("AutomationProperties.Name=\"日志查询\"");
         xaml.Should().Contain("AutomationProperties.HelpText=\"输入关键词或组合查询\"");
+        xaml.Should().Contain("AutomationProperties.Name=\"运行会话\"");
+        xaml.Should().Contain("AutomationProperties.HelpText=\"选择全部日志或某次运行会话\"");
         xaml.Should().Contain("AutomationProperties.Name=\"日志列表\"");
         xaml.Should().Contain("AutomationProperties.LiveSetting=\"Polite\"");
         xaml.Should().Contain("KeyboardNavigation.TabNavigation=\"Local\"");
+    }
+
+    [Fact]
+    public void Log_toolbar_keeps_search_actions_session_and_time_keyboard_reachable_in_visual_order()
+    {
+        var xaml = File.ReadAllText(
+            SettingsSourcePaths.ProjectSettingsXamlPath(),
+            Encoding.UTF8);
+
+        var searchIndex = RequireIndex(xaml, "x:Name=\"logSearchFilterHost\"");
+        var refreshIndex = RequireIndex(xaml, "x:Name=\"btnLogRefresh\"");
+        var moreIndex = RequireIndex(xaml, "x:Name=\"btnLogMore\"");
+        var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
+        var timeIndex = RequireIndex(xaml, "x:Name=\"cmbLogTimeRange\"");
+
+        searchIndex.Should().BeLessThan(refreshIndex);
+        refreshIndex.Should().BeLessThan(moreIndex);
+        moreIndex.Should().BeLessThan(sessionIndex);
+        sessionIndex.Should().BeLessThan(timeIndex);
+
+        xaml.Should().MatchRegex(
+            "x:Name=\"cmbLogSession\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogSession\"[\\s\\S]{0,600}Focusable=\"True\"",
+            "the top session picker should be explicitly keyboard reachable");
+        xaml.Should().MatchRegex(
+            "x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,600}Focusable=\"True\"",
+            "the time picker should remain keyboard reachable after moving the session scope row");
     }
 
     [Fact]
@@ -54,5 +82,12 @@ public class LogWorkbenchAccessibilityTests
             Keyboard.FocusedElement.Should().BeSameAs(
                 bar.Children.OfType<TextBox>().Single());
         });
+    }
+
+    private static int RequireIndex(string text, string value)
+    {
+        var index = text.IndexOf(value, StringComparison.Ordinal);
+        index.Should().BeGreaterThanOrEqualTo(0, $"{value} should exist in Settings XAML");
+        return index;
     }
 }

@@ -15,11 +15,7 @@ internal sealed partial class SettingsLogPageHost
   }
 
   private readonly LogSessionCoordinator _sessionCoordinator = new();
-  private Expander? _logSessionInspector;
   private ComboBox? _cmbLogSession;
-  private Border? _logSessionBanner;
-  private TextBlock? _lblLogSessionTitle;
-  private Button? _btnLogSessionBack;
   private bool _sessionUiWired;
   private bool _sessionMetadataLoaded;
   private bool _suppressSessionSelectionChanged;
@@ -35,27 +31,17 @@ internal sealed partial class SettingsLogPageHost
 
   private void EnsureSessionControls()
   {
-    _logSessionInspector ??= _window.FindName("logSessionInspector") as Expander;
     _cmbLogSession ??= _window.FindName("cmbLogSession") as ComboBox;
-    _logSessionBanner ??= _window.FindName("logSessionBanner") as Border;
-    _lblLogSessionTitle ??= _window.FindName("lblLogSessionTitle") as TextBlock;
-    _btnLogSessionBack ??= _window.FindName("btnLogSessionBack") as Button;
   }
 
   private void WireSessionUi()
   {
     EnsureSessionControls();
     if (_cmbLogSession is not null)
-    {
-      _cmbLogSession.DisplayMemberPath = nameof(LogSessionPickerItem.Title);
       SetSessionPickerItems([LogSessionPickerItem.AllSessions()], selectedIndex: 0);
-    }
 
     if (_sessionUiWired)
       return;
-
-    if (_btnLogSessionBack is not null)
-      _btnLogSessionBack.Click += OnSessionBackClicked;
 
     if (_cmbLogSession is not null)
     {
@@ -98,7 +84,24 @@ internal sealed partial class SettingsLogPageHost
         items.AddRange(sessions.Select(LogSessionPickerItem.ForSession));
 
       _sessionMetadataLoaded = true;
-      SetSessionPickerItems(items, selectedIndex: 0);
+      var selectedIndex = 0;
+      var activeSession = _sessionCoordinator.ActiveSession;
+      if (activeSession is not null)
+      {
+        selectedIndex = items.FindIndex(
+          item => item.Session is not null
+                  && string.Equals(item.Session.SessionId, activeSession.SessionId, StringComparison.Ordinal));
+        if (selectedIndex < 0)
+        {
+          SetSessionPickerItems(items, selectedIndex: 0);
+          RestoreSessionView(resetComboBox: false);
+          if (_lblLogStatus is not null)
+            LogStatusLiveRegion.Set(_lblLogStatus, "当前运行会话已不在日志中，已恢复全部会话。");
+          return;
+        }
+      }
+
+      SetSessionPickerItems(items, selectedIndex);
     }
     catch (OperationCanceledException)
     {
@@ -112,8 +115,6 @@ internal sealed partial class SettingsLogPageHost
       SetSessionPickerItems([LogSessionPickerItem.AllSessions(), LogSessionPickerItem.Error()], selectedIndex: 0);
     }
   }
-
-  private void OnSessionBackClicked(object sender, RoutedEventArgs e) => ExitSessionView();
 
   private void OnSessionComboDropDownOpened(object? sender, EventArgs e) => LoadSessionMetadataIfNeeded();
 
@@ -168,10 +169,6 @@ internal sealed partial class SettingsLogPageHost
     var sessionScope = LogSessionProjector.BuildSessionExpression(session);
     _logController.ScopeExpression = sessionScope;
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载会话事件…");
-    UpdateSessionBannerVisibility(true);
-    if (!string.IsNullOrWhiteSpace(_sessionCoordinator.ActiveTitle)
-        && _lblLogSessionTitle is not null)
-      _lblLogSessionTitle.Text = _sessionCoordinator.ActiveTitle;
 
     try
     {
@@ -215,9 +212,6 @@ internal sealed partial class SettingsLogPageHost
     var restored = _sessionCoordinator.ExitSessionView();
     if (_logController is not null)
       _logController.ScopeExpression = null;
-    UpdateSessionBannerVisibility(false);
-    if (_lblLogSessionTitle is not null)
-      _lblLogSessionTitle.Text = string.Empty;
     if (resetComboBox)
       SelectSessionPickerIndex(0);
 
@@ -349,15 +343,6 @@ internal sealed partial class SettingsLogPageHost
       _chkLogSearchCaseSensitive.IsChecked = state.SearchCaseSensitive;
 
     SettingsLogSearchCoordinator.SyncCustomRangePanelVisibility(_panelLogCustomRange, _cmbLogTimeRange);
-  }
-
-  private void UpdateSessionBannerVisibility(bool visible)
-  {
-    EnsureSessionControls();
-    if (_logSessionBanner is null)
-      return;
-
-    _logSessionBanner.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
   }
 
   private void SetSessionPickerItems(IReadOnlyList<LogSessionPickerItem> items, int selectedIndex)
