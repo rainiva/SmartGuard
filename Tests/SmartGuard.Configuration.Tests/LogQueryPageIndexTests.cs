@@ -231,7 +231,7 @@ public sealed class LogQueryPageIndexTests
           cancellation.Cancel();
       },
     };
-    var expression = LogQueryParser.Parse("message:match").Expression!;
+    var expression = LogQueryParser.Parse("message~match").Expression!;
 
     Func<Task> action = () => new LogQueryService().BuildPageIndexAsync(
       eventSource,
