@@ -241,6 +241,15 @@ public sealed class SettingsLogPageHostLifetimeTests
                 var window = GetWindow(controller);
                 WpfStaTestHost.ShowAndWait(window);
                 controller.NavigateTo("logs");
+                WpfStaTestHost.WaitUntil(
+                    () => controller.IsLogViewInitializedForTests,
+                    TimeSpan.FromSeconds(10),
+                    "the log view to initialize");
+                var list = (ListBox)window.FindName("lstLogView")!;
+                WpfStaTestHost.WaitUntil(
+                    () => list.Items.Count > 0,
+                    TimeSpan.FromSeconds(10),
+                    "the initial log refresh to apply");
 
                 var host = GetLogPageHost(controller);
                 var queryOverride = host.GetType().GetProperty(
@@ -254,6 +263,7 @@ public sealed class SettingsLogPageHostLifetimeTests
                 var sessionB = CreateSession("s:b", baseTime.AddHours(1));
                 var aResult = new TaskCompletionSource<IReadOnlyList<LogEvent>>();
                 var bResult = new TaskCompletionSource<IReadOnlyList<LogEvent>>();
+                var bQueryStarted = new TaskCompletionSource();
                 queryOverride!.SetValue(host, new Func<LogSessionMetadata, LogQueryExpression, CancellationToken, Task<IReadOnlyList<LogEvent>>>(
                     (session, _, token) =>
                     {
@@ -262,14 +272,23 @@ public sealed class SettingsLogPageHostLifetimeTests
                             if (session.SessionId == sessionA.SessionId)
                                 aResult.TrySetCanceled(token);
                         });
-                        return session.SessionId == sessionA.SessionId ? aResult.Task : bResult.Task;
+                        if (session.SessionId == sessionB.SessionId)
+                        {
+                            bQueryStarted.TrySetResult();
+                            return bResult.Task;
+                        }
+
+                        return aResult.Task;
                     }));
 
                 InvokePrivate(host, "SelectSession", sessionA);
                 InvokePrivate(host, "SelectSession", sessionB);
+                WpfStaTestHost.WaitUntil(
+                    () => bQueryStarted.Task.IsCompleted,
+                    TimeSpan.FromSeconds(10),
+                    "session B query to start");
                 bResult.SetResult([CreateEvent("b:event", baseTime.AddHours(1).AddMinutes(1), "session B result")]);
 
-                var list = (ListBox)window.FindName("lstLogView")!;
                 WpfStaTestHost.WaitUntil(
                     () => list.Items.OfType<LogLineDisplayItem>().Any(item => item.EventId == "b:event"),
                     TimeSpan.FromSeconds(10),
