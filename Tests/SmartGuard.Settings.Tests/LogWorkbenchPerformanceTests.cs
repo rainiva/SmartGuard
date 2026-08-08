@@ -387,13 +387,16 @@ internal sealed class LogWorkbenchPerformanceFixture : IDisposable
 {
   private readonly string _root;
 
-  private LogWorkbenchPerformanceFixture(string root, string logPath)
+  private LogWorkbenchPerformanceFixture(string root, string logPath, int currentEventCount)
   {
     _root = root;
     LogPath = logPath;
+    CurrentEventCount = currentEventCount;
   }
 
   internal string LogPath { get; }
+
+  internal int CurrentEventCount { get; }
 
   internal static LogWorkbenchPerformanceFixture Create(
     int archiveCount,
@@ -412,8 +415,8 @@ internal sealed class LogWorkbenchPerformanceFixture : IDisposable
       WriteLegacyEvents(archivePath, eventsPerArchive, date, archiveIndex * eventsPerArchive);
     }
 
-    WriteCurrentLog(logPath, currentLogTargetBytes, includeHalfLine);
-    return new LogWorkbenchPerformanceFixture(root, logPath);
+    var currentEventCount = WriteCurrentLog(logPath, currentLogTargetBytes, includeHalfLine);
+    return new LogWorkbenchPerformanceFixture(root, logPath, currentEventCount);
   }
 
   public void Dispose()
@@ -433,7 +436,7 @@ internal sealed class LogWorkbenchPerformanceFixture : IDisposable
     }
   }
 
-  private static void WriteCurrentLog(string path, int targetBytes, bool includeHalfLine)
+  private static int WriteCurrentLog(string path, int targetBytes, bool includeHalfLine)
   {
     using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
     using var writer = new StreamWriter(stream, Encoding.UTF8);
@@ -456,6 +459,8 @@ internal sealed class LogWorkbenchPerformanceFixture : IDisposable
 
     if (includeHalfLine)
       writer.Write("[INFO] 2026-08-01 12:00:00 [Engine] half-line-marker");
+
+    return index + (index > 0 ? 1 : 0);
   }
 
   private static string LegacyLine(DateTimeOffset timestamp, string message)

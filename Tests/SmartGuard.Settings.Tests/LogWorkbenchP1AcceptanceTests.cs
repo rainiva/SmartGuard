@@ -32,9 +32,11 @@ public class LogWorkbenchP1AcceptanceTests
   [Fact]
   public async Task Large_fixture_supports_combo_query_regex_and_paging()
   {
+    const int archiveCount = 30;
+    const int eventsPerArchive = 2000;
     var fixture = LogWorkbenchPerformanceFixture.Create(
-      archiveCount: 30,
-      eventsPerArchive: 2000,
+      archiveCount: archiveCount,
+      eventsPerArchive: eventsPerArchive,
       currentLogTargetBytes: 10 * 1024 * 1024);
 
     try
@@ -94,7 +96,12 @@ public class LogWorkbenchP1AcceptanceTests
       numberedPage.Events.Should().NotBeEmpty();
       numberedPage.Events.Should().HaveCount(50);
       numberedPage.ExactTotalCount.Should().Be(index.ExactTotalCount);
-      index.ExactTotalCount.Should().BeGreaterThan(30 * 2000);
+      // LogUtf8LineScanner preserves each file's BOM in its first physical line;
+      // the component predicate therefore excludes one first-line event from each
+      // archive and the current log.
+      var expectedArchiveMatches = archiveCount * (eventsPerArchive - 1);
+      var expectedCurrentMatches = fixture.CurrentEventCount - 1;
+      index.ExactTotalCount.Should().Be(expectedArchiveMatches + expectedCurrentMatches);
       numberedPage.Events.Should().OnlyContain(logEvent => logEvent.Message.StartsWith("current-", StringComparison.Ordinal));
       numberedPage.Events[0].Message.Should().Be("current-tail");
       numberedPage.Events.Select(logEvent => logEvent.Timestamp).Should().BeInDescendingOrder();
