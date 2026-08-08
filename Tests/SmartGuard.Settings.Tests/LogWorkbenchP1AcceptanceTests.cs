@@ -64,6 +64,25 @@ public class LogWorkbenchP1AcceptanceTests
 
       queryResult.Matches.Should().NotBeEmpty();
       queryResult.IsScanComplete.Should().BeTrue();
+
+      var snapshot = reader.CaptureSnapshot();
+      var index = await service.BuildPageIndexAsync(
+        reader,
+        expression,
+        new LogReadScope(Array.Empty<LogSourceIdentity>()),
+        snapshot,
+        ignoreCase: true,
+        progress: null,
+        CancellationToken.None);
+      var numberedPage = await service.ReadPageAsync(
+        reader,
+        index,
+        new LogQueryPageRequest(1, 50, LogSortDirection.NewestFirst),
+        CancellationToken.None);
+
+      numberedPage.Events.Should().NotBeEmpty();
+      numberedPage.Events.Count.Should().BeInRange(1, 50);
+      numberedPage.ExactTotalCount.Should().Be(index.ExactTotalCount);
     }
     finally
     {

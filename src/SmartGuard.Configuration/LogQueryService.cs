@@ -245,6 +245,113 @@ public sealed class LogQueryService
       cancellationToken);
   }
 
+  public Task<LogQueryPageResult> ReadPageAsync(
+    ILogEventSource eventSource,
+    LogQueryPageIndex index,
+    LogQueryPageRequest request,
+    CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(index);
+    ArgumentNullException.ThrowIfNull(request);
+    var snapshotSource = RequireSnapshotSource(eventSource);
+    cancellationToken.ThrowIfCancellationRequested();
+
+    return Task.Run(
+      () => ReadPage(snapshotSource, index, request, cancellationToken),
+      cancellationToken);
+  }
+
+  private static LogQueryPageResult ReadPage(
+    ILogSnapshotPhysicalLineSource snapshotSource,
+    LogQueryPageIndex index,
+    LogQueryPageRequest request,
+    CancellationToken cancellationToken)
+  {
+    var pageSize = Math.Max(1, request.PageSize);
+    var totalCount = Math.Max(0, index.ExactTotalCount);
+    var totalPages = totalCount == 0
+      ? 1
+      : (int)(((long)totalCount + pageSize - 1) / pageSize);
+    var pageNumber = Math.Clamp(request.PageNumber, 1, totalPages);
+    var events = new List<LogEvent>(Math.Min(pageSize, totalCount));
+
+    if (totalCount > 0)
+    {
+      var firstOrdinal = request.SortDirection == LogSortDirection.OldestFirst
+        ? ((long)pageNumber - 1) * pageSize + 1
+        : Math.Max(1L, (long)totalCount - (long)pageNumber * pageSize + 1);
+      var lastOrdinal = request.SortDirection == LogSortDirection.OldestFirst
+        ? Math.Min((long)totalCount, (long)pageNumber * pageSize)
+        : totalCount - ((long)pageNumber - 1) * pageSize;
+
+      var anchor = FindAnchorBefore(index.Anchors, firstOrdinal);
+      var matchOrdinal = anchor?.MatchOrdinal ?? 0;
+      var evaluationContext = new LogQueryEvaluationContext(index.IgnoreCase);
+
+      foreach (var line in snapshotSource.EnumeratePhysicalLines(
+                 index.Scope,
+                 index.Snapshot,
+                 LogReadDirection.Newer,
+                 anchor?.Cursor,
+                 cancellationToken))
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!line.IsComplete)
+          continue;
+
+        var logEvent = LogEventDecoder.Decode(line);
+        if (!MatchesSnapshotExpression(logEvent, index.Expression, evaluationContext))
+          continue;
+
+        matchOrdinal++;
+        if (matchOrdinal >= firstOrdinal && matchOrdinal <= lastOrdinal)
+          events.Add(logEvent);
+
+        if (matchOrdinal >= lastOrdinal)
+          break;
+      }
+    }
+
+    if (request.SortDirection == LogSortDirection.NewestFirst)
+      events.Reverse();
+
+    return new LogQueryPageResult(
+      events,
+      pageNumber,
+      pageSize,
+      totalCount,
+      totalPages,
+      request.SortDirection,
+      index.Snapshot,
+      pageNumber > 1,
+      pageNumber < totalPages);
+  }
+
+  private static LogQueryAnchor? FindAnchorBefore(
+    IReadOnlyList<LogQueryAnchor> anchors,
+    long targetOrdinal)
+  {
+    LogQueryAnchor? result = null;
+    var low = 0;
+    var high = anchors.Count - 1;
+    while (low <= high)
+    {
+      var middle = low + ((high - low) / 2);
+      var candidate = anchors[middle];
+      if (candidate.MatchOrdinal < targetOrdinal)
+      {
+        result = candidate;
+        low = middle + 1;
+      }
+      else
+      {
+        high = middle - 1;
+      }
+    }
+
+    return result;
+  }
+
   private static IReadOnlyList<LogEvent> ReadPreviewPage(
     ILogSnapshotPhysicalLineSource snapshotSource,
     LogQueryExpression expression,
