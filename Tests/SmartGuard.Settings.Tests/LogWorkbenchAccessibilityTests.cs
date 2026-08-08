@@ -42,8 +42,8 @@ public class LogWorkbenchAccessibilityTests
 
         searchIndex.Should().BeLessThan(refreshIndex);
         refreshIndex.Should().BeLessThan(moreIndex);
+        timeIndex.Should().BeLessThan(searchIndex);
         moreIndex.Should().BeLessThan(sessionIndex);
-        sessionIndex.Should().BeLessThan(timeIndex);
 
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogSession\"[\\s\\S]{0,600}Focusable=\"True\"",
@@ -66,6 +66,23 @@ public class LogWorkbenchAccessibilityTests
             AutomationProperties.GetName(list).Should().Be("日志列表");
             list.FocusVisualStyle.Should().NotBeNull();
         });
+    }
+
+    [Fact]
+    public void Paged_log_table_and_pager_are_keyboard_reachable_and_named()
+    {
+        var xaml = File.ReadAllText(
+            SettingsSourcePaths.ProjectSettingsXamlPath(),
+            Encoding.UTF8);
+
+        xaml.Should().Contain("x:Name=\"logTable\"");
+        xaml.Should().Contain("AutomationProperties.Name=\"日志表格\"");
+        xaml.Should().Contain("KeyboardNavigation.IsTabStop=\"True\"");
+        xaml.Should().Contain("x:Name=\"btnLogFirstPage\"");
+        xaml.Should().Contain("x:Name=\"btnLogPreviousPage\"");
+        xaml.Should().Contain("x:Name=\"logPageNumberItems\"");
+        xaml.Should().Contain("x:Name=\"btnLogNextPage\"");
+        xaml.Should().Contain("x:Name=\"btnLogLastPage\"");
     }
 
     [Fact]

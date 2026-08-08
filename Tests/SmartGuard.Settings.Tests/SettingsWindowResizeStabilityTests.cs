@@ -175,8 +175,9 @@ public class SettingsWindowResizeStabilityTests
     {
         var source = File.ReadAllText(RepoLayoutStabilityPath());
 
-        source.Should().Contain("window.FindName(\"pageLogs\") is not FrameworkElement pageLogs");
-        source.Should().Contain("pageLogs.Visibility != Visibility.Visible");
+        source.Should().Contain("var pageLogsVisible = window.FindName(\"pageLogs\") is FrameworkElement pageLogs");
+        source.Should().Contain("if (!pageLogsVisible)");
+        source.Should().Contain("window.FindName(\"logTable\") is DataGrid logTable");
     }
 
     [Fact]
@@ -258,6 +259,9 @@ public class SettingsWindowResizeStabilityTests
                     var lstLogView = window.FindName("lstLogView") as ListBox;
                     lstLogView.Should().NotBeNull();
                     lstLogView!.ActualHeight.Should().BeGreaterThan(100);
+                    var logTable = window.FindName("logTable") as DataGrid;
+                    logTable.Should().NotBeNull();
+                    logTable!.ActualHeight.Should().BeGreaterThan(100);
 
                     SettingsWindowLayoutStability.StabilizeContentLayout(window);
                     SettingsWindowLayoutStability.HandleWindowStateChanged(window, isDarkTheme: false, WindowState.Maximized);
@@ -269,6 +273,7 @@ public class SettingsWindowResizeStabilityTests
                         System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                     lstLogView.ActualHeight.Should().BeGreaterThan(100);
+                    logTable.ActualHeight.Should().BeGreaterThan(100);
                 }
                 finally
                 {

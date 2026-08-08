@@ -43,7 +43,18 @@ public static class SettingsWindowLayoutStability
         root.InvalidateArrange();
         root.UpdateLayout();
 
-        if (!pageLogsVisible || window.FindName("lstLogView") is not ListBox listBox)
+        if (!pageLogsVisible)
+            return;
+
+        if (window.FindName("logTable") is DataGrid logTable)
+        {
+            logTable.InvalidateMeasure();
+            logTable.InvalidateArrange();
+            logTable.UpdateLayout();
+            return;
+        }
+
+        if (window.FindName("lstLogView") is not ListBox listBox)
             return;
 
         var scrollViewer = LogViewListPresenter.FindScrollViewer(listBox);

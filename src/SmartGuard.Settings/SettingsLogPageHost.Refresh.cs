@@ -33,6 +33,33 @@ internal sealed partial class SettingsLogPageHost
       ExecutePagedQueryAsync,
       () => _disposed);
     _refreshPipeline.ConfigurePagedApply(_logPaginationCoordinator.ApplyModel);
+    if (_window.FindName("logTable") is DataGrid logTable)
+    {
+      SettingsLogPageHostWiring.WireLogTableSorting(
+        logTable,
+        () => _logPaginationCoordinator.ToggleSortAsync(),
+        () => _logPaginationCoordinator.State.IsScanComplete);
+      if (_window.FindName("chkLogWrap") is CheckBox wrapToggle)
+        SettingsLogPageHostWiring.WireLogTableWrapMode(logTable, wrapToggle);
+    }
+    SettingsLogPageHostWiring.WirePaginationCommands(
+      _window,
+      () => _logPaginationCoordinator.State,
+      () => _logPaginationCoordinator.State.CanGoFirst
+        ? _logPaginationCoordinator.GoToPageAsync(1)
+        : Task.CompletedTask,
+      () => _logPaginationCoordinator.State.CanGoPrevious
+        ? _logPaginationCoordinator.GoToPageAsync(_logPaginationCoordinator.State.CurrentPage - 1)
+        : Task.CompletedTask,
+      pageNumber => _logPaginationCoordinator.State.CanNavigateToPage(pageNumber)
+        ? _logPaginationCoordinator.GoToPageAsync(pageNumber)
+        : Task.CompletedTask,
+      () => _logPaginationCoordinator.State.CanGoNext
+        ? _logPaginationCoordinator.GoToPageAsync(_logPaginationCoordinator.State.CurrentPage + 1)
+        : Task.CompletedTask,
+      () => _logPaginationCoordinator.State.CanGoLast
+        ? _logPaginationCoordinator.GoToPageAsync(_logPaginationCoordinator.State.TotalPages)
+        : Task.CompletedTask);
     _searchCoordinator.MatchGenerationChanged += OnLogMatchGenerationChanged;
     _logSearchFilterBar = controls.SearchFilterBar;
     _lstLogView = controls.ListView;

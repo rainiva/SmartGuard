@@ -4,6 +4,35 @@ namespace SmartGuard.Settings.Tests;
 public class LogToolbarLayoutTests
 {
     [Fact]
+    public void Log_page_exposes_reference_table_toolbar_and_pager_controls()
+    {
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+
+        foreach (var controlName in new[]
+        {
+            "logToolbar",
+            "cmbLogTimeRange",
+            "txtLogRangeStart",
+            "txtLogRangeEnd",
+            "btnLogRefresh",
+            "btnLogFilter",
+            "btnLogExport",
+            "logSearchFilterHost",
+            "logTable",
+            "lblLogTotalCount",
+            "cmbLogPageSize",
+            "btnLogFirstPage",
+            "btnLogPreviousPage",
+            "logPageNumberItems",
+            "btnLogNextPage",
+            "btnLogLastPage",
+        })
+        {
+            xaml.Should().Contain($"x:Name=\"{controlName}\"");
+        }
+    }
+
+    [Fact]
     public void Log_page_uses_reader_style_header_instead_of_heavy_toolbar_card()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
@@ -27,8 +56,8 @@ public class LogToolbarLayoutTests
         xaml.Should().Contain("x:Name=\"btnLogMoreExport\"");
         xaml.Should().Contain("x:Name=\"btnLogMoreOpenFolder\"");
         xaml.Should().MatchRegex(
-            "x:Name=\"logSearchFilterHost\"[\\s\\S]{0,500}x:Name=\"btnLogRefresh\"[\\s\\S]{0,240}x:Name=\"btnLogMore\"",
-            "search should share the top action row with refresh and overflow actions");
+            "x:Name=\"logSearchFilterHost\"[\\s\\S]{0,500}x:Name=\"btnLogRefresh\"[\\s\\S]{0,600}x:Name=\"btnLogFilter\"[\\s\\S]{0,300}x:Name=\"btnLogExport\"",
+            "search should share the top action row with refresh, filter, and export actions");
         xaml.Should().MatchRegex(
             "x:Name=\"logMoreFlyoutLayer\"[\\s\\S]{0,120}Grid\\.RowSpan=\"3\"[\\s\\S]{0,240}x:Name=\"logMoreFlyout\"",
             "more flyout should live in a page-level overlay layer so it can float above lower log content without affecting header layout");
@@ -71,7 +100,7 @@ public class LogToolbarLayoutTests
 
         sessionIndex.Should().BeGreaterThan(scopeIndex);
         sessionIndex.Should().BeLessThan(statusIndex);
-        timeIndex.Should().BeGreaterThan(scopeIndex);
+        timeIndex.Should().BeLessThan(searchIndex);
         timeIndex.Should().BeLessThan(statusIndex);
         caseIndex.Should().BeGreaterThan(scopeIndex);
         caseIndex.Should().BeLessThan(statusIndex);

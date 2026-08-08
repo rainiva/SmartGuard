@@ -124,6 +124,90 @@ internal static class SettingsLogPageHostWiring
     }
   }
 
+  internal static void WireLogTableSorting(
+    DataGrid logTable,
+    Func<Task> toggleSortAsync,
+    Func<bool>? canToggleSort = null)
+  {
+    ArgumentNullException.ThrowIfNull(logTable);
+    ArgumentNullException.ThrowIfNull(toggleSortAsync);
+
+    logTable.Sorting += (_, e) =>
+    {
+      e.Handled = true;
+      if (canToggleSort is not null && !canToggleSort())
+        return;
+
+      _ = toggleSortAsync();
+    };
+  }
+
+  internal static void WireLogTableWrapMode(DataGrid logTable, CheckBox wrapToggle)
+  {
+    ArgumentNullException.ThrowIfNull(logTable);
+    ArgumentNullException.ThrowIfNull(wrapToggle);
+
+    void ApplyRow(DataGridRow row)
+    {
+      var isWrapped = wrapToggle.IsChecked == true;
+      row.Height = isWrapped ? double.NaN : 44;
+      foreach (var textBlock in FindVisualChildren<TextBlock>(row))
+        textBlock.TextWrapping = isWrapped ? TextWrapping.Wrap : TextWrapping.NoWrap;
+    }
+
+    void Apply()
+    {
+      logTable.RowHeight = wrapToggle.IsChecked == true ? double.NaN : 44;
+      foreach (var row in FindVisualChildren<DataGridRow>(logTable))
+        ApplyRow(row);
+    }
+
+    wrapToggle.Checked += (_, _) => Apply();
+    wrapToggle.Unchecked += (_, _) => Apply();
+    logTable.LoadingRow += (_, e) => ApplyRow(e.Row);
+    Apply();
+  }
+
+  internal static void WirePaginationCommands(
+    Window window,
+    Func<LogPaginationState> getState,
+    Func<Task> firstPageAsync,
+    Func<Task> previousPageAsync,
+    Func<int, Task> goToPageAsync,
+    Func<Task> nextPageAsync,
+    Func<Task> lastPageAsync)
+  {
+    ArgumentNullException.ThrowIfNull(window);
+    ArgumentNullException.ThrowIfNull(getState);
+    ArgumentNullException.ThrowIfNull(firstPageAsync);
+    ArgumentNullException.ThrowIfNull(previousPageAsync);
+    ArgumentNullException.ThrowIfNull(goToPageAsync);
+    ArgumentNullException.ThrowIfNull(nextPageAsync);
+    ArgumentNullException.ThrowIfNull(lastPageAsync);
+
+    AddBinding(LogPaginationCommands.FirstPage, _ => firstPageAsync());
+    AddBinding(LogPaginationCommands.PreviousPage, _ => previousPageAsync());
+    AddBinding(
+      LogPaginationCommands.GoToPage,
+      parameter => LogPaginationCommands.TryGetPageNumber(parameter, out var pageNumber)
+        ? goToPageAsync(pageNumber)
+        : Task.CompletedTask);
+    AddBinding(LogPaginationCommands.NextPage, _ => nextPageAsync());
+    AddBinding(LogPaginationCommands.LastPage, _ => lastPageAsync());
+
+    void AddBinding(RoutedUICommand command, Func<object?, Task> execute)
+    {
+      window.CommandBindings.Add(new CommandBinding(
+        command,
+        (_, args) => _ = execute(args.Parameter),
+        (_, args) =>
+        {
+          args.CanExecute = LogPaginationCommands.CanExecute(command, getState(), args.Parameter);
+          args.Handled = true;
+        }));
+    }
+  }
+
   private static bool IsInSubtree(DependencyObject? source, DependencyObject ancestor)
   {
     var current = source;
@@ -141,6 +225,21 @@ internal static class SettingsLogPageHostWiring
     }
 
     return false;
+  }
+
+  private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
+    where T : DependencyObject
+  {
+    var childCount = VisualTreeHelper.GetChildrenCount(root);
+    for (var i = 0; i < childCount; i++)
+    {
+      var child = VisualTreeHelper.GetChild(root, i);
+      if (child is T typedChild)
+        yield return typedChild;
+
+      foreach (var descendant in FindVisualChildren<T>(child))
+        yield return descendant;
+    }
   }
 
   internal static void WireSearchAndFilterEvents(
