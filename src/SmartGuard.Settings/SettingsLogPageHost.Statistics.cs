@@ -95,7 +95,7 @@ internal sealed partial class SettingsLogPageHost
       controller.NowProvider);
 
     var expression = _sessionCoordinator.IsActive
-      ? _sessionCoordinator.BuildActiveQuery()
+      ? _sessionCoordinator.BuildActiveQuery(filterState.QueryExpression)
       : filterState.QueryExpression;
 
     return new LogAggregationRequest(

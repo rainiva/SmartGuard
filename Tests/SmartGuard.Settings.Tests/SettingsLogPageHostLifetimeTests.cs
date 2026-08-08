@@ -340,6 +340,61 @@ public sealed class SettingsLogPageHostLifetimeTests
         });
     }
 
+    [Fact]
+    public void Active_session_statistics_use_current_filter_expression_and_session_clause()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+
+                var host = GetLogPageHost(controller);
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+                var session = CreateSession("s:stats", baseTime);
+                var savedMainView = new LogSessionMainViewState(
+                    BaseExpression: LogQueryParser.Parse("message:saved-only").Expression!,
+                    SearchKeyword: "saved-only",
+                    ActiveTags: [],
+                    TimeRange: LogViewTimeRange.All,
+                    CustomRangeStart: null,
+                    CustomRangeEnd: null,
+                    SearchCaseSensitive: false,
+                    Anchor: null,
+                    SelectedEventId: null);
+                GetSessionCoordinator(host).SelectSession(session, savedMainView);
+
+                GetSearchFilterBar(host).SetKeyword("current-only");
+                var request = InvokeBuildAggregationRequest(host);
+
+                LogQueryExpressionEvaluator.Matches(
+                    CreateEvent("current", baseTime.AddMinutes(1), "current-only"),
+                    request.Expression).Should().BeTrue();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateEvent("saved", baseTime.AddMinutes(2), "saved-only"),
+                    request.Expression).Should().BeFalse(
+                    "statistics must not keep using the expression saved when entering the session");
+                LogQueryExpressionEvaluator.Matches(
+                    CreateEvent("outside", baseTime.AddHours(1), "current-only"),
+                    request.Expression).Should().BeFalse(
+                    "statistics must still enforce the active session boundary");
+            }
+            finally
+            {
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
     private static SettingsWindowController CreateController(string installRoot)
     {
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
@@ -383,6 +438,31 @@ public sealed class SettingsLogPageHostLifetimeTests
             "_logPageHost",
             BindingFlags.NonPublic | BindingFlags.Instance);
         return field!.GetValue(controller)!;
+    }
+
+    private static LogSessionCoordinator GetSessionCoordinator(object host)
+    {
+        var property = host.GetType().GetProperty(
+            "SessionCoordinatorForTests",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return (LogSessionCoordinator)property!.GetValue(host)!;
+    }
+
+    private static LogSearchFilterBar GetSearchFilterBar(object host)
+    {
+        var field = host.GetType().GetField(
+            "_logSearchFilterBar",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return (LogSearchFilterBar)field!.GetValue(host)!;
+    }
+
+    private static LogAggregationRequest InvokeBuildAggregationRequest(object host)
+    {
+        var method = host.GetType().GetMethod(
+            "BuildAggregationRequest",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        method.Should().NotBeNull();
+        return (LogAggregationRequest)method!.Invoke(host, [])!;
     }
 
     private static void InvokePrivate(object instance, string methodName, params object[] args)
