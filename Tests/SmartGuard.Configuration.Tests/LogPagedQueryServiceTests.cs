@@ -250,8 +250,10 @@ public sealed class LogPagedQueryServiceTests
   public async Task Filtered_pages_use_ordinals_from_the_complete_filtered_snapshot()
   {
     var fixture = CreateFixture(
-      messageFactory: ordinal => ordinal % 3 == 0 ? "keep" : "drop");
-    var index = await BuildIndexAsync(fixture, "message:keep");
+      messageFactory: ordinal => ordinal % 3 == 0
+        ? $"row-{ordinal:D4}-keep"
+        : $"row-{ordinal:D4}-drop");
+    var index = await BuildIndexAsync(fixture, "message~keep");
     var service = new LogQueryService();
 
     var result = await service.ReadPageAsync(
@@ -262,7 +264,9 @@ public sealed class LogPagedQueryServiceTests
 
     result.ExactTotalCount.Should().Be(416);
     result.Events.Should().HaveCount(20);
-    result.Events.Should().OnlyContain(logEvent => logEvent.Message == "keep");
+    Ordinals(result.Events).Should().Equal(
+      Enumerable.Range(0, 20).Select(index => 1_248 - (index * 3)));
+    result.Events.Should().OnlyContain(logEvent => logEvent.Message.Contains("-keep", StringComparison.Ordinal));
   }
 
   [Fact]
@@ -307,6 +311,50 @@ public sealed class LogPagedQueryServiceTests
     await cancelled.Should().ThrowAsync<OperationCanceledException>();
   }
 
+  [Fact]
+  public async Task Empty_index_returns_one_empty_page_without_navigation()
+  {
+    var fixture = CreateFixture(messageFactory: _ => "not-a-match");
+    var index = await BuildIndexAsync(fixture, "message:match");
+    var result = await new LogQueryService().ReadPageAsync(
+      fixture.EventSource,
+      index,
+      new LogQueryPageRequest(99, 20, LogSortDirection.NewestFirst),
+      CancellationToken.None);
+
+    result.PageNumber.Should().Be(1);
+    result.PageSize.Should().Be(20);
+    result.ExactTotalCount.Should().Be(0);
+    result.TotalPages.Should().Be(1);
+    result.Events.Should().BeEmpty();
+    result.HasPreviousPage.Should().BeFalse();
+    result.HasNextPage.Should().BeFalse();
+  }
+
+  [Fact]
+  public async Task Page_read_aborts_on_regex_timeout_without_complete_page()
+  {
+    var fixture = CreateFixture(messageFactory: _ => new string('a', 30));
+    var expression = LogQueryParser.Parse("message~(a+)+b").Expression!;
+    var index = new LogQueryPageIndex(
+      fixture.Snapshot,
+      fixture.Scope,
+      expression,
+      true,
+      1,
+      1,
+      []);
+
+    Func<Task> action = () => new LogQueryService().ReadPageAsync(
+      fixture.EventSource,
+      index,
+      new LogQueryPageRequest(1, 20, LogSortDirection.NewestFirst),
+      CancellationToken.None);
+
+    (await action.Should().ThrowAsync<InvalidOperationException>())
+      .Which.Message.Should().Contain("Regex evaluation timed out");
+  }
+
   private static async Task<LogQueryPageIndex> BuildIndexAsync(
     Fixture fixture,
     string query = "message~row")
@@ -323,7 +371,9 @@ public sealed class LogPagedQueryServiceTests
   }
 
   private static IReadOnlyList<int> Ordinals(IReadOnlyList<LogEvent> events)
-    => events.Select(logEvent => int.Parse(logEvent.Message[4..], CultureInfo.InvariantCulture)).ToArray();
+    => events.Select(logEvent => int.Parse(
+      logEvent.Message.Split('-', StringSplitOptions.RemoveEmptyEntries)[1],
+      CultureInfo.InvariantCulture)).ToArray();
 
   private static Fixture CreateFixture(
     int appendedRows = 0,

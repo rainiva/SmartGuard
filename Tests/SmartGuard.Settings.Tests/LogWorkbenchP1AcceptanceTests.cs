@@ -52,7 +52,8 @@ public class LogWorkbenchP1AcceptanceTests
       older.Events.Should().NotBeEmpty();
       older.Events.Select(e => e.EventId).Should().OnlyHaveUniqueItems();
 
-      var expression = LogQueryParser.Parse("component:Engine AND message~current").Expression!;
+      var expression = LogQueryParser.Parse(
+        "component:Engine AND (message~archive OR message~current)").Expression!;
       var service = new LogQueryService();
       var queryResult = await service.QueryAsync(
         new LogTailReaderEventSource(reader),
@@ -79,10 +80,25 @@ public class LogWorkbenchP1AcceptanceTests
         index,
         new LogQueryPageRequest(1, 50, LogSortDirection.NewestFirst),
         CancellationToken.None);
+      var oldestPage = await service.ReadPageAsync(
+        reader,
+        index,
+        new LogQueryPageRequest(1, 50, LogSortDirection.OldestFirst),
+        CancellationToken.None);
+      var clampedPage = await service.ReadPageAsync(
+        reader,
+        index,
+        new LogQueryPageRequest(int.MaxValue, 50, LogSortDirection.NewestFirst),
+        CancellationToken.None);
 
       numberedPage.Events.Should().NotBeEmpty();
       numberedPage.Events.Count.Should().BeInRange(1, 50);
       numberedPage.ExactTotalCount.Should().Be(index.ExactTotalCount);
+      index.ExactTotalCount.Should().BeGreaterThan(30 * 2000);
+      numberedPage.Events.Should().Contain(logEvent => logEvent.Message.StartsWith("current-", StringComparison.Ordinal));
+      oldestPage.Events.Should().Contain(logEvent => logEvent.Message.StartsWith("archive-", StringComparison.Ordinal));
+      clampedPage.PageNumber.Should().Be(clampedPage.TotalPages);
+      clampedPage.HasNextPage.Should().BeFalse();
     }
     finally
     {
