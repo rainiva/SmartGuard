@@ -126,6 +126,7 @@ internal sealed partial class SettingsLogPageHost
 
     _sessionCoordinator.SelectSession(session, CaptureSessionMainViewState());
     _logController.ScopeExpression = LogSessionProjector.BuildSessionExpression(session);
+    ScheduleStatisticsRefresh();
   }
 
   private void OnSessionComboDropDownOpened(object? sender, EventArgs e) => LoadSessionMetadataIfNeeded();
@@ -180,6 +181,7 @@ internal sealed partial class SettingsLogPageHost
     var activeSessionId = session.SessionId;
     var sessionScope = LogSessionProjector.BuildSessionExpression(session);
     _logController.ScopeExpression = sessionScope;
+    ScheduleStatisticsRefresh();
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载会话事件…");
 
     try
@@ -226,6 +228,7 @@ internal sealed partial class SettingsLogPageHost
       _logController.ScopeExpression = null;
     if (resetComboBox)
       SelectSessionPickerIndex(0);
+    ScheduleStatisticsRefresh();
 
     if (restored is null || _logController is null || _logSearchFilterBar is null)
       return;
