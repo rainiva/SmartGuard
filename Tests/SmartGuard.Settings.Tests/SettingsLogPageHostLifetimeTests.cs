@@ -360,6 +360,65 @@ public sealed class SettingsLogPageHostLifetimeTests
     }
 
     [Fact]
+    public void Dispose_during_correlation_query_cancels_without_late_apply()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+            var eventSource = new ControllableCorrelationEventSource();
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+                WpfStaTestHost.WaitUntil(
+                    () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
+                    TimeSpan.FromSeconds(5),
+                    "initial log view refresh to settle before replacing the controller with a controllable fake");
+                CollapseStatisticsInspector(window);
+
+                var host = GetLogPageHost(controller);
+                StopLogTimer(host);
+                var logController = new LogViewController(
+                    eventSource,
+                    Path.Combine(installRoot, "SmartGuard.log"));
+                SetPrivateField(host, "_logController", logController);
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+
+                InvokePrivate(host, "EnterCorrelationView", CreateCorrelationEvent("correlation:dispose-anchor", baseTime, "op-dispose"));
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightCount == 1,
+                    TimeSpan.FromSeconds(5),
+                    "blocked correlation query to start");
+
+                controller.Dispose();
+
+                WpfStaTestHost.WaitUntil(
+                    () => eventSource.FlightAt(0).WasCancelled,
+                    TimeSpan.FromSeconds(5),
+                    "Dispose to cancel the in-flight correlation query");
+
+                eventSource.ReleaseFlight(0, CreateCorrelationEvent("correlation:late-after-dispose", baseTime.AddMinutes(1), "op-dispose"));
+                WpfStaTestHost.PumpDispatcher(window);
+
+                controller.ApplyAfterDisposeCountForTests.Should().Be(0);
+                logController.EventWindowForTests.Events.Should().NotContain(logEvent => logEvent.EventId == "correlation:late-after-dispose");
+            }
+            finally
+            {
+                eventSource.ReleaseAll();
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void Selecting_session_while_correlation_query_is_in_flight_cancels_correlation_and_keeps_session_active()
     {
         WpfStaTestHost.Run(() =>
@@ -574,11 +633,17 @@ public sealed class SettingsLogPageHostLifetimeTests
                     () => logController.EventWindowForTests.Events.Any(logEvent => logEvent.EventId == "correlation:b-result"),
                     TimeSpan.FromSeconds(5),
                     "latest correlation B result to reach the active controller event window");
+                WpfStaTestHost.WaitUntil(
+                    () => GetLastDisplayedLines(host).Any(line => line.Contains("op-b", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(5),
+                    "latest correlation B result to render in displayed lines");
                 eventSource.ReleaseFlight(0, CreateCorrelationEvent("correlation:a-late", baseTime.AddMinutes(1), "op-a"));
                 WpfStaTestHost.PumpDispatcher(window);
 
                 logController.EventWindowForTests.Events.Should().Contain(logEvent => logEvent.EventId == "correlation:b-result");
                 logController.EventWindowForTests.Events.Should().NotContain(logEvent => logEvent.EventId == "correlation:a-late");
+                GetLastDisplayedLines(host).Should().Contain(line => line.Contains("op-b", StringComparison.Ordinal));
+                GetLastDisplayedLines(host).Should().NotContain(line => line.Contains("op-a", StringComparison.Ordinal));
                 logController.ScopeExpression.Should().NotBeNull();
                 LogQueryExpressionEvaluator.Matches(
                     CreateCorrelationEvent("correlation:b-inside", baseTime.AddMinutes(2), "op-b"),
@@ -718,6 +783,14 @@ public sealed class SettingsLogPageHostLifetimeTests
             "_logSearchFilterBar",
             BindingFlags.NonPublic | BindingFlags.Instance);
         return (LogSearchFilterBar)field!.GetValue(host)!;
+    }
+
+    private static IReadOnlyList<string> GetLastDisplayedLines(object host)
+    {
+        var field = host.GetType().GetField(
+            "_lastDisplayedLines",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return (IReadOnlyList<string>)field!.GetValue(host)!;
     }
 
     private static void CollapseStatisticsInspector(Window window)

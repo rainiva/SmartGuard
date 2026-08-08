@@ -203,6 +203,9 @@ internal sealed partial class SettingsLogPageHost
     _sessionQueryCancellation?.Cancel();
     _sessionQueryCancellation?.Dispose();
     _sessionQueryCancellation = null;
+    _correlationQueryCancellation?.Cancel();
+    _correlationQueryCancellation?.Dispose();
+    _correlationQueryCancellation = null;
     _statisticsCancellation?.Cancel();
     _statisticsCancellation?.Dispose();
     _statisticsCancellation = null;
