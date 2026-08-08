@@ -1,10 +1,15 @@
 using System.Windows;
 using System.Windows.Controls;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
 internal sealed partial class SettingsLogPageHost
 {
+  private SettingsLogPaginationCoordinator? _logPaginationCoordinator;
+
+  internal SettingsLogPaginationCoordinator? PaginationCoordinatorForTests => _logPaginationCoordinator;
+
   private void EnsureLogViewInitialized()
   {
     if (_disposed || _logViewInitialized || _logPath is null)
@@ -23,6 +28,12 @@ internal sealed partial class SettingsLogPageHost
       },
       () => ScheduleLogRefresh(LogViewRefreshKind.Newer));
     _logController = controls.Controller;
+    _logPaginationCoordinator ??= new SettingsLogPaginationCoordinator(
+      (intent, execute) => _refreshPipeline.SchedulePaged(intent, execute),
+      ExecutePagedQueryAsync,
+      () => _disposed);
+    _refreshPipeline.ConfigurePagedApply(_logPaginationCoordinator.ApplyModel);
+    _searchCoordinator.QueryGenerationChanged += OnLogQueryGenerationChanged;
     _logSearchFilterBar = controls.SearchFilterBar;
     _lstLogView = controls.ListView;
     _logListPresenter = controls.ListPresenter;
@@ -99,6 +110,107 @@ internal sealed partial class SettingsLogPageHost
     _refreshPipeline.NotifyFilterGenerationChanged();
     ScheduleLogRefresh(LogViewRefreshKind.Refilter, forceRedraw);
     ScheduleStatisticsRefresh();
+  }
+
+  private void OnLogQueryGenerationChanged(int _)
+    => _logPaginationCoordinator?.MarkSnapshotStale();
+
+  private async Task ExecutePagedQueryAsync(
+    LogPaginationIntent intent,
+    LogSourceSnapshot? snapshot,
+    LogQueryPageIndex? index,
+    IProgress<LogPaginationApplyModel> progress,
+    CancellationToken cancellationToken)
+  {
+    var eventSource = _logController?.EventSourceForCorrelation
+      ?? throw new InvalidOperationException("日志控制器尚未初始化。");
+    if (eventSource is not ILogSnapshotPhysicalLineSource snapshotSource)
+      throw new InvalidOperationException("分页日志源不支持固定 snapshot。");
+
+    var retryIntent = intent;
+    var retrySnapshot = snapshot;
+    var retryIndex = index;
+    LogSourceSnapshot? lastAttemptSnapshot = snapshot;
+    for (var attempt = 0; attempt < 2; attempt++)
+    {
+      try
+      {
+        var queryService = new LogQueryService();
+        var effectiveSnapshot = retryIntent.CaptureNewSnapshot || retrySnapshot is null
+          ? snapshotSource.CaptureSnapshot()
+          : retrySnapshot;
+        lastAttemptSnapshot = effectiveSnapshot;
+        var preview = await queryService.ReadPreviewPageAsync(
+          eventSource,
+          retryIntent.Expression,
+          retryIntent.Scope,
+          effectiveSnapshot,
+          retryIntent.PageSize,
+          retryIntent.IgnoreCase,
+          cancellationToken).ConfigureAwait(false);
+        progress.Report(new LogPaginationApplyModel(
+          retryIntent.QueryGeneration,
+          IsProvisional: true,
+          preview,
+          retryIntent.PageNumber,
+          retryIntent.PageSize,
+          ExactTotalCount: null,
+          IsScanComplete: false,
+          retryIntent.SortDirection,
+          effectiveSnapshot,
+          retryIndex,
+          ErrorMessage: null));
+
+        var effectiveIndex = retryIndex ?? await queryService.BuildPageIndexAsync(
+          eventSource,
+          retryIntent.Expression,
+          retryIntent.Scope,
+          effectiveSnapshot,
+          retryIntent.IgnoreCase,
+          progress: null,
+          cancellationToken).ConfigureAwait(false);
+        var page = await queryService.ReadPageAsync(
+          eventSource,
+          effectiveIndex,
+          new LogQueryPageRequest(retryIntent.PageNumber, retryIntent.PageSize, retryIntent.SortDirection),
+          cancellationToken).ConfigureAwait(false);
+        progress.Report(new LogPaginationApplyModel(
+          retryIntent.QueryGeneration,
+          IsProvisional: false,
+          page.Events,
+          page.PageNumber,
+          page.PageSize,
+          page.ExactTotalCount,
+          IsScanComplete: true,
+          page.SortDirection,
+          effectiveSnapshot,
+          effectiveIndex,
+          ErrorMessage: null));
+        return;
+      }
+      catch (LogSnapshotInvalidatedException) when (attempt == 0 && !cancellationToken.IsCancellationRequested)
+      {
+        retryIntent = intent with { CaptureNewSnapshot = true };
+        retrySnapshot = null;
+        retryIndex = null;
+      }
+      catch (LogSnapshotInvalidatedException ex) when (!cancellationToken.IsCancellationRequested)
+      {
+        progress.Report(new LogPaginationApplyModel(
+          intent.QueryGeneration,
+          IsProvisional: false,
+          Events: Array.Empty<LogEvent>(),
+          intent.PageNumber,
+          intent.PageSize,
+          ExactTotalCount: null,
+          IsScanComplete: false,
+          intent.SortDirection,
+          lastAttemptSnapshot ?? new LogSourceSnapshot(Array.Empty<LogSourceSnapshotEntry>(), "invalidated"),
+          Index: null,
+          ErrorMessage: ex.Message));
+        return;
+      }
+    }
   }
 
   private void ScheduleLogRefresh(

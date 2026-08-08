@@ -26,6 +26,8 @@ internal sealed class SettingsLogRefreshPipeline
   private int _olderInFlight;
   private CancellationTokenSource? _refreshCancellation;
   private Task? _activeRefreshTask;
+  private PagedFlight? _pendingPagedFlight;
+  private Action<LogPaginationApplyModel>? _applyPagedModel;
   private int _activeRefreshCount;
   private int _applyAfterDisposeCount;
   private volatile string _flightStage = "idle";
@@ -96,6 +98,7 @@ internal sealed class SettingsLogRefreshPipeline
       _refreshCancellation?.Cancel();
     _refreshInFlight = false;
     _pendingRefresh = false;
+    _pendingPagedFlight = null;
     _pendingForceRefresh = false;
     _pendingForceRedraw = false;
     _setTopLoadingIndicator?.Invoke(false);
@@ -114,6 +117,7 @@ internal sealed class SettingsLogRefreshPipeline
     if (_refreshInFlight)
     {
       _pendingRefresh = true;
+      _pendingPagedFlight = null;
       _pendingKind = MergeKind(_pendingKind, kind);
       _pendingForceRefresh |= forceRefresh;
       _pendingForceRedraw |= forceRedraw;
@@ -121,6 +125,33 @@ internal sealed class SettingsLogRefreshPipeline
     }
 
     StartRefreshFlight(kind, forceRedraw, forceRefresh);
+  }
+
+  internal void ConfigurePagedApply(Action<LogPaginationApplyModel> applyPagedModel)
+    => _applyPagedModel = applyPagedModel ?? throw new ArgumentNullException(nameof(applyPagedModel));
+
+  internal void SchedulePaged(
+    LogPaginationIntent intent,
+    Func<LogPaginationIntent, IProgress<LogPaginationApplyModel>, CancellationToken, Task> execute)
+  {
+    ArgumentNullException.ThrowIfNull(intent);
+    ArgumentNullException.ThrowIfNull(execute);
+
+    if (_isDisposed() || _getRefreshableController() is null)
+      return;
+
+    Interlocked.Increment(ref _refreshGeneration);
+    var flight = new PagedFlight(intent, execute);
+    if (_refreshInFlight)
+    {
+      _pendingPagedFlight = flight;
+      _pendingRefresh = false;
+      _pendingForceRefresh = false;
+      _pendingForceRedraw = false;
+      return;
+    }
+
+    StartPagedFlight(flight);
   }
 
   private static LogViewRefreshKind MergeKind(LogViewRefreshKind current, LogViewRefreshKind incoming)
@@ -212,6 +243,127 @@ internal sealed class SettingsLogRefreshPipeline
       generation,
       forceRedraw,
       kind);
+  }
+
+  private void StartPagedFlight(PagedFlight flight)
+  {
+    if (_isDisposed() || _getRefreshableController() is null)
+      return;
+
+    _refreshInFlight = true;
+    var generation = Volatile.Read(ref _refreshGeneration);
+    var refreshCancellation = new CancellationTokenSource();
+    var cancellationToken = refreshCancellation.Token;
+    lock (_refreshLifetimeLock)
+      _refreshCancellation = refreshCancellation;
+
+    Interlocked.Increment(ref _activeRefreshCount);
+    Interlocked.Increment(ref _globalRunningFlightCount);
+    Interlocked.Increment(ref _globalStartedFlightCount);
+    MarkStage("paged-queued");
+
+    var pagedTask = Task.Run(
+      async () =>
+      {
+        MarkStage("paged-reading");
+        cancellationToken.ThrowIfCancellationRequested();
+        var progress = new Progress<LogPaginationApplyModel>(
+          model => QueuePagedApply(model, generation));
+        await flight.Execute(flight.Intent, progress, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+      },
+      cancellationToken);
+
+    lock (_refreshLifetimeLock)
+      _activeRefreshTask = pagedTask;
+
+    _ = ObservePagedCompletionAsync(
+      pagedTask,
+      refreshCancellation,
+      cancellationToken,
+      generation);
+  }
+
+  private void QueuePagedApply(LogPaginationApplyModel model, int generation)
+  {
+    if (_window.Dispatcher.HasShutdownStarted)
+      return;
+
+    _ = _window.Dispatcher.BeginInvoke(
+      () =>
+      {
+        if (_isDisposed()
+            || !_isLogPageActive()
+            || generation != Volatile.Read(ref _refreshGeneration))
+          return;
+
+        _applyPagedModel?.Invoke(model);
+      },
+      DispatcherPriority.Send);
+  }
+
+  private async Task ObservePagedCompletionAsync(
+    Task pagedTask,
+    CancellationTokenSource refreshCancellation,
+    CancellationToken cancellationToken,
+    int generation)
+  {
+    Exception? failure = null;
+    var canceled = false;
+
+    try
+    {
+      await pagedTask.ConfigureAwait(false);
+      MarkStage("paged-awaited");
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      canceled = true;
+    }
+    catch (Exception ex)
+    {
+      failure = ex;
+    }
+    finally
+    {
+      lock (_refreshLifetimeLock)
+      {
+        if (ReferenceEquals(_activeRefreshTask, pagedTask))
+          _activeRefreshTask = null;
+        if (ReferenceEquals(_refreshCancellation, refreshCancellation))
+          _refreshCancellation = null;
+      }
+
+      Interlocked.Decrement(ref _activeRefreshCount);
+      Interlocked.Decrement(ref _globalRunningFlightCount);
+    }
+
+    if (_window.Dispatcher.HasShutdownStarted)
+    {
+      try { refreshCancellation.Dispose(); } catch (ObjectDisposedException) { }
+      FinishRefreshFlight(generation);
+      return;
+    }
+
+    try
+    {
+      await _window.Dispatcher.InvokeAsync(
+        () =>
+        {
+          try { refreshCancellation.Dispose(); } catch (ObjectDisposedException) { }
+
+          if (!canceled && !_isDisposed() && failure is not null && generation == Volatile.Read(ref _refreshGeneration))
+            _showFailure(failure);
+
+          FinishRefreshFlight(generation);
+        },
+        DispatcherPriority.Send);
+    }
+    catch (TaskCanceledException)
+    {
+      try { refreshCancellation.Dispose(); } catch (ObjectDisposedException) { }
+      FinishRefreshFlight(generation);
+    }
   }
 
   private async Task ObserveRefreshCompletionAsync(
@@ -335,6 +487,17 @@ internal sealed class SettingsLogRefreshPipeline
     if (_isDisposed())
       return;
 
+    if (_pendingPagedFlight is { } pendingPagedFlight)
+    {
+      _pendingPagedFlight = null;
+      _pendingRefresh = false;
+      _pendingKind = LogViewRefreshKind.Newer;
+      _pendingForceRefresh = false;
+      _pendingForceRedraw = false;
+      StartPagedFlight(pendingPagedFlight);
+      return;
+    }
+
     if (_pendingRefresh || Volatile.Read(ref _refreshGeneration) != generation)
     {
       var nextKind = _pendingKind;
@@ -349,4 +512,8 @@ internal sealed class SettingsLogRefreshPipeline
   }
 
   private sealed record RefreshFlightResult(LogViewRefreshResult Result, int FilterGeneration);
+
+  private sealed record PagedFlight(
+    LogPaginationIntent Intent,
+    Func<LogPaginationIntent, IProgress<LogPaginationApplyModel>, CancellationToken, Task> Execute);
 }

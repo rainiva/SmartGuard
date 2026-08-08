@@ -22,6 +22,8 @@ internal sealed class SettingsLogSearchCoordinator
 
   internal int QueryGeneration => _queryGeneration;
 
+  internal event Action<int>? QueryGenerationChanged;
+
   internal System.Windows.Threading.DispatcherTimer? SearchDebounceTimerForTests => _searchDebounceTimer;
 
   internal System.Windows.Threading.DispatcherTimer? CustomRangeDebounceTimerForTests => _customRangeDebounceTimer;
@@ -36,6 +38,7 @@ internal sealed class SettingsLogSearchCoordinator
   {
     _queryGeneration = unchecked(_queryGeneration + 1);
     MatchNavigator.NotifyQueryGenerationChanged(_queryGeneration);
+    QueryGenerationChanged?.Invoke(_queryGeneration);
     return _queryGeneration;
   }
 

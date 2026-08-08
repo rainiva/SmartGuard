@@ -179,6 +179,7 @@ internal sealed partial class SettingsLogPageHost
     var cancellationToken = _sessionQueryCancellation.Token;
     var generation = ++_sessionQueryGeneration;
     _sessionCoordinator.SelectSession(session, CaptureSessionMainViewState());
+    _logPaginationCoordinator?.MarkSnapshotStale();
     var activeSessionId = session.SessionId;
     var sessionScope = LogSessionProjector.BuildSessionExpression(session);
     _logController.ScopeExpression = sessionScope;
@@ -231,6 +232,7 @@ internal sealed partial class SettingsLogPageHost
     ++_sessionQueryGeneration;
 
     var restored = _sessionCoordinator.ExitSessionView();
+    _logPaginationCoordinator?.MarkSnapshotStale();
     if (_logController is not null)
       _logController.ScopeExpression = null;
     if (resetComboBox)

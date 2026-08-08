@@ -167,6 +167,8 @@ public sealed class LogSessionPickerWpfTests
         var host = (SettingsLogPageHost)GetLogPageHost(controller);
         var searchBar = GetPrivateField<LogSearchFilterBar>(host, "_logSearchFilterBar");
         var logController = GetPrivateField<LogViewController>(host, "_logController");
+        var paginationCoordinator = host.PaginationCoordinatorForTests
+          ?? throw new InvalidOperationException("The log page must create its pagination coordinator.");
 
         InvokePrivate(host, "OnSessionComboDropDownOpened", combo, EventArgs.Empty);
         WpfStaTestHost.WaitUntil(
@@ -184,6 +186,8 @@ public sealed class LogSessionPickerWpfTests
           () => host.SessionCoordinatorForTests.ActiveSession?.SessionId == activeItem.Session.SessionId,
           TimeSpan.FromSeconds(10),
           "session selection to become active");
+        paginationCoordinator.State.IsStale.Should().BeTrue(
+          "entering a session must invalidate the current main-log snapshot");
 
         searchBar.SetKeyword("inside-session");
         var end = new DateTimeOffset(2026, 8, 2, 10, 2, 0, activeItem.Session.StartTimestamp.Offset);
