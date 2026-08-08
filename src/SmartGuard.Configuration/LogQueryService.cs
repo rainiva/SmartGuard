@@ -388,7 +388,11 @@ public sealed class LogQueryService
     LogQueryEvaluationContext evaluationContext)
   {
     evaluationContext.ResetTimeout();
-    return LogQueryExpressionEvaluator.Matches(logEvent, expression, evaluationContext);
+    var matched = LogQueryExpressionEvaluator.Matches(logEvent, expression, evaluationContext);
+    if (evaluationContext.RegexTimedOut)
+      throw new InvalidOperationException("Regex evaluation timed out after 100ms.");
+
+    return matched;
   }
 
   private static void ReportProgress(

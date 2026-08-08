@@ -344,6 +344,40 @@ public sealed class LogQueryPageIndexTests
     result.ScannedCount.Should().Be(6);
   }
 
+  [Fact]
+  public async Task Snapshot_page_operations_abort_on_regex_timeout()
+  {
+    var source = TestSource("regex-timeout");
+    var line = LegacyLine(source, 0, new string('a', 30));
+    var eventSource = new SnapshotLineSource([line]);
+    var expression = LogQueryParser.Parse("message~(a+)+b").Expression!;
+    var scope = new LogReadScope([source]);
+    var snapshot = CreateSnapshot(source);
+    var service = new LogQueryService();
+
+    Func<Task> preview = () => service.ReadPreviewPageAsync(
+      eventSource,
+      expression,
+      scope,
+      snapshot,
+      pageSize: 1,
+      ignoreCase: true,
+      CancellationToken.None);
+    Func<Task> index = () => service.BuildPageIndexAsync(
+      eventSource,
+      expression,
+      scope,
+      snapshot,
+      ignoreCase: true,
+      progress: null,
+      CancellationToken.None);
+
+    (await preview.Should().ThrowAsync<InvalidOperationException>())
+      .Which.Message.Should().Contain("Regex evaluation timed out");
+    (await index.Should().ThrowAsync<InvalidOperationException>())
+      .Which.Message.Should().Contain("Regex evaluation timed out");
+  }
+
   private static LogSourceIdentity TestSource(string suffix)
     => LogSourceIdentity.FromContentPrefix(
       new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
