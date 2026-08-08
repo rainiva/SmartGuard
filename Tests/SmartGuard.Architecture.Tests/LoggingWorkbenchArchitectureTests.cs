@@ -61,6 +61,20 @@ public class LoggingWorkbenchArchitectureTests
   }
 
   [Fact]
+  public void Numbered_log_paging_keeps_existing_reader_and_query_owners()
+  {
+    ContractContent.Should().Contain("LOG-WB-PAGER");
+    ContractContent.Should().Contain("ILogSnapshotPhysicalLineSource");
+    ContractContent.Should().Contain("LogQueryPageIndex");
+    ContractContent.Should().Contain("LogQueryService");
+
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogQueryPageIndex.cs")
+      .Should().NotContain("IReadOnlyList<LogEvent>");
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogQueryService.cs")
+      .Should().NotContain("new FileStream");
+  }
+
+  [Fact]
   public void Log_config_and_diagnostic_export_keep_existing_owners()
   {
     ContractContent.Should().Contain("## 23.");

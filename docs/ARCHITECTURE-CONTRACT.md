@@ -509,3 +509,9 @@
 | LOG-WB-P2-INTERACTION | 已关闭 | `LogWorkbenchCommands` 是快捷键 RoutedCommand 真源；`SettingsLogPageHostWiring` 统一接入搜索、匹配、导出、视口和临时层；`LogViewportController` 仍是唯一滚动 mutation owner |
 | LOG-WB-P2-A11Y | 已关闭 | 日志查询、列表、状态和每条日志行提供 Automation Name/HelpText；状态使用 `AutomationProperties.LiveSetting=Polite`，所有状态更新经 `LogStatusLiveRegion.Set` 写入文本并显式触发 `LiveRegionChanged`；2026-08-07 原生 UIA 通过 200% DPI 状态边界、无匹配/有效匹配、Ctrl+F/F3 焦点、滚动边界和跟随最新切换，独立 UIA 客户端收到 `LiveRegionChanged`；实际系统矩阵在 `HighContrast=True`、`ClientAreaAnimation=False` 下通过同一交互并完成截图检查，退出后恢复原设置；Narrator 人工听觉、100% DPI 和 Computer Use 完整视觉闭环按当前交付范围延期且不阻断，Computer Use `EnumWindows 0x80070003` 记录为外部验收工具回归而非产品失败 |
 | DOC-LOG-WB-P2 | 已关闭 | 自动化门禁全绿（Pester 118/118、.NET 1369/1369、Tray 2/2、Installer 9/9；高 DPI 修复提交 `02ab477`、LiveRegionChanged 修复提交 `031e74c`）；200% DPI、高对比度、减少动画和原生 UIA 验收通过；未执行的 Narrator 人工听觉、100% DPI、Computer Use 完整视觉、P0 两分钟滚轮/Thumb 观察和 P1 手工解包均保留真实记录并按当前交付范围延期、非阻断 |
+
+## 26. 日志中心真分页（2026-08-08）
+
+| ID | 状态 | 真源/入口 |
+|----|------|-----------|
+| LOG-WB-PAGER | 实施中 | `LogTailReader` 通过 `ILogSnapshotPhysicalLineSource` 实现 snapshot-aware physical scan；`LogQueryService` 构建稀疏 `LogQueryPageIndex` 并读取精确页；Settings 只持有当前页，不建立第二 reader/query engine |
