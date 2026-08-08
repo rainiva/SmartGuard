@@ -255,6 +255,7 @@ public sealed class LogSessionPickerWpfTests
           () => host.IsLogViewInitializedForTests,
           TimeSpan.FromSeconds(10),
           "the log host to initialize before invoking the paged executor");
+        host.SetLogPageActive(false);
 
         var source = new InvalidationSnapshotSource();
         SetPrivateField(
