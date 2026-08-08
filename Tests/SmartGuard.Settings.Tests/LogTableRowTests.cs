@@ -97,7 +97,32 @@ public sealed class LogTableRowTests
     row.SourceEvent.Should().BeSameAs(source);
     row.IsExceptionRoot.Should().BeTrue();
     row.ExceptionGroupRootEventId.Should().Be(source.EventId);
-    row.ExportText.Should().Contain("exception root");
+    row.ExportText.Should().Contain("System.InvalidOperationException");
+    row.ExportText.Should().Contain("bad state");
+  }
+
+  [Fact]
+  public void Structured_exception_export_includes_nested_exception_and_stack_lines()
+  {
+    var source = CreateEvent(
+      severity: LogSeverity.Error,
+      message: "write failed",
+      exception: new LogExceptionInfo(
+        "System.InvalidOperationException",
+        "write failed",
+        " at Outer()",
+        new LogExceptionInfo(
+          "System.IO.IOException",
+          "disk full",
+          " at Inner()",
+          null)));
+
+    var exportText = LogTableRow.FromEvent(source).ExportText;
+
+    exportText.Should().Contain("System.InvalidOperationException");
+    exportText.Should().Contain(" at Outer()");
+    exportText.Should().Contain("System.IO.IOException");
+    exportText.Should().Contain(" at Inner()");
   }
 
   [Fact]

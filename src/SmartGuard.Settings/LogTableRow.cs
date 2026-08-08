@@ -65,7 +65,7 @@ public sealed class LogTableRow
       sourceEvent.Component,
       BuildEventText(sourceEvent),
       ResolveStatus(sourceEvent),
-      LogViewEventFilter.GetDisplayLine(sourceEvent));
+      BuildExportText(sourceEvent));
   }
 
   private static string BuildEventText(LogEvent sourceEvent)
@@ -85,6 +85,11 @@ public sealed class LogTableRow
     _ = sourceEvent;
     return UnknownStatusText;
   }
+
+  private static string BuildExportText(LogEvent sourceEvent)
+    => sourceEvent.Exception is null
+      ? LogViewEventFilter.GetDisplayLine(sourceEvent)
+      : string.Join(Environment.NewLine, sourceEvent.Exception.FormatExpandedLines());
 
   private static string LevelTextFor(LogSeverity severity)
     => severity switch
