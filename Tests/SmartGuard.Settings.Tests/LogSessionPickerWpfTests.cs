@@ -225,6 +225,74 @@ public sealed class LogSessionPickerWpfTests
   }
 
   [Fact]
+  public void Paged_query_retries_snapshot_invalidation_once_then_surfaces_error()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var installRoot = CreateInstallRoot();
+      SettingsWindowController? controller = null;
+
+      try
+      {
+        WriteLog(installRoot);
+        controller = CreateController(installRoot);
+        WpfStaTestHost.Track(controller);
+        var window = GetWindow(controller);
+        WpfStaTestHost.ShowAndWait(window);
+        controller.NavigateTo("logs");
+
+        var host = (SettingsLogPageHost)GetLogPageHost(controller);
+        WpfStaTestHost.WaitUntil(
+          () => host.IsLogViewInitializedForTests,
+          TimeSpan.FromSeconds(10),
+          "the log host to initialize before invoking the paged executor");
+
+        var source = new InvalidationSnapshotSource();
+        SetPrivateField(
+          host,
+          "_logController",
+          new LogViewController(source, Path.Combine(installRoot, "SmartGuard.log")));
+
+        var expression = LogQueryParser.Parse("message~event").Expression!;
+        var intent = new LogPaginationIntent(
+          QueryGeneration: 7,
+          expression,
+          new LogReadScope(Array.Empty<LogSourceIdentity>()),
+          PageNumber: 1,
+          PageSize: 20,
+          LogSortDirection.NewestFirst,
+          IgnoreCase: true,
+          CaptureNewSnapshot: true);
+        var models = new List<LogPaginationApplyModel>();
+        var progress = new InlineProgress<LogPaginationApplyModel>(models.Add);
+        var execute = typeof(SettingsLogPageHost).GetMethod(
+          "ExecutePagedQueryAsync",
+          BindingFlags.NonPublic | BindingFlags.Instance);
+        execute.Should().NotBeNull();
+
+        ((Task)execute!.Invoke(
+          host,
+          [intent, null, null, progress, CancellationToken.None])!).GetAwaiter().GetResult();
+
+        source.CaptureSnapshotCalls.Should().Be(2,
+          "the executor may capture a new snapshot only for the initial attempt and one retry");
+        source.SnapshotEnumerationCalls.Should().Be(2,
+          "the second invalidation must be surfaced rather than retried indefinitely");
+        models.Should().ContainSingle();
+        models[0].QueryGeneration.Should().Be(intent.QueryGeneration);
+        models[0].IsProvisional.Should().BeFalse();
+        models[0].ExactTotalCount.Should().BeNull();
+        models[0].ErrorMessage.Should().NotBeNullOrWhiteSpace();
+      }
+      finally
+      {
+        controller?.Dispose();
+        TryDelete(installRoot);
+      }
+    });
+  }
+
+  [Fact]
   public void Statistics_inspector_defers_until_expanded_and_filter_refresh_applies_latest_generation()
   {
     WpfStaTestHost.Run(() =>
@@ -581,6 +649,88 @@ public sealed class LogSessionPickerWpfTests
       BindingFlags.NonPublic | BindingFlags.Instance);
     method.Should().NotBeNull();
     method!.Invoke(instance, args);
+  }
+
+  private sealed class InlineProgress<T>(Action<T> handler) : IProgress<T>
+  {
+    public void Report(T value) => handler(value);
+  }
+
+  private sealed class InvalidationSnapshotSource : ILogEventSource, ILogSnapshotPhysicalLineSource
+  {
+    private readonly LogSourceIdentity _source = LogSourceIdentity.FromContentPrefix(
+      new DateTimeOffset(2026, 8, 2, 0, 0, 0, TimeSpan.Zero),
+      "task6-retry-source");
+    private readonly LogPhysicalLine _line;
+
+    internal InvalidationSnapshotSource()
+    {
+      _line = new LogPhysicalLine(
+        _source,
+        ByteOffset: 0,
+        "[INFO] 2026-08-02 10:00:00 [Engine] retry event",
+        IsComplete: true);
+    }
+
+    internal int CaptureSnapshotCalls { get; private set; }
+
+    internal int SnapshotEnumerationCalls { get; private set; }
+
+    public Task<LogEventPage> ReadLatestAsync(
+      LogReadRequest request,
+      CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public Task<LogEventPage> ReadOlderAsync(
+      LogReadRequest request,
+      CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public Task<LogEventPage> ReadNewerAsync(
+      LogReadRequest request,
+      CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public IAsyncEnumerable<LogEvent> StreamAsync(
+      LogReadScope scope,
+      CancellationToken cancellationToken)
+      => throw new InvalidOperationException("The unbounded event stream must not be used.");
+
+    public IEnumerable<LogPhysicalLine> EnumeratePhysicalLines(
+      LogReadScope scope,
+      CancellationToken cancellationToken)
+      => throw new InvalidOperationException("The unbounded physical-line stream must not be used.");
+
+    public IAsyncEnumerable<LogPhysicalLine> StreamPhysicalLinesAsync(
+      LogReadScope scope,
+      CancellationToken cancellationToken)
+      => throw new InvalidOperationException("The unbounded physical-line stream must not be used.");
+
+    public LogSourceSnapshot CaptureSnapshot()
+    {
+      CaptureSnapshotCalls++;
+      return new LogSourceSnapshot(
+        [new LogSourceSnapshotEntry(
+          _source,
+          LogSourceKind.Current,
+          CapturedLength: 256,
+          BoundaryFingerprint: "task6-retry-boundary")],
+        Fingerprint: "task6-retry-snapshot");
+    }
+
+    public IEnumerable<LogPhysicalLine> EnumeratePhysicalLines(
+      LogReadScope scope,
+      LogSourceSnapshot snapshot,
+      LogReadDirection direction,
+      LogReadCursor? cursor,
+      CancellationToken cancellationToken)
+    {
+      SnapshotEnumerationCalls++;
+      if (SnapshotEnumerationCalls <= 2)
+        throw new LogSnapshotInvalidatedException("task6 test snapshot invalidated");
+
+      return [_line];
+    }
   }
 
   private static void TryDelete(string path)

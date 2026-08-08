@@ -10,7 +10,7 @@ internal sealed class SettingsLogSearchCoordinator
   private readonly Action _refreshLogView;
   private System.Windows.Threading.DispatcherTimer? _searchDebounceTimer;
   private System.Windows.Threading.DispatcherTimer? _customRangeDebounceTimer;
-  private int _queryGeneration;
+  private int _matchGeneration;
 
   internal SettingsLogSearchCoordinator(Window window, Action refreshLogView)
   {
@@ -20,9 +20,9 @@ internal sealed class SettingsLogSearchCoordinator
 
   internal LogMatchNavigator MatchNavigator { get; } = new();
 
-  internal int QueryGeneration => _queryGeneration;
+  internal int MatchGeneration => _matchGeneration;
 
-  internal event Action<int>? QueryGenerationChanged;
+  internal event Action<int>? MatchGenerationChanged;
 
   internal System.Windows.Threading.DispatcherTimer? SearchDebounceTimerForTests => _searchDebounceTimer;
 
@@ -34,17 +34,17 @@ internal sealed class SettingsLogSearchCoordinator
     _customRangeDebounceTimer?.Stop();
   }
 
-  internal int NotifyQueryGenerationChanged()
+  internal int NotifyMatchGenerationChanged()
   {
-    _queryGeneration = unchecked(_queryGeneration + 1);
-    MatchNavigator.NotifyQueryGenerationChanged(_queryGeneration);
-    QueryGenerationChanged?.Invoke(_queryGeneration);
-    return _queryGeneration;
+    _matchGeneration = unchecked(_matchGeneration + 1);
+    MatchNavigator.NotifyQueryGenerationChanged(_matchGeneration);
+    MatchGenerationChanged?.Invoke(_matchGeneration);
+    return _matchGeneration;
   }
 
   internal void QueueSearchRefresh()
   {
-    NotifyQueryGenerationChanged();
+    NotifyMatchGenerationChanged();
     QueueDebouncedRefresh(ref _searchDebounceTimer);
   }
 
@@ -57,7 +57,7 @@ internal sealed class SettingsLogSearchCoordinator
     Action<LogQueryCursor>? loadPage)
   {
     var visibleIds = presenter?.Items.Select(item => item.EventId) ?? Array.Empty<string>();
-    MatchNavigator.SetMatches(_queryGeneration, MatchNavigator.CurrentMatches, scanComplete: true, visibleIds);
+    MatchNavigator.SetMatches(_matchGeneration, MatchNavigator.CurrentMatches, scanComplete: true, visibleIds);
 
     var reverse = direction == LogMatchNavigationDirection.Backward;
     var result = MatchNavigator.NavigateNext(reverse);
@@ -75,7 +75,7 @@ internal sealed class SettingsLogSearchCoordinator
   }
 
   internal void UpdateMatchCatalog(IReadOnlyList<LogMatch> matches, bool scanComplete, IEnumerable<string> visibleEventIds)
-    => MatchNavigator.SetMatches(_queryGeneration, matches, scanComplete, visibleEventIds);
+    => MatchNavigator.SetMatches(_matchGeneration, matches, scanComplete, visibleEventIds);
 
   internal static void SyncCustomRangePanelVisibility(UIElement? panel, ComboBox? comboBox)
   {

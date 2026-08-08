@@ -180,6 +180,19 @@ public class SettingsLogPaginationCoordinatorTests
       .NotContain(field => field.FieldType == typeof(CancellationTokenSource));
   }
 
+  [Fact]
+  public void Pagination_coordinator_does_not_own_the_flight_generation()
+  {
+    typeof(SettingsLogPaginationCoordinator)
+      .GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+      .Should()
+      .NotContain(field => field.Name.Contains("Generation", StringComparison.Ordinal));
+    typeof(SettingsLogPaginationCoordinator)
+      .GetProperty("QueryGeneration")
+      .Should()
+      .BeNull();
+  }
+
   private static LogPaginationApplyModel Model(
     bool isProvisional,
     int page,
@@ -208,24 +221,38 @@ public class SettingsLogPaginationCoordinatorTests
     internal readonly LogQueryPageIndex Index;
     internal readonly SettingsLogPaginationCoordinator Coordinator;
     internal readonly List<ScheduledFlight> Flights = [];
+    private int _generation;
     private IReadOnlyList<LogPaginationApplyModel> _nextModels = Array.Empty<LogPaginationApplyModel>();
 
     internal Harness()
     {
       Index = new LogQueryPageIndex(Snapshot, Scope, Expression, true, 95, 95, Array.Empty<LogQueryAnchor>());
       Coordinator = new SettingsLogPaginationCoordinator(
-        (intent, execute) => Flights.Add(new ScheduledFlight(intent, execute)),
+        Schedule,
         ExecuteAsync,
         () => false);
+    }
+
+    private void Schedule(
+      LogPaginationIntent intent,
+      Func<LogPaginationIntent, IProgress<LogPaginationApplyModel>, CancellationToken, Task> execute)
+    {
+      var scheduledIntent = intent with { QueryGeneration = ++_generation };
+      Flights.Add(new ScheduledFlight(scheduledIntent, execute));
     }
 
     internal async Task CompleteAsync(int flightIndex, params LogPaginationApplyModel[] models)
     {
       _nextModels = models;
       var flight = Flights[flightIndex];
+      var progress = new InlineProgress<LogPaginationApplyModel>(model =>
+      {
+        if (flight.Intent.QueryGeneration == _generation)
+          Coordinator.ApplyModel(model);
+      });
       await flight.Execute(
         flight.Intent,
-        new InlineProgress<LogPaginationApplyModel>(Coordinator.ApplyModel),
+        progress,
         CancellationToken.None);
       _nextModels = Array.Empty<LogPaginationApplyModel>();
     }

@@ -140,8 +140,8 @@ internal sealed class SettingsLogRefreshPipeline
     if (_isDisposed() || _getRefreshableController() is null)
       return;
 
-    Interlocked.Increment(ref _refreshGeneration);
-    var flight = new PagedFlight(intent, execute);
+    var generation = Interlocked.Increment(ref _refreshGeneration);
+    var flight = new PagedFlight(intent with { QueryGeneration = generation }, execute);
     if (_refreshInFlight)
     {
       _pendingPagedFlight = flight;

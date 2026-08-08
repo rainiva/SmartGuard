@@ -25,7 +25,6 @@ internal sealed class SettingsLogPaginationCoordinator : IDisposable
   private bool _ignoreCase;
   private LogSortDirection _sortDirection = LogSortDirection.NewestFirst;
   private string? _lastError;
-  private int _queryGeneration;
   private bool _disposed;
 
   internal SettingsLogPaginationCoordinator(
@@ -55,8 +54,6 @@ internal sealed class SettingsLogPaginationCoordinator : IDisposable
   internal IReadOnlyList<LogEvent> CurrentEvents => _currentEvents;
 
   internal string? LastError => _lastError;
-
-  internal int QueryGeneration => _queryGeneration;
 
   internal Task RefreshAsync(LogQueryExpression expression, LogReadScope scope, bool ignoreCase)
   {
@@ -115,7 +112,9 @@ internal sealed class SettingsLogPaginationCoordinator : IDisposable
 
   internal void ApplyModel(LogPaginationApplyModel model)
   {
-    if (_disposed || _isDisposed() || model.QueryGeneration != _queryGeneration)
+    // SettingsLogRefreshPipeline has already discarded stale generations before
+    // dispatching this callback; it is the only flight-generation owner.
+    if (_disposed || _isDisposed())
       return;
 
     if (model.ErrorMessage is not null)
@@ -158,9 +157,8 @@ internal sealed class SettingsLogPaginationCoordinator : IDisposable
   private Task ScheduleAsync(bool captureNewSnapshot)
   {
     EnsureQueryConfigured();
-    var generation = unchecked(++_queryGeneration);
     var intent = new LogPaginationIntent(
-      generation,
+      QueryGeneration: 0,
       _expression!,
       _scope!,
       _state.CurrentPage,

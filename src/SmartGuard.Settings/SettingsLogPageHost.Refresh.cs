@@ -33,7 +33,7 @@ internal sealed partial class SettingsLogPageHost
       ExecutePagedQueryAsync,
       () => _disposed);
     _refreshPipeline.ConfigurePagedApply(_logPaginationCoordinator.ApplyModel);
-    _searchCoordinator.QueryGenerationChanged += OnLogQueryGenerationChanged;
+    _searchCoordinator.MatchGenerationChanged += OnLogMatchGenerationChanged;
     _logSearchFilterBar = controls.SearchFilterBar;
     _lstLogView = controls.ListView;
     _logListPresenter = controls.ListPresenter;
@@ -112,7 +112,7 @@ internal sealed partial class SettingsLogPageHost
     ScheduleStatisticsRefresh();
   }
 
-  private void OnLogQueryGenerationChanged(int _)
+  private void OnLogMatchGenerationChanged(int _)
     => _logPaginationCoordinator?.MarkSnapshotStale();
 
   private async Task ExecutePagedQueryAsync(
