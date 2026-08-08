@@ -34,6 +34,18 @@ public class LogPagerTokenBuilderTests
       .Which.Should().Be(new LogPageNumberToken(1, true));
   }
 
+  [Theory]
+  [InlineData(0, 63, 1)]
+  [InlineData(99, 63, 63)]
+  public void Build_clamps_current_page_to_known_bounds(int currentPage, int totalPages, int expectedCurrentPage)
+  {
+    var tokens = LogPagerTokenBuilder.Build(currentPage, totalPages);
+
+    tokens.OfType<LogPageNumberToken>()
+      .Single(token => token.IsCurrent)
+      .PageNumber.Should().Be(expectedCurrentPage);
+  }
+
   private static string Render(IReadOnlyList<LogPagerToken> tokens)
     => string.Join(
       " ",

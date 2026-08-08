@@ -6,6 +6,9 @@ internal sealed record LogPaginationState
 
   private readonly int _lastSuccessfulPage;
   private readonly int _lastSuccessfulTotalPages;
+  private readonly int _lastSuccessfulPageSize;
+  private readonly int? _lastSuccessfulExactTotalCount;
+  private readonly bool _lastSuccessfulIsScanComplete;
   private readonly int? _requestedPage;
 
   private LogPaginationState(
@@ -18,6 +21,9 @@ internal sealed record LogPaginationState
     bool isScanComplete,
     int lastSuccessfulPage,
     int lastSuccessfulTotalPages,
+    int lastSuccessfulPageSize,
+    int? lastSuccessfulExactTotalCount,
+    bool lastSuccessfulIsScanComplete,
     int? requestedPage)
   {
     CurrentPage = currentPage;
@@ -29,6 +35,9 @@ internal sealed record LogPaginationState
     IsScanComplete = isScanComplete;
     _lastSuccessfulPage = lastSuccessfulPage;
     _lastSuccessfulTotalPages = lastSuccessfulTotalPages;
+    _lastSuccessfulPageSize = lastSuccessfulPageSize;
+    _lastSuccessfulExactTotalCount = lastSuccessfulExactTotalCount;
+    _lastSuccessfulIsScanComplete = lastSuccessfulIsScanComplete;
     _requestedPage = requestedPage;
   }
 
@@ -42,6 +51,9 @@ internal sealed record LogPaginationState
     isScanComplete: false,
     lastSuccessfulPage: 1,
     lastSuccessfulTotalPages: 1,
+    lastSuccessfulPageSize: 20,
+    lastSuccessfulExactTotalCount: null,
+    lastSuccessfulIsScanComplete: false,
     requestedPage: null);
 
   internal int CurrentPage { get; }
@@ -87,6 +99,9 @@ internal sealed record LogPaginationState
       isScanComplete,
       lastSuccessfulPage: currentPage,
       lastSuccessfulTotalPages: totalPages,
+      lastSuccessfulPageSize: PageSize,
+      lastSuccessfulExactTotalCount: normalizedCount,
+      lastSuccessfulIsScanComplete: isScanComplete,
       requestedPage: null);
   }
 
@@ -106,8 +121,11 @@ internal sealed record LogPaginationState
       isBusy: false,
       isStale: IsStale,
       isScanComplete: IsScanComplete,
-      lastSuccessfulPage: 1,
-      lastSuccessfulTotalPages: totalPages,
+      lastSuccessfulPage: _lastSuccessfulPage,
+      lastSuccessfulTotalPages: _lastSuccessfulTotalPages,
+      lastSuccessfulPageSize: _lastSuccessfulPageSize,
+      lastSuccessfulExactTotalCount: _lastSuccessfulExactTotalCount,
+      lastSuccessfulIsScanComplete: _lastSuccessfulIsScanComplete,
       requestedPage: null);
   }
 
@@ -132,6 +150,9 @@ internal sealed record LogPaginationState
       isScanComplete: IsScanComplete,
       lastSuccessfulPage: _lastSuccessfulPage,
       lastSuccessfulTotalPages: _lastSuccessfulTotalPages,
+      lastSuccessfulPageSize: _lastSuccessfulPageSize,
+      lastSuccessfulExactTotalCount: _lastSuccessfulExactTotalCount,
+      lastSuccessfulIsScanComplete: _lastSuccessfulIsScanComplete,
       requestedPage: targetPage);
   }
 
@@ -146,19 +167,25 @@ internal sealed record LogPaginationState
       isScanComplete,
       lastSuccessfulPage: _lastSuccessfulPage,
       lastSuccessfulTotalPages: _lastSuccessfulTotalPages,
+      lastSuccessfulPageSize: _lastSuccessfulPageSize,
+      lastSuccessfulExactTotalCount: _lastSuccessfulExactTotalCount,
+      lastSuccessfulIsScanComplete: _lastSuccessfulIsScanComplete,
       requestedPage: null);
 
   internal LogPaginationState FailGeneration()
     => new(
       currentPage: _lastSuccessfulPage,
-      PageSize,
-      ExactTotalCount,
+      pageSize: _lastSuccessfulPageSize,
+      exactTotalCount: _lastSuccessfulExactTotalCount,
       totalPages: _lastSuccessfulTotalPages,
       isBusy: false,
       isStale: true,
-      isScanComplete: IsScanComplete,
+      isScanComplete: _lastSuccessfulIsScanComplete,
       lastSuccessfulPage: _lastSuccessfulPage,
       lastSuccessfulTotalPages: _lastSuccessfulTotalPages,
+      lastSuccessfulPageSize: _lastSuccessfulPageSize,
+      lastSuccessfulExactTotalCount: _lastSuccessfulExactTotalCount,
+      lastSuccessfulIsScanComplete: _lastSuccessfulIsScanComplete,
       requestedPage: null);
 
   private bool CanNavigateBoundary => !IsBusy && ExactTotalCount.HasValue && TotalPages > 1;
@@ -172,8 +199,11 @@ internal sealed record LogPaginationState
       isBusy: false,
       isStale: IsStale,
       isScanComplete: false,
-      lastSuccessfulPage: 1,
-      lastSuccessfulTotalPages: 1,
+      lastSuccessfulPage: _lastSuccessfulPage,
+      lastSuccessfulTotalPages: _lastSuccessfulTotalPages,
+      lastSuccessfulPageSize: _lastSuccessfulPageSize,
+      lastSuccessfulExactTotalCount: _lastSuccessfulExactTotalCount,
+      lastSuccessfulIsScanComplete: _lastSuccessfulIsScanComplete,
       requestedPage: null);
 
   private static int CalculateTotalPages(int exactTotalCount, int pageSize)

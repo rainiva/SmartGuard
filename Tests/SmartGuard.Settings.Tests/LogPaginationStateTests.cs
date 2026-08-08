@@ -83,6 +83,39 @@ public class LogPaginationStateTests
   }
 
   [Fact]
+  public void Failed_generation_after_reset_preserves_last_successful_context()
+  {
+    var state = CreateResolvedState(page: 3, exactTotalCount: 95);
+
+    var failedAfterPageSizeChange = state.ChangePageSize(50).FailGeneration();
+    var failedAfterFilterChange = state.ResetForFilterChange().FailGeneration();
+
+    foreach (var failed in new[] { failedAfterPageSizeChange, failedAfterFilterChange })
+    {
+      failed.CurrentPage.Should().Be(3);
+      failed.PageSize.Should().Be(20);
+      failed.ExactTotalCount.Should().Be(95);
+      failed.TotalPages.Should().Be(5);
+      failed.IsStale.Should().BeTrue();
+      failed.CanGoPrevious.Should().BeTrue();
+      failed.CanGoNext.Should().BeTrue();
+    }
+  }
+
+  [Theory]
+  [InlineData(10)]
+  [InlineData(25)]
+  [InlineData(75)]
+  public void Page_size_change_rejects_values_outside_reference_options(int pageSize)
+  {
+    var state = CreateResolvedState(page: 3, exactTotalCount: 95);
+
+    Action change = () => state.ChangePageSize(pageSize);
+
+    change.Should().Throw<ArgumentOutOfRangeException>();
+  }
+
+  [Fact]
   public void Start_navigation_clamps_requested_page_to_known_bounds()
   {
     var state = LogPaginationState.Initial.ApplyExactCount(95, isScanComplete: true);
