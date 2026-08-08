@@ -198,13 +198,33 @@ public class SettingsWindowControllerTests
             var pageGeneral = window.FindName("pageGeneral") as StackPanel;
             var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
             var pageNotifications = window.FindName("pageNotifications") as StackPanel;
+            var pageDiagnosticDetails = window.FindName("pageDiagnosticDetails") as Grid;
             var navList = window.FindName("navList") as ListBox;
 
             pageGeneral.Should().NotBeNull();
             pageAdvanced.Should().NotBeNull();
             pageNotifications.Should().NotBeNull();
+            pageDiagnosticDetails.Should().NotBeNull();
             navList.Should().NotBeNull();
-            navList.Items.Count.Should().Be(6);
+            navList.Items.Count.Should().Be(7);
+        });
+    }
+
+    [Fact]
+    public void Diagnostic_details_owns_statistics_instead_of_log_page()
+    {
+        RunOnSta(() =>
+        {
+            var window = LoadCompiledWindow();
+            var pageLogs = window.FindName("pageLogs") as FrameworkElement;
+            var pageDiagnosticDetails = window.FindName("pageDiagnosticDetails") as FrameworkElement;
+            var statisticsInspector = window.FindName("logStatisticsInspector") as FrameworkElement;
+
+            pageLogs.Should().NotBeNull();
+            pageDiagnosticDetails.Should().NotBeNull();
+            statisticsInspector.Should().NotBeNull();
+            statisticsInspector!.IsDescendantOf(pageLogs!).Should().BeFalse();
+            statisticsInspector.IsDescendantOf(pageDiagnosticDetails!).Should().BeTrue();
         });
     }
 
@@ -1223,12 +1243,12 @@ public class SettingsWindowControllerTests
 
             var navList = window.FindName("navList") as ListBox;
             navList.Should().NotBeNull();
-            navList!.Items.Count.Should().Be(6);
+            navList!.Items.Count.Should().Be(7);
             navList.Items
                 .OfType<ListBoxItem>()
                 .Select(item => item.Name)
                 .Should()
-                .ContainInOrder("navGeneral", "navAdvanced", "navNotifications", "navLogs", "navDisplay", "navAbout");
+                .ContainInOrder("navGeneral", "navAdvanced", "navNotifications", "navLogs", "navDisplay", "navAbout", "navDiagnosticDetails");
         });
     }
 

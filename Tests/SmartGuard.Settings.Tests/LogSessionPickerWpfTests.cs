@@ -237,7 +237,7 @@ public sealed class LogSessionPickerWpfTests
         var window = GetWindow(controller);
         WpfStaTestHost.ShowAndWait(window);
 
-        controller.NavigateTo("logs");
+        controller.NavigateTo("diagnostic");
         var host = (SettingsLogPageHost)GetLogPageHost(controller);
         source = AttachControllableAggregationSource(host, installRoot);
         var searchBar = GetPrivateField<LogSearchFilterBar>(host, "_logSearchFilterBar");
@@ -311,7 +311,7 @@ public sealed class LogSessionPickerWpfTests
         var window = GetWindow(controller);
         WpfStaTestHost.ShowAndWait(window);
 
-        controller.NavigateTo("logs");
+        controller.NavigateTo("diagnostic");
         var host = (SettingsLogPageHost)GetLogPageHost(controller);
         source = AttachControllableAggregationSource(host, installRoot);
         SetPrivateProperty(

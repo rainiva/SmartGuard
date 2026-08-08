@@ -52,7 +52,6 @@ public class LogToolbarLayoutTests
         xaml.Should().Contain("MinWidth=\"600\"");
         xaml.Should().Contain("x:Name=\"logFilterScopePanel\"");
         xaml.Should().Contain("x:Name=\"cmbLogSession\"");
-        xaml.Should().Contain("x:Name=\"logStatisticsInspector\"");
 
         var searchIndex = RequireIndex(xaml, "x:Name=\"logSearchFilterHost\"");
         var refreshIndex = RequireIndex(xaml, "x:Name=\"btnLogRefresh\"");
@@ -62,22 +61,20 @@ public class LogToolbarLayoutTests
         var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
         var timeIndex = RequireIndex(xaml, "x:Name=\"cmbLogTimeRange\"");
         var caseIndex = RequireIndex(xaml, "x:Name=\"chkLogSearchCaseSensitive\"");
-        var statisticsIndex = RequireIndex(xaml, "x:Name=\"logStatisticsInspector\"");
         var statusIndex = RequireIndex(xaml, "x:Name=\"lblLogStatus\"");
 
         searchIndex.Should().BeLessThan(refreshIndex);
         refreshIndex.Should().BeLessThan(moreIndex);
         moreIndex.Should().BeLessThan(tagIndex);
         tagIndex.Should().BeLessThan(scopeIndex);
-        scopeIndex.Should().BeLessThan(statisticsIndex);
-        statisticsIndex.Should().BeLessThan(statusIndex);
+        scopeIndex.Should().BeLessThan(statusIndex);
 
         sessionIndex.Should().BeGreaterThan(scopeIndex);
-        sessionIndex.Should().BeLessThan(statisticsIndex);
+        sessionIndex.Should().BeLessThan(statusIndex);
         timeIndex.Should().BeGreaterThan(scopeIndex);
-        timeIndex.Should().BeLessThan(statisticsIndex);
+        timeIndex.Should().BeLessThan(statusIndex);
         caseIndex.Should().BeGreaterThan(scopeIndex);
-        caseIndex.Should().BeLessThan(statisticsIndex);
+        caseIndex.Should().BeLessThan(statusIndex);
 
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"1[6-9]0|x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"2[0-4]0",
@@ -91,14 +88,19 @@ public class LogToolbarLayoutTests
     }
 
     [Fact]
-    public void Log_page_has_independent_statistics_inspector_without_legacy_session_banner_or_back_controls()
+    public void Diagnostic_details_page_hosts_statistics_without_legacy_session_banner_or_back_controls()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
+        var logPageIndex = RequireIndex(xaml, "<!-- Logs Page -->");
+        var diagnosticPageIndex = RequireIndex(xaml, "<!-- Diagnostic details page");
         xaml.Should().Contain("x:Name=\"logStatisticsInspector\"");
+        diagnosticPageIndex.Should().BeGreaterThan(logPageIndex);
+        xaml.Substring(logPageIndex, diagnosticPageIndex - logPageIndex)
+            .Should().NotContain("x:Name=\"logStatisticsInspector\"");
         xaml.Should().MatchRegex(
             "x:Name=\"logStatisticsInspector\"[\\s\\S]{0,1200}x:Name=\"lblLogStatisticsEmpty\"[\\s\\S]{0,1200}x:Name=\"logErrorTrendChart\"[\\s\\S]{0,1200}x:Name=\"logComponentDistribution\"",
-            "statistics should be hosted by its own inspector and contain only statistics controls");
+            "diagnostic details should host the statistics controls together");
 
         xaml.Should().NotContain("x:Name=\"logSessionInspector\"");
         xaml.Should().NotContain("x:Name=\"logSessionBanner\"");

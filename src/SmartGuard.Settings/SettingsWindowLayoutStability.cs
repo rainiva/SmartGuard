@@ -29,8 +29,11 @@ public static class SettingsWindowLayoutStability
 
     public static void StabilizeContentLayout(Window window)
     {
-        if (window.FindName("pageLogs") is not FrameworkElement pageLogs ||
-            pageLogs.Visibility != Visibility.Visible)
+        var pageLogsVisible = window.FindName("pageLogs") is FrameworkElement pageLogs &&
+            pageLogs.Visibility == Visibility.Visible;
+        var pageDiagnosticVisible = window.FindName("pageDiagnosticDetails") is FrameworkElement pageDiagnosticDetails &&
+            pageDiagnosticDetails.Visibility == Visibility.Visible;
+        if (!pageLogsVisible && !pageDiagnosticVisible)
             return;
 
         if (window.Content is not FrameworkElement root)
@@ -40,7 +43,7 @@ public static class SettingsWindowLayoutStability
         root.InvalidateArrange();
         root.UpdateLayout();
 
-        if (window.FindName("lstLogView") is not ListBox listBox)
+        if (!pageLogsVisible || window.FindName("lstLogView") is not ListBox listBox)
             return;
 
         var scrollViewer = LogViewListPresenter.FindScrollViewer(listBox);

@@ -192,11 +192,15 @@ public sealed class SettingsWindowController
     navigationShell.Wire(
       navList,
       active => controller.SetLogPageActive(active),
+      active => controller.SetDiagnosticPageActive(active),
       () => SettingsWindowLayoutStability.StabilizeContentLayout(window));
     navigationShell.AttachLayoutTheme(
       () => controller.IsDarkThemeEnabled,
       () => SettingsWindowLayoutStability.StabilizeContentLayout(window));
-    navigationShell.WireWindowState(navList, controller.SetLogPageActive);
+    navigationShell.WireWindowState(
+      navList,
+      controller.SetLogPageActive,
+      controller.SetDiagnosticPageActive);
 
     window.Closing += (_, _) => controller.Dispose();
 
@@ -247,6 +251,9 @@ public sealed class SettingsWindowController
 
   public void SetLogPageActive(bool active, LogPageActivationReason reason = LogPageActivationReason.Navigation)
     => _logPageHost.SetLogPageActive(active, reason);
+
+  public void SetDiagnosticPageActive(bool active)
+    => _logPageHost.SetDiagnosticPageActive(active);
 
   internal void AddLogTagFilter(string tag) => _logPageHost.AddLogTagFilter(tag);
 

@@ -9,10 +9,10 @@ internal sealed partial class SettingsLogPageHost
 {
   private readonly LogAggregationService _aggregationService = new();
   private readonly LogStatisticsPresenter _statisticsPresenter = new();
-  private Expander? _logStatisticsInspector;
   private CancellationTokenSource? _statisticsCancellation;
   private int _statisticsGeneration;
   private bool _statisticsDirty = true;
+  private bool _diagnosticPageActive;
 
   internal LogAggregationService AggregationServiceForTests => _aggregationService;
 
@@ -20,19 +20,35 @@ internal sealed partial class SettingsLogPageHost
 
   private void WireStatisticsUi()
   {
-    _logStatisticsInspector ??= _window.FindName("logStatisticsInspector") as Expander;
     var componentDistribution = _window.FindName("logComponentDistribution") as ItemsControl;
     var errorTrendChart = _window.FindName("logErrorTrendChart") as LogErrorTrendChart;
     var emptyStateLabel = _window.FindName("lblLogStatisticsEmpty") as TextBlock;
 
     _statisticsPresenter.Attach(componentDistribution, errorTrendChart, emptyStateLabel);
 
-    if (_logStatisticsInspector is not null)
-      _logStatisticsInspector.Expanded += (_, _) =>
+    if (_window.FindName("logStatisticsInspector") is Expander statisticsInspector)
+      statisticsInspector.Expanded += (_, _) =>
       {
         if (_statisticsDirty)
           ScheduleStatisticsRefresh();
       };
+  }
+
+  internal void SetDiagnosticPageActive(bool active)
+  {
+    if (_disposed)
+      return;
+
+    _diagnosticPageActive = active;
+    if (!active)
+    {
+      _statisticsCancellation?.Cancel();
+      _statisticsDirty = true;
+      return;
+    }
+
+    EnsureLogViewInitialized();
+    ScheduleStatisticsRefresh();
   }
 
   private void ScheduleStatisticsRefresh()
@@ -40,7 +56,9 @@ internal sealed partial class SettingsLogPageHost
     if (_disposed || _logController is null)
       return;
 
-    if (_logStatisticsInspector is null || !_logStatisticsInspector.IsExpanded)
+    if (!_diagnosticPageActive ||
+        _window.FindName("logStatisticsInspector") is not Expander statisticsInspector ||
+        !statisticsInspector.IsExpanded)
     {
       _statisticsDirty = true;
       return;
