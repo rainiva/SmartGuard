@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Drawing;
 using System.IO;
@@ -11,16 +12,21 @@ public sealed record LogFileSlice(long Length, string Text);
 
 public sealed record LogInitialView(long FileLength, string Text, bool IsTailTruncated);
 
-public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
+public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILogSnapshotPhysicalLineSource
 {
   public const int DefaultTargetEventCount = 200;
   public const int DefaultMaxBytes = 262_144;
+  private const int SnapshotBoundaryBytes = 4096;
 
+  private readonly string _configuredLogPath;
+  private readonly string? _startupFallbackPath;
   private readonly LogSourceCatalog _catalog;
   private readonly Dictionary<LogSourceIdentity, (long ByteOffset, string Text)> _pendingPartialLines = new();
 
   public LogTailReader(string logPath, string? startupFallbackPath = null)
   {
+    _configuredLogPath = logPath;
+    _startupFallbackPath = startupFallbackPath;
     _catalog = LogSourceCatalog.Build(logPath, startupFallbackPath);
   }
 
@@ -52,6 +58,37 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
         yield return line;
       }
     }
+  }
+
+  public LogSourceSnapshot CaptureSnapshot()
+  {
+    var catalog = LogSourceCatalog.Build(_configuredLogPath, _startupFallbackPath);
+    var sources = CaptureSnapshotSources(catalog);
+    return new LogSourceSnapshot(sources, ComputeSnapshotFingerprint(sources));
+  }
+
+  public IEnumerable<LogPhysicalLine> EnumeratePhysicalLines(
+    LogReadScope scope,
+    LogSourceSnapshot snapshot,
+    LogReadDirection direction,
+    LogReadCursor? cursor,
+    CancellationToken cancellationToken)
+  {
+    ArgumentNullException.ThrowIfNull(scope);
+    ArgumentNullException.ThrowIfNull(snapshot);
+    cancellationToken.ThrowIfCancellationRequested();
+
+    if (!string.Equals(snapshot.Fingerprint, ComputeSnapshotFingerprint(snapshot.Sources), StringComparison.Ordinal))
+      throw new LogSnapshotInvalidatedException("The snapshot fingerprint is inconsistent.");
+
+    var sources = ResolveSnapshotSources(snapshot);
+    return direction switch
+    {
+      LogReadDirection.Newer => EnumerateSnapshotLinesForward(scope, sources, cursor, cancellationToken),
+      LogReadDirection.Latest => EnumerateSnapshotLinesBackward(scope, sources, cursor, cancellationToken),
+      LogReadDirection.Older => EnumerateSnapshotLinesBackward(scope, sources, cursor, cancellationToken),
+      _ => EnumerateSnapshotLinesBackward(scope, sources, cursor, cancellationToken),
+    };
   }
 
   public async IAsyncEnumerable<LogPhysicalLine> StreamPhysicalLinesAsync(
@@ -512,6 +549,226 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource
 
     return string.Compare(left.EventId, right.EventId, StringComparison.Ordinal);
   }
+
+  private IReadOnlyList<LogSourceSnapshotEntry> CaptureSnapshotSources(LogSourceCatalog catalog)
+  {
+    var sources = new List<LogSourceSnapshotEntry>();
+    foreach (var source in EnumerateCatalogSources(catalog))
+    {
+      var capturedLength = LogUtf8LineScanner.GetFileLength(source.FilePath);
+      sources.Add(new LogSourceSnapshotEntry(
+        source.Identity,
+        source.Kind,
+        capturedLength,
+        ComputeBoundaryFingerprint(source.FilePath, capturedLength)));
+    }
+
+    return sources;
+  }
+
+  private IReadOnlyList<ResolvedSnapshotSource> ResolveSnapshotSources(LogSourceSnapshot snapshot)
+  {
+    var catalog = LogSourceCatalog.Build(_configuredLogPath, _startupFallbackPath);
+    var currentSources = EnumerateCatalogSources(catalog).ToArray();
+    var resolved = new List<ResolvedSnapshotSource>(snapshot.Sources.Count);
+    var seen = new HashSet<LogSourceIdentity>();
+    foreach (var snapshotSource in snapshot.Sources)
+    {
+      if (!seen.Add(snapshotSource.Source))
+        continue;
+
+      var source = ResolveSnapshotSource(snapshotSource, currentSources);
+      ValidateSnapshotSource(snapshotSource, source);
+      resolved.Add(new ResolvedSnapshotSource(snapshotSource, source));
+    }
+
+    return resolved;
+  }
+
+  private static IEnumerable<LogSourceDescriptor> EnumerateCatalogSources(LogSourceCatalog catalog)
+  {
+    foreach (var source in catalog.MainHistoryOldestFirst)
+      yield return source;
+
+    if (catalog.StartupFallback is not null)
+      yield return catalog.StartupFallback;
+  }
+
+  private static string ComputeSnapshotFingerprint(IReadOnlyList<LogSourceSnapshotEntry> sources)
+  {
+    var payload = string.Join(
+      "\n",
+      sources.Select(source => string.Create(
+        System.Globalization.CultureInfo.InvariantCulture,
+        $"{source.Source.CreatedAtUtc:O}|{source.Source.ContentHashHex}|{source.Kind}|{source.CapturedLength}|{source.BoundaryFingerprint}")));
+    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+  }
+
+  private static string ComputeBoundaryFingerprint(string path, long endOffsetExclusive)
+  {
+    if (!File.Exists(path) || endOffsetExclusive <= 0)
+      return Convert.ToHexString(SHA256.HashData(Array.Empty<byte>())).ToLowerInvariant();
+
+    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+    var end = Math.Min(endOffsetExclusive, stream.Length);
+    if (end <= 0)
+      return Convert.ToHexString(SHA256.HashData(Array.Empty<byte>())).ToLowerInvariant();
+
+    var windowLength = (int)Math.Min(SnapshotBoundaryBytes, end);
+    var buffer = new byte[windowLength];
+    stream.Seek(end - windowLength, SeekOrigin.Begin);
+    var read = 0;
+    while (read < windowLength)
+    {
+      var chunkRead = stream.Read(buffer, read, windowLength - read);
+      if (chunkRead <= 0)
+        break;
+
+      read += chunkRead;
+    }
+
+    if (read != buffer.Length)
+      buffer = buffer[..read];
+
+    return Convert.ToHexString(SHA256.HashData(buffer)).ToLowerInvariant();
+  }
+
+  private static LogSourceDescriptor ResolveSnapshotSource(
+    LogSourceSnapshotEntry snapshotSource,
+    IReadOnlyList<LogSourceDescriptor> currentSources)
+  {
+    var matches = currentSources
+      .Where(source => source.Identity == snapshotSource.Source)
+      .ToList();
+
+    if (snapshotSource.Kind == LogSourceKind.StartupFallback)
+      matches = matches.Where(source => source.Kind == LogSourceKind.StartupFallback).ToList();
+
+    if (matches.Count == 0 && snapshotSource.Kind is LogSourceKind.Current or LogSourceKind.StartupFallback)
+    {
+      matches = currentSources
+        .Where(source => source.Kind == snapshotSource.Kind)
+        .ToList();
+    }
+
+    return matches.Count switch
+    {
+      1 => matches[0],
+      0 => throw new LogSnapshotInvalidatedException($"Snapshot source '{snapshotSource.Source}' is missing."),
+      _ => throw new LogSnapshotInvalidatedException($"Snapshot source '{snapshotSource.Source}' cannot be resolved uniquely."),
+    };
+  }
+
+  private static void ValidateSnapshotSource(
+    LogSourceSnapshotEntry snapshotSource,
+    LogSourceDescriptor source)
+  {
+    var currentLength = LogUtf8LineScanner.GetFileLength(source.FilePath);
+    if (currentLength < snapshotSource.CapturedLength)
+    {
+      throw new LogSnapshotInvalidatedException(
+        $"Snapshot source '{snapshotSource.Source}' was truncated from {snapshotSource.CapturedLength} to {currentLength} bytes.");
+    }
+
+    var boundaryFingerprint = ComputeBoundaryFingerprint(source.FilePath, snapshotSource.CapturedLength);
+    if (!string.Equals(boundaryFingerprint, snapshotSource.BoundaryFingerprint, StringComparison.Ordinal))
+    {
+      throw new LogSnapshotInvalidatedException(
+        $"Snapshot source '{snapshotSource.Source}' no longer matches the captured boundary fingerprint.");
+    }
+  }
+
+  private static IEnumerable<LogPhysicalLine> EnumerateSnapshotLinesForward(
+    LogReadScope scope,
+    IReadOnlyList<ResolvedSnapshotSource> sources,
+    LogReadCursor? cursor,
+    CancellationToken cancellationToken)
+  {
+    var sourceFilter = scope.Sources.Count == 0
+      ? null
+      : scope.Sources.ToHashSet();
+    var cursorIndex = cursor is null
+      ? 0
+      : FindSnapshotSourceIndex(sources, cursor.Source);
+
+    for (var i = cursorIndex; i < sources.Count; i++)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      var source = sources[i];
+      if (sourceFilter is not null && !sourceFilter.Contains(source.Snapshot.Source))
+        continue;
+
+      var startOffset = cursor is not null && i == cursorIndex
+        ? LogUtf8LineScanner.GetLineEndOffset(source.Descriptor.FilePath, cursor.ByteOffset)
+        : 0;
+
+      foreach (var line in LogUtf8LineScanner.ReadLinesForward(
+                 source.Descriptor,
+                 startOffset,
+                 source.Snapshot.CapturedLength,
+                 cancellationToken))
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return line;
+      }
+    }
+  }
+
+  private static IEnumerable<LogPhysicalLine> EnumerateSnapshotLinesBackward(
+    LogReadScope scope,
+    IReadOnlyList<ResolvedSnapshotSource> sources,
+    LogReadCursor? cursor,
+    CancellationToken cancellationToken)
+  {
+    var sourceFilter = scope.Sources.Count == 0
+      ? null
+      : scope.Sources.ToHashSet();
+    var cursorIndex = cursor is null
+      ? sources.Count - 1
+      : FindSnapshotSourceIndex(sources, cursor.Source);
+
+    for (var i = cursorIndex; i >= 0; i--)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      var source = sources[i];
+      if (sourceFilter is not null && !sourceFilter.Contains(source.Snapshot.Source))
+        continue;
+
+      var endOffset = cursor is not null && i == cursorIndex
+        ? cursor.ByteOffset
+        : source.Snapshot.CapturedLength;
+      if (endOffset <= 0)
+        continue;
+
+      var maxBytes = (int)Math.Min(int.MaxValue, Math.Max(endOffset, 1));
+      foreach (var line in LogUtf8LineScanner.ReadLinesBackward(
+                 source.Descriptor,
+                 endOffset,
+                 maxBytes,
+                 cancellationToken))
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return line;
+      }
+    }
+  }
+
+  private static int FindSnapshotSourceIndex(
+    IReadOnlyList<ResolvedSnapshotSource> sources,
+    LogSourceIdentity identity)
+  {
+    for (var i = 0; i < sources.Count; i++)
+    {
+      if (sources[i].Snapshot.Source == identity)
+        return i;
+    }
+
+    throw new LogSnapshotInvalidatedException($"Snapshot cursor source '{identity}' is unavailable.");
+  }
+
+  private sealed record ResolvedSnapshotSource(
+    LogSourceSnapshotEntry Snapshot,
+    LogSourceDescriptor Descriptor);
 
   private static int NormalizeTargetCount(int targetEventCount)
     => targetEventCount > 0 ? targetEventCount : DefaultTargetEventCount;
