@@ -77,6 +77,7 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
     ArgumentNullException.ThrowIfNull(scope);
     ArgumentNullException.ThrowIfNull(snapshot);
     cancellationToken.ThrowIfCancellationRequested();
+    LogTailReaderTestMetrics.MaybeDelayForTests();
 
     if (!string.Equals(snapshot.Fingerprint, ComputeSnapshotFingerprint(snapshot.Sources), StringComparison.Ordinal))
       throw new LogSnapshotInvalidatedException("The snapshot fingerprint is inconsistent.");

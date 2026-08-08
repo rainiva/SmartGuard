@@ -26,6 +26,7 @@ internal sealed partial class SettingsLogPageHost
   private IReadOnlyList<string> _lastDisplayedLines = Array.Empty<string>();
   private int? _logIdleSeconds;
   private bool _logStatusMayBeStale;
+  private bool _pagedHasActiveFilters;
   private TextBlock? _lblLogStatus;
   private Border? _logTopLoadingIndicator;
   private ScrollViewer? _logScrollViewer;

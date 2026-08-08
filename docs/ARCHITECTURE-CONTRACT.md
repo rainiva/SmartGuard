@@ -514,4 +514,4 @@
 
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
-| LOG-WB-PAGER | 实施中 | `LogTailReader` 通过 `ILogSnapshotPhysicalLineSource` 实现 snapshot-aware physical scan；`LogQueryService` 构建稀疏 `LogQueryPageIndex` 并读取精确页；Settings 只持有当前页，不建立第二 reader/query engine |
+| LOG-WB-PAGER | 已关闭 | `LogTailReader` 通过 `ILogSnapshotPhysicalLineSource` 实现 snapshot-aware physical scan；`LogQueryService` 构建稀疏 `LogQueryPageIndex` 并读取精确页；Settings 只持有当前页，不建立第二 reader/query engine；性能门禁由 `LogWorkbenchPerformanceTests` 证明，真实 WPF 分页矩阵由 `LogWorkbenchP1AcceptanceTests.A_page_matrix_runs_against_the_real_settings_window` 证明，最终证据写入 `.work/log-pagination-acceptance/` |

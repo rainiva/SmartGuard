@@ -1370,11 +1370,11 @@
                           AutomationProperties.HelpText="按级别、时间、来源、事件和状态查看当前页日志"
                           VerticalAlignment="Stretch">
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="级别" Binding="{Binding LevelText}" Width="120" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
-                    <DataGridTextColumn Header="时间" Binding="{Binding TimeText}" Width="190" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
-                    <DataGridTextColumn Header="来源" Binding="{Binding SourceText}" Width="180" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
-                    <DataGridTextColumn Header="事件" Binding="{Binding EventText}" Width="*" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
-                    <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="120" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
+                    <DataGridTextColumn Header="级别" Binding="{Binding LevelText}" Width="120" MinWidth="120" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
+                    <DataGridTextColumn Header="时间" Binding="{Binding TimeText}" Width="190" MinWidth="190" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
+                    <DataGridTextColumn Header="来源" Binding="{Binding SourceText}" Width="180" MinWidth="180" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
+                    <DataGridTextColumn Header="事件" Binding="{Binding EventText}" Width="*" MinWidth="240" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
+                    <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="120" MinWidth="120" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
                   </DataGrid.Columns>
                 </DataGrid>
                 <ListBox x:Name="lstLogView"

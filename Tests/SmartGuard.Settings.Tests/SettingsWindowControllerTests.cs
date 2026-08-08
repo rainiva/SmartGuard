@@ -285,6 +285,7 @@ public class SettingsWindowControllerTests
             var logSearchFilterHost = window.FindName("logSearchFilterHost") as ContentControl;
             var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
             var lstLogView = window.FindName("lstLogView") as ListBox;
+            var logTable = window.FindName("logTable") as DataGrid;
             var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
             var btnLogMore = window.FindName("btnLogMore") as Button;
 
@@ -292,9 +293,10 @@ public class SettingsWindowControllerTests
             logSearchFilterHost.Should().NotBeNull();
             logTagFilterLinksPanel.Should().NotBeNull();
             lstLogView.Should().NotBeNull();
+            logTable.Should().NotBeNull();
             lblLogStatus.Should().NotBeNull();
             window.FindName("btnLogCopy").Should().BeNull();
-            window.FindName("btnLogExport").Should().BeNull();
+            window.FindName("btnLogExport").Should().NotBeNull();
             window.FindName("btnLogOpenFolder").Should().BeNull();
             window.FindName("btnLogScrollTop").Should().NotBeNull();
             window.FindName("btnLogScrollBottom").Should().NotBeNull();
@@ -1506,7 +1508,7 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_opening_logs_page_with_follow_tail_enabled_starts_at_latest_log()
+    public void User_opening_logs_page_starts_with_the_newest_numbered_page()
     {
         RunOnSta(() =>
         {
@@ -1536,12 +1538,13 @@ public class SettingsWindowControllerTests
                 SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
-                chkLogFollowTail!.IsChecked.Should().BeTrue();
-
-                var scrollViewer = GetLogScrollViewerWithoutExtraRefresh(window, controller!);
-                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
-                GetLogViewPlainText(controller!).Should().Contain("scroll line 199");
+                var table = window.FindName("logTable") as DataGrid;
+                table.Should().NotBeNull();
+                table!.Items.OfType<LogTableRow>().Should().HaveCount(20);
+                table.Items
+                    .OfType<LogTableRow>()
+                    .Select(row => row.EventText)
+                    .Should().Contain("scroll line 199");
             }
             finally
             {
@@ -1613,7 +1616,7 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_at_tail_with_follow_tail_stays_at_tail_when_new_log_lines_append()
+    public void User_sees_new_log_lines_only_after_explicit_refresh()
     {
         RunOnSta(() =>
         {
@@ -1639,19 +1642,24 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
-                var scrollViewer = GetLogScrollViewer(window, controller!);
-                var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
-                chkLogFollowTail!.IsChecked = true;
-                ClickLogToolbarButton(window, "btnLogScrollBottom");
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
-
                 File.AppendAllText(logPath, "[INFO] 2026-06-21 10:01:00 appended while following tail\n");
-                InvokeRefreshLogView(controller!);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                var table = window.FindName("logTable") as DataGrid;
+                var status = window.FindName("lblLogStatus") as TextBlock;
+                table.Should().NotBeNull();
+                status.Should().NotBeNull();
 
-                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
-                GetLogViewPlainText(controller!).Should().Contain("appended while following tail");
+                InvokeDetectPagedLogChanges(controller!);
+                status!.Text.Should().Contain("有新日志，点击刷新查看");
+                table!.Items.OfType<LogTableRow>()
+                    .Select(row => row.EventText)
+                    .Should().NotContain("appended while following tail");
+
+                ClickLogToolbarButton(window, "btnLogRefresh");
+                WpfStaTestHost.WaitUntil(
+                    () => table.Items.OfType<LogTableRow>()
+                        .Any(row => row.EventText.Contains("appended while following tail", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(10),
+                    "the explicit refresh to include the appended log line");
             }
             finally
             {
@@ -1972,6 +1980,15 @@ public class SettingsWindowControllerTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         var window = (Window)windowField!.GetValue(controller)!;
         SettingsLogNavResponsivenessTests.WaitUntilLogRefreshIdle(controller, window);
+    }
+
+    private static void InvokeDetectPagedLogChanges(SettingsWindowController controller)
+    {
+        var host = GetLogPageHost(controller);
+        var method = host.GetType().GetMethod(
+            "DetectPagedLogChanges",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        method!.Invoke(host, null);
     }
 
     private static string GetLogViewPlainText(SettingsWindowController controller)

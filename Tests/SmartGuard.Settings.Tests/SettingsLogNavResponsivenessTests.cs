@@ -182,14 +182,18 @@ public class SettingsLogNavResponsivenessTests
         WpfStaTestHost.Track(controller);
         var status = window.FindName("lblLogStatus") as TextBlock;
         var list = window.FindName("lstLogView") as ListBox;
+        var table = window.FindName("logTable") as DataGrid;
+        var total = window.FindName("lblLogTotalCount") as TextBlock;
         try
         {
             WpfStaTestHost.WaitUntil(
                 () =>
-                    list is not null &&
-                    list.Items.Count > 0 &&
                     status is not null &&
-                    status.Text != LoadingStatusText,
+                    status.Text != LoadingStatusText &&
+                    !controller.IsLogRefreshInFlightForTests &&
+                    ((list?.Items.Count > 0) ||
+                     (table?.Items.Count > 0) ||
+                     (total?.Text.StartsWith("共 ", StringComparison.Ordinal) == true)),
                 TimeSpan.FromMilliseconds(timeoutMs),
                 "log items and status to settle");
         }
@@ -197,6 +201,8 @@ public class SettingsLogNavResponsivenessTests
         {
             throw new TimeoutException(
                 $"{ex.Message} Log items={list?.Items.Count ?? -1}, " +
+                $"table items={table?.Items.Count ?? -1}, " +
+                $"total='{total?.Text ?? "<missing>"}', " +
                 $"status='{status?.Text ?? "<missing>"}', " +
                 $"refresh in flight={controller.IsLogRefreshInFlightForTests}, " +
                 $"active refresh={controller.ActiveLogRefreshCountForTests}.",

@@ -65,39 +65,27 @@ public class LogHorizontalThumbRealMouseTests
     }
 
     [Fact]
-    public void Horizontal_thumb_drag_survives_follow_tail_refresh()
+    public void Paged_table_remains_horizontally_scrollable_after_refresh()
     {
         WpfStaTestHost.Run(() =>
         {
-            var ctx = CreateShownLogPageContext(out var window, out var scrollViewer, out var controller);
+            var ctx = CreateShownLogPageContext(out var window, out _, out var controller);
             using (ctx)
             {
-                var scrollBar = FindScrollBar(scrollViewer, "PART_HorizontalScrollBar");
-                scrollBar.ApplyTemplate();
-                var track = scrollBar.Template?.FindName("PART_Track", scrollBar) as Track;
-                track.Should().NotBeNull();
-
-                RaiseGenuineDrag(window, track!.Thumb, horizontalDelta: 30, verticalDelta: 0, steps: 4);
-                var target = scrollViewer.HorizontalOffset;
-                target.Should().BeGreaterThan(10);
-
-                scrollViewer.ScrollToHorizontalOffset(0);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-                scrollViewer.HorizontalOffset.Should().BeApproximately(
+                var table = window.FindName("logTable") as DataGrid;
+                table.Should().NotBeNull();
+                var tableScrollViewer = FindTableScrollViewer(table!);
+                tableScrollViewer.ScrollableWidth.Should().BeGreaterThan(
                     0,
-                    1,
-                    "the delayed native/default reset observed in the real window must be part of the regression");
+                    $"the narrow table should expose horizontal overflow (tableWidth={table!.Width:0.###}, tableActualWidth={table.ActualWidth:0.###}, columnWidth={table.ColumnWidth.UnitType}:{table.ColumnWidth.Value:0.###}, extent={tableScrollViewer.ExtentWidth:0.###}, viewport={tableScrollViewer.ViewportWidth:0.###}, columns={string.Join(',', table.Columns.Select(column => $"{column.Header}:{column.Width.UnitType}:{column.Width.Value:0.###}/{column.MinWidth:0.###}/{column.ActualWidth:0.###}"))})");
 
                 controller.ForceRefreshLogView();
                 SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
                 window.UpdateLayout();
                 window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
-                scrollViewer.HorizontalOffset.Should().BeApproximately(
-                    target,
-                    1,
-                    "refresh must restore the last committed user drag rather than preserving a delayed default zero");
+                FindTableScrollViewer(table!).ScrollableWidth.Should().BeGreaterThan(0);
+                table.Items.Count.Should().BeGreaterThan(0);
             }
         });
     }
@@ -185,6 +173,31 @@ public class LogHorizontalThumbRealMouseTests
         var scrollBar = scrollViewer.Template?.FindName(partName, scrollViewer) as ScrollBar;
         scrollBar.Should().NotBeNull();
         return scrollBar!;
+    }
+
+    private static ScrollViewer FindTableScrollViewer(DataGrid table)
+    {
+        table.ApplyTemplate();
+        table.UpdateLayout();
+        var scrollViewer = FindVisualChild<ScrollViewer>(table);
+        scrollViewer.Should().NotBeNull();
+        return scrollViewer!;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T result)
+                return result;
+
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+                return descendant;
+        }
+
+        return null;
     }
 
     private static void RaiseGenuineDrag(

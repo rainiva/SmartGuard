@@ -75,6 +75,16 @@ public class LoggingWorkbenchArchitectureTests
   }
 
   [Fact]
+  public void Numbered_log_paging_closure_records_the_final_automated_gate()
+  {
+    ContractContent.Should().Contain("| LOG-WB-PAGER | 已关闭 |");
+    SourceScanHelper.ReadSource("Tests/SmartGuard.Settings.Tests/LogWorkbenchPerformanceTests.cs")
+      .Should().Contain("Preview_page_one_p95_is_within_500ms_on_fixed_fixture");
+    SourceScanHelper.ReadSource("Tests/SmartGuard.Settings.Tests/LogWorkbenchP1AcceptanceTests.cs")
+      .Should().Contain("Large_fixture_supports_combo_query_regex_and_paging");
+  }
+
+  [Fact]
   public void Log_config_and_diagnostic_export_keep_existing_owners()
   {
     ContractContent.Should().Contain("## 23.");

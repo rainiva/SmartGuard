@@ -1,10 +1,19 @@
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
 using SmartGuard.Configuration;
+using SmartGuard.Settings;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 public class LogWorkbenchP1AcceptanceTests
 {
+  private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
   private static LogMatch Match(int ordinal, string eventId)
     => new(ordinal, eventId, LogSourceIdentity.FromContentPrefix(DateTimeOffset.UtcNow, eventId), 0);
 
@@ -122,6 +131,199 @@ public class LogWorkbenchP1AcceptanceTests
     {
       fixture.Dispose();
     }
+  }
+
+  [Fact]
+  public void A_page_matrix_runs_against_the_real_settings_window()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var installRoot = Path.Combine(
+        Path.GetTempPath(),
+        "sg-log-pagination-window-" + Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(installRoot);
+      Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+      SettingsWindowController? controller = null;
+
+      try
+      {
+        WriteWindowConfig(installRoot);
+        WriteWindowLog(installRoot, eventCount: 1248);
+        var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
+        var repository = new GuardConfigRepository(configPath);
+        var config = repository.LoadOrDefault(installRoot);
+        controller = SettingsWindowController.TryCreate(installRoot, repository, config)
+          ?? throw new InvalidOperationException("Failed to create the real Settings window.");
+        WpfStaTestHost.Track(controller);
+        var window = GetWindow(controller);
+        WpfStaTestHost.ShowAndWait(window);
+        controller.NavigateTo("logs");
+
+        var table = (DataGrid)window.FindName("logTable")!;
+        var totalLabel = (TextBlock)window.FindName("lblLogTotalCount")!;
+        var statusLabel = (TextBlock)window.FindName("lblLogStatus")!;
+        var pageSize = (ComboBox)window.FindName("cmbLogPageSize")!;
+        var pageItems = (ItemsControl)window.FindName("logPageNumberItems")!;
+        var coordinator = GetPaginationCoordinator(controller);
+
+        WpfStaTestHost.WaitUntil(
+          () => totalLabel.Text == "共 1,248 条日志"
+             && table.Items.Count == 20
+             && !coordinator.State.IsBusy
+             && statusLabel.Text != "正在统计匹配日志…",
+          TimeSpan.FromSeconds(10),
+          "the first real paged table to show 20 rows and an exact total");
+        statusLabel.Text.Should().NotContain("正在统计匹配日志");
+        coordinator.State.TotalPages.Should().Be(63);
+        pageSize.SelectedIndex.Should().Be(0);
+
+        ExecutePage(window, 2);
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.CurrentPage == 2
+             && !coordinator.State.IsBusy
+             && coordinator.State.ExactTotalCount == 1248
+             && table.Items.Count == 20,
+          TimeSpan.FromSeconds(10),
+          "page 2 to apply");
+
+        ExecutePage(window, 63);
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.CurrentPage == 63
+             && !coordinator.State.IsBusy
+             && coordinator.State.ExactTotalCount == 1248
+             && table.Items.Count == 8,
+          TimeSpan.FromSeconds(10),
+          "the last page to apply");
+        coordinator.State.CanGoNext.Should().BeFalse();
+        coordinator.State.CanGoLast.Should().BeFalse();
+
+        pageSize.SelectedIndex = 1;
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.PageSize == 50
+             && coordinator.State.TotalPages == 25
+             && coordinator.State.CurrentPage == 1
+             && !coordinator.State.IsBusy
+             && coordinator.State.ExactTotalCount == 1248,
+          TimeSpan.FromSeconds(10),
+          "page size 50 to reset and recalculate");
+        pageSize.SelectedIndex = 2;
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.PageSize == 100
+             && coordinator.State.TotalPages == 13
+             && coordinator.State.CurrentPage == 1
+             && !coordinator.State.IsBusy
+             && coordinator.State.ExactTotalCount == 1248,
+          TimeSpan.FromSeconds(10),
+          "page size 100 to reset and recalculate");
+
+        pageSize.SelectedIndex = 0;
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.PageSize == 20
+             && coordinator.State.TotalPages == 63
+             && coordinator.State.CurrentPage == 1
+             && !coordinator.State.IsBusy
+             && coordinator.State.ExactTotalCount == 1248,
+          TimeSpan.FromSeconds(10),
+          "page size 20 to restore");
+        ExecutePage(window, 31);
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.CurrentPage == 31
+             && !coordinator.State.IsBusy
+             && coordinator.State.ExactTotalCount == 1248,
+          TimeSpan.FromSeconds(10),
+          "the middle page to apply");
+
+        var tokens = pageItems.Items
+          .Cast<object>()
+          .Select(item => item is Button button ? button.Content?.ToString() ?? string.Empty : "…")
+          .ToArray();
+        tokens.Should().Equal("1", "…", "30", "31", "32", "…", "63");
+
+        WriteRealWindowEvidence(new
+        {
+          scenario = "A-PAGE-01..05",
+          total = totalLabel.Text,
+          pageSize = coordinator.State.PageSize,
+          currentPage = coordinator.State.CurrentPage,
+          totalPages = coordinator.State.TotalPages,
+          rowsOnPage = table.Items.Count,
+          tokens,
+          nextEnabled = coordinator.State.CanGoNext,
+          lastEnabled = coordinator.State.CanGoLast,
+        });
+      }
+      finally
+      {
+        controller?.Dispose();
+        TryDelete(installRoot);
+      }
+    });
+  }
+
+  private static void ExecutePage(Window window, int pageNumber)
+    => LogPaginationCommands.GoToPage.Execute(pageNumber, window);
+
+  private static SettingsLogPaginationCoordinator GetPaginationCoordinator(
+    SettingsWindowController controller)
+  {
+    var host = GetLogPageHost(controller);
+    var property = host.GetType().GetProperty(
+      "PaginationCoordinatorForTests",
+      BindingFlags.NonPublic | BindingFlags.Instance);
+    return (SettingsLogPaginationCoordinator)property!.GetValue(host)!;
+  }
+
+  private static Window GetWindow(SettingsWindowController controller)
+  {
+    var field = typeof(SettingsWindowController).GetField(
+      "_window",
+      BindingFlags.NonPublic | BindingFlags.Instance);
+    return (Window)field!.GetValue(controller)!;
+  }
+
+  private static object GetLogPageHost(SettingsWindowController controller)
+  {
+    var field = typeof(SettingsWindowController).GetField(
+      "_logPageHost",
+      BindingFlags.NonPublic | BindingFlags.Instance);
+    return field!.GetValue(controller)!;
+  }
+
+  private static void WriteWindowConfig(string installRoot)
+  {
+    File.WriteAllText(
+      Path.Combine(installRoot, "SmartGuard.config.json"),
+      "{\"BalancedThresholdSec\":300,\"PowerSaverThresholdSec\":900,\"LowBatteryPercent\":25,\"CheckIntervalSec\":30,\"BrightnessRestoreMs\":1000,\"ThemeFollowSystem\":false,\"ThemeIsDark\":false}",
+      Utf8NoBom);
+  }
+
+  private static void WriteWindowLog(string installRoot, int eventCount)
+  {
+    using var writer = new StreamWriter(
+      Path.Combine(installRoot, "SmartGuard.log"),
+      append: false,
+      Utf8NoBom);
+    var start = new DateTimeOffset(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
+    for (var i = 0; i < eventCount; i++)
+    {
+      var timestamp = start.AddSeconds(i);
+      writer.WriteLine($"[INFO] {timestamp.LocalDateTime:yyyy-MM-dd HH:mm:ss} [Engine] window-page-{i + 1:0000}");
+    }
+  }
+
+  private static void WriteRealWindowEvidence(object evidence)
+  {
+    var evidenceRoot = Path.Combine(SettingsSourcePaths.RepoRoot(), ".work", "log-pagination-acceptance");
+    Directory.CreateDirectory(evidenceRoot);
+    File.WriteAllText(
+      Path.Combine(evidenceRoot, "real-window-matrix.json"),
+      JsonSerializer.Serialize(evidence, new JsonSerializerOptions { WriteIndented = true }),
+      Utf8NoBom);
+  }
+
+  private static void TryDelete(string path)
+  {
+    try { Directory.Delete(path, recursive: true); } catch { }
   }
 
   private sealed class LogTailReaderEventSource : ILogEventSource

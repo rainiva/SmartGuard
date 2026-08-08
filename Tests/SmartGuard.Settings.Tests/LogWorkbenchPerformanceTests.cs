@@ -6,11 +6,13 @@ using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Windows;
 using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
 
+[Collection("WpfUiTests")]
 [Trait("Category", "Performance")]
 public class LogWorkbenchPerformanceTests
 {
@@ -18,6 +20,7 @@ public class LogWorkbenchPerformanceTests
   private const int EventsPerArchive = 2000;
   private const int CurrentLogTargetBytes = 10 * 1024 * 1024;
   private const int WarmRuns = 20;
+  private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
   [Fact]
   public void Ten_thousand_appends_keep_window_bounded_without_collection_reset()
@@ -244,6 +247,235 @@ public class LogWorkbenchPerformanceTests
     }
   }
 
+  [Fact]
+  public void Preview_page_one_p95_is_within_500ms_on_fixed_fixture()
+  {
+    var fixture = LogWorkbenchPerformanceFixture.Create(
+      ArchiveCount,
+      EventsPerArchive,
+      CurrentLogTargetBytes);
+
+    try
+    {
+      var reader = new LogTailReader(fixture.LogPath);
+      var snapshot = reader.CaptureSnapshot();
+      var service = new LogQueryService();
+      var expression = LogQueryMatchAllExpression.Instance;
+      var scope = new LogReadScope(Array.Empty<LogSourceIdentity>());
+      var sample = SampleAsync(() => service.ReadPreviewPageAsync(
+        reader,
+        expression,
+        scope,
+        snapshot,
+        pageSize: 20,
+        ignoreCase: true,
+        CancellationToken.None));
+
+      WritePagingPerformanceSample("PreviewPageOne", sample, scannedCount: null, anchorCount: null);
+      sample.P95Milliseconds.Should().BeLessThan(
+        500,
+        $"Preview page p95={sample.P95Milliseconds}ms max={sample.MaxMilliseconds}ms on {sample.MachineName}");
+    }
+    finally
+    {
+      fixture.Dispose();
+    }
+  }
+
+  [Fact]
+  public async Task Indexed_random_page_p95_is_within_250ms_on_fixed_fixture()
+  {
+    var fixture = LogWorkbenchPerformanceFixture.Create(
+      ArchiveCount,
+      EventsPerArchive,
+      CurrentLogTargetBytes);
+
+    try
+    {
+      var reader = new LogTailReader(fixture.LogPath);
+      var service = new LogQueryService();
+      var snapshot = reader.CaptureSnapshot();
+      var scope = new LogReadScope(Array.Empty<LogSourceIdentity>());
+      var index = await service.BuildPageIndexAsync(
+        reader,
+        LogQueryMatchAllExpression.Instance,
+        scope,
+        snapshot,
+        ignoreCase: true,
+        progress: null,
+        CancellationToken.None);
+      var totalPages = Math.Max(1, (index.ExactTotalCount + 99) / 100);
+      var random = new Random(20260808);
+      var sample = SampleAsync(() => service.ReadPageAsync(
+        reader,
+        index,
+        new LogQueryPageRequest(
+          random.Next(1, totalPages + 1),
+          PageSize: 100,
+          LogSortDirection.NewestFirst),
+        CancellationToken.None));
+
+      WritePagingPerformanceSample(
+        "IndexedRandomPage",
+        sample,
+        index.ScannedCount,
+        index.Anchors.Count);
+      sample.P95Milliseconds.Should().BeLessThan(
+        250,
+        $"Indexed random page p95={sample.P95Milliseconds}ms max={sample.MaxMilliseconds}ms on {sample.MachineName}");
+    }
+    finally
+    {
+      fixture.Dispose();
+    }
+  }
+
+  [Fact]
+  public async Task Page_index_anchor_count_is_bounded_by_match_count_over_256()
+  {
+    var fixture = LogWorkbenchPerformanceFixture.Create(
+      ArchiveCount,
+      EventsPerArchive,
+      CurrentLogTargetBytes);
+
+    try
+    {
+      var reader = new LogTailReader(fixture.LogPath);
+      var service = new LogQueryService();
+      var index = await service.BuildPageIndexAsync(
+        reader,
+        LogQueryMatchAllExpression.Instance,
+        new LogReadScope(Array.Empty<LogSourceIdentity>()),
+        reader.CaptureSnapshot(),
+        ignoreCase: true,
+        progress: null,
+        CancellationToken.None);
+      var anchorUpperBound = (index.ExactTotalCount + 255) / 256;
+
+      index.Anchors.Count.Should().BeLessThanOrEqualTo(anchorUpperBound);
+      WritePagingPerformanceSample(
+        "PageIndexAnchors",
+        sample: null,
+        index.ScannedCount,
+        index.Anchors.Count);
+    }
+    finally
+    {
+      fixture.Dispose();
+    }
+  }
+
+  [Fact]
+  public void Fifty_rapid_page_and_filter_changes_apply_latest_generation_only()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var root = Path.Combine(Path.GetTempPath(), "sg-log-paging-generation-" + Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(root);
+      using var firstFlightStarted = new ManualResetEventSlim();
+      using var releaseFirstFlight = new ManualResetEventSlim();
+      var applied = new List<LogPaginationApplyModel>();
+      var executionCount = 0;
+      var window = new Window { Width = 320, Height = 80 };
+      var controller = new LogViewController(
+        new EmptyLogEventSource(),
+        Path.Combine(root, "SmartGuard.log"));
+      var pipeline = new SettingsLogRefreshPipeline(
+        window,
+        isDisposed: () => false,
+        isLogPageActive: () => true,
+        getRefreshableController: () => controller,
+        applyFilters: _ => { },
+        showFailure: _ => { },
+        applyRefreshResult: (_, _) => { },
+        applyScrollIfEnabled: () => { });
+      pipeline.ConfigurePagedApply(model => applied.Add(model));
+
+      try
+      {
+        WpfStaTestHost.ShowAndWait(window);
+        var expression = LogQueryMatchAllExpression.Instance;
+        var scope = new LogReadScope(Array.Empty<LogSourceIdentity>());
+        var initialIntent = new LogPaginationIntent(
+          QueryGeneration: 0,
+          expression,
+          scope,
+          PageNumber: 1,
+          PageSize: 20,
+          LogSortDirection.NewestFirst,
+          IgnoreCase: true,
+          CaptureNewSnapshot: true);
+
+        pipeline.SchedulePaged(
+          initialIntent,
+          async (intent, progress, cancellationToken) =>
+          {
+            if (Interlocked.Increment(ref executionCount) == 1)
+            {
+              firstFlightStarted.Set();
+              await Task.Run(() => releaseFirstFlight.Wait(cancellationToken), cancellationToken);
+            }
+
+            progress.Report(CreateGenerationModel(intent));
+          });
+
+        WpfStaTestHost.WaitUntil(
+          () => firstFlightStarted.IsSet,
+          TimeSpan.FromSeconds(5),
+          "the first paged flight to start");
+
+        for (var i = 0; i < 50; i++)
+        {
+          var page = (i % 9) + 1;
+          pipeline.SchedulePaged(
+            initialIntent with
+            {
+              PageNumber = page,
+              CaptureNewSnapshot = false,
+            },
+            (intent, progress, _) =>
+            {
+              progress.Report(CreateGenerationModel(intent));
+              return Task.CompletedTask;
+            });
+        }
+
+        releaseFirstFlight.Set();
+        WpfStaTestHost.WaitUntil(
+          () => !pipeline.IsRefreshInFlight,
+          TimeSpan.FromSeconds(10),
+          "the initial and latest paged flights to settle");
+        WpfStaTestHost.PumpDispatcher(window);
+
+        applied.Should().ContainSingle(
+          "the refresh pipeline must discard the initial generation and apply only the final coalesced request");
+        applied[0].QueryGeneration.Should().Be(51);
+        applied[0].PageNumber.Should().Be(5);
+      }
+      finally
+      {
+        releaseFirstFlight.Set();
+        pipeline.Shutdown();
+        window.Close();
+        TryDelete(root);
+      }
+    });
+  }
+
+  private static LogPaginationApplyModel CreateGenerationModel(LogPaginationIntent intent)
+    => new(
+      intent.QueryGeneration,
+      IsProvisional: false,
+      Events: Array.Empty<LogEvent>(),
+      intent.PageNumber,
+      intent.PageSize,
+      ExactTotalCount: 100,
+      IsScanComplete: true,
+      intent.SortDirection,
+      new LogSourceSnapshot(Array.Empty<LogSourceSnapshotEntry>(), "rapid-generation"),
+      Index: null,
+      ErrorMessage: null);
+
   private static LogEvent CreateEvent(string eventId, string message = "payload")
     => new(
       LogEvent.CurrentSchemaVersion,
@@ -370,6 +602,61 @@ public class LogWorkbenchPerformanceTests
     });
 
     File.WriteAllText(path, JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
+  }
+
+  private static void WritePagingPerformanceSample(
+    string scenario,
+    PerformanceSampleRecord? sample,
+    int? scannedCount,
+    int? anchorCount)
+  {
+    var evidenceRoot = Path.Combine(
+      SettingsSourcePaths.RepoRoot(),
+      ".work",
+      "log-pagination-acceptance");
+    Directory.CreateDirectory(evidenceRoot);
+    var path = Path.Combine(evidenceRoot, "performance-results.jsonl");
+    var record = new
+    {
+      scenario,
+      recordedAtUtc = DateTime.UtcNow.ToString("O"),
+      machineName = sample?.MachineName ?? Environment.MachineName,
+      p50Ms = sample?.P50Milliseconds,
+      p95Ms = sample?.P95Milliseconds,
+      maxMs = sample?.MaxMilliseconds,
+      workingSetDeltaBytes = sample?.WorkingSetDeltaBytes,
+      scannedCount,
+      anchorCount,
+    };
+    File.AppendAllText(
+      path,
+      JsonSerializer.Serialize(record) + Environment.NewLine,
+      Utf8NoBom);
+  }
+
+  private static void TryDelete(string path)
+  {
+    try { Directory.Delete(path, recursive: true); } catch { }
+  }
+
+  private sealed class EmptyLogEventSource : ILogEventSource
+  {
+    public Task<LogEventPage> ReadLatestAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public Task<LogEventPage> ReadOlderAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public Task<LogEventPage> ReadNewerAsync(LogReadRequest request, CancellationToken cancellationToken)
+      => Task.FromResult(LogEventPage.Empty);
+
+    public async IAsyncEnumerable<LogEvent> StreamAsync(
+      LogReadScope scope,
+      [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+      await Task.CompletedTask;
+      yield break;
+    }
   }
 
   private sealed record PerformanceSampleRecord(

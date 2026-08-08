@@ -217,6 +217,7 @@ internal sealed partial class SettingsLogPageHost
       _logController.ProcessIdFilter,
       _logController.ThreadIdFilter,
       _logController.NowProvider);
+    _pagedHasActiveFilters = filterState.HasActiveFilters;
     var parts = new List<LogQueryExpression> { filterState.QueryExpression };
     foreach (var tag in filterState.ActiveTagFilters)
     {
@@ -229,7 +230,10 @@ internal sealed partial class SettingsLogPageHost
 
     if (_logController.ScopeExpression is { } scope
         && scope is not LogQueryMatchAllExpression)
+    {
+      _pagedHasActiveFilters = true;
       parts.Add(scope);
+    }
 
     return parts.Count == 1 ? parts[0] : LogQueryExpression.AndAll(parts);
   }
@@ -307,6 +311,17 @@ internal sealed partial class SettingsLogPageHost
     if (_lblLogStatus is not null && model.IsProvisional)
       LogStatusLiveRegion.Set(_lblLogStatus, "正在统计匹配日志…");
 
+    if (!model.IsProvisional && model.ExactTotalCount is int exactTotalCount)
+    {
+      if (_pagedHasActiveFilters && exactTotalCount == 0)
+        _logListPresenter?.Apply(LogViewUpdatePlan.ReplaceAll(["无匹配结果"]));
+
+      ApplyPagedStatus(model, exactTotalCount);
+      _lastDisplayedLines = model.Events
+        .Select(LogViewEventFilter.GetDisplayLine)
+        .ToArray();
+    }
+
     var applyRestoredTableSelection = !model.IsProvisional;
     if (!model.IsProvisional && _pendingPageRestore is int restorePage)
     {
@@ -326,6 +341,38 @@ internal sealed partial class SettingsLogPageHost
   }
 
   private int? _pendingPageRestore;
+
+  private void ApplyPagedStatus(LogPaginationApplyModel model, int exactTotalCount)
+  {
+    if (_lblLogStatus is null || _logController is null)
+      return;
+
+    var idleRead = LogViewIdleReader.TryRead(_root);
+    if (idleRead.Seconds is int seconds)
+      _logIdleSeconds = seconds;
+    _logStatusMayBeStale = idleRead.StatusMayBeStale;
+
+    var snapshot = new LogViewSnapshot(
+      model.Events.Select(LogViewEventFilter.GetDisplayLine).ToArray(),
+      exactTotalCount,
+      IsTailTruncated: false,
+      LogPath: _logPath ?? string.Empty,
+      ContentChanged: true,
+      SearchKeyword: _logController.SearchKeyword,
+      EmptyStateMessage: _pagedHasActiveFilters && exactTotalCount == 0 ? "无匹配结果" : null,
+      TimeRange: _logController.TimeRange,
+      MatchedLineCount: exactTotalCount,
+      ActiveTagFilters: _logController.ActiveTagFilters);
+    var status = LogViewStatusTextBuilder.Build(
+      snapshot,
+      DateTime.Now,
+      _logIdleSeconds,
+      _logStatusMayBeStale);
+    if (_pagedHasActiveFilters && exactTotalCount == 0)
+      status = $"{status} | 无匹配结果";
+
+    LogStatusLiveRegion.Set(_lblLogStatus, status);
+  }
 
   private void ApplyPendingRestoredTableSelection()
   {
