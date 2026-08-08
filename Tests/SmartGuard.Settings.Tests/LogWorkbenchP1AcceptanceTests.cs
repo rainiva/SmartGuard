@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
 using SmartGuard.Settings.LogView;
@@ -157,6 +159,9 @@ public class LogWorkbenchP1AcceptanceTests
         WpfStaTestHost.Track(controller);
         var window = GetWindow(controller);
         WpfStaTestHost.ShowAndWait(window);
+        window.Width = 1575;
+        window.Height = 1000;
+        window.UpdateLayout();
         controller.NavigateTo("logs");
 
         var table = (DataGrid)window.FindName("logTable")!;
@@ -239,6 +244,7 @@ public class LogWorkbenchP1AcceptanceTests
           .ToArray();
         tokens.Should().Equal("1", "…", "30", "31", "32", "…", "63");
 
+        WriteRealWindowScreenshot(window);
         WriteRealWindowEvidence(new
         {
           scenario = "A-PAGE-01..05",
@@ -319,6 +325,23 @@ public class LogWorkbenchP1AcceptanceTests
       Path.Combine(evidenceRoot, "real-window-matrix.json"),
       JsonSerializer.Serialize(evidence, new JsonSerializerOptions { WriteIndented = true }),
       Utf8NoBom);
+  }
+
+  private static void WriteRealWindowScreenshot(Window window)
+  {
+    var visual = window.Content as FrameworkElement ?? window;
+    visual.UpdateLayout();
+    var width = Math.Max(1, (int)Math.Ceiling(visual.ActualWidth));
+    var height = Math.Max(1, (int)Math.Ceiling(visual.ActualHeight));
+    var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+    bitmap.Render(visual);
+
+    var evidenceRoot = Path.Combine(SettingsSourcePaths.RepoRoot(), ".work", "log-pagination-acceptance");
+    Directory.CreateDirectory(evidenceRoot);
+    using var stream = File.Create(Path.Combine(evidenceRoot, "real-window.png"));
+    var encoder = new PngBitmapEncoder();
+    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+    encoder.Save(stream);
   }
 
   private static void TryDelete(string path)
