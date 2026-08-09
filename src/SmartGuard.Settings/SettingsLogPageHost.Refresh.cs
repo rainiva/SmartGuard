@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
@@ -93,6 +94,14 @@ internal sealed partial class SettingsLogPageHost
     _panelLogCustomRange = controls.CustomRangePanel;
     _txtLogRangeStart = controls.RangeStartTextBox;
     _txtLogRangeEnd = controls.RangeEndTextBox;
+    if (_txtLogRangeStart is not null
+        && _window.FindName("dateLogRangeStart") is DatePicker startDate
+        && _window.FindName("txtLogRangeStartTime") is TextBox startTime)
+      SettingsLogPageHostWiring.WireLogDateTimePicker(startDate, startTime, _txtLogRangeStart);
+    if (_txtLogRangeEnd is not null
+        && _window.FindName("dateLogRangeEnd") is DatePicker endDate
+        && _window.FindName("txtLogRangeEndTime") is TextBox endTime)
+      SettingsLogPageHostWiring.WireLogDateTimePicker(endDate, endTime, _txtLogRangeEnd);
     _chkLogSearchCaseSensitive = controls.CaseSensitiveCheckBox;
     _logTimer = controls.RefreshTimer;
     _logExportCoordinator = new SettingsLogExportCoordinator(
@@ -535,12 +544,10 @@ internal sealed partial class SettingsLogPageHost
 
   private void ToggleLogFilterPanel()
   {
-    if (_window.FindName("logFilterPanel") is not UIElement panel)
+    if (_window.FindName("logFilterPopup") is not Popup popup)
       return;
 
-    panel.Visibility = panel.Visibility == Visibility.Visible
-      ? Visibility.Collapsed
-      : Visibility.Visible;
+    popup.IsOpen = !popup.IsOpen;
   }
 
   private async Task ExecutePagedQueryAsync(

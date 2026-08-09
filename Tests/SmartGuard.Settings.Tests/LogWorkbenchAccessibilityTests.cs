@@ -36,21 +36,23 @@ public class LogWorkbenchAccessibilityTests
 
         var searchIndex = RequireIndex(xaml, "x:Name=\"logSearchFilterHost\"");
         var refreshIndex = RequireIndex(xaml, "x:Name=\"btnLogRefresh\"");
+        var filterIndex = RequireIndex(xaml, "x:Name=\"btnLogFilter\"");
         var moreIndex = RequireIndex(xaml, "x:Name=\"btnLogMore\"");
         var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
         var timeIndex = RequireIndex(xaml, "x:Name=\"cmbLogTimeRange\"");
 
         searchIndex.Should().BeLessThan(refreshIndex);
-        refreshIndex.Should().BeLessThan(moreIndex);
-        timeIndex.Should().BeLessThan(searchIndex);
-        moreIndex.Should().BeLessThan(sessionIndex);
+        refreshIndex.Should().BeLessThan(filterIndex);
+        filterIndex.Should().BeLessThan(moreIndex);
+        moreIndex.Should().BeLessThan(timeIndex);
+        timeIndex.Should().BeLessThan(sessionIndex);
 
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogSession\"[\\s\\S]{0,600}Focusable=\"True\"",
-            "the top session picker should be explicitly keyboard reachable");
+            "the session picker in the filter popup should be explicitly keyboard reachable");
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,600}Focusable=\"True\"",
-            "the time picker should remain keyboard reachable after moving the session scope row");
+            "the time picker should remain keyboard reachable inside the filter popup");
     }
 
     [Fact]

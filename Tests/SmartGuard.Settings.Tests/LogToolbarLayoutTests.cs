@@ -74,11 +74,15 @@ public class LogToolbarLayoutTests
     }
 
     [Fact]
-    public void Log_page_keeps_time_on_toolbar_and_moves_level_and_session_into_collapsed_filter_panel()
+    public void Log_page_moves_time_level_and_session_into_filter_popup()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+        var refreshSource = File.ReadAllText(
+            Path.Combine(SettingsSourcePaths.RepoRoot(), "src", "SmartGuard.Settings", "SettingsLogPageHost.Refresh.cs"),
+            System.Text.Encoding.UTF8);
 
         xaml.Should().Contain("MinWidth=\"600\"");
+        xaml.Should().Contain("x:Name=\"logFilterPopup\"");
         xaml.Should().Contain("x:Name=\"logFilterPanel\"");
         xaml.Should().Contain("x:Name=\"logFilterScopePanel\"");
         xaml.Should().Contain("x:Name=\"cmbLogSession\"");
@@ -87,6 +91,7 @@ public class LogToolbarLayoutTests
         var searchIndex = RequireIndex(xaml, "x:Name=\"logSearchFilterHost\"");
         var refreshIndex = RequireIndex(xaml, "x:Name=\"btnLogRefresh\"");
         var moreIndex = RequireIndex(xaml, "x:Name=\"btnLogMore\"");
+        var filterPopupIndex = RequireIndex(xaml, "x:Name=\"logFilterPopup\"");
         var filterPanelIndex = RequireIndex(xaml, "x:Name=\"logFilterPanel\"");
         var tagIndex = RequireIndex(xaml, "x:Name=\"logTagFilterLinksPanel\"");
         var scopeIndex = RequireIndex(xaml, "x:Name=\"logFilterScopePanel\"");
@@ -96,19 +101,22 @@ public class LogToolbarLayoutTests
 
         searchIndex.Should().BeLessThan(refreshIndex);
         refreshIndex.Should().BeLessThan(moreIndex);
-        moreIndex.Should().BeLessThan(filterPanelIndex);
+        moreIndex.Should().BeLessThan(filterPopupIndex);
+        filterPopupIndex.Should().BeLessThan(filterPanelIndex);
         filterPanelIndex.Should().BeLessThan(tagIndex);
+        filterPanelIndex.Should().BeLessThan(timeIndex);
+        timeIndex.Should().BeLessThan(tagIndex);
         tagIndex.Should().BeLessThan(scopeIndex);
         scopeIndex.Should().BeLessThan(statusIndex);
 
         sessionIndex.Should().BeGreaterThan(scopeIndex);
         sessionIndex.Should().BeLessThan(statusIndex);
-        timeIndex.Should().BeLessThan(searchIndex);
         timeIndex.Should().BeLessThan(statusIndex);
 
         xaml.Should().MatchRegex(
-            "x:Name=\"logFilterPanel\"[\\s\\S]{0,300}Visibility=\"Collapsed\"",
-            "secondary filters should stay out of the main panel until the user opens Filter");
+            "x:Name=\"logFilterPopup\"[\\s\\S]{0,500}PlacementTarget=\"\\{Binding ElementName=btnLogFilter\\}\"",
+            "the filter surface should be anchored to the toolbar filter button");
+        refreshSource.Should().Contain("popup.IsOpen = !popup.IsOpen");
 
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"1[6-9]0|x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"2[0-4]0",
@@ -128,7 +136,6 @@ public class LogToolbarLayoutTests
 
         foreach (var controlName in new[]
                  {
-                     "cmbLogTimeRange",
                      "logSearchBox",
                      "btnLogRefresh",
                      "btnLogFilter",
@@ -140,6 +147,15 @@ public class LogToolbarLayoutTests
                 $"x:Name=\"{controlName}\"[\\s\\S]{{0,240}}Height=\"36\"|Height=\"36\"[\\s\\S]{{0,240}}x:Name=\"{controlName}\"",
                 $"{controlName} should use the shared 36 DIP toolbar height");
         }
+
+        xaml.Should().MatchRegex(
+            "x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,240}Height=\"36\"|Height=\"36\"[\\s\\S]{0,240}x:Name=\"cmbLogTimeRange\"");
+        xaml.Should().Contain("x:Name=\"dateLogRangeStart\"");
+        xaml.Should().Contain("x:Name=\"dateLogRangeEnd\"");
+        xaml.Should().Contain("x:Name=\"txtLogRangeStartTime\"");
+        xaml.Should().Contain("x:Name=\"txtLogRangeEndTime\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"panelLogCustomRange\"[\\s\\S]{0,1600}<DatePicker[\\s\\S]{0,1600}<DatePicker");
     }
 
     [Fact]

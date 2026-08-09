@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -171,6 +172,38 @@ internal static class SettingsLogPageHostWiring
         () => ApplyRow(e.Row),
         System.Windows.Threading.DispatcherPriority.Loaded);
     };
+    Apply();
+  }
+
+  internal static void WireLogDateTimePicker(
+    DatePicker datePicker,
+    TextBox timeTextBox,
+    TextBox canonicalTextBox)
+  {
+    ArgumentNullException.ThrowIfNull(datePicker);
+    ArgumentNullException.ThrowIfNull(timeTextBox);
+    ArgumentNullException.ThrowIfNull(canonicalTextBox);
+
+    void Apply()
+    {
+      if (datePicker.SelectedDate is not DateTime date
+          || !DateTime.TryParseExact(
+            timeTextBox.Text.Trim(),
+            ["HH:mm:ss", "HH:mm"],
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var time))
+      {
+        canonicalTextBox.Text = string.Empty;
+        return;
+      }
+
+      canonicalTextBox.Text = (date.Date + time.TimeOfDay)
+        .ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+    }
+
+    datePicker.SelectedDateChanged += (_, _) => Apply();
+    timeTextBox.TextChanged += (_, _) => Apply();
     Apply();
   }
 

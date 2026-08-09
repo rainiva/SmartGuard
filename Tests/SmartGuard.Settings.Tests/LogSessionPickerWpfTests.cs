@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using SmartGuard.Configuration;
 using SmartGuard.Settings.LogView;
 
@@ -108,12 +109,15 @@ public sealed class LogSessionPickerWpfTests
         controller.NavigateTo("logs");
         var filterPanel = window.FindName("logFilterPanel") as Border
           ?? throw new InvalidOperationException("logFilterPanel was not found.");
-        filterPanel.Visibility.Should().Be(Visibility.Collapsed);
+        var filterPopup = window.FindName("logFilterPopup") as Popup
+          ?? throw new InvalidOperationException("logFilterPopup was not found.");
+        filterPopup.IsOpen.Should().BeFalse();
+        filterPanel.Visibility.Should().Be(Visibility.Visible);
         var filterButton = window.FindName("btnLogFilter") as Button
           ?? throw new InvalidOperationException("btnLogFilter was not found.");
         filterButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
-        filterPanel.Visibility.Should().Be(Visibility.Visible);
+        filterPopup.IsOpen.Should().BeTrue();
 
         var combo = RequireCombo(window);
         var scopePanel = window.FindName("logFilterScopePanel") as WrapPanel
@@ -145,16 +149,9 @@ public sealed class LogSessionPickerWpfTests
 
         combo.ActualWidth.Should().BeGreaterThan(0);
         scopePanel.ActualWidth.Should().BeGreaterThan(0);
-        var scopeBounds = scopePanel.TransformToAncestor(window)
-          .TransformBounds(new Rect(new Point(0, 0), scopePanel.RenderSize));
-        scopeBounds.Left.Should().BeGreaterThanOrEqualTo(0);
-        scopeBounds.Right.Should().BeLessThanOrEqualTo(window.ActualWidth + 1);
-
-        var sessionBounds = combo.TransformToAncestor(window)
-          .TransformBounds(new Rect(new Point(0, 0), combo.RenderSize));
-        sessionBounds.Width.Should().BeGreaterThan(0);
-        sessionBounds.Left.Should().BeGreaterThanOrEqualTo(0);
-        sessionBounds.Right.Should().BeLessThanOrEqualTo(window.ActualWidth + 1);
+        scopePanel.ActualWidth.Should().BeLessThanOrEqualTo(filterPanel.ActualWidth);
+        combo.ActualWidth.Should().BeLessThanOrEqualTo(scopePanel.ActualWidth);
+        filterPopup.PlacementTarget.Should().BeSameAs(filterButton);
       }
       finally
       {

@@ -204,6 +204,25 @@ public class LogPaginationWpfTests
     }
 
     [Fact]
+    public void Native_date_and_time_inputs_update_the_existing_canonical_range_text()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var date = new DatePicker();
+            var time = new TextBox { Text = "08:30:15" };
+            var canonical = new TextBox();
+
+            SettingsLogPageHostWiring.WireLogDateTimePicker(date, time, canonical);
+            date.SelectedDate = new DateTime(2026, 8, 9);
+
+            canonical.Text.Should().Be("2026-08-09 08:30:15");
+
+            time.Text = "19:45";
+            canonical.Text.Should().Be("2026-08-09 19:45:00");
+        });
+    }
+
+    [Fact]
     public void Wrap_mode_is_applied_to_cells_created_after_page_switch()
     {
         WpfStaTestHost.Run(() =>
