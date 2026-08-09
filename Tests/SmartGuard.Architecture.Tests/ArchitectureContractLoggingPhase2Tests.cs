@@ -59,6 +59,7 @@ public class ArchitectureContractLoggingPhase2Tests
   [Fact]
   public void Contract_registers_retention_limits_and_pipeline_enforces_them()
   {
+    ContractContent.Should().Contain("LogRetentionDays");
     ContractContent.Should().Contain("LogMaxArchiveFiles");
     ContractContent.Should().Contain("LogDirectoryMaxBytes");
     var writer = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SmartGuardLogWriter.cs");

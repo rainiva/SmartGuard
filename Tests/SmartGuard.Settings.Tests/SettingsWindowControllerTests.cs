@@ -198,33 +198,35 @@ public class SettingsWindowControllerTests
             var pageGeneral = window.FindName("pageGeneral") as StackPanel;
             var pageAdvanced = window.FindName("pageAdvanced") as StackPanel;
             var pageNotifications = window.FindName("pageNotifications") as StackPanel;
-            var pageDiagnosticDetails = window.FindName("pageDiagnosticDetails") as Grid;
+            var pageAbout = window.FindName("pageAbout") as StackPanel;
             var navList = window.FindName("navList") as ListBox;
 
             pageGeneral.Should().NotBeNull();
             pageAdvanced.Should().NotBeNull();
             pageNotifications.Should().NotBeNull();
-            pageDiagnosticDetails.Should().NotBeNull();
+            pageAbout.Should().NotBeNull();
+            window.FindName("pageDiagnosticDetails").Should().BeNull();
             navList.Should().NotBeNull();
-            navList.Items.Count.Should().Be(7);
+            navList.Items.Count.Should().Be(6);
         });
     }
 
     [Fact]
-    public void Diagnostic_details_owns_statistics_instead_of_log_page()
+    public void About_maintenance_owns_statistics_instead_of_log_page()
     {
         RunOnSta(() =>
         {
             var window = LoadCompiledWindow();
             var pageLogs = window.FindName("pageLogs") as FrameworkElement;
-            var pageDiagnosticDetails = window.FindName("pageDiagnosticDetails") as FrameworkElement;
+            var pageAbout = window.FindName("pageAbout") as FrameworkElement;
             var statisticsInspector = window.FindName("logStatisticsInspector") as FrameworkElement;
 
             pageLogs.Should().NotBeNull();
-            pageDiagnosticDetails.Should().NotBeNull();
+            pageAbout.Should().NotBeNull();
             statisticsInspector.Should().NotBeNull();
             statisticsInspector!.IsDescendantOf(pageLogs!).Should().BeFalse();
-            statisticsInspector.IsDescendantOf(pageDiagnosticDetails!).Should().BeTrue();
+            statisticsInspector.IsDescendantOf(pageAbout!).Should().BeTrue();
+            window.FindName("cmbLogRetentionDays").Should().NotBeNull();
         });
     }
 
@@ -1245,12 +1247,12 @@ public class SettingsWindowControllerTests
 
             var navList = window.FindName("navList") as ListBox;
             navList.Should().NotBeNull();
-            navList!.Items.Count.Should().Be(7);
+            navList!.Items.Count.Should().Be(6);
             navList.Items
                 .OfType<ListBoxItem>()
                 .Select(item => item.Name)
                 .Should()
-                .ContainInOrder("navGeneral", "navAdvanced", "navNotifications", "navLogs", "navDisplay", "navAbout", "navDiagnosticDetails");
+                .ContainInOrder("navGeneral", "navAdvanced", "navNotifications", "navLogs", "navDisplay", "navAbout");
         });
     }
 
@@ -1852,6 +1854,36 @@ public class SettingsWindowControllerTests
                 lnkRepo.NavigateUri.AbsoluteUri.Should().Be("https://github.com/rainiva/SmartGuard",
                     "Repository link must point to the actual project repository");
                 btnCheckUpdate.Should().NotBeNull("About page must have check update button");
+            }
+            finally
+            {
+                try { Directory.Delete(installRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
+    public void User_changes_log_retention_days_from_about_maintenance()
+    {
+        RunOnSta(() =>
+        {
+            var installRoot = Path.Combine(Path.GetTempPath(), "sg-test-retention-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(installRoot);
+            try
+            {
+                var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
+                var repository = new GuardConfigRepository(configPath);
+                var config = repository.LoadOrDefault(installRoot);
+                var controller = SettingsWindowController.TryCreate(installRoot, repository, config);
+                controller.Should().NotBeNull();
+
+                var window = GetWindowField(controller!);
+                var retention = window.FindName("cmbLogRetentionDays") as ComboBox;
+                retention.Should().NotBeNull();
+                retention!.SelectedValue.Should().Be("7");
+
+                retention.SelectedValue = "30";
+                repository.TryLoad()!.LogRetentionDays.Should().Be(30);
             }
             finally
             {

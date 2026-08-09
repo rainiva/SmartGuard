@@ -165,6 +165,7 @@ public sealed class GuardConfigRepository
     node["LogMaxBytes"] = config.LogMaxBytes;
     node["LogMinimumLevel"] = config.LogMinimumLevel;
     node["LogHeartMinIntervalSec"] = config.LogHeartMinIntervalSec;
+    node["LogRetentionDays"] = config.LogRetentionDays;
     node["LogMaxArchiveFiles"] = config.LogMaxArchiveFiles;
     node["LogDirectoryMaxBytes"] = config.LogDirectoryMaxBytes;
     node["BrightnessRetryCount"] = config.BrightnessRetryCount;

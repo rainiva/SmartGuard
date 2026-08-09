@@ -22,7 +22,6 @@ internal sealed class SettingsNavigationShell
     var pageNotifications = _window.FindName("pageNotifications") as StackPanel;
     var pageDisplay = _window.FindName("pageDisplay") as StackPanel;
     var pageLogs = _window.FindName("pageLogs") as UIElement;
-    var pageDiagnosticDetails = _window.FindName("pageDiagnosticDetails") as UIElement;
     var pageAbout = _window.FindName("pageAbout") as StackPanel;
     var contentScrollViewer = _window.FindName("contentScrollViewer") as UIElement;
     var txtPageTitle = _window.FindName("txtPageTitle") as TextBlock;
@@ -31,7 +30,7 @@ internal sealed class SettingsNavigationShell
     {
       var selected = navList.SelectedIndex;
       var isLogsPage = selected == 3;
-      var isDiagnosticPage = selected == 6;
+      var isDiagnosticPage = selected == 5;
       UpdatePageTitle(selected, txtPageTitle);
 
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
@@ -39,11 +38,10 @@ internal sealed class SettingsNavigationShell
       if (pageNotifications != null) pageNotifications.Visibility = Visibility.Collapsed;
       if (pageDisplay != null) pageDisplay.Visibility = Visibility.Collapsed;
       if (pageLogs != null) pageLogs.Visibility = Visibility.Collapsed;
-      if (pageDiagnosticDetails != null) pageDiagnosticDetails.Visibility = Visibility.Collapsed;
       if (pageAbout != null) pageAbout.Visibility = Visibility.Collapsed;
 
       if (contentScrollViewer != null)
-        contentScrollViewer.Visibility = isLogsPage || isDiagnosticPage ? Visibility.Collapsed : Visibility.Visible;
+        contentScrollViewer.Visibility = isLogsPage ? Visibility.Collapsed : Visibility.Visible;
 
       switch (selected)
       {
@@ -64,9 +62,6 @@ internal sealed class SettingsNavigationShell
           break;
         case 5:
           if (pageAbout != null) pageAbout.Visibility = Visibility.Visible;
-          break;
-        case 6:
-          if (pageDiagnosticDetails != null) pageDiagnosticDetails.Visibility = Visibility.Visible;
           break;
       }
 
@@ -118,7 +113,7 @@ internal sealed class SettingsNavigationShell
         "logs" or "日志" => 3,
         "display" or "显示" => 4,
         "about" or "关于" => 5,
-        "diagnostic" or "diagnostics" or "诊断" or "诊断详情" => 6,
+        "diagnostic" or "diagnostics" or "诊断" or "诊断详情" => 5,
         _ => 0,
       };
 
@@ -143,7 +138,7 @@ internal sealed class SettingsNavigationShell
         setLogPageActive(
           navList.SelectedIndex == 3,
           LogPageActivationReason.WindowRestored);
-        setDiagnosticPageActive(navList.SelectedIndex == 6);
+        setDiagnosticPageActive(navList.SelectedIndex == 5);
       }
     };
   }
@@ -184,7 +179,6 @@ internal sealed class SettingsNavigationShell
       3 => "日志",
       4 => "显示设置",
       5 => "关于",
-      6 => "诊断详情",
       _ => "常规设置",
     };
   }

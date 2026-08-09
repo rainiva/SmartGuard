@@ -161,6 +161,7 @@ public class SettingsSnapshotMapperTests
   public void ApplyTraySettings_preserves_archive_retention_limits()
   {
     var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+    current.LogRetentionDays = 30;
     current.LogMaxArchiveFiles = 10;
     current.LogDirectoryMaxBytes = 52_428_800;
 
@@ -180,6 +181,7 @@ public class SettingsSnapshotMapperTests
       notifyOnExternalChange: true,
       autoStartEnabled: true);
 
+    updated.LogRetentionDays.Should().Be(30);
     updated.LogMaxArchiveFiles.Should().Be(10);
     updated.LogDirectoryMaxBytes.Should().Be(52_428_800);
   }

@@ -9,7 +9,7 @@ public sealed record LogRetentionPolicy(
   public static LogRetentionPolicy FromGuardConfig(GuardConfig config)
     => new(
       config.LogMaxBytes,
-      LogArchivePlanner.DefaultRetainDays,
+      Math.Clamp(config.LogRetentionDays, 1, 365),
       config.LogMaxArchiveFiles,
       config.LogDirectoryMaxBytes);
 }

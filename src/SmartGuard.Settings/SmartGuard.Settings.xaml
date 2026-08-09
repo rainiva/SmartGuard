@@ -781,12 +781,6 @@
               <TextBlock Text="关于" VerticalAlignment="Center"/>
             </StackPanel>
           </ListBoxItem>
-          <ListBoxItem x:Name="navDiagnosticDetails">
-            <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
-              <TextBlock Text="诊断详情" VerticalAlignment="Center"/>
-            </StackPanel>
-          </ListBoxItem>
         </ListBox>
       </Grid>
     </Border>
@@ -1201,6 +1195,72 @@
                   </Grid>
                 </Border>
 
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="日志保存时间" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="到期的归档日志会自动清理；当前日志不会被删除" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <ComboBox x:Name="cmbLogRetentionDays"
+                              Grid.Column="1"
+                              Width="120"
+                              SelectedValuePath="Tag"
+                              Style="{StaticResource SettingsComboBox}">
+                      <ComboBoxItem Content="1 天" Tag="1"/>
+                      <ComboBoxItem Content="3 天" Tag="3"/>
+                      <ComboBoxItem Content="7 天" Tag="7"/>
+                      <ComboBoxItem Content="14 天" Tag="14"/>
+                      <ComboBoxItem Content="30 天" Tag="30"/>
+                      <ComboBoxItem Content="90 天" Tag="90"/>
+                    </ComboBox>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Expander x:Name="logStatisticsInspector"
+                            Header="诊断详情"
+                            IsExpanded="False">
+                    <StackPanel Margin="0,8,0,0">
+                      <TextBlock Text="按日志页当前筛选条件查看错误趋势和组件分布。"
+                                 Style="{StaticResource SettingsItemHint}"
+                                 Margin="0,0,0,8"/>
+                      <TextBlock x:Name="lblLogStatisticsEmpty"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextTertiary}"
+                                 Margin="0,0,0,6"
+                                 Visibility="Collapsed"
+                                 Text="展开后按当前查询加载统计。"/>
+                      <local:LogErrorTrendChart x:Name="logErrorTrendChart"
+                                                Height="72"
+                                                Margin="0,0,0,8"
+                                                Visibility="Collapsed"/>
+                      <ItemsControl x:Name="logComponentDistribution"
+                                    Visibility="Collapsed">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <DockPanel Margin="0,0,0,4" LastChildFill="True">
+                              <TextBlock DockPanel.Dock="Right"
+                                         Text="{Binding Count}"
+                                         FontSize="11"
+                                         Foreground="{DynamicResource TextTertiary}"
+                                         Margin="8,0,0,0"
+                                         VerticalAlignment="Center"/>
+                              <TextBlock Text="{Binding Name}"
+                                         FontSize="11"
+                                         Foreground="{DynamicResource TextSecondary}"
+                                         VerticalAlignment="Center"/>
+                            </DockPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Expander>
+                </Border>
+
                 <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
                     <Grid.ColumnDefinitions>
@@ -1551,61 +1611,6 @@
                 </StackPanel>
               </Border>
             </Canvas>
-          </Grid>
-        </Border>
-      </Grid>
-
-      <!-- Diagnostic details page: statistics are intentionally separate from the log reader. -->
-      <Grid x:Name="pageDiagnosticDetails" Grid.Row="1" Visibility="Collapsed" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
-            KeyboardNavigation.TabNavigation="Local">
-        <Border Style="{StaticResource SettingsCard}" VerticalAlignment="Stretch">
-          <Grid VerticalAlignment="Stretch">
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <TextBlock Grid.Row="0"
-                       Text="按日志页当前筛选条件查看错误趋势和组件分布。"
-                       Style="{StaticResource SettingsCardDescription}"/>
-
-            <Expander x:Name="logStatisticsInspector"
-                      Grid.Row="1"
-                      Header="统计"
-                      IsExpanded="False"
-                      Margin="0,0,0,8">
-              <StackPanel>
-                <TextBlock x:Name="lblLogStatisticsEmpty"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextTertiary}"
-                           Margin="0,0,0,6"
-                           Visibility="Collapsed"
-                           Text="展开后按当前查询加载统计。"/>
-                <local:LogErrorTrendChart x:Name="logErrorTrendChart"
-                                          Height="72"
-                                          Margin="0,0,0,8"
-                                          Visibility="Collapsed"/>
-                <ItemsControl x:Name="logComponentDistribution"
-                              Visibility="Collapsed">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <DockPanel Margin="0,0,0,4" LastChildFill="True">
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding Count}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextTertiary}"
-                                   Margin="8,0,0,0"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding Name}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextSecondary}"
-                                   VerticalAlignment="Center"/>
-                      </DockPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </Expander>
           </Grid>
         </Border>
       </Grid>

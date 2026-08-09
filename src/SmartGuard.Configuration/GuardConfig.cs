@@ -24,6 +24,7 @@ public sealed class GuardConfig
   public long LogMaxBytes { get; set; } = 1_048_576;
   public string LogMinimumLevel { get; set; } = "Info";
   public int LogHeartMinIntervalSec { get; set; } = 60;
+  public int LogRetentionDays { get; set; } = LogArchivePlanner.DefaultRetainDays;
   public int LogMaxArchiveFiles { get; set; } = 30;
   public long LogDirectoryMaxBytes { get; set; } = 104_857_600;
   public int BrightnessRetryCount { get; set; } = 3;
@@ -71,6 +72,7 @@ public sealed class GuardConfig
       LogMaxBytes = 1_048_576,
       LogMinimumLevel = "Info",
       LogHeartMinIntervalSec = 60,
+      LogRetentionDays = LogArchivePlanner.DefaultRetainDays,
       LogMaxArchiveFiles = 30,
       LogDirectoryMaxBytes = 104_857_600,
       BrightnessRetryCount = 3,

@@ -31,9 +31,7 @@ public static class SettingsWindowLayoutStability
     {
         var pageLogsVisible = window.FindName("pageLogs") is FrameworkElement pageLogs &&
             pageLogs.Visibility == Visibility.Visible;
-        var pageDiagnosticVisible = window.FindName("pageDiagnosticDetails") is FrameworkElement pageDiagnosticDetails &&
-            pageDiagnosticDetails.Visibility == Visibility.Visible;
-        if (!pageLogsVisible && !pageDiagnosticVisible)
+        if (!pageLogsVisible)
             return;
 
         if (window.Content is not FrameworkElement root)
@@ -42,9 +40,6 @@ public static class SettingsWindowLayoutStability
         root.InvalidateMeasure();
         root.InvalidateArrange();
         root.UpdateLayout();
-
-        if (!pageLogsVisible)
-            return;
 
         if (window.FindName("logTable") is DataGrid logTable)
         {

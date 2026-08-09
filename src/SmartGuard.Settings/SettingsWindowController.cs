@@ -167,6 +167,14 @@ public sealed class SettingsWindowController
       window,
       Require<TextBlock>(window, "txtVersion"),
       () => policyCoordinator.ReadConfigFromUi().GitHubToken);
+    aboutCoordinator.WireLogRetention(
+      window,
+      config,
+      updatedConfig =>
+      {
+        repository.Save(updatedConfig);
+        toastService.Show("日志保存时间已更新", false);
+      });
 
     var gitHubTokenCoordinator = new SettingsGitHubTokenCoordinator(
       repository,

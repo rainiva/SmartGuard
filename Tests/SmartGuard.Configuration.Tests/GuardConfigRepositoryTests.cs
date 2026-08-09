@@ -229,13 +229,15 @@ public class GuardConfigRepositoryTests
     {
       var repo = new GuardConfigRepository(path);
       var config = GuardConfig.CreateDefault(dir);
+      config.LogRetentionDays = 30;
       config.LogMaxArchiveFiles = 10;
       config.LogDirectoryMaxBytes = 52_428_800;
       repo.Save(config);
 
       var loaded = new GuardConfigRepository(path).TryLoad();
       loaded.Should().NotBeNull();
-      loaded!.LogMaxArchiveFiles.Should().Be(10);
+      loaded!.LogRetentionDays.Should().Be(30);
+      loaded.LogMaxArchiveFiles.Should().Be(10);
       loaded.LogDirectoryMaxBytes.Should().Be(52_428_800);
     }
     finally
