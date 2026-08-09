@@ -776,10 +776,14 @@ public class SettingsWindowControllerTests
                 var statusLabel = window.FindName("lblLogStatus") as TextBlock;
                 statusLabel!.Text.Should().Contain("当前空闲 100 秒");
 
+                var refreshTimer = GetLogHostField<System.Windows.Threading.DispatcherTimer>(controller, "_logTimer");
+                refreshTimer.Should().NotBeNull();
+                refreshTimer!.Interval = TimeSpan.FromMilliseconds(50);
                 phase = 1;
-                InvokeRefreshLogView(controller!);
-
-                statusLabel.Text.Should().Contain("当前空闲 200 秒");
+                WpfStaTestHost.WaitUntil(
+                    () => statusLabel.Text.Contains("当前空闲 200 秒", StringComparison.Ordinal),
+                    TimeSpan.FromSeconds(3),
+                    "the real refresh timer to update idle status without a new log line");
             }
             finally
             {

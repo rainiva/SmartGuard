@@ -276,7 +276,10 @@ internal sealed partial class SettingsLogPageHost
       var source = (ILogSnapshotPhysicalLineSource)_logController!.EventSourceForCorrelation;
       var current = source.CaptureSnapshot();
       if (string.Equals(current.Fingerprint, snapshot.Fingerprint, StringComparison.Ordinal))
+      {
+        RefreshPagedIdleStatus();
         return;
+      }
 
       if (_refreshPipeline.UiRefreshInFlight)
         return;
@@ -354,6 +357,23 @@ internal sealed partial class SettingsLogPageHost
   private int? _pendingPageRestore;
 
   private void ApplyPagedStatus(LogPaginationApplyModel model, int exactTotalCount)
+    => ApplyPagedStatus(model.Events, exactTotalCount, announce: true);
+
+  private void RefreshPagedIdleStatus()
+  {
+    if (_logPaginationCoordinator?.State.ExactTotalCount is not int exactTotalCount)
+      return;
+
+    ApplyPagedStatus(
+      _logTablePresenter.Rows.Select(row => row.SourceEvent).ToArray(),
+      exactTotalCount,
+      announce: false);
+  }
+
+  private void ApplyPagedStatus(
+    IReadOnlyList<LogEvent> events,
+    int exactTotalCount,
+    bool announce)
   {
     if (_lblLogStatus is null || _logController is null)
       return;
@@ -364,7 +384,7 @@ internal sealed partial class SettingsLogPageHost
     _logStatusMayBeStale = idleRead.StatusMayBeStale;
 
     var snapshot = new LogViewSnapshot(
-      model.Events.Select(LogViewEventFilter.GetDisplayLine).ToArray(),
+      events.Select(LogViewEventFilter.GetDisplayLine).ToArray(),
       exactTotalCount,
       IsTailTruncated: false,
       LogPath: _logPath ?? string.Empty,
@@ -382,7 +402,10 @@ internal sealed partial class SettingsLogPageHost
     if (_pagedHasActiveFilters && exactTotalCount == 0)
       status = $"{status} | 无匹配结果";
 
-    LogStatusLiveRegion.Set(_lblLogStatus, status);
+    if (announce)
+      LogStatusLiveRegion.Set(_lblLogStatus, status);
+    else
+      _lblLogStatus.Text = status;
   }
 
   private void ApplyPendingRestoredTableSelection()
