@@ -588,11 +588,11 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
 
   private static IEnumerable<LogSourceDescriptor> EnumerateCatalogSources(LogSourceCatalog catalog)
   {
-    foreach (var source in catalog.MainHistoryOldestFirst)
-      yield return source;
-
     if (catalog.StartupFallback is not null)
       yield return catalog.StartupFallback;
+
+    foreach (var source in catalog.MainHistoryOldestFirst)
+      yield return source;
   }
 
   private static string ComputeSnapshotFingerprint(IReadOnlyList<LogSourceSnapshotEntry> sources)

@@ -24,16 +24,43 @@ public sealed class LogTailReaderSnapshotTests
       var reader = new LogTailReader(logPath, startupPath);
       var snapshot = SnapshotReader(reader).CaptureSnapshot();
       var catalog = LogSourceCatalog.Build(logPath, startupPath);
-      var expectedSources = catalog.MainHistoryOldestFirst
-        .Concat(catalog.StartupFallback is null ? [] : [catalog.StartupFallback])
-        .ToArray();
+      var expectedSources = new List<LogSourceDescriptor>();
+      if (catalog.StartupFallback is not null)
+        expectedSources.Add(catalog.StartupFallback);
+      expectedSources.AddRange(catalog.MainHistoryOldestFirst);
 
-      snapshot.Sources.Should().HaveCount(expectedSources.Length);
+      snapshot.Sources.Should().HaveCount(expectedSources.Count);
       snapshot.Sources.Select(entry => entry.Source).Should().Equal(expectedSources.Select(source => source.Identity));
       snapshot.Sources.Select(entry => entry.Kind).Should().Equal(expectedSources.Select(source => source.Kind));
       snapshot.Sources.Select(entry => entry.CapturedLength).Should().Equal(expectedSources.Select(source => new FileInfo(source.FilePath).Length));
       snapshot.Sources.Should().OnlyContain(entry => !string.IsNullOrWhiteSpace(entry.BoundaryFingerprint));
       snapshot.Fingerprint.Should().NotBeNullOrWhiteSpace();
+    }
+    finally
+    {
+      CleanupRoot(root);
+    }
+  }
+
+  [Fact]
+  public void CaptureSnapshot_places_startup_fallback_before_main_history()
+  {
+    var root = CreateRoot();
+    var logPath = Path.Combine(root, "SmartGuard.log");
+    var archivePath = logPath + ".20260807.bak";
+    var startupPath = Path.Combine(root, "startup.log");
+    File.WriteAllText(startupPath, "2026-08-01 07:00:00 startup\n", Utf8NoBom);
+    File.WriteAllText(archivePath, LegacyLine(8, 0, 0, "archive") + "\n", Utf8NoBom);
+    File.WriteAllText(logPath, LegacyLine(9, 0, 0, "current") + "\n", Utf8NoBom);
+
+    try
+    {
+      var snapshot = SnapshotReader(new LogTailReader(logPath, startupPath)).CaptureSnapshot();
+
+      snapshot.Sources.Select(source => source.Kind).Should().Equal(
+        LogSourceKind.StartupFallback,
+        LogSourceKind.Archive,
+        LogSourceKind.Current);
     }
     finally
     {
