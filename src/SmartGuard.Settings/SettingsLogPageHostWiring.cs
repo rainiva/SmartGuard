@@ -164,7 +164,13 @@ internal static class SettingsLogPageHostWiring
 
     wrapToggle.Checked += (_, _) => Apply();
     wrapToggle.Unchecked += (_, _) => Apply();
-    logTable.LoadingRow += (_, e) => ApplyRow(e.Row);
+    logTable.LoadingRow += (_, e) =>
+    {
+      ApplyRow(e.Row);
+      _ = e.Row.Dispatcher.InvokeAsync(
+        () => ApplyRow(e.Row),
+        System.Windows.Threading.DispatcherPriority.Loaded);
+    };
     Apply();
   }
 

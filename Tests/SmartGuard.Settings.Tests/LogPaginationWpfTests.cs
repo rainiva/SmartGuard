@@ -1,5 +1,8 @@
 using System.Text;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Media;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
@@ -173,6 +176,54 @@ public class LogPaginationWpfTests
         });
     }
 
+    [Fact]
+    public void Wrap_mode_is_applied_to_cells_created_after_page_switch()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var cellTextStyle = new Style(typeof(TextBlock));
+            cellTextStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.NoWrap));
+            var table = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                Height = 160,
+                Width = 480,
+            };
+            table.Columns.Add(new DataGridTextColumn
+            {
+                Binding = new Binding(nameof(WrapRow.Text)),
+                ElementStyle = cellTextStyle,
+            });
+            var wrapToggle = new CheckBox();
+            SettingsLogPageHostWiring.WireLogTableWrapMode(table, wrapToggle);
+            var window = new Window { Content = table, Width = 520, Height = 220 };
+
+            try
+            {
+                table.ItemsSource = new[] { new WrapRow("page one") };
+                WpfStaTestHost.ShowAndWait(window);
+                wrapToggle.IsChecked = true;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                table.ItemsSource = new[]
+                {
+                    new WrapRow("page two row one with enough text to require wrapping"),
+                    new WrapRow("page two row two with enough text to require wrapping"),
+                };
+                WpfStaTestHost.PumpDispatcher(window);
+
+                FindVisualChildren<TextBlock>(table)
+                    .Where(textBlock => textBlock.DataContext is WrapRow)
+                    .Should().NotBeEmpty()
+                    .And.OnlyContain(textBlock => textBlock.TextWrapping == TextWrapping.Wrap);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     private static string SliceLogPage(string xaml)
     {
         var start = xaml.IndexOf("<!-- Logs Page -->", StringComparison.Ordinal);
@@ -197,4 +248,20 @@ public class LogPaginationWpfTests
             LogPageEllipsisToken => "…",
             _ => throw new InvalidOperationException($"Unknown token: {token.GetType().Name}"),
         };
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+                yield return descendant;
+        }
+    }
+
+    private sealed record WrapRow(string Text);
 }
