@@ -15,7 +15,7 @@ public static class LogEventDecoder
     RegexOptions.Compiled);
 
   private static readonly Regex TaggedTimestampPattern = new(
-    @"^\[(?<level>\w+)\]\s+(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(?:\s+.*)?$",
+    @"^(?:(?<prefix>raw):\s*)?\[(?<level>\w+)\]\s+(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(?:\s+.*)?$",
     RegexOptions.Compiled);
 
   private static readonly Regex OpPattern = new(@"op=(?<value>\S+)", RegexOptions.Compiled);
@@ -150,7 +150,7 @@ public static class LogEventDecoder
       LogSeverityParser.Parse(match.Groups["level"].Value),
       LogComponentRegistry.Legacy,
       LogChannelRegistry.Compatibility,
-      EventName: null,
+      EventName: match.Groups["prefix"].Success ? "raw" : null,
       line.Text,
       Exception: null,
       OperationId: null,
