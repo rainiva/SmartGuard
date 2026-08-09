@@ -1602,7 +1602,7 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_sees_new_log_lines_only_after_explicit_refresh()
+    public void User_sees_new_log_lines_automatically_on_latest_page_after_returning()
     {
         RunOnSta(() =>
         {
@@ -1634,18 +1634,37 @@ public class SettingsWindowControllerTests
                 table.Should().NotBeNull();
                 status.Should().NotBeNull();
 
-                InvokeDetectPagedLogChanges(controller!);
-                status!.Text.Should().Contain("有新日志，点击刷新查看");
-                table!.Items.OfType<LogTableRow>()
-                    .Select(row => row.EventText)
-                    .Should().NotContain("appended while following tail");
-
-                ClickLogToolbarButton(window, "btnLogRefresh");
                 WpfStaTestHost.WaitUntil(
                     () => table.Items.OfType<LogTableRow>()
                         .Any(row => row.EventText.Contains("appended while following tail", StringComparison.Ordinal)),
                     TimeSpan.FromSeconds(10),
-                    "the explicit refresh to include the appended log line");
+                    "the automatic refresh to include the appended log line");
+                status!.Text.Should().NotContain("点击刷新查看");
+
+                navList.SelectedIndex = 0;
+                WpfStaTestHost.PumpDispatcher(window);
+                navList.SelectedIndex = 3;
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
+                File.AppendAllText(logPath, "[INFO] 2026-06-21 10:02:00 appended after returning\n");
+
+                WpfStaTestHost.WaitUntil(
+                    () => table.Items.OfType<LogTableRow>()
+                        .Any(row => row.EventText.Contains("appended after returning", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(10),
+                    "the automatic refresh to resume after returning to the log page");
+
+                controller.SetLogPageActive(false);
+                WpfStaTestHost.PumpDispatcher(window);
+                controller.SetLogPageActive(true, LogPageActivationReason.WindowRestored);
+                GetLogHostField<System.Windows.Threading.DispatcherTimer>(controller, "_logTimer")!
+                    .IsEnabled.Should().BeTrue();
+                File.AppendAllText(logPath, "[INFO] 2026-06-21 10:03:00 appended after window restore\n");
+
+                WpfStaTestHost.WaitUntil(
+                    () => table.Items.OfType<LogTableRow>()
+                        .Any(row => row.EventText.Contains("appended after window restore", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(10),
+                    "the automatic refresh to resume after restoring the window");
             }
             finally
             {
@@ -1996,15 +2015,6 @@ public class SettingsWindowControllerTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         var window = (Window)windowField!.GetValue(controller)!;
         SettingsLogNavResponsivenessTests.WaitUntilLogRefreshIdle(controller, window);
-    }
-
-    private static void InvokeDetectPagedLogChanges(SettingsWindowController controller)
-    {
-        var host = GetLogPageHost(controller);
-        var method = host.GetType().GetMethod(
-            "DetectPagedLogChanges",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        method!.Invoke(host, null);
     }
 
     private static string GetLogViewPlainText(SettingsWindowController controller)

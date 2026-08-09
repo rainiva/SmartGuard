@@ -269,6 +269,94 @@ public class LogWorkbenchP1AcceptanceTests
   private static void ExecutePage(Window window, int pageNumber)
     => LogPaginationCommands.GoToPage.Execute(pageNumber, window);
 
+  [Fact]
+  public void New_log_during_page_size_switch_refreshes_first_page_and_exact_pager()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var installRoot = Path.Combine(
+        Path.GetTempPath(),
+        "sg-changing-log-pagination-" + Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(installRoot);
+      Directory.CreateDirectory(Path.Combine(installRoot, "bin"));
+      SettingsWindowController? controller = null;
+
+      try
+      {
+        WriteWindowConfig(installRoot);
+        WriteWindowLog(installRoot, eventCount: 1248);
+
+        var repository = new GuardConfigRepository(Path.Combine(installRoot, "SmartGuard.config.json"));
+        var config = repository.LoadOrDefault(installRoot);
+        controller = SettingsWindowController.TryCreate(installRoot, repository, config)
+          ?? throw new InvalidOperationException("Failed to create the real Settings window.");
+        WpfStaTestHost.Track(controller);
+        var window = GetWindow(controller);
+        WpfStaTestHost.ShowAndWait(window);
+        controller.NavigateTo("logs");
+
+        var pageSize = (ComboBox)window.FindName("cmbLogPageSize")!;
+        var totalLabel = (TextBlock)window.FindName("lblLogTotalCount")!;
+        var coordinator = GetPaginationCoordinator(controller);
+        WpfStaTestHost.WaitUntil(
+          () => coordinator.State.ExactTotalCount is > 0 && !coordinator.State.IsBusy,
+          TimeSpan.FromSeconds(10),
+          "the changing log fixture to finish its initial count");
+
+        foreach (var selectedIndex in new[] { 1, 2, 0 })
+        {
+          pageSize.SelectedIndex = selectedIndex;
+          var expectedPageSize = selectedIndex switch { 1 => 50, 2 => 100, _ => 20 };
+          var expectedExactCount = expectedPageSize == 20 ? 1249 : 1248;
+          WpfStaTestHost.WaitUntil(
+            () => coordinator.State.PageSize == expectedPageSize
+               && coordinator.State.ExactTotalCount == expectedExactCount
+               && !coordinator.State.IsBusy,
+            TimeSpan.FromSeconds(10),
+            $"page size {expectedPageSize} to settle after the log snapshot changes");
+
+          if (expectedPageSize == 100)
+          {
+            File.AppendAllText(
+              Path.Combine(installRoot, "SmartGuard.log"),
+              LogJsonlFormatter.FormatLine(new LogEvent(
+                LogEvent.CurrentSchemaVersion,
+                "power-source-changed-1",
+                new DateTimeOffset(2026, 8, 9, 15, 7, 26, TimeSpan.Zero),
+                LogSeverity.Info,
+                "Engine",
+                LogEventChannels.ForEventName(EventNameRegistry.PowerSourceChanged),
+                EventNameRegistry.PowerSourceChanged,
+                "电源事件: 插电，立即重新评估",
+                Exception: null,
+                OperationId: null,
+                TraceId: null,
+                SpanId: null,
+                UserActionId: null,
+                ProcessId: null,
+                ThreadId: null,
+                LogEventOutcome.CreateProperties(LogEventOutcome.Handled))) + Environment.NewLine,
+              Utf8NoBom);
+          }
+        }
+
+        totalLabel.Text.Should().NotBe("正在统计日志…");
+        coordinator.State.TotalPages.Should().Be(63);
+        coordinator.CurrentEvents.Should().ContainSingle(
+          logEvent => logEvent.EventName == "PowerSourceChanged"
+                      && logEvent.Message.Contains("插电", StringComparison.Ordinal));
+        var powerRow = LogTableRow.FromEvent(coordinator.CurrentEvents.Single(
+          logEvent => logEvent.EventName == EventNameRegistry.PowerSourceChanged));
+        powerRow.StatusText.Should().Be("已处理");
+      }
+      finally
+      {
+        controller?.Dispose();
+        TryDelete(installRoot);
+      }
+    });
+  }
+
   private static SettingsLogPaginationCoordinator GetPaginationCoordinator(
     SettingsWindowController controller)
   {

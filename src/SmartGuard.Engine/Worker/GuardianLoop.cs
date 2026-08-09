@@ -140,7 +140,12 @@ public sealed partial class GuardianLoop
     if (!_powerSourceTransitions.Observe(isOnAc)) return;
 
     var cfg = LoadConfig();
-    WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc), EventNameRegistry.PowerSourceChanged);
+    WriteLog(
+      cfg,
+      LogLevel.Info,
+      PowerEventFormatter.FormatMessage(isOnAc),
+      EventNameRegistry.PowerSourceChanged,
+      LogEventOutcome.Handled);
   }
 
   private void WaitForNextIteration(int intervalSeconds, CancellationToken cancellationToken)

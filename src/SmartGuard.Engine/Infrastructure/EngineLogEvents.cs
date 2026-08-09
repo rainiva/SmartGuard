@@ -11,7 +11,8 @@ public static class EngineLogEvents
     string? operationId = null,
     string? traceId = null,
     string? spanId = null,
-    string? userActionId = null)
+    string? userActionId = null,
+    string? outcome = null)
   {
     var severity = MapSeverity(level);
     return LogEventFactory.Create(
@@ -25,7 +26,8 @@ public static class EngineLogEvents
       spanId: spanId,
       userActionId: userActionId,
       processId: Environment.ProcessId,
-      threadId: Environment.CurrentManagedThreadId);
+      threadId: Environment.CurrentManagedThreadId,
+      properties: outcome is null ? null : LogEventOutcome.CreateProperties(outcome));
   }
 
   internal static LogSeverity MapSeverity(LogLevel level)

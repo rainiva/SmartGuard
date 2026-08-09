@@ -47,6 +47,13 @@ public class ArchitectureContractLoggingPhase3Tests
   }
 
   [Fact]
+  public void Contract_registers_explicit_log_event_outcome()
+  {
+    ContractContent.Should().Contain("LogEventOutcome");
+    ContractContent.Should().Contain("禁止从 Severity 或 Message 推导状态");
+  }
+
+  [Fact]
   public void GuardianLoop_WriteLog_uses_registered_event_names()
   {
     var source = SourceScanHelper.ReadGuardianLoopSource();

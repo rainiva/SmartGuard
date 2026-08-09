@@ -58,6 +58,32 @@ public sealed class LogTableRowTests
   }
 
   [Fact]
+  public void Registered_outcome_property_projects_localized_status_text()
+  {
+    var source = CreateEvent(
+      properties: new Dictionary<string, JsonElement>
+      {
+        ["outcome"] = JsonDocument.Parse("\"handled\"").RootElement,
+      });
+
+    LogTableRow.FromEvent(source).StatusText.Should().Be("已处理");
+  }
+
+  [Theory]
+  [InlineData("\"unexpected\"")]
+  [InlineData("42")]
+  public void Unknown_or_non_string_outcome_projects_dash(string json)
+  {
+    var source = CreateEvent(
+      properties: new Dictionary<string, JsonElement>
+      {
+        [LogEventOutcome.PropertyName] = JsonDocument.Parse(json).RootElement,
+      });
+
+    LogTableRow.FromEvent(source).StatusText.Should().Be("—");
+  }
+
+  [Fact]
   public void Severity_and_message_never_infer_status()
   {
     var source = CreateEvent(

@@ -446,6 +446,7 @@ public class LogWorkbenchPerformanceTests
             initialIntent with
             {
               PageNumber = page,
+              PageSize = i == 49 ? 20 : i % 2 == 0 ? 50 : 100,
               CaptureNewSnapshot = false,
             },
             (intent, progress, _) =>
@@ -466,6 +467,7 @@ public class LogWorkbenchPerformanceTests
           "the refresh pipeline must discard the initial generation and apply only the final coalesced request");
         applied[0].QueryGeneration.Should().Be(51);
         applied[0].PageNumber.Should().Be(5);
+        applied[0].PageSize.Should().Be(20);
       }
       finally
       {

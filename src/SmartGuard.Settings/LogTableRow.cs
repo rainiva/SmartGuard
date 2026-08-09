@@ -80,10 +80,15 @@ public sealed class LogTableRow
 
   private static string ResolveStatus(LogEvent sourceEvent)
   {
-    // Task 0 scanned 12 real events and found no confirmed status key/value.
-    // Do not infer a status from severity or message until a real key is registered.
-    _ = sourceEvent;
-    return UnknownStatusText;
+    if (!sourceEvent.Properties.TryGetValue(LogEventOutcome.PropertyName, out var outcome)
+        || outcome.ValueKind != System.Text.Json.JsonValueKind.String)
+      return UnknownStatusText;
+
+    return outcome.GetString() switch
+    {
+      LogEventOutcome.Handled => "已处理",
+      _ => UnknownStatusText,
+    };
   }
 
   private static string BuildExportText(LogEvent sourceEvent)

@@ -53,8 +53,6 @@ internal sealed partial class SettingsLogPageHost
 
   // Control wiring uses SettingsLogPageInitializer via EnsureLogViewInitialized (Refresh partial).
 
-  private bool _logAutoRefreshStarted;
-
   internal SettingsLogPageHost(
     Window window,
     string root,
@@ -145,6 +143,7 @@ internal sealed partial class SettingsLogPageHost
 
     if (reason == LogPageActivationReason.WindowRestored && _lastDisplayedLines.Count > 0)
     {
+      EnsureLogAutoRefreshStarted();
       _logViewport.ApplyFollowLatestIfEnabled();
       return;
     }
@@ -166,10 +165,9 @@ internal sealed partial class SettingsLogPageHost
 
   internal void EnsureLogAutoRefreshStarted()
   {
-    if (_logAutoRefreshStarted || _disposed || !_logPageActive || _logTimer is null)
+    if (_disposed || !_logPageActive || _logTimer is null || _logTimer.IsEnabled)
       return;
 
-    _logAutoRefreshStarted = true;
     _logTimer.Start();
   }
 

@@ -278,6 +278,16 @@ internal sealed partial class SettingsLogPageHost
       if (string.Equals(current.Fingerprint, snapshot.Fingerprint, StringComparison.Ordinal))
         return;
 
+      if (_refreshPipeline.UiRefreshInFlight)
+        return;
+
+      if (_logPaginationCoordinator.State.CurrentPage == 1
+          && _logPaginationCoordinator.SortDirection == LogSortDirection.NewestFirst)
+      {
+        RequestPagedQuery(captureNewSnapshot: true);
+        return;
+      }
+
       _logPaginationCoordinator.MarkSnapshotStale();
       if (_lblLogStatus is not null)
         LogStatusLiveRegion.Set(_lblLogStatus, "有新日志，点击刷新查看。");
@@ -320,6 +330,7 @@ internal sealed partial class SettingsLogPageHost
       _lastDisplayedLines = model.Events
         .Select(LogViewEventFilter.GetDisplayLine)
         .ToArray();
+      EnsureLogAutoRefreshStarted();
     }
 
     var applyRestoredTableSelection = !model.IsProvisional;

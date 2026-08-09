@@ -6,7 +6,12 @@ namespace SmartGuard.Engine.Worker;
 
 public sealed partial class GuardianLoop
 {
-  private void WriteLog(GuardConfig config, LogLevel level, string message, string eventName = EventNameRegistry.IterationError)
+  private void WriteLog(
+    GuardConfig config,
+    LogLevel level,
+    string message,
+    string eventName = EventNameRegistry.IterationError,
+    string? outcome = null)
   {
     if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
       return;
@@ -24,7 +29,8 @@ public sealed partial class GuardianLoop
       OperationIdContext.Current,
       TraceIdContext.Current,
       SpanIdContext.Current,
-      UserActionIdContext.Current);
+      UserActionIdContext.Current,
+      outcome);
     var priority = level is LogLevel.Warn or LogLevel.Error or LogLevel.Critical ? LogPriority.High : LogPriority.Normal;
     if (priority == LogPriority.High)
       CrashRingBuffer.Instance.Add(LogJsonlFormatter.FormatLine(logEvent));
