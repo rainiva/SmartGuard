@@ -1358,7 +1358,7 @@
                     </WrapPanel>
 
                     <StackPanel x:Name="panelLogCustomRange" Margin="52,0,0,10" Visibility="Collapsed">
-                      <TextBlock Text="开始" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
+                      <TextBlock Text="开始" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
                       <Grid>
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="*"/>
@@ -1368,7 +1368,7 @@
                         <TextBox x:Name="txtLogRangeStartTime" Grid.Column="1" Height="32" Margin="8,0,0,0" Text="00:00:00" FontSize="12" Foreground="{DynamicResource TextPrimary}" ToolTip="HH:mm:ss"/>
                       </Grid>
                       <TextBox x:Name="txtLogRangeStart" Visibility="Collapsed"/>
-                      <TextBlock Text="结束" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,4"/>
+                      <TextBlock Text="结束" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,4"/>
                       <Grid>
                         <Grid.ColumnDefinitions>
                           <ColumnDefinition Width="*"/>
