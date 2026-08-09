@@ -24,6 +24,7 @@ internal sealed class GuardianIterationRunner(
   StatusPublisher publisher,
   Func<GuardConfig> loadConfig,
   Action<GuardConfig, LogLevel, string> writeLog,
+  Action<bool> observePowerSource,
   bool powerCfgBrightnessSupported)
 {
   public async Task RunAsync(GuardianLoopIterationState state, CancellationToken cancellationToken)
@@ -35,6 +36,7 @@ internal sealed class GuardianIterationRunner(
     state.PlanCatalog = planCatalog;
     var idle = (int)idleTracker.Sample(IdleDetector.GetIdleSeconds, DateTime.UtcNow);
     var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
+    observePowerSource(isOnAc);
     var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
     var current = activePlanInfo?.Guid;
     var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);

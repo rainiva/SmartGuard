@@ -6,7 +6,7 @@ public class PowerEventFormatterTests
 {
   [Theory]
   [InlineData(true, "插电")]
-  [InlineData(false, "电池")]
+  [InlineData(false, "拔电")]
   public void FormatMessage_describes_power_source(bool isOnAc, string keyword)
   {
     PowerEventFormatter.FormatMessage(isOnAc).Should().Contain(keyword);

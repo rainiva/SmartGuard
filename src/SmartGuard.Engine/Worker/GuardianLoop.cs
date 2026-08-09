@@ -25,6 +25,7 @@ public sealed partial class GuardianLoop
   private readonly LogConsumerRecovery _consumerRecovery = new(new LogRecoveryStateMachine());
   private readonly LogPipelineHealth _pipelineHealth = new();
   private readonly HeartLogSampler _heartSampler = new();
+  private readonly PowerSourceTransitionTracker _powerSourceTransitions = new();
   private readonly LogPipelineOptions _logOptions = new();
   private readonly LogBackpressureController _backpressure = new();
   private bool _powerCfgBrightnessSupported = true;
@@ -62,6 +63,7 @@ public sealed partial class GuardianLoop
       _publisher,
       LoadConfig,
       (c, l, m) => WriteLog(c, l, m, EventNameRegistry.HeartbeatTick),
+      ObservePowerSource,
       _powerCfgBrightnessSupported);
     _logPipeline = new LogPipeline(
       batch => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, batch, _fallbackLogPath),
@@ -123,8 +125,7 @@ public sealed partial class GuardianLoop
   {
     try
     {
-      var cfg = LoadConfig();
-      WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc), EventNameRegistry.PowerPlanSwitched);
+      ObservePowerSource(isOnAc);
     }
     catch
     {
@@ -132,6 +133,14 @@ public sealed partial class GuardianLoop
     }
 
     _wakeSignal.Release();
+  }
+
+  private void ObservePowerSource(bool isOnAc)
+  {
+    if (!_powerSourceTransitions.Observe(isOnAc)) return;
+
+    var cfg = LoadConfig();
+    WriteLog(cfg, LogLevel.Info, PowerEventFormatter.FormatMessage(isOnAc), EventNameRegistry.PowerSourceChanged);
   }
 
   private void WaitForNextIteration(int intervalSeconds, CancellationToken cancellationToken)

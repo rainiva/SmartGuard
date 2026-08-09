@@ -15,6 +15,7 @@ public static class EventNameRegistry
   public const string AppStarted = nameof(AppStarted);
   public const string AppStopping = nameof(AppStopping);
   public const string PowerPlanSwitched = nameof(PowerPlanSwitched);
+  public const string PowerSourceChanged = nameof(PowerSourceChanged);
   public const string HeartbeatTick = nameof(HeartbeatTick);
   public const string ExternalPlanChange = nameof(ExternalPlanChange);
   public const string BatteryStatusPolled = nameof(BatteryStatusPolled);
@@ -35,6 +36,7 @@ public static class EventNameRegistry
     Register(AppStarted);
     Register(AppStopping);
     Register(PowerPlanSwitched);
+    Register(PowerSourceChanged);
     Register(HeartbeatTick);
     Register(ExternalPlanChange);
     Register(BatteryStatusPolled);

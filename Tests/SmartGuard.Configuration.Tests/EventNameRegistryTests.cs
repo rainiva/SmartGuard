@@ -10,11 +10,19 @@ public class EventNameRegistryTests
     EventNameRegistry.IsRegistered(EventNameRegistry.AppStarted).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.AppStopping).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.PowerPlanSwitched).Should().BeTrue();
+    EventNameRegistry.IsRegistered(EventNameRegistry.PowerSourceChanged).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.HeartbeatTick).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.ExternalPlanChange).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.BatteryStatusPolled).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.ConfigReloaded).Should().BeTrue();
     EventNameRegistry.IsRegistered(EventNameRegistry.IterationError).Should().BeTrue();
+  }
+
+  [Fact]
+  public void Power_source_change_uses_power_channel()
+  {
+    LogEventChannels.ForEventName(EventNameRegistry.PowerSourceChanged)
+      .Should().Be(LogChannelRegistry.Power);
   }
 
   [Fact]

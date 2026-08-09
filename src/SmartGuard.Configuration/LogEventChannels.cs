@@ -7,6 +7,7 @@ public static class LogEventChannels
     {
       EventNameRegistry.AppStarted or EventNameRegistry.AppStopping => LogChannelRegistry.Lifecycle,
       EventNameRegistry.PowerPlanSwitched
+        or EventNameRegistry.PowerSourceChanged
         or EventNameRegistry.ExternalPlanChange
         or EventNameRegistry.BatteryStatusPolled => LogChannelRegistry.Power,
       EventNameRegistry.BrightnessAdjusted => LogChannelRegistry.Brightness,
