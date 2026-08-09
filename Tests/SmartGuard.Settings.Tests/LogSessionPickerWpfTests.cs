@@ -88,7 +88,7 @@ public sealed class LogSessionPickerWpfTests
   }
 
   [Fact]
-  public void Session_picker_lives_in_top_scope_row_renders_session_titles_and_wraps_at_min_width()
+  public void Session_picker_lives_in_filter_panel_renders_session_titles_and_wraps_at_min_width()
   {
     WpfStaTestHost.Run(() =>
     {
@@ -106,6 +106,15 @@ public sealed class LogSessionPickerWpfTests
         WpfStaTestHost.ShowAndWait(window);
 
         controller.NavigateTo("logs");
+        var filterPanel = window.FindName("logFilterPanel") as Border
+          ?? throw new InvalidOperationException("logFilterPanel was not found.");
+        filterPanel.Visibility.Should().Be(Visibility.Collapsed);
+        var filterButton = window.FindName("btnLogFilter") as Button
+          ?? throw new InvalidOperationException("btnLogFilter was not found.");
+        filterButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+        filterPanel.Visibility.Should().Be(Visibility.Visible);
+
         var combo = RequireCombo(window);
         var scopePanel = window.FindName("logFilterScopePanel") as WrapPanel
           ?? throw new InvalidOperationException("logFilterScopePanel was not found.");

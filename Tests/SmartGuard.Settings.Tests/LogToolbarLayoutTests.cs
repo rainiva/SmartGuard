@@ -143,19 +143,20 @@ public class LogToolbarLayoutTests
     }
 
     [Fact]
-    public void Diagnostic_details_page_hosts_statistics_without_legacy_session_banner_or_back_controls()
+    public void About_maintenance_hosts_diagnostic_statistics_without_a_standalone_page()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
+        var aboutPageIndex = RequireIndex(xaml, "<!-- About Page -->");
         var logPageIndex = RequireIndex(xaml, "<!-- Logs Page -->");
-        var diagnosticPageIndex = RequireIndex(xaml, "<!-- Diagnostic details page");
-        xaml.Should().Contain("x:Name=\"logStatisticsInspector\"");
-        diagnosticPageIndex.Should().BeGreaterThan(logPageIndex);
-        xaml.Substring(logPageIndex, diagnosticPageIndex - logPageIndex)
-            .Should().NotContain("x:Name=\"logStatisticsInspector\"");
+        var diagnosticInspectorIndex = RequireIndex(xaml, "x:Name=\"logStatisticsInspector\"");
+        diagnosticInspectorIndex.Should().BeGreaterThan(aboutPageIndex);
+        diagnosticInspectorIndex.Should().BeLessThan(logPageIndex);
+        xaml.Should().NotContain("<!-- Diagnostic details page");
+        xaml.Substring(logPageIndex).Should().NotContain("x:Name=\"logStatisticsInspector\"");
         xaml.Should().MatchRegex(
             "x:Name=\"logStatisticsInspector\"[\\s\\S]{0,1200}x:Name=\"lblLogStatisticsEmpty\"[\\s\\S]{0,1200}x:Name=\"logErrorTrendChart\"[\\s\\S]{0,1200}x:Name=\"logComponentDistribution\"",
-            "diagnostic details should host the statistics controls together");
+            "About maintenance should host the diagnostic statistics controls together");
 
         xaml.Should().NotContain("x:Name=\"logSessionInspector\"");
         xaml.Should().NotContain("x:Name=\"logSessionBanner\"");

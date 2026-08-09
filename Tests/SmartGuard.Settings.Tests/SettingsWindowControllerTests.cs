@@ -1559,7 +1559,7 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void User_enabling_follow_tail_scrolls_to_latest_log()
+    public void Hidden_legacy_follow_controls_do_not_affect_newest_first_log_page()
     {
         RunOnSta(() =>
         {
@@ -1585,32 +1585,13 @@ public class SettingsWindowControllerTests
                 navList!.SelectedIndex = 3;
                 SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
-                var scrollViewer = GetLogScrollViewer(window, controller!);
+                GetLogScrollViewer(window, controller!).Should().NotBeNull();
                 var btnLogScrollTop = window.FindName("btnLogScrollTop") as Button;
                 btnLogScrollTop.Should().NotBeNull();
-                btnLogScrollTop!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
-                scrollViewer.VerticalOffset.Should().Be(0);
-
                 var chkLogFollowTail = window.FindName("chkLogFollowTail") as CheckBox;
-                chkLogFollowTail!.IsChecked.Should().BeFalse();
-                chkLogFollowTail!.IsChecked = true;
-                try
-                {
-                    WpfStaTestHost.WaitUntil(
-                        () => LogViewScrollState.IsAtTail(scrollViewer),
-                        TimeSpan.FromSeconds(10),
-                        "follow-tail scrolling to reach the latest log line");
-                }
-                catch (TimeoutException ex)
-                {
-                    throw new TimeoutException(
-                        $"{ex.Message} VerticalOffset={scrollViewer.VerticalOffset:0.###}, " +
-                        $"ScrollableHeight={scrollViewer.ScrollableHeight:0.###}.",
-                        ex);
-                }
-
-                LogViewScrollState.IsAtTail(scrollViewer).Should().BeTrue();
+                chkLogFollowTail.Should().NotBeNull();
+                ((FrameworkElement)btnLogScrollTop!.Parent).Visibility.Should().Be(Visibility.Collapsed);
+                ((FrameworkElement)chkLogFollowTail!.Parent).Visibility.Should().Be(Visibility.Collapsed);
                 GetLogViewPlainText(controller!).Should().Contain("scroll line 199");
             }
             finally
