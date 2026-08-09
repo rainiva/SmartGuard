@@ -460,6 +460,7 @@ internal sealed partial class SettingsLogPageHost
 
     _logPageNumberItems.Items.Clear();
     var buttonStyle = _window.FindResource("LogToolbarCompactButton") as Style;
+    var currentButtonStyle = _window.FindResource("LogPagerCurrentButton") as Style;
     foreach (var token in LogPagerTokenBuilder.Build(state.CurrentPage, state.TotalPages))
     {
       if (token is LogPageEllipsisToken)
@@ -480,7 +481,7 @@ internal sealed partial class SettingsLogPageHost
       var button = new Button
       {
         Content = number.PageNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        Style = buttonStyle,
+        Style = number.IsCurrent ? currentButtonStyle : buttonStyle,
         Command = LogPaginationCommands.GoToPage,
         CommandParameter = number.PageNumber,
         IsEnabled = !number.IsCurrent,

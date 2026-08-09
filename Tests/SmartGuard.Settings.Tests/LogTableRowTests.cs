@@ -18,7 +18,7 @@ public sealed class LogTableRowTests
     var row = LogTableRow.FromEvent(source);
 
     row.SourceEvent.Should().BeSameAs(source);
-    row.LevelText.Should().Be("信息");
+    row.LevelText.Should().Be("INFO");
     row.TimeText.Should().Be(source.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
     row.SourceText.Should().Be("PowerManager");
     row.EventText.Should().Be("PlanChanged：平衡模式已应用");
@@ -92,7 +92,7 @@ public sealed class LogTableRowTests
 
     var row = LogTableRow.FromEvent(source);
 
-    row.LevelText.Should().Be("错误");
+    row.LevelText.Should().Be("ERROR");
     row.EventText.Should().Contain("failed");
     row.StatusText.Should().Be("—");
   }
@@ -104,6 +104,18 @@ public sealed class LogTableRowTests
       .GetProperties()
       .Should()
       .NotContain(property => property.Name.Contains("Icon", StringComparison.OrdinalIgnoreCase));
+  }
+
+  [Theory]
+  [InlineData(LogSeverity.Trace, "TRACE")]
+  [InlineData(LogSeverity.Debug, "DEBUG")]
+  [InlineData(LogSeverity.Info, "INFO")]
+  [InlineData(LogSeverity.Warn, "WARN")]
+  [InlineData(LogSeverity.Error, "ERROR")]
+  [InlineData(LogSeverity.Fatal, "FATAL")]
+  public void Severity_uses_the_same_tokens_as_log_filters(LogSeverity severity, string expected)
+  {
+    LogTableRow.FromEvent(CreateEvent(severity: severity)).LevelText.Should().Be(expected);
   }
 
   [Fact]

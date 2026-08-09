@@ -97,7 +97,8 @@ public class LogPaginationWpfTests
     {
         var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
         xaml.Should().Contain("x:Name=\"logTable\"");
-        xaml.Should().Contain("Text=\"↕\"");
+        xaml.Should().NotContain("Text=\"↕\"");
+        xaml.Should().MatchRegex("Text=\"时间\"[\\s\\S]{0,700}<Path[\\s\\S]{0,700}<Path");
 
         var wiring = ReadSource("src/SmartGuard.Settings/SettingsLogPageHostWiring.cs");
         wiring.Should().Contain("logTable.Sorting");
@@ -156,6 +157,32 @@ public class LogPaginationWpfTests
         xaml.Should().Contain("x:Name=\"chkLogWrap\"");
         xaml.Should().MatchRegex("x:Name=\"chkLogWrap\"[\\s\\S]{0,700}Content=\"自动换行\"");
         source.Should().Contain("Property=\"MaxHeight\" Value=\"88\"");
+    }
+
+    [Fact]
+    public void Table_level_tokens_sort_glyph_and_current_page_style_match_the_compact_design()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+        var refreshSource = ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.Refresh.cs");
+
+        source.Should().Contain("Trigger Property=\"Text\" Value=\"WARN\"");
+        source.Should().Contain("Trigger Property=\"Text\" Value=\"ERROR\"");
+        source.Should().Contain("Trigger Property=\"Text\" Value=\"FATAL\"");
+        source.Should().NotContain("Trigger Property=\"Text\" Value=\"警告\"");
+        xaml.Should().NotContain("Text=\"↕\"");
+        xaml.Should().MatchRegex("Text=\"时间\"[\\s\\S]{0,700}<Path[\\s\\S]{0,700}<Path");
+        source.Should().Contain("x:Key=\"LogPagerCurrentButton\"");
+        refreshSource.Should().Contain("number.IsCurrent ? currentButtonStyle : buttonStyle");
+    }
+
+    [Fact]
+    public void Log_card_uses_page_specific_breathing_room()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+
+        xaml.Should().MatchRegex(
+            "x:Name=\"pageLogs\"[\\s\\S]{0,300}<Border[\\s\\S]{0,200}Padding=\"24,20\"");
     }
 
     [Fact]

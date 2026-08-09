@@ -280,6 +280,13 @@
         <Setter Property="FontSize" Value="12"/>
       </Style>
 
+      <Style x:Key="LogPagerCurrentButton" TargetType="Button" BasedOn="{StaticResource LogToolbarCompactButton}">
+        <Setter Property="Background" Value="{DynamicResource PrimaryButtonBackground}"/>
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonForeground}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource PrimaryButtonBackground}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+      </Style>
+
       <!-- NumberBox increment/decrement button (must be defined before NumberBox template) -->
       <Style x:Key="NumberBoxButton" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource NumberBoxButtonBackground}"/>
@@ -552,19 +559,19 @@
       <Style x:Key="LogTableLevelTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LogTableCellTextStyle}">
         <Setter Property="Foreground" Value="{DynamicResource LogInfoForeground}"/>
         <Style.Triggers>
-          <Trigger Property="Text" Value="警告">
+          <Trigger Property="Text" Value="WARN">
             <Setter Property="Foreground" Value="{DynamicResource LogWarningForeground}"/>
           </Trigger>
-          <Trigger Property="Text" Value="错误">
+          <Trigger Property="Text" Value="ERROR">
             <Setter Property="Foreground" Value="{DynamicResource LogErrorForeground}"/>
           </Trigger>
-          <Trigger Property="Text" Value="致命">
+          <Trigger Property="Text" Value="FATAL">
             <Setter Property="Foreground" Value="{DynamicResource LogErrorForeground}"/>
           </Trigger>
-          <Trigger Property="Text" Value="调试">
+          <Trigger Property="Text" Value="DEBUG">
             <Setter Property="Foreground" Value="{DynamicResource LogNeutralForeground}"/>
           </Trigger>
-          <Trigger Property="Text" Value="跟踪">
+          <Trigger Property="Text" Value="TRACE">
             <Setter Property="Foreground" Value="{DynamicResource LogNeutralForeground}"/>
           </Trigger>
         </Style.Triggers>
@@ -1274,7 +1281,7 @@
       <!-- Kept outside contentScrollViewer so the log area is the only scrollable region on this page. -->
       <Grid x:Name="pageLogs" Grid.Row="1" Visibility="Collapsed" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
             KeyboardNavigation.TabNavigation="Local">
-        <Border Style="{StaticResource SettingsCard}" VerticalAlignment="Stretch">
+        <Border Style="{StaticResource SettingsCard}" Padding="24,20" VerticalAlignment="Stretch">
           <Grid VerticalAlignment="Stretch">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
@@ -1462,7 +1469,18 @@
                       <DataGridTextColumn.Header>
                         <StackPanel Orientation="Horizontal">
                           <TextBlock Text="时间"/>
-                          <TextBlock Text="↕" Margin="6,0,0,0" Foreground="{DynamicResource TextTertiary}"/>
+                          <Grid Width="10" Height="16" Margin="6,0,0,0">
+                            <Path Data="M 1,6 L 5,2 L 9,6"
+                                  Stroke="{DynamicResource TextTertiary}"
+                                  StrokeThickness="1.25"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"/>
+                            <Path Data="M 1,10 L 5,14 L 9,10"
+                                  Stroke="{DynamicResource TextTertiary}"
+                                  StrokeThickness="1.25"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"/>
+                          </Grid>
                         </StackPanel>
                       </DataGridTextColumn.Header>
                     </DataGridTextColumn>

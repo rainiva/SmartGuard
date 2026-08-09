@@ -99,12 +99,12 @@ public sealed class LogTableRow
   private static string LevelTextFor(LogSeverity severity)
     => severity switch
     {
-      LogSeverity.Trace => "跟踪",
-      LogSeverity.Debug => "调试",
-      LogSeverity.Info => "信息",
-      LogSeverity.Warn => "警告",
-      LogSeverity.Error => "错误",
-      LogSeverity.Fatal => "致命",
-      _ => "信息",
+      LogSeverity.Trace => "TRACE",
+      LogSeverity.Debug => "DEBUG",
+      LogSeverity.Info => "INFO",
+      LogSeverity.Warn => "WARN",
+      LogSeverity.Error => "ERROR",
+      LogSeverity.Fatal => "FATAL",
+      _ => "INFO",
     };
 }
