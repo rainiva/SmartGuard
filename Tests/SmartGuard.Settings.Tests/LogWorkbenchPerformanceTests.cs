@@ -45,6 +45,21 @@ public class LogWorkbenchPerformanceTests
   }
 
   [Fact]
+  public void Paged_pipeline_preserves_provisional_then_exact_progress_order()
+  {
+    var path = Path.Combine(
+      SettingsSourcePaths.RepoRoot(),
+      "src",
+      "SmartGuard.Settings",
+      "SettingsLogRefreshPipeline.cs");
+    var source = File.ReadAllText(path, Encoding.UTF8);
+
+    source.Should().Contain("new OrderedProgress<LogPaginationApplyModel>");
+    source.Should().NotContain("new Progress<LogPaginationApplyModel>",
+      "Progress<T> dispatches through the thread pool here and can apply the provisional model after the exact model");
+  }
+
+  [Fact]
   public void Log_viewport_scroll_handlers_do_not_touch_disk_or_decode_logs()
   {
     var source = File.ReadAllText(Path.Combine(

@@ -267,7 +267,7 @@ internal sealed class SettingsLogRefreshPipeline
       {
         MarkStage("paged-reading");
         cancellationToken.ThrowIfCancellationRequested();
-        var progress = new Progress<LogPaginationApplyModel>(
+        var progress = new OrderedProgress<LogPaginationApplyModel>(
           model => QueuePagedApply(model, generation));
         await flight.Execute(flight.Intent, progress, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
@@ -516,4 +516,9 @@ internal sealed class SettingsLogRefreshPipeline
   private sealed record PagedFlight(
     LogPaginationIntent Intent,
     Func<LogPaginationIntent, IProgress<LogPaginationApplyModel>, CancellationToken, Task> Execute);
+
+  private sealed class OrderedProgress<T>(Action<T> report) : IProgress<T>
+  {
+    public void Report(T value) => report(value);
+  }
 }
