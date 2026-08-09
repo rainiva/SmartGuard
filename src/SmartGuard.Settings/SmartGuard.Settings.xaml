@@ -1220,7 +1220,7 @@
                             Header="诊断详情"
                             IsExpanded="False">
                     <StackPanel Margin="0,8,0,0">
-                      <TextBlock Text="按日志页当前筛选条件查看错误趋势和组件分布。"
+                      <TextBlock Text="基于保留期内全部日志统计错误趋势和组件分布。"
                                  Style="{StaticResource SettingsItemHint}"
                                  Margin="0,0,0,8"/>
                       <TextBlock x:Name="lblLogStatisticsEmpty"

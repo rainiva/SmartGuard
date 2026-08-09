@@ -100,38 +100,8 @@ internal sealed partial class SettingsLogPageHost
   }
 
   private LogAggregationRequest BuildAggregationRequest()
-  {
-    var controller = _logController
-      ?? throw new InvalidOperationException("Log controller is not initialized.");
-
-    SettingsLogSearchCoordinator.ApplyFilters(
-      controller,
-      _logSearchFilterBar,
-      _chkLogSearchCaseSensitive,
-      _cmbLogTimeRange,
-      _txtLogRangeStart,
-      _txtLogRangeEnd);
-
-    var filterState = LogViewFilterState.FromLegacyFields(
-      controller.SearchKeyword,
-      controller.SearchCaseSensitive,
-      controller.ActiveTagFilters,
-      controller.TimeRange,
-      controller.CustomRangeStart,
-      controller.CustomRangeEnd,
-      controller.OperationIdFilter,
-      controller.EventNameFilter,
-      controller.ProcessIdFilter,
-      controller.ThreadIdFilter,
-      controller.NowProvider);
-
-    var expression = _sessionCoordinator.IsActive
-      ? _sessionCoordinator.BuildActiveQuery(filterState.QueryExpression)
-      : filterState.QueryExpression;
-
-    return new LogAggregationRequest(
-      expression,
+    => new(
+      LogQueryMatchAllExpression.Instance,
       TimeSpan.FromMinutes(10),
       TimeZoneInfo.Local);
-  }
 }

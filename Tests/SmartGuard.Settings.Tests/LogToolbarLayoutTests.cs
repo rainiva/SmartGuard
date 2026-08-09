@@ -173,6 +173,8 @@ public class LogToolbarLayoutTests
         xaml.Should().MatchRegex(
             "x:Name=\"logStatisticsInspector\"[\\s\\S]{0,1200}x:Name=\"lblLogStatisticsEmpty\"[\\s\\S]{0,1200}x:Name=\"logErrorTrendChart\"[\\s\\S]{0,1200}x:Name=\"logComponentDistribution\"",
             "About maintenance should host the diagnostic statistics controls together");
+        xaml.Should().Contain("基于保留期内全部日志统计错误趋势和组件分布");
+        xaml.Should().NotContain("按日志页当前筛选条件查看错误趋势和组件分布");
 
         xaml.Should().NotContain("x:Name=\"logSessionInspector\"");
         xaml.Should().NotContain("x:Name=\"logSessionBanner\"");

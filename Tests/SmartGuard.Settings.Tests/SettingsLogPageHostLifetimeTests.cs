@@ -662,7 +662,7 @@ public sealed class SettingsLogPageHostLifetimeTests
     }
 
     [Fact]
-    public void Active_session_statistics_use_current_filter_expression_and_session_clause()
+    public void Maintenance_statistics_ignore_log_page_filters_and_active_session()
     {
         WpfStaTestHost.Run(() =>
         {
@@ -701,12 +701,12 @@ public sealed class SettingsLogPageHostLifetimeTests
                     request.Expression).Should().BeTrue();
                 LogQueryExpressionEvaluator.Matches(
                     CreateEvent("saved", baseTime.AddMinutes(2), "saved-only"),
-                    request.Expression).Should().BeFalse(
-                    "statistics must not keep using the expression saved when entering the session");
+                    request.Expression).Should().BeTrue(
+                    "maintenance diagnostics must not inherit the hidden log-page filter");
                 LogQueryExpressionEvaluator.Matches(
                     CreateEvent("outside", baseTime.AddHours(1), "current-only"),
-                    request.Expression).Should().BeFalse(
-                    "statistics must still enforce the active session boundary");
+                    request.Expression).Should().BeTrue(
+                    "maintenance diagnostics must not inherit the active log session");
             }
             finally
             {
