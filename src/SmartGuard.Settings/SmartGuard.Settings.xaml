@@ -50,6 +50,10 @@
       <SolidColorBrush x:Key="InfoBarForeground" Color="#005FB8"/>
       <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#B3D7F7"/>
       <SolidColorBrush x:Key="DividerBrush" Color="#E5E5E5"/>
+      <SolidColorBrush x:Key="LogInfoForeground" Color="#1A6FBF"/>
+      <SolidColorBrush x:Key="LogWarningForeground" Color="#C47A00"/>
+      <SolidColorBrush x:Key="LogErrorForeground" Color="#C62828"/>
+      <SolidColorBrush x:Key="LogNeutralForeground" Color="#5F6B7A"/>
       <Thickness x:Key="SettingsContentPageMargin">24,24,24,12</Thickness>
       <Thickness x:Key="ToastContainerMargin">0,24,24,0</Thickness>
 
@@ -512,9 +516,9 @@
         <Setter Property="Background" Value="{DynamicResource NumberBoxBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
-        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="BorderThickness" Value="0,0,1,1"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Padding" Value="12,0"/>
+        <Setter Property="Padding" Value="16,0"/>
         <Setter Property="Height" Value="38"/>
       </Style>
 
@@ -523,7 +527,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
         <Setter Property="BorderThickness" Value="0,0,1,0"/>
-        <Setter Property="Padding" Value="12,0"/>
+        <Setter Property="Padding" Value="16,0"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
       </Style>
 
@@ -543,6 +547,27 @@
         <Setter Property="TextWrapping" Value="NoWrap"/>
         <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
         <Setter Property="MaxHeight" Value="88"/>
+      </Style>
+
+      <Style x:Key="LogTableLevelTextStyle" TargetType="TextBlock" BasedOn="{StaticResource LogTableCellTextStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource LogInfoForeground}"/>
+        <Style.Triggers>
+          <Trigger Property="Text" Value="警告">
+            <Setter Property="Foreground" Value="{DynamicResource LogWarningForeground}"/>
+          </Trigger>
+          <Trigger Property="Text" Value="错误">
+            <Setter Property="Foreground" Value="{DynamicResource LogErrorForeground}"/>
+          </Trigger>
+          <Trigger Property="Text" Value="致命">
+            <Setter Property="Foreground" Value="{DynamicResource LogErrorForeground}"/>
+          </Trigger>
+          <Trigger Property="Text" Value="调试">
+            <Setter Property="Foreground" Value="{DynamicResource LogNeutralForeground}"/>
+          </Trigger>
+          <Trigger Property="Text" Value="跟踪">
+            <Setter Property="Foreground" Value="{DynamicResource LogNeutralForeground}"/>
+          </Trigger>
+        </Style.Triggers>
       </Style>
 
       <!-- Settings ComboBox -->
@@ -1222,7 +1247,7 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                   <TextBlock Text="时间范围：" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                  <ComboBox x:Name="cmbLogTimeRange" Width="120" SelectedIndex="0" KeyboardNavigation.IsTabStop="True" Focusable="True" Style="{StaticResource SettingsComboBox}">
+                  <ComboBox x:Name="cmbLogTimeRange" Width="120" Height="36" SelectedIndex="0" KeyboardNavigation.IsTabStop="True" Focusable="True" Style="{StaticResource SettingsComboBox}">
                     <ComboBoxItem Content="全部"/>
                     <ComboBoxItem Content="今天"/>
                     <ComboBoxItem Content="最近1小时"/>
@@ -1230,13 +1255,14 @@
                   </ComboBox>
                 </StackPanel>
 
-                <Border Grid.Column="1"
+                <Border x:Name="logSearchBox" Grid.Column="1"
                         Margin="12,0"
+                        Height="36"
                         Background="{DynamicResource NumberBoxBackground}"
                         BorderBrush="{DynamicResource NumberBoxBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="4"
-                        Padding="8,6"
+                        Padding="8,0"
                         AutomationProperties.Name="日志查询"
                         AutomationProperties.HelpText="输入关键词或组合查询">
                   <Grid>
@@ -1252,47 +1278,57 @@
                 <Grid Grid.Column="2" HorizontalAlignment="Right"
                       Panel.ZIndex="10">
                   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="btnLogRefresh" Content="&#x5237;&#x65B0;" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
-                    <Button x:Name="btnLogFilter" Content="筛选" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
-                    <Button x:Name="btnLogExport" Content="导出日志" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
-                    <CheckBox x:Name="chkLogWrap" Content="自动换行" Style="{StaticResource SettingsFilterCheckBox}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Button x:Name="btnLogRefresh" Height="36" Content="&#x5237;&#x65B0;" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
+                    <Button x:Name="btnLogFilter" Height="36" Content="筛选" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
+                    <Button x:Name="btnLogExport" Height="36" Content="导出日志" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
+                    <CheckBox x:Name="chkLogWrap" Height="36" Content="自动换行" Style="{StaticResource SettingsFilterCheckBox}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <Button x:Name="btnLogMore" Content="&#x66F4;&#x591A;" Style="{StaticResource LogToolbarCompactButton}" Visibility="Collapsed"/>
                   </StackPanel>
                 </Grid>
               </Grid>
 
-              <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,8">
-                <TextBlock Text="&#x6807;&#x7B7E;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
-                <WrapPanel x:Name="logTagFilterLinksPanel"/>
-              </WrapPanel>
+              <Border x:Name="logFilterPanel"
+                      Visibility="Collapsed"
+                      Margin="0,0,0,8"
+                      Padding="12,10"
+                      Background="{DynamicResource NumberBoxBackground}"
+                      BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                      BorderThickness="1"
+                      CornerRadius="4">
+                <StackPanel>
+                  <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,8">
+                    <TextBlock Text="级别" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                    <WrapPanel x:Name="logTagFilterLinksPanel"/>
+                  </WrapPanel>
 
-              <WrapPanel x:Name="logFilterScopePanel" Margin="0,0,0,4">
-                <TextBlock Text="&#x8303;&#x56F4;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                <ComboBox x:Name="cmbLogSession"
-                          MinWidth="180"
-                          MaxWidth="300"
-                          MaxDropDownHeight="280"
-                          KeyboardNavigation.IsTabStop="True"
-                          Focusable="True"
-                          AutomationProperties.Name="运行会话"
-                          AutomationProperties.HelpText="选择全部日志或某次运行会话"
-                          Margin="0,0,12,6"
-                          Style="{StaticResource SettingsComboBox}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                      <TextBlock Text="{Binding Title}"
-                                 TextTrimming="CharacterEllipsis"
-                                 ToolTip="{Binding Title}"/>
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                  <ComboBox.ItemContainerStyle>
-                    <Style TargetType="ComboBoxItem" BasedOn="{StaticResource SettingsComboBoxItem}">
-                      <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
-                    </Style>
-                  </ComboBox.ItemContainerStyle>
-                </ComboBox>
-                <CheckBox x:Name="chkLogSearchCaseSensitive" Content="&#x533A;&#x5206;&#x5927;&#x5C0F;&#x5199;" Style="{StaticResource SettingsFilterCheckBox}" Margin="0,0,0,6"/>
-              </WrapPanel>
+                  <WrapPanel x:Name="logFilterScopePanel">
+                    <TextBlock Text="会话" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                    <ComboBox x:Name="cmbLogSession"
+                              MinWidth="180"
+                              MaxWidth="300"
+                              MaxDropDownHeight="280"
+                              KeyboardNavigation.IsTabStop="True"
+                              Focusable="True"
+                              AutomationProperties.Name="运行会话"
+                              AutomationProperties.HelpText="选择全部日志或某次运行会话"
+                              Margin="0,0,12,6"
+                              Style="{StaticResource SettingsComboBox}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding Title}"
+                                     TextTrimming="CharacterEllipsis"
+                                     ToolTip="{Binding Title}"/>
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                      <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem" BasedOn="{StaticResource SettingsComboBoxItem}">
+                          <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                        </Style>
+                      </ComboBox.ItemContainerStyle>
+                    </ComboBox>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
 
               <StackPanel x:Name="panelLogCustomRange" Orientation="Horizontal" Margin="0,4,0,8" Visibility="Collapsed">
                 <TextBlock Text="&#x8D77;" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -1369,9 +1405,19 @@
                           AutomationProperties.Name="日志表格"
                           AutomationProperties.HelpText="按级别、时间、来源、事件和状态查看当前页日志"
                           VerticalAlignment="Stretch">
+                  <DataGrid.Resources>
+                    <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource SettingsScrollBar}"/>
+                  </DataGrid.Resources>
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="级别" Binding="{Binding LevelText}" Width="120" MinWidth="120" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
-                    <DataGridTextColumn Header="时间" Binding="{Binding TimeText}" Width="190" MinWidth="190" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
+                    <DataGridTextColumn Header="级别" Binding="{Binding LevelText}" Width="120" MinWidth="120" ElementStyle="{StaticResource LogTableLevelTextStyle}"/>
+                    <DataGridTextColumn Binding="{Binding TimeText}" Width="190" MinWidth="190" ElementStyle="{StaticResource LogTableCellTextStyle}">
+                      <DataGridTextColumn.Header>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="时间"/>
+                          <TextBlock Text="↕" Margin="6,0,0,0" Foreground="{DynamicResource TextTertiary}"/>
+                        </StackPanel>
+                      </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
                     <DataGridTextColumn Header="来源" Binding="{Binding SourceText}" Width="180" MinWidth="180" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
                     <DataGridTextColumn Header="事件" Binding="{Binding EventText}" Width="*" MinWidth="240" ElementStyle="{StaticResource LogTableCellTextStyle}"/>
                     <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="120" MinWidth="120" ElementStyle="{StaticResource LogTableCellTextStyle}"/>

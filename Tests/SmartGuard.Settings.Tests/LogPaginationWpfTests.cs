@@ -94,11 +94,32 @@ public class LogPaginationWpfTests
     {
         var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
         xaml.Should().Contain("x:Name=\"logTable\"");
+        xaml.Should().Contain("Text=\"↕\"");
 
         var wiring = ReadSource("src/SmartGuard.Settings/SettingsLogPageHostWiring.cs");
         wiring.Should().Contain("logTable.Sorting");
         wiring.Should().Contain("toggleSortAsync");
         wiring.Should().Contain("e.Handled = true");
+    }
+
+    [Fact]
+    public void Log_table_uses_shared_scrollbar_level_colors_and_aligned_column_separators()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+
+        source.Should().Contain("x:Key=\"LogTableLevelTextStyle\"");
+        xaml.Should().Contain("ElementStyle=\"{StaticResource LogTableLevelTextStyle}\"");
+        source.Should().Contain("#1A6FBF");
+        source.Should().Contain("#C47A00");
+        source.Should().Contain("#C62828");
+        source.Should().Contain("#5F6B7A");
+        source.Should().MatchRegex(
+            "x:Key=\"LogTableHeaderStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0,0,1,1\"");
+        source.Should().MatchRegex(
+            "x:Key=\"LogTableCellStyle\"[\\s\\S]{0,500}Property=\"Padding\" Value=\"16,0\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logTable\"[\\s\\S]{0,2400}<DataGrid.Resources>[\\s\\S]{0,500}SettingsScrollBar");
     }
 
     [Fact]

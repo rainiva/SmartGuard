@@ -45,7 +45,7 @@ public class LogToolbarLayoutTests
         xaml.Should().Contain("x:Name=\"btnLogRefresh\"");
         xaml.Should().Contain("x:Name=\"btnLogMore\"");
         xaml.Should().Contain("x:Name=\"cmbLogTimeRange\"");
-        xaml.Should().Contain("x:Name=\"chkLogSearchCaseSensitive\"");
+        xaml.Should().NotContain("x:Name=\"chkLogSearchCaseSensitive\"");
         xaml.Should().Contain("x:Name=\"chkLogFollowTail\"");
         xaml.Should().Contain("x:Name=\"lblLogStatus\"");
         xaml.Should().NotContain("<ContextMenu");
@@ -74,27 +74,30 @@ public class LogToolbarLayoutTests
     }
 
     [Fact]
-    public void Log_page_places_session_time_and_case_scope_in_fixed_top_filter_row()
+    public void Log_page_keeps_time_on_toolbar_and_moves_level_and_session_into_collapsed_filter_panel()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().Contain("MinWidth=\"600\"");
+        xaml.Should().Contain("x:Name=\"logFilterPanel\"");
         xaml.Should().Contain("x:Name=\"logFilterScopePanel\"");
         xaml.Should().Contain("x:Name=\"cmbLogSession\"");
+        xaml.Should().NotContain("x:Name=\"chkLogSearchCaseSensitive\"");
 
         var searchIndex = RequireIndex(xaml, "x:Name=\"logSearchFilterHost\"");
         var refreshIndex = RequireIndex(xaml, "x:Name=\"btnLogRefresh\"");
         var moreIndex = RequireIndex(xaml, "x:Name=\"btnLogMore\"");
+        var filterPanelIndex = RequireIndex(xaml, "x:Name=\"logFilterPanel\"");
         var tagIndex = RequireIndex(xaml, "x:Name=\"logTagFilterLinksPanel\"");
         var scopeIndex = RequireIndex(xaml, "x:Name=\"logFilterScopePanel\"");
         var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
         var timeIndex = RequireIndex(xaml, "x:Name=\"cmbLogTimeRange\"");
-        var caseIndex = RequireIndex(xaml, "x:Name=\"chkLogSearchCaseSensitive\"");
         var statusIndex = RequireIndex(xaml, "x:Name=\"lblLogStatus\"");
 
         searchIndex.Should().BeLessThan(refreshIndex);
         refreshIndex.Should().BeLessThan(moreIndex);
-        moreIndex.Should().BeLessThan(tagIndex);
+        moreIndex.Should().BeLessThan(filterPanelIndex);
+        filterPanelIndex.Should().BeLessThan(tagIndex);
         tagIndex.Should().BeLessThan(scopeIndex);
         scopeIndex.Should().BeLessThan(statusIndex);
 
@@ -102,8 +105,10 @@ public class LogToolbarLayoutTests
         sessionIndex.Should().BeLessThan(statusIndex);
         timeIndex.Should().BeLessThan(searchIndex);
         timeIndex.Should().BeLessThan(statusIndex);
-        caseIndex.Should().BeGreaterThan(scopeIndex);
-        caseIndex.Should().BeLessThan(statusIndex);
+
+        xaml.Should().MatchRegex(
+            "x:Name=\"logFilterPanel\"[\\s\\S]{0,300}Visibility=\"Collapsed\"",
+            "secondary filters should stay out of the main panel until the user opens Filter");
 
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"1[6-9]0|x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"2[0-4]0",
@@ -114,6 +119,27 @@ public class LogToolbarLayoutTests
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MaxDropDownHeight=\"280\"",
             "the session dropdown should expose the Task 3 long-list height");
+    }
+
+    [Fact]
+    public void Log_toolbar_search_actions_and_wrap_toggle_share_the_time_range_height()
+    {
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+
+        foreach (var controlName in new[]
+                 {
+                     "cmbLogTimeRange",
+                     "logSearchBox",
+                     "btnLogRefresh",
+                     "btnLogFilter",
+                     "btnLogExport",
+                     "chkLogWrap",
+                 })
+        {
+            xaml.Should().MatchRegex(
+                $"x:Name=\"{controlName}\"[\\s\\S]{{0,240}}Height=\"36\"|Height=\"36\"[\\s\\S]{{0,240}}x:Name=\"{controlName}\"",
+                $"{controlName} should use the shared 36 DIP toolbar height");
+        }
     }
 
     [Fact]

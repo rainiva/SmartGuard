@@ -500,7 +500,7 @@ internal sealed partial class SettingsLogPageHost
 
   private void ToggleLogFilterPanel()
   {
-    if (_window.FindName("logFilterScopePanel") is not UIElement panel)
+    if (_window.FindName("logFilterPanel") is not UIElement panel)
       return;
 
     panel.Visibility = panel.Visibility == Visibility.Visible

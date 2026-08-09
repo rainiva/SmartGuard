@@ -304,7 +304,7 @@ public class SettingsWindowControllerTests
             btnLogMore.Should().NotBeNull();
             window.FindName("chkLogFollowTail").Should().NotBeNull();
             window.FindName("cmbLogTimeRange").Should().NotBeNull();
-            window.FindName("chkLogSearchCaseSensitive").Should().NotBeNull();
+            window.FindName("chkLogSearchCaseSensitive").Should().BeNull();
             btnLogMore!.ContextMenu.Should().BeNull();
             var logMoreFlyout = window.FindName("logMoreFlyout") as Border;
             logMoreFlyout.Should().NotBeNull();
