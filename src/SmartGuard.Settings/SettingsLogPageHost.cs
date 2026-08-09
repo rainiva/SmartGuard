@@ -34,6 +34,8 @@ internal sealed partial class SettingsLogPageHost
   private string? _fallbackLogPath;
   private CheckBox? _chkLogFollowTail;
   private ComboBox? _cmbLogTimeRange;
+  private ComboBox? _cmbLogLevel;
+  private ComboBox? _cmbLogSource;
   private UIElement? _panelLogCustomRange;
   private TextBox? _txtLogRangeStart;
   private TextBox? _txtLogRangeEnd;
@@ -83,7 +85,9 @@ internal sealed partial class SettingsLogPageHost
         _chkLogSearchCaseSensitive,
         _cmbLogTimeRange,
         _txtLogRangeStart,
-        _txtLogRangeEnd),
+        _txtLogRangeEnd,
+        _cmbLogLevel,
+        _cmbLogSource),
       failure =>
       {
         if (_lblLogStatus is not null)

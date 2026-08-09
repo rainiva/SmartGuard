@@ -66,6 +66,22 @@ public class LogViewControllerTests : IDisposable
     }
 
     [Fact]
+    public void LogViewController_filters_by_component_source()
+    {
+        File.WriteAllText(
+            _logPath,
+            "[INFO] 2026-06-19 10:00:00 [Engine] engine event\n" +
+            "[INFO] 2026-06-19 10:01:00 [Configuration] configuration event\n");
+
+        var controller = new LogViewController(_logPath, _fallbackPath)
+        {
+            ComponentFilter = LogComponentRegistry.Engine,
+        };
+
+        controller.GetFilteredLines().Should().ContainSingle(line => line.Contains("engine event"));
+    }
+
+    [Fact]
     public void RefreshFromDisk_picks_up_appended_lines()
     {
         File.WriteAllText(_logPath, "[INFO] 2026-06-19 10:00:00 first line\n");

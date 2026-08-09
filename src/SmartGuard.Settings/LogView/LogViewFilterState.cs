@@ -18,7 +18,8 @@ internal sealed record LogViewFilterState(
     string eventNameFilter,
     int? processIdFilter,
     int? threadIdFilter,
-    Func<DateTime>? nowProvider)
+    Func<DateTime>? nowProvider,
+    string componentFilter = "")
   {
     _ = searchCaseSensitive;
     var parts = new List<LogQueryExpression>();
@@ -82,6 +83,9 @@ internal sealed record LogViewFilterState(
 
     if (threadIdFilter is int threadId)
       parts.Add(new LogQueryFieldExpression("threadid", LogQueryOperator.Equals, threadId.ToString()));
+
+    if (!string.IsNullOrWhiteSpace(componentFilter))
+      parts.Add(new LogQueryFieldExpression("component", LogQueryOperator.Equals, componentFilter));
 
     var hasActiveFilters = parts.Count > 0 || activeTagFilters.Count > 0;
     var expression = parts.Count switch

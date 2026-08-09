@@ -307,7 +307,9 @@ internal sealed partial class SettingsLogPageHost
       _chkLogSearchCaseSensitive,
       _cmbLogTimeRange,
       _txtLogRangeStart,
-      _txtLogRangeEnd);
+      _txtLogRangeEnd,
+      _cmbLogLevel,
+      _cmbLogSource);
 
     var filterState = BuildCurrentLogFilterState();
 
@@ -344,7 +346,9 @@ internal sealed partial class SettingsLogPageHost
       _chkLogSearchCaseSensitive,
       _cmbLogTimeRange,
       _txtLogRangeStart,
-      _txtLogRangeEnd);
+      _txtLogRangeEnd,
+      _cmbLogLevel,
+      _cmbLogSource);
 
     return LogViewFilterState.FromLegacyFields(
       controller.SearchKeyword,
@@ -357,7 +361,8 @@ internal sealed partial class SettingsLogPageHost
       controller.EventNameFilter,
       controller.ProcessIdFilter,
       controller.ThreadIdFilter,
-      controller.NowProvider);
+      controller.NowProvider,
+      controller.ComponentFilter);
   }
 
   private void RestoreSessionMainViewState(LogSessionMainViewState state)

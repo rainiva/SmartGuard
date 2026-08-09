@@ -382,7 +382,9 @@ internal static class SettingsLogPageHostWiring
     Action refreshLogView,
     LogViewListPresenter? listPresenter = null,
     LogViewportController? viewport = null,
-    Action<LogQueryCursor>? loadMatchPage = null)
+    Action<LogQueryCursor>? loadMatchPage = null,
+    ComboBox? levelFilterComboBox = null,
+    ComboBox? componentFilterComboBox = null)
   {
     filterBar.FiltersChanged += (_, _) => searchCoordinator.QueueSearchRefresh();
     if (timeRangeComboBox is not null)
@@ -403,6 +405,11 @@ internal static class SettingsLogPageHostWiring
       caseSensitiveCheckBox.Checked += (_, _) => refreshLogView();
       caseSensitiveCheckBox.Unchecked += (_, _) => refreshLogView();
     }
+
+    if (levelFilterComboBox is not null)
+      levelFilterComboBox.SelectionChanged += (_, _) => refreshLogView();
+    if (componentFilterComboBox is not null)
+      componentFilterComboBox.SelectionChanged += (_, _) => refreshLogView();
 
     WireMatchNavigationKeys(filterBar, searchCoordinator, listPresenter, viewport, loadMatchPage);
   }

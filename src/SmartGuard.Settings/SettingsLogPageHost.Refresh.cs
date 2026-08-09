@@ -32,7 +32,6 @@ internal sealed partial class SettingsLogPageHost
       _window,
       _logPath,
       _fallbackLogPath,
-      AddLogTagFilter,
       () =>
       {
         EnsureLogScrollViewerHooked();
@@ -91,6 +90,8 @@ internal sealed partial class SettingsLogPageHost
     _logTopLoadingIndicator = _window.FindName("logTopLoadingIndicator") as Border;
     _chkLogFollowTail = controls.FollowTailCheckBox;
     _cmbLogTimeRange = controls.TimeRangeComboBox;
+    _cmbLogLevel = controls.LevelFilterComboBox;
+    _cmbLogSource = controls.ComponentFilterComboBox;
     _panelLogCustomRange = controls.CustomRangePanel;
     _txtLogRangeStart = controls.RangeStartTextBox;
     _txtLogRangeEnd = controls.RangeEndTextBox;
@@ -148,7 +149,9 @@ internal sealed partial class SettingsLogPageHost
       _chkLogSearchCaseSensitive,
       () => OnFilterRefresh(),
       _logListPresenter,
-      _logViewport);
+      _logViewport,
+      levelFilterComboBox: _cmbLogLevel,
+      componentFilterComboBox: _cmbLogSource);
     WireLogWorkbenchCommands();
     if (_lstLogView is not null && _logListPresenter is not null)
     {
@@ -212,7 +215,9 @@ internal sealed partial class SettingsLogPageHost
       _chkLogSearchCaseSensitive,
       _cmbLogTimeRange,
       _txtLogRangeStart,
-      _txtLogRangeEnd);
+      _txtLogRangeEnd,
+      _cmbLogLevel,
+      _cmbLogSource);
 
     var filterState = LogViewFilterState.FromLegacyFields(
       _logController.SearchKeyword,
@@ -225,7 +230,8 @@ internal sealed partial class SettingsLogPageHost
       _logController.EventNameFilter,
       _logController.ProcessIdFilter,
       _logController.ThreadIdFilter,
-      _logController.NowProvider);
+      _logController.NowProvider,
+      _logController.ComponentFilter);
     _pagedHasActiveFilters = filterState.HasActiveFilters;
     var parts = new List<LogQueryExpression> { filterState.QueryExpression };
     foreach (var tag in filterState.ActiveTagFilters)

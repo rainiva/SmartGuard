@@ -41,7 +41,9 @@ internal sealed partial class SettingsLogPageHost
       _chkLogSearchCaseSensitive,
       _cmbLogTimeRange,
       _txtLogRangeStart,
-      _txtLogRangeEnd);
+      _txtLogRangeEnd,
+      _cmbLogLevel,
+      _cmbLogSource);
 
     var filterState = LogViewFilterState.FromLegacyFields(
       controller.SearchKeyword,
@@ -54,7 +56,8 @@ internal sealed partial class SettingsLogPageHost
       controller.EventNameFilter,
       controller.ProcessIdFilter,
       controller.ThreadIdFilter,
-      controller.NowProvider);
+      controller.NowProvider,
+      controller.ComponentFilter);
 
     string? selectedEventId = null;
     if (_lstLogView?.SelectedItem is LogLineDisplayItem selectedItem)

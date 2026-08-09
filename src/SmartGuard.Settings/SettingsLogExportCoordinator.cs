@@ -230,7 +230,8 @@ internal sealed class SettingsLogExportCoordinator
       controller.EventNameFilter,
       controller.ProcessIdFilter,
       controller.ThreadIdFilter,
-      controller.NowProvider);
+      controller.NowProvider,
+      controller.ComponentFilter);
 
     var correlation = _getCorrelationCoordinator();
     var effectiveScope = correlation.IsActive ? DiagnosticBundleScope.CurrentOperation : scope;

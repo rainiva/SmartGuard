@@ -20,15 +20,17 @@ public class LogWorkbenchAccessibilityTests
 
         xaml.Should().Contain("AutomationProperties.Name=\"日志查询\"");
         xaml.Should().Contain("AutomationProperties.HelpText=\"输入关键词或组合查询\"");
-        xaml.Should().Contain("AutomationProperties.Name=\"运行会话\"");
-        xaml.Should().Contain("AutomationProperties.HelpText=\"选择全部日志或某次运行会话\"");
+        xaml.Should().Contain("AutomationProperties.Name=\"日志级别\"");
+        xaml.Should().Contain("AutomationProperties.HelpText=\"选择全部级别或指定级别\"");
+        xaml.Should().Contain("AutomationProperties.Name=\"日志来源\"");
+        xaml.Should().Contain("AutomationProperties.HelpText=\"选择全部来源或指定来源\"");
         xaml.Should().Contain("AutomationProperties.Name=\"日志列表\"");
         xaml.Should().Contain("AutomationProperties.LiveSetting=\"Polite\"");
         xaml.Should().Contain("KeyboardNavigation.TabNavigation=\"Local\"");
     }
 
     [Fact]
-    public void Log_toolbar_keeps_search_actions_session_and_time_keyboard_reachable_in_visual_order()
+    public void Log_toolbar_keeps_search_actions_time_level_and_source_keyboard_reachable_in_visual_order()
     {
         var xaml = File.ReadAllText(
             SettingsSourcePaths.ProjectSettingsXamlPath(),
@@ -38,21 +40,31 @@ public class LogWorkbenchAccessibilityTests
         var refreshIndex = RequireIndex(xaml, "x:Name=\"btnLogRefresh\"");
         var filterIndex = RequireIndex(xaml, "x:Name=\"btnLogFilter\"");
         var moreIndex = RequireIndex(xaml, "x:Name=\"btnLogMore\"");
-        var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
         var timeIndex = RequireIndex(xaml, "x:Name=\"cmbLogTimeRange\"");
+        var levelIndex = RequireIndex(xaml, "x:Name=\"cmbLogLevel\"");
+        var sourceIndex = RequireIndex(xaml, "x:Name=\"cmbLogSource\"");
+        var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
 
         searchIndex.Should().BeLessThan(refreshIndex);
         refreshIndex.Should().BeLessThan(filterIndex);
         filterIndex.Should().BeLessThan(moreIndex);
         moreIndex.Should().BeLessThan(timeIndex);
-        timeIndex.Should().BeLessThan(sessionIndex);
+        timeIndex.Should().BeLessThan(levelIndex);
+        levelIndex.Should().BeLessThan(sourceIndex);
+        sourceIndex.Should().BeLessThan(sessionIndex);
 
         xaml.Should().MatchRegex(
-            "x:Name=\"cmbLogSession\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogSession\"[\\s\\S]{0,600}Focusable=\"True\"",
-            "the session picker in the filter popup should be explicitly keyboard reachable");
+            "x:Name=\"cmbLogLevel\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogLevel\"[\\s\\S]{0,600}Focusable=\"True\"",
+            "the level picker should be explicitly keyboard reachable");
+        xaml.Should().MatchRegex(
+            "x:Name=\"cmbLogSource\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogSource\"[\\s\\S]{0,600}Focusable=\"True\"",
+            "the source picker should be explicitly keyboard reachable");
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,600}KeyboardNavigation\\.IsTabStop=\"True\"|x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,600}Focusable=\"True\"",
             "the time picker should remain keyboard reachable inside the filter popup");
+        xaml.Should().MatchRegex(
+            "x:Name=\"cmbLogSession\"[\\s\\S]{0,300}Visibility=\"Collapsed\"",
+            "the internal session state control must not enter the visible keyboard flow");
     }
 
     [Fact]

@@ -550,6 +550,7 @@
 
       <Style x:Key="LogTableCellTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Margin" Value="16,0,16,0"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
         <Setter Property="TextWrapping" Value="NoWrap"/>
         <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
@@ -1332,14 +1333,14 @@
               </Grid>
 
               <Popup x:Name="logFilterPopup"
-                     PlacementTarget="{Binding ElementName=btnLogFilter}"
+                     PlacementTarget="{Binding ElementName=logToolbar}"
                      Placement="Bottom"
-                     HorizontalOffset="-320"
                      StaysOpen="False"
                      AllowsTransparency="True"
                      PopupAnimation="Fade">
                 <Border x:Name="logFilterPanel"
-                        Width="420"
+                        Width="{Binding ActualWidth, ElementName=logToolbar}"
+                        MaxWidth="420"
                         Margin="0,8,0,0"
                         Padding="16,14"
                         Background="{DynamicResource NumberBoxBackground}"
@@ -1382,19 +1383,32 @@
 
                     <WrapPanel x:Name="logFilterLevelPanel" Margin="0,0,0,10">
                       <TextBlock Text="级别" Width="52" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                      <WrapPanel x:Name="logTagFilterLinksPanel"/>
-                    </WrapPanel>
-
-                    <WrapPanel x:Name="logFilterScopePanel">
-                      <TextBlock Text="会话" Width="52" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                      <ComboBox x:Name="cmbLogSession"
-                                MinWidth="180"
-                                MaxWidth="300"
-                                MaxDropDownHeight="280"
+                      <ComboBox x:Name="cmbLogLevel"
+                                Width="220"
+                                Height="36"
                                 KeyboardNavigation.IsTabStop="True"
                                 Focusable="True"
+                                AutomationProperties.Name="日志级别"
+                                AutomationProperties.HelpText="选择全部级别或指定级别"
+                                Style="{StaticResource SettingsComboBox}"/>
+                    </WrapPanel>
+
+                    <WrapPanel>
+                      <TextBlock Text="来源" Width="52" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                      <ComboBox x:Name="cmbLogSource"
+                                Width="220"
+                                Height="36"
+                                KeyboardNavigation.IsTabStop="True"
+                                Focusable="True"
+                                AutomationProperties.Name="日志来源"
+                                AutomationProperties.HelpText="选择全部来源或指定来源"
+                                Style="{StaticResource SettingsComboBox}"/>
+                    </WrapPanel>
+
+                    <ComboBox x:Name="cmbLogSession"
+                                Visibility="Collapsed"
+                                MaxDropDownHeight="280"
                                 AutomationProperties.Name="运行会话"
-                                AutomationProperties.HelpText="选择全部日志或某次运行会话"
                                 Style="{StaticResource SettingsComboBox}">
                         <ComboBox.ItemTemplate>
                           <DataTemplate>
@@ -1409,7 +1423,6 @@
                           </Style>
                         </ComboBox.ItemContainerStyle>
                       </ComboBox>
-                    </WrapPanel>
                   </StackPanel>
                 </Border>
               </Popup>

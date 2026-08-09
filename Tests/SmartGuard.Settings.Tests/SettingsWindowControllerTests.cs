@@ -288,7 +288,8 @@ public class SettingsWindowControllerTests
 
             var pageLogs = window.FindName("pageLogs") as Panel;
             var logSearchFilterHost = window.FindName("logSearchFilterHost") as ContentControl;
-            var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
+            var logLevelFilter = window.FindName("cmbLogLevel") as ComboBox;
+            var logSourceFilter = window.FindName("cmbLogSource") as ComboBox;
             var lstLogView = window.FindName("lstLogView") as ListBox;
             var logTable = window.FindName("logTable") as DataGrid;
             var lblLogStatus = window.FindName("lblLogStatus") as TextBlock;
@@ -296,7 +297,9 @@ public class SettingsWindowControllerTests
 
             pageLogs.Should().NotBeNull();
             logSearchFilterHost.Should().NotBeNull();
-            logTagFilterLinksPanel.Should().NotBeNull();
+            logLevelFilter.Should().NotBeNull();
+            logSourceFilter.Should().NotBeNull();
+            window.FindName("logTagFilterLinksPanel").Should().BeNull();
             lstLogView.Should().NotBeNull();
             logTable.Should().NotBeNull();
             lblLogStatus.Should().NotBeNull();
@@ -555,16 +558,18 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void Log_page_exposes_clickable_tag_filter_links()
+    public void Log_page_exposes_level_and_source_filter_dropdowns()
     {
         RunOnSta(() =>
         {
             var xaml = ReadProjectSettingsXaml();
             var window = LoadCompiledWindow();
-            var logTagFilterLinksPanel = window.FindName("logTagFilterLinksPanel") as WrapPanel;
+            var levelCombo = window.FindName("cmbLogLevel") as ComboBox;
+            var sourceCombo = window.FindName("cmbLogSource") as ComboBox;
 
-            logTagFilterLinksPanel.Should().NotBeNull();
-            xaml.Should().Contain("x:Name=\"logTagFilterLinksPanel\"");
+            levelCombo.Should().NotBeNull();
+            sourceCombo.Should().NotBeNull();
+            xaml.Should().NotContain("x:Name=\"logTagFilterLinksPanel\"");
             xaml.Should().NotContain("x:Name=\"chkInfo\"");
         });
     }

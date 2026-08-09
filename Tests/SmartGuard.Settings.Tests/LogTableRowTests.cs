@@ -21,8 +21,18 @@ public sealed class LogTableRowTests
     row.LevelText.Should().Be("INFO");
     row.TimeText.Should().Be(source.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
     row.SourceText.Should().Be("PowerManager");
-    row.EventText.Should().Be("PlanChanged：平衡模式已应用");
+    row.EventText.Should().Be("平衡模式已应用");
     row.StatusText.Should().Be("—");
+  }
+
+  [Fact]
+  public void Structured_event_falls_back_to_event_name_when_message_is_blank()
+  {
+    var source = CreateEvent(
+      eventName: "PowerSourceChanged",
+      message: "   ");
+
+    LogTableRow.FromEvent(source).EventText.Should().Be("PowerSourceChanged");
   }
 
   [Fact]

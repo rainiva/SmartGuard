@@ -70,12 +70,10 @@ public sealed class LogTableRow
 
   private static string BuildEventText(LogEvent sourceEvent)
   {
-    if (string.IsNullOrWhiteSpace(sourceEvent.EventName))
+    if (!string.IsNullOrWhiteSpace(sourceEvent.Message))
       return sourceEvent.Message;
-    if (string.IsNullOrWhiteSpace(sourceEvent.Message))
-      return sourceEvent.EventName!;
 
-    return $"{sourceEvent.EventName}：{sourceEvent.Message}";
+    return sourceEvent.EventName ?? string.Empty;
   }
 
   private static string ResolveStatus(LogEvent sourceEvent)

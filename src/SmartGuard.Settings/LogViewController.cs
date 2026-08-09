@@ -27,6 +27,7 @@ public sealed class LogViewController
     public bool SearchCaseSensitive { get; set; }
     public string OperationIdFilter { get; set; } = string.Empty;
     public string EventNameFilter { get; set; } = string.Empty;
+    public string ComponentFilter { get; set; } = string.Empty;
     public int? ProcessIdFilter { get; set; }
     public int? ThreadIdFilter { get; set; }
     public IReadOnlyList<string> ActiveTagFilters
@@ -355,7 +356,8 @@ public sealed class LogViewController
             EventNameFilter,
             ProcessIdFilter,
             ThreadIdFilter,
-            NowProvider)
+            NowProvider,
+            ComponentFilter)
             .WithScope(ScopeExpression);
 
     private string? ResolveEmptyStateMessage(IReadOnlyList<string> filtered)

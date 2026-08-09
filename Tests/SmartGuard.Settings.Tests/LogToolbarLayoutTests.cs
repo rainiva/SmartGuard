@@ -40,7 +40,7 @@ public class LogToolbarLayoutTests
         xaml.Should().NotContain("Text=\"实时日志\"");
         xaml.Should().NotContain("x:Name=\"logToolbarPanel\"");
         xaml.Should().NotContain("x:Name=\"logToolbarDivider\"");
-        xaml.Should().Contain("x:Name=\"logTagFilterLinksPanel\"");
+        xaml.Should().NotContain("x:Name=\"logTagFilterLinksPanel\"");
         xaml.Should().Contain("x:Name=\"lstLogView\"");
         xaml.Should().Contain("x:Name=\"btnLogRefresh\"");
         xaml.Should().Contain("x:Name=\"btnLogMore\"");
@@ -74,7 +74,7 @@ public class LogToolbarLayoutTests
     }
 
     [Fact]
-    public void Log_page_moves_time_level_and_session_into_filter_popup()
+    public void Log_page_moves_time_level_and_source_into_bounded_filter_popup()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
         var refreshSource = File.ReadAllText(
@@ -84,7 +84,10 @@ public class LogToolbarLayoutTests
         xaml.Should().Contain("MinWidth=\"600\"");
         xaml.Should().Contain("x:Name=\"logFilterPopup\"");
         xaml.Should().Contain("x:Name=\"logFilterPanel\"");
-        xaml.Should().Contain("x:Name=\"logFilterScopePanel\"");
+        xaml.Should().Contain("x:Name=\"cmbLogLevel\"");
+        xaml.Should().Contain("x:Name=\"cmbLogSource\"");
+        xaml.Should().NotContain("x:Name=\"logFilterScopePanel\"");
+        xaml.Should().NotContain("x:Name=\"logTagFilterLinksPanel\"");
         xaml.Should().Contain("x:Name=\"cmbLogSession\"");
         xaml.Should().NotContain("x:Name=\"chkLogSearchCaseSensitive\"");
 
@@ -93,8 +96,8 @@ public class LogToolbarLayoutTests
         var moreIndex = RequireIndex(xaml, "x:Name=\"btnLogMore\"");
         var filterPopupIndex = RequireIndex(xaml, "x:Name=\"logFilterPopup\"");
         var filterPanelIndex = RequireIndex(xaml, "x:Name=\"logFilterPanel\"");
-        var tagIndex = RequireIndex(xaml, "x:Name=\"logTagFilterLinksPanel\"");
-        var scopeIndex = RequireIndex(xaml, "x:Name=\"logFilterScopePanel\"");
+        var levelIndex = RequireIndex(xaml, "x:Name=\"cmbLogLevel\"");
+        var sourceIndex = RequireIndex(xaml, "x:Name=\"cmbLogSource\"");
         var sessionIndex = RequireIndex(xaml, "x:Name=\"cmbLogSession\"");
         var timeIndex = RequireIndex(xaml, "x:Name=\"cmbLogTimeRange\"");
         var statusIndex = RequireIndex(xaml, "x:Name=\"lblLogStatus\"");
@@ -103,30 +106,32 @@ public class LogToolbarLayoutTests
         refreshIndex.Should().BeLessThan(moreIndex);
         moreIndex.Should().BeLessThan(filterPopupIndex);
         filterPopupIndex.Should().BeLessThan(filterPanelIndex);
-        filterPanelIndex.Should().BeLessThan(tagIndex);
+        filterPanelIndex.Should().BeLessThan(levelIndex);
         filterPanelIndex.Should().BeLessThan(timeIndex);
-        timeIndex.Should().BeLessThan(tagIndex);
-        tagIndex.Should().BeLessThan(scopeIndex);
-        scopeIndex.Should().BeLessThan(statusIndex);
+        timeIndex.Should().BeLessThan(levelIndex);
+        levelIndex.Should().BeLessThan(sourceIndex);
+        sourceIndex.Should().BeLessThan(statusIndex);
 
-        sessionIndex.Should().BeGreaterThan(scopeIndex);
+        sessionIndex.Should().BeGreaterThan(sourceIndex);
         sessionIndex.Should().BeLessThan(statusIndex);
         timeIndex.Should().BeLessThan(statusIndex);
 
         xaml.Should().MatchRegex(
-            "x:Name=\"logFilterPopup\"[\\s\\S]{0,500}PlacementTarget=\"\\{Binding ElementName=btnLogFilter\\}\"",
-            "the filter surface should be anchored to the toolbar filter button");
+            "x:Name=\"logFilterPopup\"[\\s\\S]{0,500}PlacementTarget=\"\\{Binding ElementName=logToolbar\\}\"",
+            "the filter surface should be anchored to the toolbar so its left edge stays inside the log card");
+        xaml.Should().NotContain("HorizontalOffset=\"-320\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logFilterPanel\"[\\s\\S]{0,500}Width=\"\\{Binding ActualWidth, ElementName=logToolbar\\}\"[\\s\\S]{0,500}MaxWidth=\"420\"",
+            "the filter surface should shrink with the toolbar instead of overflowing narrow windows");
         refreshSource.Should().Contain("popup.IsOpen = !popup.IsOpen");
 
         xaml.Should().MatchRegex(
-            "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"1[6-9]0|x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MinWidth=\"2[0-4]0",
-            "the session picker should keep a practical lower bound in the wrapping scope row");
+            "x:Name=\"cmbLogSession\"[\\s\\S]{0,300}Visibility=\"Collapsed\"",
+            "session selection remains available to internal state restoration but is removed from the visible filter surface");
         xaml.Should().MatchRegex(
-            "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MaxWidth=\"2[4-9]0|x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MaxWidth=\"3[0-2]0",
-            "the session picker should have an upper bound so it cannot crush time and case filters");
+            "x:Name=\"cmbLogLevel\"[\\s\\S]{0,500}Style=\"\\{StaticResource SettingsComboBox\\}\"");
         xaml.Should().MatchRegex(
-            "x:Name=\"cmbLogSession\"[\\s\\S]{0,500}MaxDropDownHeight=\"280\"",
-            "the session dropdown should expose the Task 3 long-list height");
+            "x:Name=\"cmbLogSource\"[\\s\\S]{0,500}Style=\"\\{StaticResource SettingsComboBox\\}\"");
     }
 
     [Fact]

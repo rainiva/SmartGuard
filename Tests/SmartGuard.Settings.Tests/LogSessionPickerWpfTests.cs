@@ -89,7 +89,7 @@ public sealed class LogSessionPickerWpfTests
   }
 
   [Fact]
-  public void Session_picker_lives_in_filter_panel_renders_session_titles_and_wraps_at_min_width()
+  public void Filter_popup_exposes_level_and_source_dropdowns_while_session_picker_stays_hidden()
   {
     WpfStaTestHost.Run(() =>
     {
@@ -119,39 +119,22 @@ public sealed class LogSessionPickerWpfTests
         window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
         filterPopup.IsOpen.Should().BeTrue();
 
-        var combo = RequireCombo(window);
-        var scopePanel = window.FindName("logFilterScopePanel") as WrapPanel
-          ?? throw new InvalidOperationException("logFilterScopePanel was not found.");
-        combo.Parent.Should().BeSameAs(scopePanel);
+        var levelCombo = window.FindName("cmbLogLevel") as ComboBox
+          ?? throw new InvalidOperationException("cmbLogLevel was not found.");
+        var sourceCombo = window.FindName("cmbLogSource") as ComboBox
+          ?? throw new InvalidOperationException("cmbLogSource was not found.");
+        var sessionCombo = RequireCombo(window);
+        var toolbar = window.FindName("logToolbar") as Grid
+          ?? throw new InvalidOperationException("logToolbar was not found.");
 
-        var host = GetLogPageHost(controller);
-        InvokePrivate(host, "OnSessionComboDropDownOpened", combo, EventArgs.Empty);
-
-        WpfStaTestHost.WaitUntil(
-          () => combo.Items.OfType<LogSessionPickerItem>().Any(item => item.Kind == LogSessionPickerItemKind.Session),
-          TimeSpan.FromSeconds(10),
-          "session metadata to load from ComboBox.DropDownOpened");
-
-        var sessionItem = combo.Items.OfType<LogSessionPickerItem>()
-          .First(item => item.Kind == LogSessionPickerItemKind.Session);
-        sessionItem.Title.Should().NotBeNullOrWhiteSpace();
-        combo.SelectedItem = sessionItem;
-        window.UpdateLayout();
-
-        var paginationCoordinator = ((SettingsLogPageHost)GetLogPageHost(controller)).PaginationCoordinatorForTests
-          ?? throw new InvalidOperationException("The log page must create its pagination coordinator.");
-        WpfStaTestHost.WaitUntil(
-          () => paginationCoordinator.State.IsScanComplete,
-          TimeSpan.FromSeconds(10),
-          "session selection to rebuild the exact paged query");
-        paginationCoordinator.State.ExactTotalCount.Should().NotBeNull();
-        paginationCoordinator.State.TotalPages.Should().BeGreaterThanOrEqualTo(1);
-
-        combo.ActualWidth.Should().BeGreaterThan(0);
-        scopePanel.ActualWidth.Should().BeGreaterThan(0);
-        scopePanel.ActualWidth.Should().BeLessThanOrEqualTo(filterPanel.ActualWidth);
-        combo.ActualWidth.Should().BeLessThanOrEqualTo(scopePanel.ActualWidth);
-        filterPopup.PlacementTarget.Should().BeSameAs(filterButton);
+        levelCombo.Visibility.Should().Be(Visibility.Visible);
+        sourceCombo.Visibility.Should().Be(Visibility.Visible);
+        sessionCombo.Visibility.Should().Be(Visibility.Collapsed);
+        levelCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Content, "全部级别"));
+        sourceCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Content, "全部来源"));
+        sourceCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Tag, LogComponentRegistry.Engine));
+        filterPopup.PlacementTarget.Should().BeSameAs(toolbar);
+        filterPanel.ActualWidth.Should().BeLessThanOrEqualTo(toolbar.ActualWidth + 0.5);
       }
       finally
       {

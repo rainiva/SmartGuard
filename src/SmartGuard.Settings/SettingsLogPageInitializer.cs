@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
@@ -16,6 +17,8 @@ internal sealed record SettingsLogPageControls(
   TextBox? RangeStartTextBox,
   TextBox? RangeEndTextBox,
   CheckBox? CaseSensitiveCheckBox,
+  ComboBox? LevelFilterComboBox,
+  ComboBox? ComponentFilterComboBox,
   DispatcherTimer RefreshTimer);
 
 internal static class SettingsLogPageInitializer
@@ -24,7 +27,6 @@ internal static class SettingsLogPageInitializer
     Window window,
     string logPath,
     string? fallbackLogPath,
-    Action<string> addTagFilter,
     Action onListLoaded,
     Action refreshLogView)
   {
@@ -32,9 +34,21 @@ internal static class SettingsLogPageInitializer
     var searchFilterBar = new LogSearchFilterBar();
     Require<ContentControl>(window, "logSearchFilterHost").Content = searchFilterBar;
 
-    var tagFilterLinksPanel = Require<WrapPanel>(window, "logTagFilterLinksPanel");
-    foreach (var tag in LogTagFilterCatalog.SelectableTags)
-      tagFilterLinksPanel.Children.Add(LogTagFilterLinkFactory.CreateClickableTag(tag, addTagFilter));
+    var levelFilterComboBox = Require<ComboBox>(window, "cmbLogLevel");
+    PopulateFilterOptions(levelFilterComboBox, "全部级别", LogTagFilterCatalog.SelectableTags);
+    var componentFilterComboBox = Require<ComboBox>(window, "cmbLogSource");
+    PopulateFilterOptions(
+      componentFilterComboBox,
+      "全部来源",
+      [
+        LogComponentRegistry.Engine,
+        LogComponentRegistry.Tray,
+        LogComponentRegistry.Settings,
+        LogComponentRegistry.Cli,
+        LogComponentRegistry.Installer,
+        LogComponentRegistry.Configuration,
+        LogComponentRegistry.Legacy,
+      ]);
 
     var listView = Require<ListBox>(window, "lstLogView");
     var listPresenter = new LogViewListPresenter();
@@ -69,7 +83,21 @@ internal static class SettingsLogPageInitializer
       rangeStartTextBox,
       rangeEndTextBox,
       caseSensitiveCheckBox,
+      levelFilterComboBox,
+      componentFilterComboBox,
       refreshTimer);
+  }
+
+  private static void PopulateFilterOptions(
+    ComboBox comboBox,
+    string allLabel,
+    IEnumerable<string> values)
+  {
+    comboBox.Items.Clear();
+    comboBox.Items.Add(new ComboBoxItem { Content = allLabel, Tag = string.Empty });
+    foreach (var value in values)
+      comboBox.Items.Add(new ComboBoxItem { Content = value, Tag = value });
+    comboBox.SelectedIndex = 0;
   }
 
   private static T Require<T>(Window window, string name) where T : class

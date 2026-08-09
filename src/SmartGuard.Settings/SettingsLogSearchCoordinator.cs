@@ -108,15 +108,35 @@ internal sealed class SettingsLogSearchCoordinator
     CheckBox? caseSensitiveCheckBox,
     ComboBox? timeRangeComboBox,
     TextBox? rangeStart,
-    TextBox? rangeEnd)
+    TextBox? rangeEnd,
+    ComboBox? levelFilterComboBox = null,
+    ComboBox? componentFilterComboBox = null)
   {
     controller.SearchKeyword = filterBar?.Keyword ?? string.Empty;
-    controller.ActiveTagFilters = filterBar?.ActiveTags ?? [];
+    if (levelFilterComboBox is not null)
+    {
+      var level = ReadFilterValue(levelFilterComboBox);
+      controller.ActiveTagFilters = string.IsNullOrWhiteSpace(level)
+        ? filterBar?.ActiveTags ?? []
+        : [level];
+    }
+    else if (filterBar?.ActiveTags.Count > 0)
+    {
+      controller.ActiveTagFilters = filterBar.ActiveTags;
+    }
+
+    if (componentFilterComboBox is not null)
+      controller.ComponentFilter = ReadFilterValue(componentFilterComboBox);
     controller.SearchCaseSensitive = caseSensitiveCheckBox?.IsChecked == true;
     controller.TimeRange = ReadTimeRange(timeRangeComboBox);
     controller.CustomRangeStart = TryReadCustomRangeStart(rangeStart);
     controller.CustomRangeEnd = TryReadCustomRangeEnd(rangeEnd);
   }
+
+  internal static string ReadFilterValue(ComboBox? comboBox)
+    => comboBox?.SelectedItem is ComboBoxItem item
+      ? item.Tag?.ToString() ?? string.Empty
+      : string.Empty;
 
   private void QueueDebouncedRefresh(ref System.Windows.Threading.DispatcherTimer? timer)
   {

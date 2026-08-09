@@ -122,8 +122,97 @@ public class LogPaginationWpfTests
             "x:Key=\"LogTableHeaderStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0,0,1,1\"");
         source.Should().MatchRegex(
             "x:Key=\"LogTableCellStyle\"[\\s\\S]{0,500}Property=\"Padding\" Value=\"16,0\"");
+        source.Should().MatchRegex(
+            "x:Key=\"LogTableCellTextStyle\"[\\s\\S]{0,500}Property=\"Margin\" Value=\"16,0,16,0\"",
+            "text element margins must provide visible spacing even when the platform DataGridCell template ignores Padding");
         xaml.Should().MatchRegex(
             "x:Name=\"logTable\"[\\s\\S]{0,2400}<DataGrid.Resources>[\\s\\S]{0,500}SettingsScrollBar");
+    }
+
+    [Fact]
+    public void Filter_popup_stays_within_log_toolbar_at_narrow_window_width()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+            window!.Width = 760;
+            window.Height = 640;
+
+            var logPage = (FrameworkElement)window.FindName("pageLogs");
+            var toolbar = (FrameworkElement)window.FindName("logToolbar");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Left = 100;
+                window.Top = 100;
+                WpfStaTestHost.PumpDispatcher(window);
+                popup.IsOpen = true;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                var toolbarLeft = toolbar.PointToScreen(new Point(0, 0)).X;
+                var toolbarRight = toolbar.PointToScreen(new Point(toolbar.ActualWidth, 0)).X;
+                var panelLeft = panel.PointToScreen(new Point(0, 0)).X;
+                var panelRight = panel.PointToScreen(new Point(panel.ActualWidth, 0)).X;
+
+                panelLeft.Should().BeGreaterThanOrEqualTo(toolbarLeft - 1);
+                panelRight.Should().BeLessThanOrEqualTo(toolbarRight + 1);
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Log_table_body_text_keeps_a_balanced_gap_from_column_separators()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+            window!.Width = 1400;
+            window.Height = 700;
+
+            var logPage = (FrameworkElement)window.FindName("pageLogs");
+            var table = (DataGrid)window.FindName("logTable");
+            table.ItemsSource = new[]
+            {
+                new
+                {
+                    LevelText = "INFO",
+                    TimeText = "2026-08-09 20:59:52",
+                    SourceText = "Engine",
+                    EventText = "电源事件：插电，立即重新评估",
+                    StatusText = "已处理",
+                },
+            };
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                var levelCell = FindVisualChildren<DataGridCell>(table).First();
+                var levelText = FindVisualChildren<TextBlock>(levelCell).Single(text => text.Text == "INFO");
+                var leftGap = levelText.TranslatePoint(new Point(0, 0), levelCell).X;
+
+                leftGap.Should().BeInRange(12, 24);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
     }
 
     [Fact]
