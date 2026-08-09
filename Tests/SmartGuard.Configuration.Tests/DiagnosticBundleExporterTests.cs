@@ -11,10 +11,10 @@ namespace SmartGuard.Configuration.Tests;
 public class DiagnosticBundleExporterTests
 {
   [Fact]
-  public void SanitizeConfigJson_removes_GitHubToken_and_GitHubTokenProtected()
+  public void SanitizeConfigJson_removes_retired_secret_fields()
   {
     const string token = "ghp_secretExportToken1234567890";
-    var protectedValue = GitHubTokenProtector.Protect(token)!;
+    const string protectedValue = "legacy-protected-value";
     var json = $$"""
       {
         "BalancedThresholdSec": 300,
@@ -450,14 +450,19 @@ public class DiagnosticBundleExporterTests
       null,
       LogEvent.EmptyProperties);
 
-  private static void WriteMinimalInstallTree(string dir, string? token = null)
+  private static void WriteMinimalInstallTree(string dir, string? retiredSecret = null)
   {
     var configPath = SmartGuardPaths.ConfigFile(dir);
     var repo = new GuardConfigRepository(configPath);
     var config = GuardConfig.CreateDefault(dir);
-    if (!string.IsNullOrWhiteSpace(token))
-      config.GitHubToken = token;
     repo.Save(config);
+    if (!string.IsNullOrWhiteSpace(retiredSecret))
+      File.WriteAllText(configPath, $$"""
+        {
+          "BalancedThresholdSec": 300,
+          "GitHubToken": "{{retiredSecret}}"
+        }
+        """);
 
     var statusPath = SmartGuardPaths.StatusFile(dir);
     File.WriteAllText(statusPath, """{"paused":false,"idleSeconds":42}""");

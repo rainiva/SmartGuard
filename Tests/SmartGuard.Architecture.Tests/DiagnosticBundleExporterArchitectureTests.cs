@@ -16,7 +16,7 @@ public class DiagnosticBundleExporterArchitectureTests
   }
 
   [Fact]
-  public void DiagnosticBundleExporter_must_strip_github_token_fields()
+  public void DiagnosticBundleExporter_must_delegate_config_secret_redaction()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/DiagnosticBundleExporter.cs");
     source.Should().Contain("DiagnosticRedactor");
@@ -39,7 +39,6 @@ public class DiagnosticBundleExporterArchitectureTests
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsDiagnosticExportCoordinator.cs");
     source.Should().Contain("DiagnosticBundleExporter.ExportAsync");
     source.Should().Contain("DiagnosticBundleRequest");
-    source.Should().NotContain("GitHubTokenProtector");
   }
 
   [Fact]

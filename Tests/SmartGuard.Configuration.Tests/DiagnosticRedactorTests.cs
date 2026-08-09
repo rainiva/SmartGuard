@@ -29,10 +29,10 @@ public class DiagnosticRedactorTests
   }
 
   [Fact]
-  public void RedactConfigJson_removes_github_tokens_and_sensitive_fields()
+  public void RedactConfigJson_removes_retired_secret_fields_and_sensitive_fields()
   {
     const string token = "ghp_secretExportToken1234567890";
-    var protectedValue = GitHubTokenProtector.Protect(token)!;
+    const string protectedValue = "legacy-protected-value";
     var json = $$"""
       {
         "BalancedThresholdSec": 300,

@@ -16,7 +16,7 @@ internal sealed class SettingsAboutCoordinator
     return $"{version.Major}.{version.Minor}.{version.Build}";
   }
 
-  internal void WireAboutPage(Window window, TextBlock txtVersion, Func<string?> getGitHubToken)
+  internal void WireAboutPage(Window window, TextBlock txtVersion)
   {
     txtVersion.Text = GetDisplayVersion();
 
@@ -43,7 +43,7 @@ internal sealed class SettingsAboutCoordinator
       btnCheckUpdate.IsEnabled = false;
       try
       {
-        await _updateCheck.CheckForUpdateAsync(window, getGitHubToken).ConfigureAwait(true);
+        await _updateCheck.CheckForUpdateAsync(window).ConfigureAwait(true);
       }
       catch (Exception ex)
       {

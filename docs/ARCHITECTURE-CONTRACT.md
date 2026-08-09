@@ -38,8 +38,7 @@
 | shell 集成 | `DesktopShellRegistration` | Installer / repair | `DesktopShellRegistration.Apply`、`DesktopShellRegistration.Remove` | Tray runtime 自注册、marker 自愈、Inno `[Icons]` 用户快捷方式 |
 | 分发清单 | `DesktopDistributionManifest` | `DesktopSuitePublisher`、`StageCommand`、`PayloadCopier`、`StagingLayout`、Inno include 生成（Files/Processes/LegacyCleanup/Constants/Run） | — | 在 publisher/staging/installer 各自维护项目/文件/进程列表；`SmartGuard.iss` 手写 `[Run]` exe/task |
 | 运维子命令 | `SmartGuard.Cli` 薄路由 | dev cmd 单行转发、README | `Configuration` 操作真源 | Cli 内嵌 `schtasks`/`taskkill`/spawn 逻辑 |
-| GitHub Token（内存） | `GuardConfig.GitHubToken` | Settings 更新检查（`SettingsUpdateCheckCoordinator`） | `GuardConfigRepository.Save`（经 Settings 关于页 `SettingsGitHubTokenCoordinator` 或策略保存透传） | Engine/Tray 读取；磁盘明文 `GitHubToken` |
-| GitHub Token（磁盘） | `SmartGuard.config.json` 字段 `GitHubTokenProtected`（DPAPI `CurrentUser`，经 `GitHubTokenProtector`） | `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save` | 明文 `GitHubToken` 写入；诊断包导出须剔除 `GitHubToken` 与 `GitHubTokenProtected` |
+| 退役敏感字段 | `RetiredSecretFieldRegistry` 仅登记旧配置键 | `GuardConfigRepository.TryLoad`、`DiagnosticRedactor` | `GuardConfigRepository.Save` | 禁止恢复已退役认证功能；读取/保存尽力擦除旧字段，诊断导出继续兼容脱敏 |
 | 历史文档/脚本边界 | `docs/archive/**`、`scripts/archive/**`、`docs/superpowers/plans/**` | 人类只读历史快照 | — | 仅允许保留 superseded snapshots；不得作为 live authority；禁止通过 `PHASE-`、`MIGRATION`、日期、单文件名白名单继续豁免旧真相 |
 
 ---
@@ -87,7 +86,6 @@
 | `LegacyScheduledTaskCatalog` | `SmartGuard.Configuration` | 旧 SmartPowerPlan 计划任务名唯一 live 名单 |
 | `DesktopSuitePublisher` | `SmartGuard.Configuration.Build` | 四件桌面组件 `dotnet publish` 编排（消费 `DesktopDistributionManifest`）；publish 结束后调用 `SystemEventsRidAssetGuard.EnsureAligned` |
 | `SystemEventsRidAssetGuard` | `SmartGuard.Configuration.Build` | 确保 `bin/Microsoft.Win32.SystemEvents.dll` 与 `runtimes/win/lib/net8.0/` 同名文件 SHA256 一致；`StagingLayoutValidator` 复用 `Validate` |
-| `GitHubTokenProtector` | `SmartGuard.Configuration` | DPAPI 保护 `GitHubTokenProtected` 读写 |
 | `DiagnosticBundleExporter` | `SmartGuard.Configuration` | 诊断包 zip 导出；config 经 `DiagnosticRedactor` 剔除 token/secret；日志事件经注入的 `ILogEventSource` 读取 |
 | `DiagnosticBundleRequest` | `SmartGuard.Configuration` | 诊断包导出范围/过滤/覆盖策略请求 DTO |
 | `DiagnosticRedactor` | `SmartGuard.Configuration` | 诊断包导出脱敏（路径用户名、token/password/secret、命令行敏感参数） |
@@ -337,7 +335,7 @@
 | 电池/供电状态真源 | `BatteryStatusSourceArchitectureTests`、`BatteryInfoProviderCacheTests` |
 | 第七轮文档契约 | `ArchitectureContractSeventhRoundTests` |
 | Archive 边界 | `ArchiveBoundaryArchitectureTests` |
-| GitHub Token 保护 | `GitHubTokenArchitectureTests`、`GitHubTokenProtectorTests`、`GuardConfigRepositoryTokenTests` |
+| 退役敏感字段清理 | `RetiredSecretFieldArchitectureTests`、`RetiredSecretFieldMigrationTests` |
 | 诊断包导出脱敏 | `DiagnosticBundleExporterArchitectureTests`、`DiagnosticBundleExporterTests`、`SettingsDiagnosticExportCoordinatorTests` |
 | Pester Phase 8 | `Tests/SmartGuard.Tests.ps1` |
 | Toast 品牌 Logo | `ToastAppLogoArchitectureTests`、`ToastNotificationXmlBuilderTests` |

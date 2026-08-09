@@ -55,8 +55,8 @@ public sealed class GuardConfigRepository
         ApplyNotificationMigration(result, obj);
         ApplyThemeMigration(result, obj);
         ApplyLogViewPreferencesMigration(result, obj);
-        result.GitHubToken = ReadGitHubTokenFromNode(obj) ?? string.Empty;
-        MigrateLegacyGitHubTokenIfNeeded(obj, result);
+        if (RemoveRetiredSecretFields(obj))
+          TryPersistRetiredFieldCleanup(obj);
       }
       _readCache = result;
       _readCacheWriteTimeUtc = File.GetLastWriteTimeUtc(_configPath);
@@ -177,7 +177,7 @@ public sealed class GuardConfigRepository
     node["ThemeFollowSystem"] = config.ThemeFollowSystem;
     node["ThemeIsDark"] = config.ThemeIsDark;
     ApplyLogViewPreferences(node, config.LogViewPreferences);
-    ApplyGitHubTokenToNode(node, config);
+    RemoveRetiredSecretFields(node);
     if (config.ManualHighPerformanceUntil is { } until)
       node["ManualHighPerformanceUntil"] = until.ToString("o");
     else
@@ -221,54 +221,19 @@ public sealed class GuardConfigRepository
     _readCacheWriteTimeUtc = DateTime.MinValue;
   }
 
-  internal static string? ReadGitHubTokenFromNode(JsonObject node)
+  private static bool RemoveRetiredSecretFields(JsonObject node)
+    => RetiredSecretFieldRegistry.RemoveFrom(node);
+
+  private void TryPersistRetiredFieldCleanup(JsonObject node)
   {
-    if (node.TryGetPropertyValue(GitHubTokenProtector.ProtectedFieldName, out var protectedNode)
-        && protectedNode is JsonValue protectedValue)
+    try
     {
-      var protectedText = protectedValue.GetValue<string?>();
-      var token = GitHubTokenProtector.TryUnprotect(protectedText);
-      if (!string.IsNullOrEmpty(token))
-        return token;
+      WriteNodeWithoutCacheInvalidation(node.ToJsonString(WriteOptions));
     }
-
-    if (node.TryGetPropertyValue(GitHubTokenProtector.LegacyFieldName, out var legacyNode)
-        && legacyNode is JsonValue legacyValue)
+    catch
     {
-      var legacy = legacyValue.GetValue<string?>();
-      if (!string.IsNullOrWhiteSpace(legacy))
-        return legacy.Trim();
+      // Loading valid policy must not fail only because a retired field cannot be cleaned up yet.
     }
-
-    return string.Empty;
-  }
-
-  internal static void ApplyGitHubTokenToNode(JsonObject node, GuardConfig config)
-  {
-    node.Remove(GitHubTokenProtector.LegacyFieldName);
-
-    if (string.IsNullOrWhiteSpace(config.GitHubToken))
-    {
-      node.Remove(GitHubTokenProtector.ProtectedFieldName);
-      return;
-    }
-
-    var protectedValue = GitHubTokenProtector.Protect(config.GitHubToken);
-    if (protectedValue is not null)
-      node[GitHubTokenProtector.ProtectedFieldName] = protectedValue;
-    else
-      node.Remove(GitHubTokenProtector.ProtectedFieldName);
-  }
-
-  private void MigrateLegacyGitHubTokenIfNeeded(JsonObject node, GuardConfig config)
-  {
-    if (node.ContainsKey(GitHubTokenProtector.ProtectedFieldName))
-      return;
-    if (!node.ContainsKey(GitHubTokenProtector.LegacyFieldName))
-      return;
-
-    ApplyGitHubTokenToNode(node, config);
-    WriteNodeWithoutCacheInvalidation(node.ToJsonString(WriteOptions));
   }
 
   private void WriteNodeWithoutCacheInvalidation(string content)

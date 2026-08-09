@@ -19,8 +19,13 @@ public class SettingsDiagnosticExportCoordinatorTests
       var configPath = SmartGuardPaths.ConfigFile(dir);
       var repository = new GuardConfigRepository(configPath);
       var config = GuardConfig.CreateDefault(dir);
-      config.GitHubToken = "ghp_diagnosticExportToken1234567890";
       repository.Save(config);
+      File.WriteAllText(configPath, """
+        {
+          "BalancedThresholdSec": 300,
+          "GitHubToken": "ghp_diagnosticExportToken1234567890"
+        }
+        """);
 
       var zipPath = Path.Combine(dir, "export.zip");
       string? toastMessage = null;

@@ -212,7 +212,7 @@ internal sealed class SettingsPolicyCoordinator
     if (!AppDialog.ShowConfirm(
           _window,
           "恢复默认策略？",
-          "将把守护策略恢复为默认值。\n\n日志文件路径与 GitHub Token 会保留，手动高性能接管会被清除。",
+          "将把守护策略恢复为默认值。\n\n日志文件路径会保留，手动高性能接管会被清除。",
           AppDialogSeverity.Warning))
       return;
 

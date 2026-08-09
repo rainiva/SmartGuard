@@ -44,7 +44,6 @@ public static class SettingsSnapshotMapper
       AutoStartEnabled = autoStartEnabled,
       ThemeFollowSystem = current.ThemeFollowSystem,
       ThemeIsDark = current.ThemeIsDark,
-      GitHubToken = current.GitHubToken,
       ManualHighPerformanceUntil = current.ManualHighPerformanceUntil,
     };
   }

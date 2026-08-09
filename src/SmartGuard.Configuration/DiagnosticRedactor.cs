@@ -41,8 +41,7 @@ public static partial class DiagnosticRedactor
     if (node is not JsonObject obj)
       return RedactText(configJson);
 
-    obj.Remove(GitHubTokenProtector.LegacyFieldName);
-    obj.Remove(GitHubTokenProtector.ProtectedFieldName);
+    RetiredSecretFieldRegistry.RemoveFrom(obj);
     RedactSavedLogFilters(obj);
     RedactJsonObjectSecrets(obj);
     return RedactText(obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));

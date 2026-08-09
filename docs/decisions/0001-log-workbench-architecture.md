@@ -77,7 +77,7 @@ SmartGuard 日志页已具备 `SmartGuardLogWriter`、`LogTailReader`、`LogQuer
 - **日志格式：** P0-03 之前 UI 必须能显示混合 legacy 文本与 JSONL（adapter/decoder）；旧文本行 EventId 使用稳定 `l:<SHA-256>` 规则，不因归档 rename 改变。
 - **读取 API：** 现有 `ReadInitialView` 在 cursor 分页落地前保持可用；新 API 为 additive，不删除既有公共入口直至页面切换完成。
 - **配置字段：** 新增筛选/视图字段仍走 `GuardConfigRepository` 与契约登记，不破坏现有 config 加载。
-- **诊断包：** 导出范围扩展不改变“剔除 GitHub Token 字段”等既有脱敏规则。
+- **诊断包：** 导出范围扩展不改变既有敏感配置字段脱敏规则。
 
 ---
 

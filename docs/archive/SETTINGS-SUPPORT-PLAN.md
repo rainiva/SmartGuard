@@ -98,7 +98,7 @@
 | 路径（包内） | 来源 |
 |--------------|------|
 | `manifest.json` | 导出时间、应用版本、OS 版本、包含/缺失文件列表 |
-| `config/SmartGuard.config.json` | 当前配置（**剔除** `GitHubToken` 或置空） |
+| `config/SmartGuard.config.json` | 当前配置（**剔除**敏感认证字段） |
 | `status/SmartGuard.status.json` | 最近状态快照（若存在） |
 | `logs/SmartGuard.log` | 主日志；若超过 512KB 仅打包尾部 512KB 并注明 |
 | `logs/SmartGuard.startup.log` | 若存在 |
@@ -120,7 +120,7 @@
 
 - [ ] 关于页可见「导出诊断包…」按钮。
 - [ ] 成功导出 zip，manifest 含版本与时间戳。
-- [ ] 包内 config **无**有效 `GitHubToken`。
+- [ ] 包内 config **无**有效敏感认证字段。
 - [ ] 缺失 status/log 时不崩溃，manifest 标记 `missing`。
 - [ ] 主日志 > 512KB 时仅尾部入包，manifest 记录 `truncated: true`。
 - [ ] 单元测试：`DiagnosticBundleExporter` 对临时目录 fixture 验证文件清单与脱敏。

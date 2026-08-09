@@ -1161,18 +1161,6 @@
                   </Grid>
                 </Border>
 
-                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
-                  <StackPanel>
-                    <TextBlock Text="GitHub Token" Style="{StaticResource SettingsItemTitle}"/>
-                    <TextBlock x:Name="txtGitHubTokenStatus" Text="未配置" Style="{StaticResource SettingsItemHint}"/>
-                    <TextBlock Text="公开仓库通常无需配置；若检查更新频繁触发限流，可填写 GitHub 个人访问令牌（建议最小权限 public_repo）。" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                    <PasswordBox x:Name="pwdGitHubToken" Margin="0,0,0,8" Padding="10,8" FontSize="13"/>
-                    <StackPanel Orientation="Horizontal">
-                      <Button x:Name="btnSaveGitHubToken" Content="保存 Token" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-                      <Button x:Name="btnClearGitHubToken" Content="清除 Token" Style="{StaticResource SecondaryButton}"/>
-                    </StackPanel>
-                  </StackPanel>
-                </Border>
               </StackPanel>
             </Border>
 
@@ -1269,7 +1257,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
                       <TextBlock Text="恢复默认策略" Style="{StaticResource SettingsItemTitle}"/>
-                      <TextBlock Text="重置阈值与计划映射；保留日志路径和 GitHub Token" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap"/>
+                      <TextBlock Text="重置阈值与计划映射；保留日志路径" Style="{StaticResource SettingsItemHint}" TextWrapping="Wrap"/>
                     </StackPanel>
                     <Button x:Name="btnResetDefaults" Grid.Column="1" Content="恢复默认" Style="{StaticResource SecondaryButton}"/>
                   </Grid>

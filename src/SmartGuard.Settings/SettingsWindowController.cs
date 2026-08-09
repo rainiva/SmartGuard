@@ -165,8 +165,7 @@ public sealed class SettingsWindowController
     SettingsControlLabels.RegisterNumberBoxLabels(window);
     aboutCoordinator.WireAboutPage(
       window,
-      Require<TextBlock>(window, "txtVersion"),
-      () => policyCoordinator.ReadConfigFromUi().GitHubToken);
+      Require<TextBlock>(window, "txtVersion"));
     aboutCoordinator.WireLogRetention(
       window,
       config,
@@ -175,13 +174,6 @@ public sealed class SettingsWindowController
         repository.Save(updatedConfig);
         toastService.Show("日志保存时间已更新", false);
       });
-
-    var gitHubTokenCoordinator = new SettingsGitHubTokenCoordinator(
-      repository,
-      () => policyCoordinator.ReadConfigFromUi(),
-      policyCoordinator.CommitSavedConfig,
-      (message, isError) => toastService.Show(message, isError));
-    gitHubTokenCoordinator.WireAboutPage(window);
 
     var diagnosticExportCoordinator = new SettingsDiagnosticExportCoordinator(
       root,

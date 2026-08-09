@@ -227,6 +227,9 @@ public class SettingsWindowControllerTests
             statisticsInspector!.IsDescendantOf(pageLogs!).Should().BeFalse();
             statisticsInspector.IsDescendantOf(pageAbout!).Should().BeTrue();
             window.FindName("cmbLogRetentionDays").Should().NotBeNull();
+            window.FindName("pwdGitHubToken").Should().BeNull();
+            window.FindName("btnSaveGitHubToken").Should().BeNull();
+            window.FindName("btnClearGitHubToken").Should().BeNull();
         });
     }
 
