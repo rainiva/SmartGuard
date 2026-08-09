@@ -71,6 +71,21 @@ public class LogEventTests
   }
 
   [Fact]
+  public void Tagged_diagnostic_line_without_component_uses_embedded_timestamp()
+  {
+    const string line = "[DIAG] 2026-08-03 12:10:08 {\"health\":\"LogPipeline\",\"writtenLinesTotal\":16}";
+
+    var decoded = LogEventDecoder.Decode(new LogPhysicalLine(TestSource(), 256, line, true));
+
+    decoded.Timestamp.Should().Be(
+      new DateTimeOffset(2026, 8, 3, 12, 10, 8, TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 8, 3, 12, 10, 8))));
+    decoded.Severity.Should().Be(LogSeverity.Info);
+    decoded.Component.Should().Be(LogComponentRegistry.Legacy);
+    decoded.EventName.Should().BeNull();
+    decoded.Message.Should().Be(line);
+  }
+
+  [Fact]
   public void Identical_legacy_lines_are_distinguished_by_ordinal()
   {
     const string line = "[INFO] 2026-08-01 10:00:00 [Engine] HeartbeatTick";

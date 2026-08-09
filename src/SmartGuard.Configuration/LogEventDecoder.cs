@@ -14,6 +14,10 @@ public static class LogEventDecoder
     @"^(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?<message>.*)$",
     RegexOptions.Compiled);
 
+  private static readonly Regex TaggedTimestampPattern = new(
+    @"^\[(?<level>\w+)\]\s+(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(?:\s+.*)?$",
+    RegexOptions.Compiled);
+
   private static readonly Regex OpPattern = new(@"op=(?<value>\S+)", RegexOptions.Compiled);
   private static readonly Regex TracePattern = new(@"trace=(?<value>\S+)", RegexOptions.Compiled);
   private static readonly Regex SpanPattern = new(@"span=(?<value>\S+)", RegexOptions.Compiled);
@@ -42,6 +46,9 @@ public static class LogEventDecoder
 
     if (TryDecodeLegacyLine(line, out var legacy))
       return legacy;
+
+    if (TryDecodeTaggedTimestampLine(line, out var tagged))
+      return tagged;
 
     if (TryDecodePlainTimestampLine(line, out var plain))
       return plain;
@@ -117,6 +124,39 @@ public static class LogEventDecoder
       ExtractMatchValue(TracePattern, remainder),
       ExtractMatchValue(SpanPattern, remainder),
       ExtractMatchValue(UaPattern, remainder),
+      ProcessId: null,
+      ThreadId: null,
+      LogEvent.EmptyProperties);
+    return true;
+  }
+
+  private static bool TryDecodeTaggedTimestampLine(LogPhysicalLine line, out LogEvent logEvent)
+  {
+    logEvent = null!;
+    var match = TaggedTimestampPattern.Match(line.Text);
+    if (!match.Success
+        || !DateTimeOffset.TryParseExact(
+          match.Groups["timestamp"].Value,
+          "yyyy-MM-dd HH:mm:ss",
+          CultureInfo.InvariantCulture,
+          DateTimeStyles.AssumeLocal,
+          out var timestamp))
+      return false;
+
+    logEvent = new LogEvent(
+      LogEvent.CurrentSchemaVersion,
+      LogEventId.ComputeLegacyEventId(line.Source, line.ByteOffset, line.Text, line.Ordinal),
+      timestamp,
+      LogSeverityParser.Parse(match.Groups["level"].Value),
+      LogComponentRegistry.Legacy,
+      LogChannelRegistry.Compatibility,
+      EventName: null,
+      line.Text,
+      Exception: null,
+      OperationId: null,
+      TraceId: null,
+      SpanId: null,
+      UserActionId: null,
       ProcessId: null,
       ThreadId: null,
       LogEvent.EmptyProperties);
