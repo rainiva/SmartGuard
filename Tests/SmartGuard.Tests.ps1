@@ -774,7 +774,7 @@ print(json.dumps(result))" $icon $officialDir
         It 'implementation-path grep blocks live literals and fallback icons without scanning docs/tests' {
             $root = Split-Path -Parent $PSScriptRoot
             $hits = @(rg -n --pcre2 "RootPath \+ '\\bin\\SmartGuard\.Engine\.exe'|LoadWinFormsIcon\(SystemIcons\.Shield\)|SystemIcons\.Shield|SmartGuardPaths\.BrandIcon(?:\W|$)|lib\\SmartGuard\.ico" `
-                (Join-Path $root 'installer') (Join-Path $root 'src') (Join-Path $root 'scripts') --glob '!scripts/archive/**' 2>$null)
+                (Join-Path $root 'installer') (Join-Path $root 'src') (Join-Path $root 'scripts') --glob '!**/scripts/archive/**' 2>$null)
             $hits.Count | Should -Be 0 -Because ($hits -join [Environment]::NewLine)
         }
     }
