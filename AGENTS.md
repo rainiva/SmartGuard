@@ -1,130 +1,75 @@
-# SmartGuard 项目级规则
+# SmartGuard 项目规则入口
 
-## 0. 中文编码安全规则 —— 文件读写强制规范
-- **禁止使用不稳定、不可靠的方式读取或修改文件。**
-- 涉及中文内容的文件写入，必须使用显式 UTF-8（无 BOM）编码，禁止使用依赖系统默认编码的 API。
-  - PowerShell 示例：`[System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))`。
-  - 禁止 PowerShell `Set-Content` 无编码参数、`>>` 重定向等隐式编码写法。
-- C# 源文件、XAML、JSON、XML、Inno Setup 脚本（.iss）涉及中文时，统一保存为 UTF-8 无 BOM。
-- 禁止在终端命令中直接嵌入多行中文字符串执行；优先使用项目内文件 + `Write` 工具，或确保终端编码为 UTF-8 后再执行。
-- 文件读取时必须显式指定编码，避免依赖系统默认编码导致中文乱码。
+本文件是所有开发者与 AI Agent 的短入口。完整规则见 [docs/PROJECT-RULES.md](docs/PROJECT-RULES.md)，架构真源与唯一入口见 [docs/ARCHITECTURE-CONTRACT.md](docs/ARCHITECTURE-CONTRACT.md)。三者冲突时，按“更具体、风险更高、验证更严格”的规则执行。
 
-## 适用场景
-所有功能开发、缺陷修复、行为变更任务，无论改动大小。
+## 1. 项目原则
 
-## 规则正文
+所有改动都应让系统在功能增加后仍保持：入口清楚、真源唯一、责任明确、边界稳定、状态可解释、失败可恢复、修改可验证。
 
-### 1. RED 先行 —— 测试先写，确认失败
-- 必须先写/修改测试，运行并确认按预期失败。
-- **未见失败，不得写任何生产代码实现。**
-- 禁止以"优化、refactor、工具层、改动小、赶时间"等理由跳过 RED 阶段。
-- 豁免场景：纯文档更新、配置值调整、第三方依赖升级验证、明确标注的 spike/exploration。
+- 同一事实只有一个真源，同一能力只有一个规范语义入口，同一责任只有一个明确拥有者。
+- 不新增第二套路径解析、配置访问、状态解析、生命周期、日志写入、任务名或文件名真源；扩展现有权威实现。
+- 不为“以后可能需要”预建抽象、Manager、Service、Adapter、Feature Flag 或兼容层。
+- 发现范围外问题只记录；除非阻塞当前任务，不顺手修改。
 
-### 2. 已先写实现 —— 回退重来
-- 若发现已先写了实现（无论有意无意），**必须删除实现**，从失败测试重新开始。
-- **禁止事后补测糊弄。** 补写的测试不能替代先写测试的流程要求。
+## 2. 开始任务前
 
-### 3. GREEN 最小实现
-- 仅编写让当前失败测试通过的最小代码。
-- 测试全绿后方可进入下一阶段。
+1. 先检查当前文件与 Git 状态，保护用户已有修改；任何目标文件写入前必须重新读取或确认不存在。
+2. 先读本文件、`docs/PROJECT-RULES.md` 相关章节和 `docs/ARCHITECTURE-CONTRACT.md` 相关真源。
+3. 仓库存在 `.codegraph/` 时，理解或定位代码优先使用 CodeGraph，再做窄范围文本搜索或文件读取。
+4. 涉及 Windows/WPF、权限、线程、存储、部署或第三方 API 时，先核对当前官方文档，不凭记忆猜行为。
+5. 明确范围、验收标准与风险等级；高影响改动先完成影响分析，不直接写生产代码。
 
-### 4. REFACTOR 的前提
-- 影响行为、签名或模块边界的批量重构（extract/split/重命名 public API 等），必须基于全绿测试基线，且重构后测试仍全绿。
-- 纯格式、using 整理、内部私有方法重命名等低风险重构，可在确认无编译/测试风险后直接进行。
+## 3. 编码与文件安全（阻断）
 
-### 5. 完成声明的验证义务
-- **声称完成前：必须运行测试，并在回复中贴出通过输出。**
-- 无测试输出截图/文本，不得标记任务完成。
+- 中文相关文件统一为 UTF-8 无 BOM；读取与写入必须显式指定编码。
+- 手工编辑使用精确补丁；禁止 `Get-Content | Set-Content`、重定向、终端复制回写或其他整文件读改写流程。
+- 不依据终端显示判断乱码；必须用字节或显式编码读取验证。
+- 不覆盖、不清理、不提交与当前任务无关的修改或未跟踪文件。
 
-### 6. 测试分层
-- 用户可见的核心流程（如安装、计划任务启动引擎、托盘读状态）优先用集成/端到端测试覆盖；参考 `Tests/Integration/TrayCoreUserFlow.Tests.ps1`。
-- 纯逻辑、无 UI 的模块（如解析器、格式化器、配置校验、策略引擎）允许并鼓励使用 xUnit + FluentAssertions 编写单元测试。
-- 测试应面向行为，而非过度绑定内部实现细节；但稳定的内部接口/纯函数允许直接测试。
+## 4. 行为改动必须 TDD（阻断）
 
-### 7. PowerShell 脚本
-- 脚本中的中文输出、配置文件写入必须使用显式 UTF-8 无 BOM。
-- 关键脚本（如安装流程、任务注册、发布脚本）应配套 Pester 测试或至少手动验证主要路径。
+1. 先写或修改行为测试。
+2. 运行并保存符合预期的 RED 失败证据。
+3. 只写让该 RED 转绿的最小生产代码。
+4. GREEN 后才能重构，并保持测试全绿。
 
-## 阻断项速查
-| 行为 | 判定 |
-|------|------|
-| 先写实现后补测试 | 违规，删除实现重来 |
-| 未见测试失败就写实现 | 违规，先写测试并确认失败 |
-| 无全绿基线就批量重构 public API/行为 | 违规，先补测试或停止重构 |
-| 声称完成但未贴测试通过输出 | 违规，运行测试并贴输出 |
-| 核心用户流程只有单元测试，无集成覆盖 | 建议补充集成/端到端测试 |
+若已先写生产实现，撤销本次实现后从 RED 重来。纯文档、仅配置值调整、依赖升级验证和明确的 spike 可豁免；配置结构、默认行为或运行语义变化不豁免。
 
-### 8. 架构真源（阻断项）
+修 Bug 还必须先复现并定位根因，说明被破坏的不变量，并横向扫描同类模式；禁止只加空值保护、吞异常或绕路同步状态后宣称修复。
 
-| 行为 | 判定 |
-|------|------|
-| 新增第二套 RootResolver / 路径解析 | 违规，扩展现有 `InstallRootResolver` |
-| Engine 或任意进程绕过 Repository 读 config | 违规 |
-| 新增 config 字段的多写入 API 且无 [ARCHITECTURE-CONTRACT.md](docs/ARCHITECTURE-CONTRACT.md) 登记 | 违规 |
-| 在 Inno/cmd/测试再写一份 Engine 停止逻辑 | 违规，用 `EngineLifecycle` |
-| 硬编码计划任务名 / 核心文件名 | 违规，用 `ScheduledTaskRegistrar` / `SmartGuardPaths` |
-| 改共享基础设施却不更新 ARCHITECTURE-CONTRACT + 门禁 | 违规 |
-| 声称完成但架构门禁或 Run-Tests 未绿 | 违规（与 §5 并列） |
+## 5. SmartGuard 架构硬门禁
 
-### 11. 多真源治理专项 TDD（阻断项，与 §1–4 叠加）
+- 安装根：`InstallRootResolver`。
+- 路径与核心文件名：`SmartGuardPaths`。
+- 配置读取/保存：`GuardConfigRepository`；局部状态写入：`ConfigMutationService`。
+- 运行状态：Engine 的 `StatusPublisher` 写入，Tray/Settings 经共享 reader/store 读取。
+- 计划任务：`ScheduledTaskRegistrar`；Engine 停止：`EngineLifecycle`；Tray 生命周期：`TrayLauncher` / `TrayLifecycle`。
+- 日志追加：`SmartGuardLogWriter`；日志查询、诊断导出等更细真源以 `docs/ARCHITECTURE-CONTRACT.md` 为准。
+- 修改共享基础设施、入口、真源、配置字段或持久化格式时，同步更新架构契约并先补架构门禁测试。
+- UI 只负责交互与展示，不直接拥有领域规则、配置文件解析、系统状态修正或持久化流程。
 
-| 行为 | 判定 |
-|------|------|
-| 跨 H/M 切片批量改 `src/` 且无对应 RED | 违规 |
-| 未贴 RED 失败输出就写生产代码 | 违规 |
-| 只跑单测不跑 `Run-Tests.ps1` 即声称 Slice 完成 | 违规 |
-| GREEN 范围超出「让当前 RED 通过」的最小 diff | 违规（留到 REFACTOR） |
-| REFACTOR 时测试非全绿 | 违规，回滚 |
-| 架构门禁从红变绿靠删断言/Skip 而非修真源 | 违规 |
-| Phase 8 Pester 与 Architecture.Tests 未接入 Run-Tests 即合并 | 违规 |
-| Slice 全绿后未 `git commit` 即开始下一切片 | 违规 |
-| 全部 Slice 完成但未做文档终验即宣告完成 | 违规 |
-| 终验发现缺口未开新 Slice 继续推进 | 违规 |
+## 6. 验证与完成声明（阻断）
 
-## Release 发布规范
+- 测试按受影响业务链选择，不按修改文件选择；测试面向行为与不变量，不绑定私有实现。
+- 行为改动先跑目标测试，完成前运行：
 
-### 远程仓库 Release 说明语言（阻断项）
+  ```powershell
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Run-Tests.ps1
+  ```
 
-- GitHub Releases 面向用户的发布文案（标题、正文、安装说明、环境要求等）**必须使用简体中文**。
-- 禁止将英文 Release note 直接发布到远程仓库。
-- 草稿真源：`.work/release-notes/v{version}.md`；发布时全文粘贴为 GitHub Release body。
-- 模板：`.work/release-notes/TEMPLATE.md`、`.github/release_template.md`（新建 Release 时 GitHub 会自动预填）。
-- 例外：Git commit / PR 文案、源码与架构文档不受此限；专有名词（GitHub Releases、.NET 8 等）可保留英文。
+- 必须核对命令退出码和 `.work/test-results/` 下的 summary JSON；报告 Pester、.NET、Tray Integration、Installer Integration 的结果、通过数、失败数、跳过数与未运行原因。
+- 自动化测试通过不等于真实桌面验收。UI、托盘、安装器、计划任务或 UAC 相关改动还需执行对应真实用户路径；未执行、被取消或被环境阻塞时明确标为 `NOT RUN` 或 `BLOCKED`。
+- 纯文档改动至少验证 UTF-8、Markdown 链接/结构和 `git diff --check`，无需运行全量代码测试。
+- 没有新鲜验证证据，不得声称“完成”“修复”或“全绿”。
 
-| 行为 | 判定 |
-|------|------|
-| 远程 Release body 为英文或未翻译 | 违规，改中文后再发布 |
-| 跳过 `.work/release-notes/` 直接在 GitHub 写英文 | 违规 |
+## 7. UI、发布与提交
 
-## 本地磁盘卫生
+- Windows UI 遵循当前 Fluent 桌面习惯：轻量、清晰、少边框、少嵌套、不过度解释；优先用层级、间距和对齐组织信息。
+- UI 改动至少检查键盘操作、焦点、可访问名称、DPI、高对比度和减少动画中与本次影响相关的路径。
+- GitHub Release 标题、正文、安装说明必须为简体中文，正文真源为 `.work/release-notes/v{version}.md`。
+- 每个提交只表达一个完整意图；提交前完成相应验证，只暂存本任务文件，使用 Conventional Commits。
+- 一轮有意义且可独立验证的改动完成后自动提交；禁止自动改写历史。
 
-- 全量 `Run-Tests.ps1` / `build.cmd` / 打安装包后，工作区出现 **数百 MB～约 1 GB** 的 `bin/`、`obj/`、`installer/staging/`、`dist/` 等本地产物属正常现象（均已 `.gitignore`，不入库）。
-- 预览将清理的内容：`./Clean-Workspace.cmd -DryRun -AllLocal`
-- 清理本地产物（不含 `.worktrees/`）：`./Clean-Workspace.cmd -AllLocal`
-- 清理后跑测试会重新生成 Debug 构建缓存；Release publish / 安装包需重新 `build.cmd` 或打 installer。
-- 不再使用的 git worktree 请手动移除，例如：`git worktree remove .worktrees/feature/powershell-to-csharp`
+## 8. 停止线
 
-## Git 提交规范
-
-### 提交时机
-- 每完成一个独立的功能点、缺陷修复或阶段目标后，必须立即提交 Git。
-- 当判断"一轮有意义的改动"已经自洽、可独立保存时，即使尚未到达明确的任务终点，也应主动提交。
-- 当工作区中未跟踪或已修改文件数量 ≥ 5 个时，在新一轮改动前必须提交；不足 5 个但改动已自洽时，也应提交。
-
-### 提交前检查
-- 提交前必须运行相关测试、构建或检查命令，并确保全部通过。
-- 禁止提交以下明确有问题的改动：
-  1. 包含未修复的测试失败、编译错误或构建失败；
-  2. 包含敏感信息（密钥、Token、密码、个人身份信息等）；
-  3. 包含明显不应入库的临时文件或产物；
-  4. 功能明显未跑通或处于半成品、不可运行状态。
-
-### 提交操作
-- 满足提交条件时，自动执行 `git add` 与 `git commit`，无需逐次征求同意。
-- 只提交我明确改动的文件，不擅自提交用户工作区中的其他改动。
-- 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范，由我自动生成，确保能准确概括本次改动。
-
-### 例外与限制
-- 当前目录不是 Git 仓库时，停止继续改动并提示用户先初始化仓库。
-- 用户明确指示"先不提交"时，尊重该指令，但应记录风险并适时提醒。
-- 禁止自动修改已写入的提交历史（`amend`、`rebase`、`squash` 等），涉及历史重写必须单独征求用户确认。
+出现以下任一情况时停止写代码，返回调查或设计阶段：找不到真源；存在未知入口；新旧实现同时承担责任；失败后的状态无法解释；测试标准被迫迁就实现；影响范围持续扩张；不断新增 Adapter/Manager；依赖执行顺序碰巧正确；无法安全保留用户工作区修改。
