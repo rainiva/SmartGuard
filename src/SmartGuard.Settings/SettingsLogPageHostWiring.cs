@@ -460,10 +460,14 @@ internal static class SettingsLogPageHostWiring
           && comboBox.IsDropDownOpen)
         return;
 
+      var modifiers = e.Key == Key.Escape
+        ? ModifierKeys.None
+        : e.KeyboardDevice.Modifiers;
+
       if (!isLogPageActive()
           || !LogWorkbenchCommands.TryResolve(
             e.Key,
-            e.KeyboardDevice.Modifiers,
+            modifiers,
             isTextInputFocused(),
             out var command))
         return;

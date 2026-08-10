@@ -14,12 +14,10 @@ public sealed class GuardConfigRepository
   };
   private GuardConfig? _readCache;
   private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
-  private readonly FileSystemWatcher? _configWatcher;
 
   public GuardConfigRepository(string configPath)
   {
     _configPath = configPath;
-    _configWatcher = ConfigFileWatcher.Watch(configPath, InvalidateReadCache);
   }
 
   internal int DiskReadCountForTests { get; private set; }
