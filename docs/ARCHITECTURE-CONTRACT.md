@@ -69,7 +69,7 @@
 |------|----------|------|
 | `InstallRootResolver` | `SmartGuard.Configuration` | `--root` / `SMARTGUARD_ROOT` / `bin` 提升 / config walk-up |
 | `SmartGuardPaths` | `SmartGuard.Configuration` | config、status、log、exe 路径常量 |
-| `GuardConfigRepository` | `SmartGuard.Configuration` | 读（含迁移）、全量 Save |
+| `GuardConfigRepository` | `SmartGuard.Configuration` | 读（含迁移）、全量 Save；以 `LastWriteTimeUtc` 按需检测外部变更，禁止每实例持有长生命周期文件监听器 |
 | `ConfigMutationService` | `SmartGuard.Configuration` | 原子局部写：Paused、ManualHighPerformanceUntil |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
@@ -178,7 +178,7 @@
 | M-11 | **已关闭** | `DesktopAppBootstrap` |
 | M-14 | **已关闭** | `status.json` `enginePid` |
 | M-16 | **已关闭** | `BrandIconLoader` |
-| L-02 | **已关闭** | `GuardConfigRepository` `FileSystemWatcher` + `LastWriteTimeUtc` |
+| L-02 | **已关闭** | `GuardConfigRepository` 仅以 `LastWriteTimeUtc` 按需检测外部变更；不得为短生命周期 Repository 实例创建未释放的 `FileSystemWatcher` |
 | L-03 | **已关闭** | `LegacyPaths` |
 | L-04 | **已关闭** | 本文档 + `docs/archive/**` 历史边界；live contract 不得保留指向已归档 migration 文档的索引指针 |
 
@@ -198,7 +198,7 @@
 | S-03/S-04 | **已关闭** | `CreateDefault` → `PowerPlanCatalogProvider` + `SmartGuardPaths.DefaultLogFile` |
 | S-05 | **已关闭** | Settings 计划目录 `PowerPlanCatalogProvider.TryLoad()` |
 | S-06 | **已关闭** | AutoStart UI 读 `config.AutoStartEnabled`；写经 `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` |
-| S-07 | **已关闭** | `ConfigFileWatcher` |
+| S-07 | **已关闭** | 长生命周期 `TrayDisplaySettingsCache` 使用共享 `ConfigFileWatcher`；短生命周期 `GuardConfigRepository` 使用时间戳检测，避免监听器泄漏 |
 | S-08 | **已关闭** | `Status.cmd` 与 `ScheduledTaskRegistrar` 任务名一致 |
 | E-01 | **已关闭** | `Start-Core.cmd` → `schtasks`；`Debug-Engine.cmd` dev 前台 |
 | E-02 | **已关闭** | `LogViewer.exe` → Settings `--page logs` |
@@ -297,7 +297,7 @@
 | `GuardConfig.CreateDefault` 单源 | `GuardConfigDefaultsArchitectureTests` |
 | `Start-Core.cmd` Cli 转发 | `StartCoreArchitectureTests` |
 | LogViewer 退场 | `LogViewerProgramArchitectureTests` |
-| `ConfigFileWatcher` 共享 | `ConfigFileWatcherArchitectureTests` |
+| 配置变更检测生命周期边界 | `ConfigFileWatcherArchitectureTests` |
 | `GuardianIterationRunner` | `GuardianIterationRunnerArchitectureTests` |
 | 第四轮文档契约 | `ArchitectureContractFourthRoundTests` |
 | 日志页启动单源 | `SettingsLogsPageLauncherArchitectureTests` |
