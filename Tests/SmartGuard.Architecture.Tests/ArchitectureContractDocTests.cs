@@ -22,11 +22,17 @@ public class ArchitectureContractDocTests
   }
 
   [Fact]
-  public void Agents_md_contains_architecture_and_tdd_governance_sections()
+  public void Rule_entrypoint_routes_architecture_tdd_and_critical_module_governance()
   {
-    var path = Path.Combine(RepoRoot, "AGENTS.md");
-    var content = File.ReadAllText(path);
-    content.Should().Contain("### 8. 架构真源");
-    content.Should().Contain("### 11. 多真源治理专项 TDD");
+    var agentsPath = Path.Combine(RepoRoot, "AGENTS.md");
+    var projectRulesPath = Path.Combine(RepoRoot, "docs", "PROJECT-RULES.md");
+    var agents = File.ReadAllText(agentsPath);
+    var projectRules = File.ReadAllText(projectRulesPath);
+
+    agents.Should().Contain("行为改动必须 TDD");
+    agents.Should().Contain("SmartGuard 架构硬门禁");
+    agents.Should().Contain("关键模块治理");
+    projectRules.Should().Contain("### 2.5 关键模块治理");
+    projectRules.Should().Contain("模块不变量");
   }
 }

@@ -1,4 +1,4 @@
-﻿Describe 'SmartGuard' {
+Describe 'SmartGuard' {
     Describe 'Tray assets' {
         It 'canonical SmartGuard.ico lives under assets branding and official source frames exist' {
             $root = Split-Path -Parent $PSScriptRoot
@@ -580,11 +580,15 @@ print(json.dumps(result))" $icon $officialDir
             $content | Should -Match 'SmartGuard\.Settings\.exe --page logs'
         }
 
-        It 'AGENTS.md documents architecture and multi-source TDD rules' {
+        It 'AGENTS.md routes architecture TDD and critical-module governance' {
             $root = Split-Path -Parent $PSScriptRoot
             $agents = Get-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Raw -Encoding UTF8
-            $agents | Should -Match '### 8\. 架构真源'
-            $agents | Should -Match '### 11\. 多真源治理专项 TDD'
+            $projectRules = Get-Content -LiteralPath (Join-Path $root 'docs\PROJECT-RULES.md') -Raw -Encoding UTF8
+            $agents | Should -Match '行为改动必须 TDD'
+            $agents | Should -Match 'SmartGuard 架构硬门禁'
+            $agents | Should -Match '关键模块治理'
+            $projectRules | Should -Match '### 2\.5 关键模块治理'
+            $projectRules | Should -Match '模块不变量'
         }
 
         It 'SmartGuard.Architecture.Tests project is wired in Run-Tests.ps1' {
