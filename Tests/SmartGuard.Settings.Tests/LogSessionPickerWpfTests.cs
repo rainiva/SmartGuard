@@ -241,9 +241,9 @@ public sealed class LogSessionPickerWpfTests
 
         var host = (SettingsLogPageHost)GetLogPageHost(controller);
         WpfStaTestHost.WaitUntil(
-          () => host.IsLogViewInitializedForTests,
+          () => host.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
           TimeSpan.FromSeconds(10),
-          "the log host to initialize before invoking the paged executor");
+          "the log host to initialize and settle before replacing its controller");
         host.SetLogPageActive(false);
 
         var source = new InvalidationSnapshotSource();

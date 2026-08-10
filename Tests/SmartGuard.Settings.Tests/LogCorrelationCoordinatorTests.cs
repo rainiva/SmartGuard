@@ -9,12 +9,13 @@ public class LogCorrelationCoordinatorTests
     string eventId,
     string? operationId = null,
     string? traceId = null,
-    string? userActionId = null)
+    string? userActionId = null,
+    LogSeverity severity = LogSeverity.Info)
     => new(
       LogEvent.CurrentSchemaVersion,
       eventId,
       DateTimeOffset.UtcNow,
-      LogSeverity.Info,
+      severity,
       LogComponentRegistry.Engine,
       LogChannelRegistry.Diagnostics,
       EventNameRegistry.AppStarted,
@@ -54,11 +55,15 @@ public class LogCorrelationCoordinatorTests
     coordinator.ActiveTitle.Should().Be("操作关联：op-42");
 
     var query = coordinator.BuildActiveQuery();
-    query.Should().BeOfType<LogQueryAndExpression>();
-    var and = (LogQueryAndExpression)query;
-    and.Left.Should().Be(mainState.BaseExpression);
-    and.Right.Should().BeOfType<LogQueryFieldExpression>();
-    ((LogQueryFieldExpression)and.Right).Field.Should().Be("operationid");
+    LogQueryExpressionEvaluator.Matches(
+      CreateEvent("e:matching", operationId: "op-42"),
+      query).Should().BeTrue();
+    LogQueryExpressionEvaluator.Matches(
+      CreateEvent("e:wrong-level", operationId: "op-42", severity: LogSeverity.Error),
+      query).Should().BeFalse();
+    LogQueryExpressionEvaluator.Matches(
+      CreateEvent("e:wrong-operation", operationId: "op-other"),
+      query).Should().BeFalse();
   }
 
   [Fact]

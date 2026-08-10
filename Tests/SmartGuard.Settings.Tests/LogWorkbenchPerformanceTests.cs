@@ -463,11 +463,11 @@ public class LogWorkbenchPerformanceTests
           "the initial and latest paged flights to settle");
         WpfStaTestHost.PumpDispatcher(window);
 
-        applied.Should().ContainSingle(
-          "the refresh pipeline must discard the initial generation and apply only the final coalesced request");
-        applied[0].QueryGeneration.Should().Be(51);
-        applied[0].PageNumber.Should().Be(5);
-        applied[0].PageSize.Should().Be(20);
+        applied.Select(model => model.QueryGeneration).Should().Equal(
+          [1, 51],
+          "the active flight may publish usable data before the final coalesced request, but intermediate generations must never overwrite either result");
+        applied[^1].PageNumber.Should().Be(5);
+        applied[^1].PageSize.Should().Be(20);
       }
       finally
       {

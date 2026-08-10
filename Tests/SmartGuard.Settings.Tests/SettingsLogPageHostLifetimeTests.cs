@@ -140,26 +140,27 @@ public sealed class SettingsLogPageHostLifetimeTests
 
                 // Simulate the 2s auto-refresh timer beating the UI completion
                 // callback on a loaded machine: while the first flight is
-                // reading (its reads are attempts 1-2), a new refresh request
-                // is injected, so the first flight's generation is already
-                // stale when it completes. The restarted flight (attempt 3+)
-                // then blocks on its read, freezing the moment after the stale
-                // completion so the assertion below is deterministic.
+                // reading, inject a new refresh request. A paged flight may
+                // perform more than two physical reads, so block by actual
+                // flight number instead of assuming read #3 is the restart.
                 var readCount = 0;
+                var startedFlightsBeforeNavigation = SettingsLogRefreshPipeline.GlobalStartedFlightCountForTests;
                 var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
                 var capturedController = controller;
                 var capturedList = (ListBox?)null;
                 LogTailReaderTestMetrics.BeforeReadForTests = () =>
                 {
                     var attempt = Interlocked.Increment(ref readCount);
-                    events.Enqueue($"read#{attempt} on t{Environment.CurrentManagedThreadId}");
+                    var flightNumber = SettingsLogRefreshPipeline.GlobalStartedFlightCountForTests
+                        - startedFlightsBeforeNavigation;
+                    events.Enqueue($"read#{attempt} flight#{flightNumber} on t{Environment.CurrentManagedThreadId}");
                     if (attempt == 1)
                         window.Dispatcher.BeginInvoke(() =>
                         {
                             events.Enqueue($"inject ForceRefresh, items={capturedList?.Items.Count ?? -1}, inFlight={capturedController.IsLogRefreshInFlightForTests}");
                             capturedController.ForceRefreshLogView();
                         });
-                    else if (attempt >= 3 && !releaseSecondRead.Wait(TimeSpan.FromSeconds(10)))
+                    else if (flightNumber >= 2 && !releaseSecondRead.Wait(TimeSpan.FromSeconds(10)))
                         throw new TimeoutException("Test did not release the blocked restarted log read.");
                 };
 
@@ -716,6 +717,84 @@ public sealed class SettingsLogPageHostLifetimeTests
         });
     }
 
+    [Fact]
+    public void Correlation_back_restores_level_and_source_filters()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var installRoot = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+
+            try
+            {
+                WriteLog(installRoot);
+                controller = CreateController(installRoot);
+                WpfStaTestHost.Track(controller);
+                var window = GetWindow(controller);
+                WpfStaTestHost.ShowAndWait(window);
+                controller.NavigateTo("logs");
+                WpfStaTestHost.WaitUntil(
+                    () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
+                    TimeSpan.FromSeconds(5),
+                    "initial log view refresh to settle before entering correlation view");
+
+                var host = GetLogPageHost(controller);
+                StopLogTimer(host);
+                var levelFilter = window.FindName("cmbLogLevel") as ComboBox;
+                var sourceFilter = window.FindName("cmbLogSource") as ComboBox;
+                levelFilter.Should().NotBeNull();
+                sourceFilter.Should().NotBeNull();
+                SelectComboByTag(levelFilter!, "WARN");
+                SelectComboByTag(sourceFilter!, LogComponentRegistry.Engine);
+
+                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
+                InvokePrivate(
+                    host,
+                    "EnterCorrelationView",
+                    CreateCorrelationEvent("correlation:filter-anchor", baseTime, "op-filter"));
+                var correlationCoordinator = GetCorrelationCoordinator(host);
+                correlationCoordinator.IsActive.Should().BeTrue();
+                levelFilter!.IsEnabled.Should().BeFalse();
+                sourceFilter!.IsEnabled.Should().BeFalse();
+
+                var activeQuery = correlationCoordinator.BuildActiveQuery();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateCorrelationEvent(
+                        "correlation:matching-filter",
+                        baseTime.AddMinutes(1),
+                        "op-filter",
+                        LogSeverity.Warn,
+                        LogComponentRegistry.Engine),
+                    activeQuery).Should().BeTrue();
+                LogQueryExpressionEvaluator.Matches(
+                    CreateCorrelationEvent(
+                        "correlation:changed-filter",
+                        baseTime.AddMinutes(1),
+                        "op-filter",
+                        LogSeverity.Error,
+                        LogComponentRegistry.Engine),
+                    activeQuery).Should().BeFalse();
+
+                SelectComboByTag(levelFilter!, "ERROR");
+                SelectComboByTag(sourceFilter!, LogComponentRegistry.Tray);
+                InvokePrivate(host, "ExitCorrelationView");
+
+                levelFilter.IsEnabled.Should().BeTrue();
+                sourceFilter.IsEnabled.Should().BeTrue();
+                SettingsLogSearchCoordinator.ReadFilterValue(levelFilter).Should().Be("WARN");
+                SettingsLogSearchCoordinator.ReadFilterValue(sourceFilter).Should().Be(LogComponentRegistry.Engine);
+                var logController = GetLogController(host);
+                logController.ActiveTagFilters.Should().Equal("WARN");
+                logController.ComponentFilter.Should().Be(LogComponentRegistry.Engine);
+            }
+            finally
+            {
+                controller?.Dispose();
+                TryDelete(installRoot);
+            }
+        });
+    }
+
     private static SettingsWindowController CreateController(string installRoot)
     {
         var configPath = Path.Combine(installRoot, "SmartGuard.config.json");
@@ -783,6 +862,21 @@ public sealed class SettingsLogPageHostLifetimeTests
             "_logSearchFilterBar",
             BindingFlags.NonPublic | BindingFlags.Instance);
         return (LogSearchFilterBar)field!.GetValue(host)!;
+    }
+
+    private static LogViewController GetLogController(object host)
+    {
+        var field = host.GetType().GetField(
+            "_logController",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        return (LogViewController)field!.GetValue(host)!;
+    }
+
+    private static void SelectComboByTag(ComboBox comboBox, string value)
+    {
+        comboBox.SelectedItem = comboBox.Items
+            .OfType<ComboBoxItem>()
+            .Single(item => string.Equals(item.Tag?.ToString(), value, StringComparison.OrdinalIgnoreCase));
     }
 
     private static IReadOnlyList<string> GetLastDisplayedLines(object host)
@@ -895,13 +989,15 @@ public sealed class SettingsLogPageHostLifetimeTests
     private static LogEvent CreateCorrelationEvent(
         string eventId,
         DateTimeOffset timestamp,
-        string operationId)
+        string operationId,
+        LogSeverity severity = LogSeverity.Info,
+        string component = LogComponentRegistry.Engine)
         => new(
             LogEvent.CurrentSchemaVersion,
             eventId,
             timestamp,
-            LogSeverity.Info,
-            LogComponentRegistry.Engine,
+            severity,
+            component,
             LogChannelRegistry.Lifecycle,
             EventName: null,
             "correlation",

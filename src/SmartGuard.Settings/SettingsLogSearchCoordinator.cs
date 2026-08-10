@@ -138,6 +138,24 @@ internal sealed class SettingsLogSearchCoordinator
       ? item.Tag?.ToString() ?? string.Empty
       : string.Empty;
 
+  internal static void SelectFilterValue(ComboBox? comboBox, string? value)
+  {
+    if (comboBox is null)
+      return;
+
+    var expected = value ?? string.Empty;
+    foreach (var item in comboBox.Items.OfType<ComboBoxItem>())
+    {
+      if (!string.Equals(item.Tag?.ToString() ?? string.Empty, expected, StringComparison.OrdinalIgnoreCase))
+        continue;
+
+      comboBox.SelectedItem = item;
+      return;
+    }
+
+    comboBox.SelectedIndex = 0;
+  }
+
   private void QueueDebouncedRefresh(ref System.Windows.Threading.DispatcherTimer? timer)
   {
     if (timer is null)

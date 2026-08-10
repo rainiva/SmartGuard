@@ -16,6 +16,10 @@ internal sealed record LogCorrelationMainViewState(
   internal int PageNumber { get; init; } = 1;
 
   internal LogSortDirection SortDirection { get; init; } = LogSortDirection.NewestFirst;
+
+  internal string LevelFilter { get; init; } = string.Empty;
+
+  internal string ComponentFilter { get; init; } = string.Empty;
 }
 
 internal sealed class LogCorrelationCoordinator
@@ -46,8 +50,19 @@ internal sealed class LogCorrelationCoordinator
     if (_activeKey is null)
       throw new InvalidOperationException("Correlation view is not active.");
 
+    var baseExpression = _savedMainView?.BaseExpression;
+    var activeTags = string.IsNullOrWhiteSpace(_savedMainView?.LevelFilter)
+      ? _savedMainView?.ActiveTags ?? []
+      : [_savedMainView.LevelFilter];
+    foreach (var tag in activeTags)
+    {
+      baseExpression = LogOperationGraph.CombineWithBase(
+        baseExpression,
+        LogTagFilterCatalog.BuildQueryExpression(tag));
+    }
+
     var correlationClause = LogOperationGraph.BuildCorrelationExpression(_activeKey);
-    return LogOperationGraph.CombineWithBase(_savedMainView?.BaseExpression, correlationClause);
+    return LogOperationGraph.CombineWithBase(baseExpression, correlationClause);
   }
 
   internal LogCorrelationMainViewState? ExitCorrelationView()

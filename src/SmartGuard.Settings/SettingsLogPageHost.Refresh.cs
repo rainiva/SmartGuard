@@ -235,13 +235,7 @@ internal sealed partial class SettingsLogPageHost
     _pagedHasActiveFilters = filterState.HasActiveFilters;
     var parts = new List<LogQueryExpression> { filterState.QueryExpression };
     foreach (var tag in filterState.ActiveTagFilters)
-    {
-      parts.Add(string.Equals(tag, "HEART", StringComparison.OrdinalIgnoreCase)
-        ? new LogQueryOrExpression(
-          new LogQueryFieldExpression("channel", LogQueryOperator.Contains, "HEART"),
-          new LogQueryFieldExpression("message", LogQueryOperator.Contains, "[HEART]"))
-        : new LogQueryFieldExpression("severity", LogQueryOperator.Equals, tag));
-    }
+      parts.Add(LogTagFilterCatalog.BuildQueryExpression(tag));
 
     if (_logController.ScopeExpression is { } scope
         && scope is not LogQueryMatchAllExpression)

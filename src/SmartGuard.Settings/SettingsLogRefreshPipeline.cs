@@ -17,6 +17,7 @@ internal sealed class SettingsLogRefreshPipeline
   private readonly object _refreshLifetimeLock = new();
 
   private int _refreshGeneration;
+  private int _activeFlightGeneration;
   private int _filterGeneration;
   private bool _refreshInFlight;
   private bool _pendingRefresh;
@@ -173,6 +174,7 @@ internal sealed class SettingsLogRefreshPipeline
 
     _refreshInFlight = true;
     var generation = Volatile.Read(ref _refreshGeneration);
+    Volatile.Write(ref _activeFlightGeneration, generation);
 
     _applyFilters(controller);
     var filterGeneration = Volatile.Read(ref _filterGeneration);
@@ -252,6 +254,7 @@ internal sealed class SettingsLogRefreshPipeline
 
     _refreshInFlight = true;
     var generation = Volatile.Read(ref _refreshGeneration);
+    Volatile.Write(ref _activeFlightGeneration, generation);
     var refreshCancellation = new CancellationTokenSource();
     var cancellationToken = refreshCancellation.Token;
     lock (_refreshLifetimeLock)
@@ -294,7 +297,7 @@ internal sealed class SettingsLogRefreshPipeline
       {
         if (_isDisposed()
             || !_isLogPageActive()
-            || generation != Volatile.Read(ref _refreshGeneration))
+            || generation != Volatile.Read(ref _activeFlightGeneration))
           return;
 
         _applyPagedModel?.Invoke(model);

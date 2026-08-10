@@ -78,6 +78,8 @@ internal sealed partial class SettingsLogPageHost
     {
       PageNumber = _logPaginationCoordinator?.State.CurrentPage ?? 1,
       SortDirection = _logPaginationCoordinator?.SortDirection ?? LogSortDirection.NewestFirst,
+      LevelFilter = SettingsLogSearchCoordinator.ReadFilterValue(_cmbLogLevel),
+      ComponentFilter = SettingsLogSearchCoordinator.ReadFilterValue(_cmbLogSource),
     };
   }
 
@@ -90,6 +92,8 @@ internal sealed partial class SettingsLogPageHost
     RestoreSessionViewWithoutRefresh(resetComboBox: true);
     if (!_correlationCoordinator.TryEnterCorrelationView(anchorEvent, CaptureMainViewState()))
       return;
+
+    SetCorrelationFilterControlsEnabled(false);
 
     _correlationQueryCancellation?.Cancel();
     _correlationQueryCancellation?.Dispose();
@@ -177,6 +181,7 @@ internal sealed partial class SettingsLogPageHost
     ++_correlationQueryGeneration;
     var restored = _correlationCoordinator.ExitCorrelationView();
     UpdateCorrelationBannerVisibility(false);
+    SetCorrelationFilterControlsEnabled(true);
     if (restored is null || _logController is null || _logSearchFilterBar is null)
       return restored;
 
@@ -211,7 +216,10 @@ internal sealed partial class SettingsLogPageHost
       _logSearchFilterBar.AddTagFilter(tag);
 
     _logController.SearchKeyword = state.SearchKeyword;
-    _logController.ActiveTagFilters = state.ActiveTags;
+    _logController.ActiveTagFilters = string.IsNullOrWhiteSpace(state.LevelFilter)
+      ? state.ActiveTags
+      : [state.LevelFilter];
+    _logController.ComponentFilter = state.ComponentFilter;
     _logController.SearchCaseSensitive = state.SearchCaseSensitive;
     _logController.TimeRange = state.TimeRange;
     _logController.CustomRangeStart = state.CustomRangeStart;
@@ -237,7 +245,18 @@ internal sealed partial class SettingsLogPageHost
     if (_chkLogSearchCaseSensitive is not null)
       _chkLogSearchCaseSensitive.IsChecked = state.SearchCaseSensitive;
 
+    SettingsLogSearchCoordinator.SelectFilterValue(_cmbLogLevel, state.LevelFilter);
+    SettingsLogSearchCoordinator.SelectFilterValue(_cmbLogSource, state.ComponentFilter);
+
     SettingsLogSearchCoordinator.SyncCustomRangePanelVisibility(_panelLogCustomRange, _cmbLogTimeRange);
+  }
+
+  private void SetCorrelationFilterControlsEnabled(bool enabled)
+  {
+    if (_cmbLogLevel is not null)
+      _cmbLogLevel.IsEnabled = enabled;
+    if (_cmbLogSource is not null)
+      _cmbLogSource.IsEnabled = enabled;
   }
 
   private void UpdateCorrelationBannerVisibility(bool visible)
