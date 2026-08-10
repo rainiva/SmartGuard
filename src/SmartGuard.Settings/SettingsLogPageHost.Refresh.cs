@@ -547,7 +547,142 @@ internal sealed partial class SettingsLogPageHost
     if (_window.FindName("logFilterPopup") is not Popup popup)
       return;
 
-    popup.IsOpen = !popup.IsOpen;
+    if (popup.IsOpen)
+    {
+      popup.IsOpen = false;
+      return;
+    }
+
+    ConfigureLogFilterPopup(_window, popup);
+    TrackLogFilterPopupWhileOpen(_window, popup);
+    popup.IsOpen = true;
+    ConfigureLogFilterPopup(_window, popup);
+  }
+
+  internal static LogFilterPopupTracking TrackLogFilterPopupWhileOpen(Window window, Popup popup)
+  {
+    ArgumentNullException.ThrowIfNull(window);
+    ArgumentNullException.ThrowIfNull(popup);
+    return new LogFilterPopupTracking(window, popup);
+  }
+
+  internal sealed class LogFilterPopupTracking : IDisposable
+  {
+    private readonly Window _window;
+    private readonly Popup _popup;
+
+    internal LogFilterPopupTracking(Window window, Popup popup)
+    {
+      _window = window;
+      _popup = popup;
+      _window.LocationChanged += OnWindowLocationChanged;
+      _window.SizeChanged += OnWindowSizeChanged;
+      _window.StateChanged += OnWindowStateChanged;
+      _popup.Closed += OnPopupClosed;
+      IsAttached = true;
+    }
+
+    internal bool IsAttached { get; private set; }
+
+    internal int RepositionCount { get; private set; }
+
+    public void Dispose()
+    {
+      if (!IsAttached)
+        return;
+
+      _window.LocationChanged -= OnWindowLocationChanged;
+      _window.SizeChanged -= OnWindowSizeChanged;
+      _window.StateChanged -= OnWindowStateChanged;
+      _popup.Closed -= OnPopupClosed;
+      IsAttached = false;
+    }
+
+    private void OnWindowLocationChanged(object? sender, EventArgs e) => QueueReposition();
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e) => QueueReposition();
+
+    private void OnWindowStateChanged(object? sender, EventArgs e) => QueueReposition();
+
+    private void OnPopupClosed(object? sender, EventArgs e) => Dispose();
+
+    private void QueueReposition()
+    {
+      if (!IsAttached || !_popup.IsOpen)
+        return;
+
+      _ = _window.Dispatcher.BeginInvoke(
+        System.Windows.Threading.DispatcherPriority.Loaded,
+        new Action(() =>
+        {
+          if (!IsAttached || !_popup.IsOpen)
+            return;
+
+          ConfigureLogFilterPopup(_window, _popup);
+          var originalOffset = _popup.HorizontalOffset;
+          _popup.HorizontalOffset = originalOffset + 0.1;
+          _popup.HorizontalOffset = originalOffset;
+          RepositionCount++;
+        }));
+    }
+  }
+
+  internal static void ConfigureLogFilterPopup(Window window, Popup popup)
+  {
+    ArgumentNullException.ThrowIfNull(window);
+    ArgumentNullException.ThrowIfNull(popup);
+
+    if (window.FindName("btnLogFilter") is not Button filterButton
+        || window.FindName("logToolbar") is not FrameworkElement toolbar
+        || window.FindName("logFilterPanel") is not FrameworkElement panel)
+      return;
+
+    popup.PlacementTarget = filterButton;
+    popup.Placement = PlacementMode.Custom;
+    popup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
+    {
+      var toolbarOrigin = toolbar.TranslatePoint(new Point(0, 0), filterButton);
+      var measuredPopupSize = new Size(
+        double.IsNaN(panel.Width) ? popupSize.Width : panel.Width,
+        popupSize.Height);
+      return CreateLogFilterPopupPlacements(
+        measuredPopupSize,
+        targetSize,
+        offset,
+        toolbarOrigin.X,
+        toolbar.ActualWidth);
+    };
+
+    if (toolbar.ActualWidth > 0)
+      panel.Width = Math.Min(panel.MaxWidth, toolbar.ActualWidth);
+  }
+
+  internal static CustomPopupPlacement[] CreateLogFilterPopupPlacements(
+    Size popupSize,
+    Size targetSize,
+    Point offset,
+    double containerLeft = double.NegativeInfinity,
+    double containerWidth = double.PositiveInfinity)
+  {
+    var alignedLeft = targetSize.Width - popupSize.Width;
+    if (double.IsFinite(containerLeft) && double.IsFinite(containerWidth))
+    {
+      var maximumLeft = containerLeft + containerWidth - popupSize.Width;
+      alignedLeft = maximumLeft < containerLeft
+        ? containerLeft
+        : Math.Clamp(alignedLeft, containerLeft, maximumLeft);
+    }
+
+    alignedLeft += offset.X;
+    return
+    [
+      new CustomPopupPlacement(
+        new Point(alignedLeft, targetSize.Height + offset.Y),
+        PopupPrimaryAxis.Horizontal),
+      new CustomPopupPlacement(
+        new Point(alignedLeft, -popupSize.Height + offset.Y),
+        PopupPrimaryAxis.Horizontal),
+    ];
   }
 
   private async Task ExecutePagedQueryAsync(

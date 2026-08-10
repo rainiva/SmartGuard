@@ -133,7 +133,7 @@ public sealed class LogSessionPickerWpfTests
         levelCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Content, "全部级别"));
         sourceCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Content, "全部来源"));
         sourceCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Tag, LogComponentRegistry.Engine));
-        filterPopup.PlacementTarget.Should().BeSameAs(toolbar);
+        filterPopup.PlacementTarget.Should().BeSameAs(filterButton);
         filterPanel.ActualWidth.Should().BeLessThanOrEqualTo(toolbar.ActualWidth + 0.5);
       }
       finally

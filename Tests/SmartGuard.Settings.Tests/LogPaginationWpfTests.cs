@@ -132,16 +132,32 @@ public class LogPaginationWpfTests
     [Fact]
     public void Filter_popup_stays_within_log_toolbar_at_narrow_window_width()
     {
+        const double toolbarLeftRelativeToButton = -215;
+        const double toolbarWidth = 429;
+        var placements = SettingsLogPageHost.CreateLogFilterPopupPlacements(
+            new Size(420, 300),
+            new Size(46, 36),
+            new Point(),
+            toolbarLeftRelativeToButton,
+            toolbarWidth);
+
+        var primaryLeft = placements[0].Point.X;
+        var primaryRight = primaryLeft + 420;
+        primaryLeft.Should().BeGreaterThanOrEqualTo(toolbarLeftRelativeToButton);
+        primaryRight.Should().BeLessThanOrEqualTo(toolbarLeftRelativeToButton + toolbarWidth);
+    }
+
+    [Fact]
+    public void Filter_popup_follows_filter_button_in_maximized_window()
+    {
         WpfStaTestHost.Run(() =>
         {
             var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
             error.Should().BeNull();
             window.Should().NotBeNull();
-            window!.Width = 760;
-            window.Height = 640;
 
-            var logPage = (FrameworkElement)window.FindName("pageLogs");
-            var toolbar = (FrameworkElement)window.FindName("logToolbar");
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var filterButton = (Button)window.FindName("btnLogFilter");
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
             var panel = (FrameworkElement)window.FindName("logFilterPanel");
 
@@ -149,19 +165,90 @@ public class LogPaginationWpfTests
             {
                 logPage.Visibility = Visibility.Visible;
                 WpfStaTestHost.ShowAndWait(window);
-                window.Left = 100;
-                window.Top = 100;
-                WpfStaTestHost.PumpDispatcher(window);
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                var tracking = SettingsLogPageHost.TrackLogFilterPopupWhileOpen(window, popup);
                 popup.IsOpen = true;
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
                 WpfStaTestHost.PumpDispatcher(window);
 
-                var toolbarLeft = toolbar.PointToScreen(new Point(0, 0)).X;
-                var toolbarRight = toolbar.PointToScreen(new Point(toolbar.ActualWidth, 0)).X;
+                window.WindowState = WindowState.Maximized;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                var buttonLeft = filterButton.PointToScreen(new Point(0, 0)).X;
+                var buttonRight = filterButton.PointToScreen(new Point(filterButton.ActualWidth, 0)).X;
                 var panelLeft = panel.PointToScreen(new Point(0, 0)).X;
                 var panelRight = panel.PointToScreen(new Point(panel.ActualWidth, 0)).X;
+                var buttonCenter = (buttonLeft + buttonRight) / 2;
 
-                panelLeft.Should().BeGreaterThanOrEqualTo(toolbarLeft - 1);
-                panelRight.Should().BeLessThanOrEqualTo(toolbarRight + 1);
+                popup.PlacementTarget.Should().BeSameAs(filterButton);
+                buttonCenter.Should().BeInRange(panelLeft, panelRight,
+                    "the popup should remain visually attached to the filter button after maximizing");
+
+                var repositionCountAfterMaximize = tracking.RepositionCount;
+                repositionCountAfterMaximize.Should().BeGreaterThan(0);
+                window.WindowState = WindowState.Normal;
+                WpfStaTestHost.PumpDispatcher(window);
+                window.Left += 24;
+                WpfStaTestHost.PumpDispatcher(window);
+                tracking.RepositionCount.Should().BeGreaterThan(
+                    repositionCountAfterMaximize,
+                    "restoring and moving the window must request fresh popup placement");
+
+                popup.IsOpen = false;
+                WpfStaTestHost.WaitUntil(
+                    () => !tracking.IsAttached,
+                    TimeSpan.FromSeconds(1),
+                    "filter popup tracking handlers to detach after close");
+                tracking.IsAttached.Should().BeFalse("closing the popup must detach window tracking handlers");
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Custom_time_inputs_fit_their_grid_and_filter_selectors_share_width()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var timeRange = (ComboBox)window.FindName("cmbLogTimeRange");
+            var level = (ComboBox)window.FindName("cmbLogLevel");
+            var source = (ComboBox)window.FindName("cmbLogSource");
+            var startTime = (TextBox)window.FindName("txtLogRangeStartTime");
+            var endTime = (TextBox)window.FindName("txtLogRangeEndTime");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                customRange.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                popup.IsOpen = true;
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                timeRange.ActualWidth.Should().BeApproximately(level.ActualWidth, 0.5);
+                timeRange.ActualWidth.Should().BeApproximately(source.ActualWidth, 0.5);
+
+                foreach (var textBox in new[] { startTime, endTime })
+                {
+                    var grid = (Grid)textBox.Parent;
+                    var rightEdge = textBox.TranslatePoint(new Point(textBox.ActualWidth, 0), grid).X;
+                    textBox.ActualWidth.Should().BeGreaterThanOrEqualTo(112);
+                    rightEdge.Should().BeLessThanOrEqualTo(
+                        grid.ActualWidth + 0.5,
+                        "the time text box and its left margin must fit inside the custom-range row");
+                }
             }
             finally
             {

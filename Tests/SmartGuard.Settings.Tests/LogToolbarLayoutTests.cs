@@ -117,13 +117,17 @@ public class LogToolbarLayoutTests
         timeIndex.Should().BeLessThan(statusIndex);
 
         xaml.Should().MatchRegex(
-            "x:Name=\"logFilterPopup\"[\\s\\S]{0,500}PlacementTarget=\"\\{Binding ElementName=logToolbar\\}\"",
-            "the filter surface should be anchored to the toolbar so its left edge stays inside the log card");
+            "x:Name=\"logFilterPopup\"[\\s\\S]{0,500}PlacementTarget=\"\\{Binding ElementName=btnLogFilter\\}\"",
+            "the filter surface should follow the filter button when the window changes size or state");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logFilterPopup\"[\\s\\S]{0,500}Placement=\"Custom\"",
+            "the filter surface should align its right edge with the filter button without a fixed offset");
         xaml.Should().NotContain("HorizontalOffset=\"-320\"");
         xaml.Should().MatchRegex(
-            "x:Name=\"logFilterPanel\"[\\s\\S]{0,500}Width=\"\\{Binding ActualWidth, ElementName=logToolbar\\}\"[\\s\\S]{0,500}MaxWidth=\"420\"",
-            "the filter surface should shrink with the toolbar instead of overflowing narrow windows");
-        refreshSource.Should().Contain("popup.IsOpen = !popup.IsOpen");
+            "x:Name=\"logFilterPanel\"[\\s\\S]{0,500}MaxWidth=\"420\"",
+            "the filter surface should retain the standard maximum width");
+        refreshSource.Should().Contain("popup.IsOpen = true");
+        refreshSource.Should().Contain("ConfigureLogFilterPopup(_window, popup)");
 
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSession\"[\\s\\S]{0,300}Visibility=\"Collapsed\"",
@@ -132,6 +136,16 @@ public class LogToolbarLayoutTests
             "x:Name=\"cmbLogLevel\"[\\s\\S]{0,500}Style=\"\\{StaticResource SettingsComboBox\\}\"");
         xaml.Should().MatchRegex(
             "x:Name=\"cmbLogSource\"[\\s\\S]{0,500}Style=\"\\{StaticResource SettingsComboBox\\}\"");
+
+        xaml.Should().MatchRegex(
+            "x:Name=\"cmbLogTimeRange\"[\\s\\S]{0,160}Width=\"220\"",
+            "the time-range selector should match the level and source selector widths");
+        xaml.Should().MatchRegex("x:Name=\"cmbLogLevel\"[\\s\\S]{0,160}Width=\"220\"");
+        xaml.Should().MatchRegex("x:Name=\"cmbLogSource\"[\\s\\S]{0,160}Width=\"220\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"txtLogRangeStartTime\"[\\s\\S]{0,200}MinWidth=\"112\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"txtLogRangeEndTime\"[\\s\\S]{0,200}MinWidth=\"112\"");
     }
 
     [Fact]
