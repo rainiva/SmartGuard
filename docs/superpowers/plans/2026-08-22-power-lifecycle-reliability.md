@@ -19,6 +19,8 @@
 - 心跳在挂起期间不补写历史周期；恢复后只写一条明确的恢复/心跳事件。一次投递失败不得推进下次心跳窗口。
 - 状态文件最多 60 秒刷新一次，最长也不得超过 90 秒不可解释地陈旧；不恢复每 15 秒全量重写。
 - 所有队列、等待、重试和进程执行保持现有容量或时间上限；不得新增无界并发、轮询或 `Thread.Sleep`。
+- 生命周期转换只进入状态机内部的有界队列（容量 8）；相邻重复信号合并，溢出必须发出结构化告警并保留最新状态，禁止静默丢弃。
+- `Suspending` 不得成为永久停工态：30 秒内未观察到 Resume 时，由同一状态机进入受控恢复稳定期，重建 idle/plan 基线并记录降级事件；不得另建常驻 watchdog。
 - 不触碰与本计划无关的未跟踪 `.work/`、`tasks/`、`.superpowers/` 材料；每次提交只暂存本 Task 文件。
 - 自动化通过不等于真实现代待机验收。缺少合盖/Modern Standby/UAC 条件时必须报告 `NOT RUN` 或 `BLOCKED`。
 
@@ -52,6 +54,8 @@
 - 计划切换成功以 `setactive` 成功且随后 `getactivescheme == target` 为准。
 - 心跳“成功”以进入异步管线或同步降级链被接受为准；被背压/拒绝时下一轮继续尝试。
 - 状态快照写入采用“有意义变化或 60 秒新鲜度上限”，timestamp 使用 UTC offset 格式。
+- Suspend/Resume 即使在主循环暂停期间连续到达，也必须按观察顺序保留并各记录一次；日志写入时间不得冒充 OS 信号观察时间。
+- Resume 信号缺失时，Engine 最迟在恢复执行后的一个普通轮询周期内进入受控恢复路径；恢复路径先重建基线，不得直接恢复计划写入。
 
 ## Change Impact Matrix
 
@@ -70,7 +74,7 @@
 | 文件 | 动作 | 单一责任 |
 |---|---|---|
 | `src/SmartGuard.Engine/Infrastructure/PowerLifecycleSignal.cs` | Create | Windows 电源模式的领域化有类型信号。 |
-| `src/SmartGuard.Engine/Infrastructure/PowerLifecycleStateMachine.cs` | Create | 生命周期阶段、恢复稳定期和一次性恢复指令唯一 Owner。 |
+| `src/SmartGuard.Engine/Infrastructure/PowerLifecycleStateMachine.cs` | Create | 生命周期阶段、有界转换批次、恢复稳定期和漏 Resume 自恢复唯一 Owner。 |
 | `src/SmartGuard.Engine/Infrastructure/PowerEventWakeListener.cs` | Modify | 只订阅/退订并转发 typed signal；事件线程不做 IO。 |
 | `src/SmartGuard.Engine/Infrastructure/PowerEventInterpreter.cs` | Delete | 删除错误的 Resume/AC、Suspend/DC 映射。 |
 | `src/SmartGuard.Engine/Infrastructure/PowerEventStateResolver.cs` | Delete | 删除生命周期到供电布尔值的压缩层。 |
@@ -83,6 +87,7 @@
 | `src/SmartGuard.Engine/Infrastructure/HeartbeatSchedule.cs` | Create | 单调心跳到期和仅成功推进窗口。 |
 | `src/SmartGuard.Engine/Infrastructure/HeartLogSampler.cs` | Delete | 删除和心跳调度重叠的第二窗口。 |
 | `src/SmartGuard.Engine/Worker/GuardianLoop.Logging.cs` | Modify | 返回明确写入结果；降级链结果可观察。 |
+| `src/SmartGuard.Engine/Infrastructure/EngineLogEvents.cs` | Modify | 构造携带原始观察时间的 lifecycle 结构化事件；不改变通用日志 schema。 |
 | `src/SmartGuard.Configuration/LogFallbackChain.cs` | Modify | 返回最终是否有一层接受事件，仍永不抛出。 |
 | `src/SmartGuard.Engine/Infrastructure/StatusPublisher.cs` | Modify | 有意义变化 + 单调新鲜度上限 + 无删除窗口替换。 |
 | `src/SmartGuard.Configuration/EventNameRegistry.cs` | Modify | 登记 Suspend/Resume/plan-apply-failed 事件。 |
@@ -155,7 +160,7 @@ Expected: FAIL；缺少 `PowerLifecycleStateMachine`、Suspend/Resume 不变量�
 
 Run 同 Step 2。Expected: 失败 0。Task 2 才新增源码门禁并完成对应生产实现；禁止向主线提交故意失败的测试。
 
-- [ ] **Step 5: 提交契约与 RED 门禁**
+- [ ] **Step 5: 提交契约与已转绿门禁**
 
 ```powershell
 git add docs/ARCHITECTURE-CONTRACT.md Tests/SmartGuard.Architecture.Tests/PowerLifecycleArchitectureTests.cs
@@ -217,6 +222,58 @@ public void Duplicate_resume_does_not_repeat_reset_after_first_directive()
 
   machine.TakeDirective().ResetIdleEpoch.Should().BeTrue();
   machine.TakeDirective().ResetIdleEpoch.Should().BeFalse();
+}
+
+[Fact]
+public void Suspend_and_resume_observed_before_consumption_are_preserved_in_order()
+{
+  var time = new ManualTimeProvider();
+  var machine = new PowerLifecycleStateMachine(time, TimeSpan.FromSeconds(5));
+
+  machine.Observe(new(PowerLifecycleKind.Suspending, time.GetUtcNow()));
+  time.Advance(TimeSpan.FromHours(1));
+  machine.Observe(new(PowerLifecycleKind.Resumed, time.GetUtcNow()));
+
+  machine.TakeDirective().TransitionsToLog.Select(x => x.Kind)
+    .Should().Equal(PowerLifecycleKind.Suspending, PowerLifecycleKind.Resumed);
+}
+
+[Fact]
+public void Missing_resume_enters_bounded_recovery_without_enabling_policy_immediately()
+{
+  var time = new ManualTimeProvider();
+  var machine = new PowerLifecycleStateMachine(time, TimeSpan.FromSeconds(5));
+  machine.Observe(new(PowerLifecycleKind.Suspending, time.GetUtcNow()));
+  machine.TakeDirective().AllowPolicyMutation.Should().BeFalse();
+
+  time.Advance(TimeSpan.FromSeconds(30));
+  var recovery = machine.TakeDirective();
+
+  recovery.RecoveryForced.Should().BeTrue();
+  recovery.ResetIdleEpoch.Should().BeTrue();
+  recovery.AbsorbCurrentPlanAsBaseline.Should().BeTrue();
+  recovery.AllowPolicyMutation.Should().BeFalse();
+  recovery.Phase.Should().Be(PowerLifecyclePhase.ResumeStabilizing);
+}
+
+[Fact]
+public void Late_resume_after_forced_recovery_is_logged_without_repeating_reset()
+{
+  var time = new ManualTimeProvider();
+  var machine = new PowerLifecycleStateMachine(time, TimeSpan.FromSeconds(5));
+  machine.Observe(new(PowerLifecycleKind.Suspending, time.GetUtcNow()));
+  machine.TakeDirective();
+  time.Advance(TimeSpan.FromSeconds(30));
+  machine.TakeDirective().ResetIdleEpoch.Should().BeTrue();
+
+  machine.Observe(new(PowerLifecycleKind.Resumed, time.GetUtcNow()));
+  var lateResume = machine.TakeDirective();
+
+  lateResume.TransitionsToLog.Should().ContainSingle(x =>
+    x.Kind == PowerLifecycleKind.Resumed);
+  lateResume.ResetIdleEpoch.Should().BeFalse();
+  lateResume.AbsorbCurrentPlanAsBaseline.Should().BeFalse();
+  lateResume.AllowPolicyMutation.Should().BeFalse();
 }
 ```
 
@@ -281,32 +338,34 @@ Expected: FAIL with CS0246，typed signal/state machine 尚不存在。
 ```csharp
 namespace SmartGuard.Engine.Infrastructure;
 
-public enum PowerLifecycleKind
+internal enum PowerLifecycleKind
 {
   StatusChanged,
   Suspending,
   Resumed,
 }
 
-public readonly record struct PowerLifecycleSignal(
+internal readonly record struct PowerLifecycleSignal(
   PowerLifecycleKind Kind,
   DateTimeOffset ObservedAtUtc);
 
-public enum PowerLifecyclePhase
+internal enum PowerLifecyclePhase
 {
   Running,
   Suspending,
   ResumeStabilizing,
 }
 
-public readonly record struct PowerLifecycleDirective(
+internal readonly record struct PowerLifecycleDirective(
   PowerLifecyclePhase Phase,
   bool RunIteration,
   bool AllowPolicyMutation,
   bool ResetIdleEpoch,
   bool ForcePowerRefresh,
   bool AbsorbCurrentPlanAsBaseline,
-  PowerLifecycleKind? TransitionToLog,
+  IReadOnlyList<PowerLifecycleSignal> TransitionsToLog,
+  bool RecoveryForced,
+  bool TransitionOverflowed,
   TimeSpan? ReevaluateAfter);
 ```
 
@@ -320,9 +379,12 @@ public void Observe(PowerLifecycleSignal signal)
     switch (signal.Kind)
     {
       case PowerLifecycleKind.Suspending:
+        EnqueueTransition(signal);
         _phase = PowerLifecyclePhase.Suspending;
+        _suspendAtTimestamp = _timeProvider.GetTimestamp();
         break;
       case PowerLifecycleKind.Resumed:
+        EnqueueTransition(signal);
         _phase = PowerLifecyclePhase.ResumeStabilizing;
         _resumeAtTimestamp = _timeProvider.GetTimestamp();
         _resetIdlePending = true;
@@ -337,7 +399,11 @@ public void Observe(PowerLifecycleSignal signal)
 }
 ```
 
-`TakeDirective` 一次性消费 reset/baseline/force/transition 标记；`Suspending` 返回 `RunIteration=false`；恢复稳定期满 5 秒后只把 Phase 变为 Running，不再重复 reset。`TransitionToLog` 对每个实际阶段转换最多返回一次，供 GuardianLoop 记录生命周期事件，禁止每轮重复记录。
+`PowerLifecycleStateMachine` 与上述类型保持 `internal`，不扩大 Engine 程序集的公共 API。内部转换队列容量固定为 8；相邻同类信号合并。容量耗尽时丢弃最旧项、保留最新项并置 `TransitionOverflowed=true`，由主循环写 `PowerLifecycleSignalOverflow`，不得安静覆盖。
+
+`TakeDirective` 一次性消费 reset/baseline/force/transition 批次；批次按 `ObservedAtUtc` 和入队顺序保序。`Suspending` 返回 `RunIteration=false`，同时给出距 30 秒自恢复上限的 `ReevaluateAfter`。若到期仍未收到 Resume，同一个状态机进入 `ResumeStabilizing`，设置 `RecoveryForced=true`、reset/baseline/force 三个标记，并写 `PowerLifecycleRecoveryForced`；它不伪造 `PowerResumeObserved`。若真实 Resume 随后迟到，仍保留并记录该观察事件、重新起算稳定窗口并强制刷新电源，但不得第二次 reset/baseline。恢复稳定期满 5 秒后只把 Phase 变为 Running，不再重复 reset。
+
+这条自恢复使用状态机已有 `TimeProvider` 和主循环已有等待，不新增 timer、线程或第二 Owner。进程真正挂起时不会执行；进程恢复执行但 Resume 丢失时，首次 `TakeDirective` 即收敛到安全恢复路径。
 
 - [ ] **Step 4: 改造监听器，事件线程不再读取电池**
 
@@ -474,7 +540,11 @@ Expected: 失败 0；300/900 秒边界保持通过。
 - Create: `src/SmartGuard.Engine/Worker/GuardianIterationContext.cs`
 - Create: `Tests/SmartGuard.Engine.Tests/GuardianPowerLifecycleIntegrationTests.cs`
 - Modify: `src/SmartGuard.Engine/Worker/GuardianLoop.cs`
+- Modify: `src/SmartGuard.Engine/Worker/GuardianLoop.Logging.cs`
 - Modify: `src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs`
+- Modify: `src/SmartGuard.Engine/Infrastructure/EngineLogEvents.cs`
+- Modify: `src/SmartGuard.Configuration/EventNameRegistry.cs`
+- Modify: `src/SmartGuard.Configuration/LogEventChannels.cs`
 - Modify: `src/SmartGuard.Configuration/GuardianIterationTiming.cs`
 - Modify: `Tests/SmartGuard.Engine.Tests/GuardianIterationTimingTests.cs`
 - Modify: `Tests/SmartGuard.Architecture.Tests/GuardianIterationRunnerArchitectureTests.cs`
@@ -518,6 +588,38 @@ public async Task External_plan_change_while_running_is_reported_and_corrected_o
   harness.ExternalChangeEvents.Should().HaveCount(1);
   harness.AppliedPlans.Should().Equal(Plans.HighPerformance);
 }
+
+[Fact]
+public async Task Suspend_and_resume_queued_while_loop_is_paused_are_logged_in_observed_order()
+{
+  var harness = GuardianLifecycleHarness.Create(activePlan: Plans.HighPerformance, apiIdle: 0);
+  harness.Signal(PowerLifecycleKind.Suspending);
+  harness.Advance(TimeSpan.FromHours(1));
+  harness.Signal(PowerLifecycleKind.Resumed);
+
+  await harness.RunSignaledIterationAsync();
+
+  harness.LifecycleEvents.Select(x => x.EventName).Should().Equal(
+    EventNameRegistry.PowerSuspendObserved,
+    EventNameRegistry.PowerResumeObserved);
+  harness.LifecycleEvents.Select(x => x.ObservedAtUtc).Should().BeInAscendingOrder();
+}
+
+[Fact]
+public async Task Missing_resume_recovers_baseline_but_cannot_mutate_plan_until_stable()
+{
+  var harness = GuardianLifecycleHarness.Create(activePlan: Plans.HighPerformance, apiIdle: 290);
+  harness.Signal(PowerLifecycleKind.Suspending);
+  await harness.RunSignaledIterationAsync();
+
+  harness.Advance(TimeSpan.FromSeconds(30));
+  await harness.RunNormalIterationAsync();
+
+  harness.Events.Should().ContainSingle(x =>
+    x.EventName == EventNameRegistry.PowerLifecycleRecoveryForced);
+  harness.LastPublishedIdle.Should().Be(0);
+  harness.AppliedPlans.Should().BeEmpty();
+}
 ```
 
 `GuardianLifecycleHarness` 通过 `GuardianIterationRunner` 的 internal 构造参数注入 battery probe、plan probe、plan apply、brightness 和 log sink；不得启动真实 `powercfg.exe`。
@@ -555,9 +657,13 @@ private void HandlePowerEvent(PowerLifecycleSignal signal)
 }
 
 var directive = _powerLifecycle.TakeDirective();
+WriteLifecycleTransitions(config, directive.TransitionsToLog);
+if (directive.TransitionOverflowed)
+  WriteLifecycleSignalOverflow(config);
+if (directive.RecoveryForced)
+  WriteLifecycleRecoveryForced(config);
 if (!directive.RunIteration)
 {
-  WriteLifecycleTransitionIfNeeded(config, directive);
   WaitForNextIteration(
     GuardianIterationTiming.ResolveWaitSeconds(
       _configRepository, _rootPath, directive.ReevaluateAfter),
@@ -576,7 +682,7 @@ await _iterationRunner.RunAsync(
   cancellationToken);
 ```
 
-`ResolveWaitSeconds` 返回配置间隔与 lifecycle 重新评估间隔的较小整数秒；普通轮询下限仍是 5 秒，只有恢复稳定期可使用 1–4 秒剩余值。
+`WriteLifecycleTransitions` 必须逐项写入，不得只记录批次最后一项。Task 4 在 `EngineLogEvents` 增加 internal lifecycle event factory，并让每条事件携带 `properties.lifecycleObservedAtUtc = signal.ObservedAtUtc.ToString("O")`；不得复用只接受 outcome 的旧 `WriteLog` 签名硬塞字段。顶层 `timestamp` 仍表示事件进入日志系统的时间。`ResolveWaitSeconds` 返回配置间隔与 lifecycle 重新评估间隔的较小整数秒；普通轮询下限仍是 5 秒，只有恢复稳定期和 30 秒漏 Resume 自恢复期限可缩短等待。
 
 - [ ] **Step 5: Runner 吸收恢复基线但不写计划**
 
@@ -610,6 +716,8 @@ var externalChangeDetected = context.AllowPolicyMutation
 空闲标签变化 -> IdleDetected
 亮度变化 -> BrightnessAdjusted
 挂起/恢复 -> PowerSuspendObserved / PowerResumeObserved
+漏 Resume 自恢复 -> PowerLifecycleRecoveryForced
+转换队列溢出 -> PowerLifecycleSignalOverflow
 ```
 
 禁止再给全部 Runner 日志统一套 `HeartbeatTick`。
@@ -665,16 +773,37 @@ public async Task Apply_is_successful_only_when_followup_probe_matches_target()
   var target = Plans.HighPerformance;
   var runner = new RecordingPowerCfgRunner(
     SetResult(exitCode: 0),
+    ProbeResult(Plans.Balanced),
+    ProbeResult(Plans.Balanced),
     ProbeResult(Plans.Balanced));
 
   var result = await PowerCfgExecutor.ApplyAndVerifyAsync(
-    target, runner.RunAsync, CancellationToken.None);
+    target, runner.RunAsync, RecordingDelay.CompleteImmediately, CancellationToken.None);
 
   result.Succeeded.Should().BeFalse();
   result.ObservedGuid.Should().Be(Plans.Balanced);
   runner.Arguments.Should().Equal(
     $"/setactive {target:D}",
+    "/getactivescheme",
+    "/getactivescheme",
     "/getactivescheme");
+}
+
+[Fact]
+public async Task Apply_verification_accepts_bounded_delayed_convergence()
+{
+  var target = Plans.HighPerformance;
+  var delay = new RecordingDelay();
+  var runner = new RecordingPowerCfgRunner(
+    SetResult(exitCode: 0),
+    ProbeResult(Plans.Balanced),
+    ProbeResult(target));
+
+  var result = await PowerCfgExecutor.ApplyAndVerifyAsync(
+    target, runner.RunAsync, delay.WaitAsync, CancellationToken.None);
+
+  result.Succeeded.Should().BeTrue();
+  delay.Requested.Should().Equal(TimeSpan.FromMilliseconds(250));
 }
 ```
 
@@ -734,9 +863,12 @@ public readonly record struct PowerPlanApplyResult(
 Runner 固定行为：
 
 1. probe 失败：保留 `LastKnownGuid`，写 `PowerPlanProbeFailed`，跳过 external 判定和计划写入。
-2. set/verify 失败：写 `PowerPlanApplyFailed`，不设置 `ScriptJustSwitched`，不发送成功通知。
-3. verify 匹配：才更新状态、写 `PowerPlanSwitched`。
-4. 亮度恢复失败与计划失败分别记录。
+2. `setactive` 返回成功后执行最多 3 次条件探测：立即、累计 250 ms、累计 1 s；任一次匹配即停止，全部不匹配才判 `VerificationMismatch`。等待通过 internal `delayAsync` 注入点执行，生产使用可取消的 `Task.Delay`，不用 `Thread.Sleep`。
+3. set/verify 失败：写 `PowerPlanApplyFailed`，不设置 `ScriptJustSwitched`，不发送成功通知。
+4. verify 匹配：才更新状态、写 `PowerPlanSwitched`。
+5. 亮度恢复失败与计划失败分别记录。
+
+三次探测是单次实际计划切换内的固定上限，不进入普通 15 秒迭代路径；测试必须断言成功提前退出、全不匹配的精确调用次数和取消传播。
 
 删除只保护循环尾部第二次 probe 的 `GuardianPlanProbe`。
 
@@ -1088,6 +1220,10 @@ Expected: 首次 FAIL；补齐 harness 后覆盖以下矩阵并 GREEN：
 |---|---|
 | Running → Suspend → OS Balance → Resume(Mouse) | Suspend 零 plan write；恢复基线 idle=0；稳定期后至多一次纠偏。 |
 | Duplicate Suspend/Resume | reset/baseline/恢复心跳各至多一次。 |
+| Suspend/Resume 在一次消费前连续到达 | 两条转换保序记录；Suspend 不被 Resume 覆盖；无挂起期 plan write。 |
+| Resume 信号缺失 | 30 秒后进入受控恢复稳定期；记录 RecoveryForced；先 reset/baseline，稳定前零 plan write。 |
+| RecoveryForced 后迟到 Resume | Resume 仍记录；稳定窗口重算；reset/baseline 不重复；稳定前零 plan write。 |
+| lifecycle 转换风暴超过容量 | 最新 phase 正确；结构化 overflow 告警恰好一次；无静默丢失声明。 |
 | StatusChange AC↔DC | 强制新鲜电源采样；不触发 resume reset。 |
 | 无 SystemEvents | 15 秒普通轮询继续工作；日志明确 listener unavailable。 |
 | powercfg timeout/nonzero/parse failure/mismatch | 无成功日志、无成功通知、保留可解释状态。 |
@@ -1122,9 +1258,13 @@ Start-Transcript -LiteralPath $TranscriptPath -Force
 try {
   $logPath = Join-Path $Root 'SmartGuard.log'
   $statusPath = Join-Path $Root 'SmartGuard.status.json'
+  $baselineHealth = Get-Content -LiteralPath $logPath -Encoding utf8 -Tail 2000 |
+    ForEach-Object { try { $_ | ConvertFrom-Json -Depth 20 } catch { $null } } |
+    Where-Object eventName -eq 'PipelineHealthSampled' |
+    Select-Object -Last 1
   $initialLength = (Get-Item -LiteralPath $logPath).Length
   Write-Host "开始场景 $Scenario。脚本不会自动睡眠或修改电源计划。"
-  Read-Host '按场景完成合盖/鼠标唤醒或手动计划变更后按 Enter'
+  Read-Host '完成操作并保持唤醒，确认出现下一条 LogPipeline health sample 后按 Enter'
 
   if ((Get-Item -LiteralPath $logPath).Length -lt $initialLength) {
     throw '验收期间主日志发生轮转，当前 cursor 不再有效；请重新运行单个场景。'
@@ -1146,6 +1286,9 @@ try {
       try { $_ | ConvertFrom-Json -Depth 20 } catch { $null }
     } |
     Where-Object { $_ -and [DateTimeOffset]$_.timestamp -ge $startedAt.ToUniversalTime() }
+  $postHealth = $newLines |
+    Where-Object eventName -eq 'PipelineHealthSampled' |
+    Select-Object -Last 1
 
   $status = [System.IO.File]::ReadAllText(
     $statusPath, [System.Text.UTF8Encoding]::new($false, $true)) |
@@ -1164,49 +1307,82 @@ try {
   if ($Scenario -in @('LidMouseBattery','LidMouseAC')) {
     $suspend = $newLines | Where-Object eventName -eq 'PowerSuspendObserved' | Select-Object -Last 1
     $resume = $newLines | Where-Object eventName -eq 'PowerResumeObserved' | Select-Object -First 1
+    $suspendObservedAt = $(if ($null -ne $suspend) {
+      [DateTimeOffset]$suspend.properties.lifecycleObservedAtUtc
+    })
+    $resumeObservedAt = $(if ($null -ne $resume) {
+      [DateTimeOffset]$resume.properties.lifecycleObservedAtUtc
+    })
     $checks.Add([pscustomobject]@{
       name = 'lifecycle-events'
-      passed = $null -ne $suspend -and $null -ne $resume
+      status = $(if ($null -ne $suspendObservedAt -and $null -ne $resumeObservedAt -and
+        $suspendObservedAt -lt $resumeObservedAt) { 'Passed' } else { 'Failed' })
     })
     $checks.Add([pscustomobject]@{
       name = 'windows-suspend-resume-events'
-      passed = @($powerEvents | Where-Object Id -in @(42,506)).Count -ge 1 -and
-        @($powerEvents | Where-Object Id -in @(1,107,507)).Count -ge 1
+      status = $(if (@($powerEvents | Where-Object Id -in @(42,506)).Count -ge 1 -and
+        @($powerEvents | Where-Object Id -in @(1,107,507)).Count -ge 1) {
+          'Passed'
+        } else { 'Failed' })
     })
     $checks.Add([pscustomobject]@{
       name = 'no-suspend-plan-write'
-      passed = $null -ne $suspend -and $null -ne $resume -and
+      status = $(if ($null -ne $suspendObservedAt -and $null -ne $resumeObservedAt -and
         @($newLines | Where-Object {
           $_.eventName -eq 'PowerPlanSwitched' -and
-          [DateTimeOffset]$_.timestamp -gt [DateTimeOffset]$suspend.timestamp -and
-          [DateTimeOffset]$_.timestamp -lt [DateTimeOffset]$resume.timestamp
-        }).Count -eq 0
+          [DateTimeOffset]$_.timestamp -gt $suspendObservedAt -and
+          [DateTimeOffset]$_.timestamp -lt $resumeObservedAt
+        }).Count -eq 0) { 'Passed' } else { 'Failed' })
     })
   }
   else {
     $checks.Add([pscustomobject]@{
       name = 'external-change-observed-once'
-      passed = @($newLines | Where-Object eventName -eq 'ExternalPlanChange').Count -eq 1
+      status = $(if (@($newLines |
+        Where-Object eventName -eq 'ExternalPlanChange').Count -eq 1) {
+          'Passed'
+        } else { 'Failed' })
     })
   }
   $checks.Add([pscustomobject]@{
     name = 'status-freshness'
-    passed = ([DateTimeOffset]::Now - [DateTimeOffset]$status.timestamp) -le [TimeSpan]::FromSeconds(90)
+    status = $(if (([DateTimeOffset]::Now - [DateTimeOffset]$status.timestamp) -le
+      [TimeSpan]::FromSeconds(90)) { 'Passed' } else { 'Failed' })
   })
 
-  $passed = @($checks | Where-Object passed -eq $false).Count -eq 0
+  $pipelineStatus = if ($null -eq $baselineHealth -or $null -eq $postHealth -or
+    [int]$baselineHealth.processId -ne [int]$postHealth.processId) {
+    'Blocked'
+  }
+  elseif (
+    [long]$postHealth.properties.droppedNormal -eq [long]$baselineHealth.properties.droppedNormal -and
+    [long]$postHealth.properties.droppedHigh -eq [long]$baselineHealth.properties.droppedHigh -and
+    [long]$postHealth.properties.failedBatches -eq [long]$baselineHealth.properties.failedBatches) {
+    'Passed'
+  }
+  else { 'Failed' }
+  $checks.Add([pscustomobject]@{ name = 'pipeline-health-delta'; status = $pipelineStatus })
+
+  $resultState = if (@($checks | Where-Object status -eq 'Blocked').Count -gt 0) {
+    'Blocked'
+  }
+  elseif (@($checks | Where-Object status -eq 'Failed').Count -gt 0) {
+    'Failed'
+  }
+  else { 'Passed' }
   $result = [pscustomobject]@{
     schemaVersion = 1
     scenario = $Scenario
     startedAt = $startedAt.ToString('O')
     completedAt = [DateTimeOffset]::Now.ToString('O')
-    result = $(if ($passed) { 'Passed' } else { 'Failed' })
+    result = $resultState
     checks = $checks
   }
   $json = $result | ConvertTo-Json -Depth 8
   [System.IO.File]::WriteAllText(
     $ResultPath, $json, [System.Text.UTF8Encoding]::new($false))
-  if (-not $passed) { exit 1 }
+  if ($resultState -eq 'Blocked') { exit 2 }
+  if ($resultState -eq 'Failed') { exit 1 }
 }
 catch {
   $json = [pscustomobject]@{
@@ -1225,7 +1401,7 @@ finally {
 }
 ```
 
-实施时保留以上退出码：`0=Passed`、`1=Failed`、`2=Blocked`。脚本自身的结果写入必须使用显式 UTF-8；它只写 `.work/test-results`，不修改产品配置/状态/计划。
+实施时保留以上退出码：`0=Passed`、`1=Failed`、`2=Blocked`。`Blocked` 优先级高于 `Failed`；管线前后样本缺失或 `processId` 不同都属于证据链中断，不能比较累计计数。脚本自身的结果写入必须使用显式 UTF-8；它只写 `.work/test-results`，不修改产品配置/状态/计划。
 
 - [ ] **Step 4: 架构门禁锁定验收入口**
 
@@ -1237,6 +1413,8 @@ public void Power_lifecycle_acceptance_has_one_observable_script_entry()
   script.Should().Contain("power-lifecycle-acceptance.result.json");
   script.Should().Contain("Start-Transcript");
   script.Should().Contain("result = 'Blocked'");
+  script.Should().Contain("pipeline-health-delta");
+  script.Should().Contain("status -eq 'Blocked'");
   script.Should().NotContain("SetSuspendState");
   script.Should().NotContain("Set-Date");
 }
@@ -1332,7 +1510,7 @@ git commit -m "test(engine): 收口电源生命周期真实验收"
 | Gate | 进入条件 | 通过条件 | 失败动作 |
 |---|---|---|---|
 | G0 Root Cause | 本计划现场证据可重放 | 睡眠空档、误判、计划竞争均有事件时间线 | 证据不一致则停止实现，重新取证 |
-| G1 Contract | Task 1 RED 保存 | Owner/禁止项契约落盘，行为门禁仍 RED | 不得先改生产代码 |
+| G1 Contract | Task 1 RED 保存 | Owner/禁止项契约落盘且契约门禁 GREEN；生产行为尚未实现 | 不得先改生产代码 |
 | G2 Pure Model | Task 2–3 | 状态机/idle 单调测试全绿 | 不得接入 GuardianLoop |
 | G3 Orchestration | Task 4 | Suspend 零仲裁、Resume 重建、Running 纠偏全绿 | 回到 directive 设计，不加条件补丁 |
 | G4 Side Effects | Task 5–7 | plan/log/status 结果可验证且失败不伪成功 | 不得以日志文本代替结果 |
@@ -1343,7 +1521,7 @@ git commit -m "test(engine): 收口电源生命周期真实验收"
 
 立即停止并返回调查/设计的条件：
 
-- Windows 未发出可观察 Resume，但代码依赖它才能恢复；
+- Windows 未发出可观察 Resume，且 30 秒有界自恢复也未能进入 ResumeStabilizing；
 - 状态机开始包含 300/900 阈值或计划 GUID；
 - 为修一个场景新增第二计时器、第二 AC/DC reader 或第二计划执行入口；
 - 需要用超过 30 秒恢复稳定期才能让测试通过；
@@ -1365,13 +1543,13 @@ git commit -m "test(engine): 收口电源生命周期真实验收"
 
 ## 风险与缓解
 
-1. **Resume 信号缺失**：普通轮询继续运行；状态机保持最后阶段可能阻断仲裁。真实验收必须覆盖 listener unavailable；若平台确实漏 Resume，需要新证据后设计 watchdog，不在本计划预建。
+1. **Resume 信号缺失**：状态机在 30 秒期限后进入同一条 ResumeStabilizing 安全路径，写 `PowerLifecycleRecoveryForced`，先 reset/baseline 后再允许仲裁；它不伪造 Windows Resume，也不另建 watcher。真实验收仍把缺失的 Windows Resume 记为失败，不能用自恢复掩盖平台问题。
 2. **恢复稳定期太短**：固定 5 秒只用于吸收 OS plan baseline；如真实矩阵失败，先记录 OS 事件/plan 序列，不直接加长。
 3. **把 Resume 当新 awake epoch**：会在无人交互唤醒后暂时从 0 计 idle；这是明确安全取舍，最多 5/15 分钟后进入平衡/节能，不会立即和 OS 竞争。
-4. **powercfg 复核增加一次进程调用**：只在实际切换后增加一次，不在普通无变化迭代增加；性能测试必须证明。
+4. **powercfg 复核增加进程调用**：只在实际切换后增加最多三次有界 probe，匹配即提前退出，不在普通无变化迭代增加；性能测试必须证明。
 5. **status 每分钟保底写**：约 60 次/小时，远低于旧 15 秒全量写；2 小时实测限制 125 次加有意义变化。
 6. **日志投递结果只证明入口接受**：异步落盘真相继续由 LogPipeline health/fallback 负责；不在每条心跳强制 flush。
-7. **事件线程竞态**：callback 只写锁保护内存并 release semaphore；重复信号通过一次性 directive 收敛。
+7. **事件线程竞态**：callback 只写锁保护内存并 release semaphore；相邻重复信号合并，Suspend/Resume 对通过容量 8 的保序批次交付。溢出保留最新 phase 并写告警，不声称完整历史。
 8. **旧日志事件兼容**：新增事件名，不删除历史解析别名；UI 未知字段仍按现有“—”显示。
 
 ## 回滚
@@ -1392,10 +1570,40 @@ Task 8 -> Task 7 -> Task 6 -> Task 5 -> Task 4 -> Task 3 -> Task 2 -> Task 1
 - 回滚 Task 2 前必须先回滚 Task 3–4，并恢复 resolver/interpreter 及测试；
 - 任一回滚后重新运行 `Run-Tests.ps1`，真实系统结论自动失效并标记 `NOT RUN`。
 
+## grill-me 自主审查记录（2026-08-22）
+
+**审查模式：** 按推荐项自主裁决；只有会改变产品语义、架构 Owner、安全边界或验收口径且无法从仓库证据解答的问题才上抛。本文审查未留下此类未决阻塞项。
+
+**结论：** `PASS WITH REQUIRED CHANGES — ADOPTED`。原方向“typed lifecycle + 单一状态机 + PolicyEngine 不变”成立，但原稿存在 6 个会导致永久停工、丢事件或假绿的阻断缺口；本轮已全部写回对应 Task，不把它们留作实施阶段临场决定。
+
+| 决策分支 | 反证问题 | 推荐裁决 | 仓库/方案依据 | 已采纳修订 |
+|---|---|---|---|---|
+| Owner | 是否需要另建 watchdog/service 才能处理漏 Resume？ | 否。由 `PowerLifecycleStateMachine` 使用已有时钟和主循环等待完成有界自恢复。 | 项目要求同一事实一个 Owner，禁止为单场景新增第二生命周期。 | `Suspending` 30 秒到期进入 ResumeStabilizing；写 RecoveryForced，不新增线程/timer。 |
+| 顺序与幂等 | Suspend 后进程暂停，Resume 回调先于循环消费，或 RecoveryForced 后 Resume 迟到时会怎样？ | 单值不可接受；改为容量 8 的保序批次。迟到 Resume 要记录但不得重复 reset/baseline。 | 当前 `GuardianLoop` 的 semaphore 只表示“需要醒来”，并不保存事件身份；循环会排空多个 release。 | `TransitionToLog` 改为 `TransitionsToLog`；新增覆盖、迟到、重复、溢出测试。 |
+| 失败收敛 | Resume 永久丢失是否可以让 Engine 一直停在 Suspending？ | 不可以。核心能力永久静默停工违反架构不变量。 | 原风险条目承认可能永久阻断仲裁，且无健康状态。 | 加入 30 秒自恢复、降级事件和“稳定前零 plan write”门禁。 |
+| 副作用真相 | `setactive` 成功后一次立即 probe 不匹配，能否直接判失败？ | 不直接判；做最多三次、总计 1 秒的条件探测，匹配即退出。 | `powercfg` 进程返回与 OS 可观察 active scheme 之间可能存在短暂收敛窗口。 | Task 5 增加 0/250/1000 ms 有界验证、取消与精确次数测试。 |
+| 可观测时间 | 生命周期事件恢复后才落盘时，顶层日志 timestamp 能否代表 Suspend 时刻？ | 不能。必须同时持久化原始 `ObservedAtUtc`。 | 事件回调只更新内存，异步管线的落盘/创建时间可能晚于真实 OS 信号。 | lifecycle properties 增加 `lifecycleObservedAtUtc`；真实验收用它划定边界。 |
+| 验收真相 | 缺少 health sample 或检查值为空时，能否因“没有 false”而通过？ | 不能。结果三态化，Blocked 优先于 Failed，缺证据 fail closed。 | 原 PowerShell 聚合只统计 `$false`，`$null` 会漏过；项目要求结构化回执缺失即失败关闭。 | 脚本改用 `Passed/Failed/Blocked`，加入管线前后样本并保持 0/1/2 退出码。 |
+| API 面 | 生命周期纯内部类型是否应声明 public？ | 不应。仅 Engine 和 friend tests 使用，保持 internal。 | 没有跨程序集消费者，公共类型会制造无必要兼容承诺。 | Task 2 类型声明改为 internal；跨程序集的 powercfg 结果仍按实际边界单独处理。 |
+| TDD Gate | Task 1 能否提交故意 RED 的测试？ | 不能。保存 RED 证据后必须让契约门禁 GREEN 再提交。 | 项目禁止主线故意失败；生产行为 RED 从 Task 2 开始。 | 修正 Task 1 标题和 G1 通过条件。 |
+
+### 未上抛的非阻塞裁决
+
+- 5 秒恢复稳定期和 30 秒漏 Resume 上限是当前推荐初值，不是经真实硬件证明的最终常数；Task 8 必须用 Lid/Mouse/AC/DC 证据验证。失败时回到时间线取证，不通过放宽断言解决。
+- 管线健康样本默认 5 分钟一次，因此真实脚本要求操作者保持唤醒直到出现下一条样本；样本缺失记 `BLOCKED`，不为了缩短验收修改生产采样频率。
+- 生命周期队列容量 8 不是吞吐设计；正常场景最多需要一对 Suspend/Resume。任何溢出都视为异常健康信号并进入调查，不通过扩大为无界队列解决。
+- 本轮只审查并修订实施计划；未改生产代码，未宣称自动化或真实待机验收已通过。
+
+### 阻塞项状态
+
+- 需要用户选择的阻塞项：**0**。
+- 已由推荐裁决关闭的方案阻塞项：**6**（事件覆盖、漏 Resume 永久停工、一次 probe 假失败、观察时间失真、验收空证据假绿、Task 1 RED 提交语义冲突）。
+- 实施停止线保持有效：若真实系统证明 30 秒自恢复仍无法收敛、OS 事件顺序与假设不符，或有界验证造成不可接受延迟，停止实现并带结构化证据回到本节重新审查。
+
 ## 自审记录
 
 - Spec coverage：共同根因、空闲、计划、心跳、状态新鲜度、powercfg 真相、真实待机、性能、回滚均有对应 Task。
-- Placeholder scan：计划不含未定义的延后实现项；所有生产接口在首次使用前均于 Interfaces 或代码块定义。
-- Type consistency：`PowerLifecycleSignal -> StateMachine -> Directive -> GuardianIterationContext` 单向；`PolicyEngine` 签名不变；`HeartbeatSchedule` 只由 Runner 消费；`PowerCfgCommandResult` 到 probe/apply result 单向。
+- Placeholder scan：计划不含未定义的延后实现项；生命周期批次、自恢复、条件探测和三态验收均已落到具体 Task、测试与门禁。
+- Type consistency：`PowerLifecycleSignal -> StateMachine -> bounded Directive batch -> GuardianIterationContext` 单向；`PolicyEngine` 签名不变；`HeartbeatSchedule` 只由 Runner 消费；`PowerCfgCommandResult` 到 probe/apply result 单向。
 - Scope control：无配置字段、无新 UI、无第二策略、无阻止睡眠能力。
 - Honest status：本文是实施计划，不代表生产修复、自动化全绿或真实待机验收已经完成。
