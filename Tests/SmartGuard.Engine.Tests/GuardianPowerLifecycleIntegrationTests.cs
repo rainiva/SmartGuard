@@ -138,6 +138,26 @@ public class GuardianPowerLifecycleIntegrationTests
   }
 
   [Fact]
+  public async Task Resume_requests_one_heartbeat_without_backfilling_sleep_gap()
+  {
+    using var harness = GuardianLifecycleHarness.Create(
+      PowerPlanCatalogProvider.HighPerformancePlanGuid,
+      apiIdle: 0);
+    harness.EnableHeartbeat();
+
+    await harness.RunNormalIterationAsync();
+    harness.Events.Count(x => x.EventName == EventNameRegistry.HeartbeatTick).Should().Be(1);
+
+    harness.Advance(TimeSpan.FromHours(8));
+    harness.Signal(PowerLifecycleKind.Suspending);
+    await harness.RunSignaledIterationAsync();
+    harness.Signal(PowerLifecycleKind.Resumed);
+    await harness.RunSignaledIterationAsync();
+
+    harness.Events.Count(x => x.EventName == EventNameRegistry.HeartbeatTick).Should().Be(2);
+  }
+
+  [Fact]
   public void Lifecycle_event_factory_preserves_original_observation_time()
   {
     var observedAt = new DateTimeOffset(2026, 8, 22, 14, 0, 0, TimeSpan.Zero);
@@ -161,6 +181,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   private readonly GuardianLoopIterationState _state = new();
   private readonly GuardConfig _config;
   private readonly StatusPublisher _publisher;
+  private readonly HeartbeatSchedule _heartbeatSchedule;
   private readonly string _root;
   private readonly GuardianIterationRunner _runner;
   private Guid _activePlan;
@@ -179,6 +200,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
     _config.HeartbeatIntervalMin = 0;
     _publisher = new StatusPublisher(Path.Combine(_root, "SmartGuard.status.json"));
     _lifecycle = new PowerLifecycleStateMachine(_time);
+    _heartbeatSchedule = new HeartbeatSchedule(_time);
     _state.PlanCatalog = new Dictionary<Guid, string>
     {
       [PowerPlanCatalogProvider.HighPerformancePlanGuid] = PowerPlanCatalogProvider.HighPerformanceDisplayName,
@@ -191,9 +213,14 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       new BrightnessService(),
       _publisher,
       () => _config,
-      (config, level, message, eventName) => Events.Add(new(eventName, _time.GetUtcNow(), message)),
+      (config, level, message, eventName) =>
+      {
+        Events.Add(new(eventName, _time.GetUtcNow(), message));
+        return GuardianLogWriteResult.AcceptedByPipeline;
+      },
       _ => { },
       powerCfgBrightnessSupported: false,
+      heartbeatSchedule: _heartbeatSchedule,
       readIdleSeconds: () => _apiIdle,
       readBatteryInfo: _ => (70, true),
       readCurrentPlan: () => _forcedProbeFailure ?? new PowerPlanProbeResult(
@@ -242,6 +269,8 @@ internal sealed class GuardianLifecycleHarness : IDisposable
 
   public void SetOsPlan(Guid plan) => _activePlan = plan;
 
+  public void EnableHeartbeat() => _config.HeartbeatIntervalMin = 10;
+
   public void FailPlanProbe(string diagnostic)
     => _forcedProbeFailure = new PowerPlanProbeResult(
       false,
@@ -275,6 +304,9 @@ internal sealed class GuardianLifecycleHarness : IDisposable
 
     if (directive.RecoveryForced)
       Events.Add(new(EventNameRegistry.PowerLifecycleRecoveryForced, _time.GetUtcNow(), "recovery"));
+
+    if (directive.ResetIdleEpoch)
+      _heartbeatSchedule.ResetAfterResume();
 
     if (!directive.RunIteration)
       return;

@@ -4,7 +4,7 @@ public static class LogLevelFilter
 {
   public static bool ShouldWrite(LogLevel level, LogLevel minimum)
   {
-    if (level == LogLevel.Heart) return true; // Heart 不参与级别过滤，由 HeartLogSampler 采样治理
+    if (level == LogLevel.Heart) return true; // Heart 不参与级别过滤，由 HeartbeatSchedule 调度治理
     return level >= minimum;
   }
 

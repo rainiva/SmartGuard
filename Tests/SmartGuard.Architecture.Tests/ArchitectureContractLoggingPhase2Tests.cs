@@ -48,11 +48,14 @@ public class ArchitectureContractLoggingPhase2Tests
   }
 
   [Fact]
-  public void GuardianLoop_throttles_heart_logs_via_sampler()
+  public void GuardianLoop_schedules_heart_logs_with_monotonic_owner()
   {
     var source = SourceScanHelper.ReadGuardianLoopSource();
-    source.Should().Contain("HeartLogSampler", "Heart 心跳持久化必须经采样治理，防秒级心跳源刷爆日志");
-    ContractContent.Should().Contain("HeartLogSampler");
+    source.Should().Contain("HeartbeatSchedule", "Heart 心跳持久化必须由单一单调调度器治理");
+    SourceScanHelper.ReadSource("src/SmartGuard.Engine/Infrastructure/HeartbeatSchedule.cs")
+      .Should().Contain("TimeProvider");
+    ContractContent.Should().Contain("HeartbeatSchedule");
+    ContractContent.Should().NotContain("HeartLogSampler");
     ContractContent.Should().Contain("LogHeartMinIntervalSec");
   }
 

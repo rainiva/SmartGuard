@@ -14,7 +14,7 @@ public class LogFallbackChainTests
         LogFallbackChain.EmergencyLogFileOverrideForTests = emergencyPath;
         try
         {
-            LogFallbackChain.Write(() => true, fallbackPath, "[INFO] hi");
+            LogFallbackChain.Write(() => true, fallbackPath, "[INFO] hi").Should().BeTrue();
             File.Exists(fallbackPath).Should().BeFalse();
             File.Exists(emergencyPath).Should().BeFalse();
         }
@@ -35,7 +35,7 @@ public class LogFallbackChainTests
         LogFallbackChain.EmergencyLogFileOverrideForTests = emergencyPath;
         try
         {
-            LogFallbackChain.Write(() => false, fallbackPath, "[INFO] hi");
+            LogFallbackChain.Write(() => false, fallbackPath, "[INFO] hi").Should().BeTrue();
             File.ReadAllText(fallbackPath).Should().Contain("[LOG-FALLBACK] [INFO] hi");
             File.Exists(emergencyPath).Should().BeFalse();
         }

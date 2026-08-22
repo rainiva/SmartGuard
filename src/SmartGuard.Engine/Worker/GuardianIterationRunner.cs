@@ -10,7 +10,6 @@ internal sealed class GuardianLoopIterationState
   public IReadOnlyDictionary<Guid, string>? PlanCatalog;
   public Guid? LastKnownGuid;
   public string LastStatusLabel = string.Empty;
-  public DateTime LastHeartbeat = DateTime.MinValue;
   public bool ScriptJustSwitched;
   public int? LastBrightness;
   public NotificationEventRetentionState NotificationRetention;
@@ -23,9 +22,10 @@ internal sealed class GuardianIterationRunner(
   BrightnessService brightness,
   StatusPublisher publisher,
   Func<GuardConfig> loadConfig,
-  Action<GuardConfig, LogLevel, string, string> writeLog,
+  Func<GuardConfig, LogLevel, string, string, GuardianLogWriteResult> writeLog,
   Action<bool> observePowerSource,
   bool powerCfgBrightnessSupported,
+  HeartbeatSchedule heartbeatSchedule,
   Func<uint>? readIdleSeconds = null,
   Func<bool, (int Percent, bool IsOnAc)>? readBatteryInfo = null,
   Func<PowerPlanProbeResult>? readCurrentPlan = null,
@@ -141,13 +141,16 @@ internal sealed class GuardianIterationRunner(
       state.LastKnownGuid = observed;
 
     if (config.HeartbeatIntervalMin > 0 &&
-        (DateTime.Now - state.LastHeartbeat).TotalMinutes >= config.HeartbeatIntervalMin)
+        heartbeatSchedule.IsDue(
+          TimeSpan.FromMinutes(config.HeartbeatIntervalMin),
+          TimeSpan.FromSeconds(Math.Max(0, config.LogHeartMinIntervalSec))))
     {
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
-      writeLog(config, LogLevel.Heart,
+      var writeResult = writeLog(config, LogLevel.Heart,
         GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright),
         EventNameRegistry.HeartbeatTick);
-      state.LastHeartbeat = DateTime.Now;
+      if (writeResult.IsAccepted())
+        heartbeatSchedule.MarkAccepted();
     }
 
     var now = DateTime.Now;
@@ -199,7 +202,7 @@ internal sealed class GuardianIterationRunner(
     GuardConfig config,
     int brightness,
     GuardianLoopIterationState state,
-    Action<GuardConfig, LogLevel, string, string> writeLog)
+    Func<GuardConfig, LogLevel, string, string, GuardianLogWriteResult> writeLog)
   {
     if (brightness < 0) return;
 

@@ -6,7 +6,7 @@ namespace SmartGuard.Engine.Worker;
 
 public sealed partial class GuardianLoop
 {
-  private void WriteLog(
+  private GuardianLogWriteResult WriteLog(
     GuardConfig config,
     LogLevel level,
     string message,
@@ -14,13 +14,10 @@ public sealed partial class GuardianLoop
     string? outcome = null)
   {
     if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
-      return;
-    if (level == LogLevel.Heart
-        && !_heartSampler.ShouldPersist(DateTime.Now, TimeSpan.FromSeconds(Math.Max(0, config.LogHeartMinIntervalSec))))
-      return;
+      return GuardianLogWriteResult.SuppressedByLevel;
     var fp = message.Trim().ToLowerInvariant();
     if (!_deduplication.TryAccept(fp, message, out var dedupMessage))
-      return;
+      return GuardianLogWriteResult.Rejected;
 
     var logEvent = EngineLogEvents.Create(
       level,
@@ -31,7 +28,7 @@ public sealed partial class GuardianLoop
       SpanIdContext.Current,
       UserActionIdContext.Current,
       outcome);
-    EnqueueLog(config, level, logEvent);
+    return EnqueueLog(config, level, logEvent);
   }
 
   private void WriteLifecycleTransitions(
@@ -59,22 +56,25 @@ public sealed partial class GuardianLoop
     }
   }
 
-  private void EnqueueLog(GuardConfig config, LogLevel level, LogEvent logEvent)
+  private GuardianLogWriteResult EnqueueLog(GuardConfig config, LogLevel level, LogEvent logEvent)
   {
     var priority = level is LogLevel.Warn or LogLevel.Error or LogLevel.Critical ? LogPriority.High : LogPriority.Normal;
     if (priority == LogPriority.High)
       CrashRingBuffer.Instance.Add(LogJsonlFormatter.FormatLine(logEvent));
     if (priority == LogPriority.Normal && _backpressure.ShouldThrottle(_logPipeline.NormalQueueDepth, _logOptions.NormalQueueCapacity))
-      return;
+      return GuardianLogWriteResult.DroppedByBackpressure;
     if (_logPipeline.TryEnqueue(priority, logEvent))
-      return;
+      return GuardianLogWriteResult.AcceptedByPipeline;
 
     var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
     var retention = LogRetentionPolicy.FromGuardConfig(config);
-    LogFallbackChain.WriteEvent(
+    var accepted = LogFallbackChain.WriteEvent(
       () => LogStructuredSink.TryWriteBatch(logPath, new[] { logEvent }, retention),
       _fallbackLogPath,
       logEvent);
+    return accepted
+      ? GuardianLogWriteResult.AcceptedByFallback
+      : GuardianLogWriteResult.Rejected;
   }
 
   private bool WriteBatchToDisk(IReadOnlyList<LogEvent> events)

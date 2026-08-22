@@ -24,7 +24,7 @@ public sealed partial class GuardianLoop
   private readonly LogPipeline _logPipeline;
   private readonly LogConsumerRecovery _consumerRecovery = new(new LogRecoveryStateMachine());
   private readonly LogPipelineHealth _pipelineHealth = new();
-  private readonly HeartLogSampler _heartSampler = new();
+  private readonly HeartbeatSchedule _heartbeatSchedule = new();
   private readonly PowerSourceTransitionTracker _powerSourceTransitions = new();
   private readonly PowerLifecycleStateMachine _powerLifecycle = new();
   private readonly LogPipelineOptions _logOptions = new();
@@ -65,7 +65,8 @@ public sealed partial class GuardianLoop
       LoadConfig,
       (c, l, m, e) => WriteLog(c, l, m, e),
       ObservePowerSource,
-      _powerCfgBrightnessSupported);
+      _powerCfgBrightnessSupported,
+      _heartbeatSchedule);
     _logPipeline = new LogPipeline(
       batch => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, batch, _fallbackLogPath),
       _logOptions);
@@ -98,6 +99,8 @@ public sealed partial class GuardianLoop
           WriteLog(config, LogLevel.Warn, "电源生命周期转换队列已溢出，已丢弃最旧信号", EventNameRegistry.PowerLifecycleSignalOverflow);
         if (directive.RecoveryForced)
           WriteLog(config, LogLevel.Warn, "未在 30 秒内观察到恢复信号，进入受控恢复稳定期", EventNameRegistry.PowerLifecycleRecoveryForced);
+        if (directive.ResetIdleEpoch)
+          _heartbeatSchedule.ResetAfterResume();
         if (!directive.RunIteration)
         {
           WaitForNextIteration(
