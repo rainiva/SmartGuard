@@ -11,7 +11,9 @@ public static class LogEventChannels
       EventNameRegistry.PowerPlanSwitched
         or EventNameRegistry.PowerSourceChanged
         or EventNameRegistry.ExternalPlanChange
-        or EventNameRegistry.BatteryStatusPolled => LogChannelRegistry.Power,
+        or EventNameRegistry.BatteryStatusPolled
+        or EventNameRegistry.PowerPlanProbeFailed
+        or EventNameRegistry.PowerPlanApplyFailed => LogChannelRegistry.Power,
       EventNameRegistry.BrightnessAdjusted => LogChannelRegistry.Brightness,
       EventNameRegistry.IdleDetected => LogChannelRegistry.Policy,
       EventNameRegistry.ConfigReloaded

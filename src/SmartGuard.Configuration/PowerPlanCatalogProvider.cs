@@ -107,8 +107,11 @@ public static class PowerPlanCatalogProvider
 
   private static IReadOnlyDictionary<Guid, string> LoadCore()
   {
-    var catalog = PowerPlanCatalogParser.ParseList(
-      PowerCfgProcessRunner.RunPowerCfg("/list", TimeSpan.FromSeconds(15)));
+    var listResult = PowerCfgProcessRunner.RunPowerCfg("/list", TimeSpan.FromSeconds(15));
+    if (!listResult.Succeeded)
+      return new Dictionary<Guid, string>();
+
+    var catalog = PowerPlanCatalogParser.ParseList(listResult.StandardOutput);
     EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
 
     if (HasMissingKnownSchemes(catalog))
@@ -120,17 +123,18 @@ public static class PowerPlanCatalogProvider
     return catalog;
   }
 
-  private static string RunPowerCfg(string arguments)
+  private static PowerCfgCommandResult RunPowerCfg(string arguments)
     => PowerCfgProcessRunner.RunPowerCfg(arguments, TimeSpan.FromSeconds(15));
 
   private static string? TryQueryPlanName(Guid guid)
   {
     try
     {
-      var output = PowerCfgProcessRunner.RunPowerCfg(
+      var result = PowerCfgProcessRunner.RunPowerCfg(
         $"/query {guid:D}",
         TimeSpan.FromSeconds(15));
-      if (!PowerPlanCatalogParser.TryParseQueryHeader(output, out var parsedGuid, out var name))
+      if (!result.Succeeded ||
+          !PowerPlanCatalogParser.TryParseQueryHeader(result.StandardOutput, out var parsedGuid, out var name))
         return null;
 
       return parsedGuid == guid ? name : null;

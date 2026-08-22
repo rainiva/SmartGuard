@@ -68,6 +68,38 @@ public class GuardianPowerLifecycleIntegrationTests
   }
 
   [Fact]
+  public async Task Failed_plan_probe_does_not_correct_or_report_external_change()
+  {
+    using var harness = GuardianLifecycleHarness.Create(
+      PowerPlanCatalogProvider.HighPerformancePlanGuid,
+      apiIdle: 10);
+
+    harness.SetOsPlan(PowerPlanCatalogProvider.BalancedPlanGuid);
+    harness.FailPlanProbe("Access is denied.");
+    await harness.RunNormalIterationAsync();
+
+    harness.AppliedPlans.Should().BeEmpty();
+    harness.ExternalChangeEvents.Should().BeEmpty();
+    harness.Events.Should().ContainSingle(x => x.EventName == EventNameRegistry.PowerPlanProbeFailed);
+  }
+
+  [Fact]
+  public async Task Failed_plan_apply_does_not_report_success_or_mark_script_switch()
+  {
+    using var harness = GuardianLifecycleHarness.Create(
+      PowerPlanCatalogProvider.HighPerformancePlanGuid,
+      apiIdle: 10);
+
+    harness.SetOsPlan(PowerPlanCatalogProvider.BalancedPlanGuid);
+    harness.FailNextPlanApply();
+    await harness.RunNormalIterationAsync();
+
+    harness.AppliedPlans.Should().BeEmpty();
+    harness.Events.Should().ContainSingle(x => x.EventName == EventNameRegistry.PowerPlanApplyFailed);
+    harness.Events.Should().NotContain(x => x.EventName == EventNameRegistry.PowerPlanSwitched);
+  }
+
+  [Fact]
   public async Task Suspend_and_resume_queued_while_loop_is_paused_are_logged_in_observed_order()
   {
     using var harness = GuardianLifecycleHarness.Create(
@@ -133,6 +165,8 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   private readonly GuardianIterationRunner _runner;
   private Guid _activePlan;
   private uint _apiIdle;
+  private PowerPlanProbeResult? _forcedProbeFailure;
+  private bool _failNextApply;
 
   private GuardianLifecycleHarness(Guid activePlan, uint apiIdle)
   {
@@ -162,11 +196,32 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       powerCfgBrightnessSupported: false,
       readIdleSeconds: () => _apiIdle,
       readBatteryInfo: _ => (70, true),
-      readCurrentPlanInfo: () => new PowerSchemeInfo(_activePlan, null),
-      setActivePlan: guid =>
+      readCurrentPlan: () => _forcedProbeFailure ?? new PowerPlanProbeResult(
+        true,
+        new PowerSchemeInfo(_activePlan, null),
+        PowerPlanFailureKind.None,
+        string.Empty),
+      applyPlan: (target, cancellationToken) =>
       {
-        _activePlan = guid;
-        AppliedPlans.Add(guid);
+        if (_failNextApply)
+        {
+          _failNextApply = false;
+          return Task.FromResult(new PowerPlanApplyResult(
+            false,
+            target,
+            _activePlan,
+            PowerPlanFailureKind.VerificationMismatch,
+            "test verification mismatch"));
+        }
+
+        _activePlan = target;
+        AppliedPlans.Add(target);
+        return Task.FromResult(new PowerPlanApplyResult(
+          true,
+          target,
+          target,
+          PowerPlanFailureKind.None,
+          string.Empty));
       });
   }
 
@@ -186,6 +241,15 @@ internal sealed class GuardianLifecycleHarness : IDisposable
     => _lifecycle.Observe(new(kind, _time.GetUtcNow()));
 
   public void SetOsPlan(Guid plan) => _activePlan = plan;
+
+  public void FailPlanProbe(string diagnostic)
+    => _forcedProbeFailure = new PowerPlanProbeResult(
+      false,
+      null,
+      PowerPlanFailureKind.CommandFailed,
+      diagnostic);
+
+  public void FailNextPlanApply() => _failNextApply = true;
 
   public void SetApiIdle(uint idle) => _apiIdle = idle;
 

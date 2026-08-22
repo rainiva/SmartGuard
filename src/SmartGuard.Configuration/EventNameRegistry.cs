@@ -34,6 +34,8 @@ public static class EventNameRegistry
   public const string PowerResumeObserved = nameof(PowerResumeObserved);
   public const string PowerLifecycleRecoveryForced = nameof(PowerLifecycleRecoveryForced);
   public const string PowerLifecycleSignalOverflow = nameof(PowerLifecycleSignalOverflow);
+  public const string PowerPlanProbeFailed = nameof(PowerPlanProbeFailed);
+  public const string PowerPlanApplyFailed = nameof(PowerPlanApplyFailed);
 
   static EventNameRegistry()
   {
@@ -59,6 +61,8 @@ public static class EventNameRegistry
     Register(PowerResumeObserved);
     Register(PowerLifecycleRecoveryForced);
     Register(PowerLifecycleSignalOverflow);
+    Register(PowerPlanProbeFailed);
+    Register(PowerPlanApplyFailed);
   }
 
   public static void Register(string name)

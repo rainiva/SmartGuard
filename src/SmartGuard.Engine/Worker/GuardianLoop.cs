@@ -131,13 +131,6 @@ public sealed partial class GuardianLoop
           }
         }
 
-        if (directive.AllowPolicyMutation)
-        {
-          _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
-            PowerCfgExecutor.GetCurrentPlanGuid,
-            _iterationState.LastKnownGuid,
-            message => WriteLog(config, LogLevel.Warn, message, EventNameRegistry.ExternalPlanChange));
-        }
         WaitForNextIteration(ResolveWaitSeconds(directive.ReevaluateAfter), cancellationToken);
       }
     }

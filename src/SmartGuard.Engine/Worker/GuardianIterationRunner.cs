@@ -28,8 +28,8 @@ internal sealed class GuardianIterationRunner(
   bool powerCfgBrightnessSupported,
   Func<uint>? readIdleSeconds = null,
   Func<bool, (int Percent, bool IsOnAc)>? readBatteryInfo = null,
-  Func<PowerSchemeInfo?>? readCurrentPlanInfo = null,
-  Action<Guid>? setActivePlan = null,
+  Func<PowerPlanProbeResult>? readCurrentPlan = null,
+  Func<Guid, CancellationToken, Task<PowerPlanApplyResult>>? applyPlan = null,
   Action<Guid, int>? syncPlanBrightness = null)
 {
   public async Task RunAsync(
@@ -47,7 +47,18 @@ internal sealed class GuardianIterationRunner(
     var idle = (int)idleTracker.Sample(readIdleSeconds ?? IdleDetector.GetIdleSeconds);
     var (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(context.ForcePowerRefresh);
     observePowerSource(isOnAc);
-    var activePlanInfo = (readCurrentPlanInfo ?? PowerCfgExecutor.GetCurrentPlanInfo)();
+    var planProbe = (readCurrentPlan ?? PowerCfgExecutor.ProbeCurrentPlan)();
+    if (!planProbe.Succeeded)
+    {
+      writeLog(
+        config,
+        LogLevel.Warn,
+        $"电源计划探测失败，保留上次计划状态：{planProbe.FailureKind} {planProbe.Diagnostic}",
+        EventNameRegistry.PowerPlanProbeFailed);
+      return;
+    }
+
+    var activePlanInfo = planProbe.Plan;
     var current = activePlanInfo?.Guid;
     if (context.AbsorbCurrentPlanAsBaseline)
     {
@@ -82,25 +93,40 @@ internal sealed class GuardianIterationRunner(
         PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
       var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, cancellationToken);
-      state.ScriptJustSwitched = true;
-      planSwitched = true;
       switchBrightnessBefore = result.Before;
       switchBrightnessAfter = result.After;
-      activePlanInfo = (readCurrentPlanInfo ?? PowerCfgExecutor.GetCurrentPlanInfo)();
-      current = activePlanInfo?.Guid;
-      var pwr = isOnAc ? "插电" : "电池";
-      switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
-      if (bright >= 0)
+      if (!result.Apply.Succeeded)
       {
-        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}", EventNameRegistry.PowerPlanSwitched);
-        if (result.After != result.Before)
-          writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次", EventNameRegistry.IterationError);
+        writeLog(
+          config,
+          LogLevel.Warn,
+          $"电源计划切换失败：{result.Apply.FailureKind} {result.Apply.Diagnostic}",
+          EventNameRegistry.PowerPlanApplyFailed);
       }
       else
       {
-        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持", EventNameRegistry.PowerPlanSwitched);
+        state.ScriptJustSwitched = true;
+        planSwitched = true;
+        if (result.Apply.ObservedGuid is Guid observedGuid)
+        {
+          current = observedGuid;
+          activePlanInfo = new PowerSchemeInfo(observedGuid, null);
+        }
+
+        var pwr = isOnAc ? "插电" : "电池";
+        switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
+        if (bright >= 0)
+        {
+          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}", EventNameRegistry.PowerPlanSwitched);
+          if (result.After != result.Before)
+            writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次", EventNameRegistry.IterationError);
+        }
+        else
+        {
+          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持", EventNameRegistry.PowerPlanSwitched);
+        }
+        state.LastStatusLabel = label;
       }
-      state.LastStatusLabel = label;
     }
     else if (state.LastStatusLabel != label)
     {
@@ -110,6 +136,9 @@ internal sealed class GuardianIterationRunner(
         EventNameRegistry.IdleDetected);
       state.LastStatusLabel = label;
     }
+
+    if (current is Guid observed && (!externalChangeDetected || planSwitched))
+      state.LastKnownGuid = observed;
 
     if (config.HeartbeatIntervalMin > 0 &&
         (DateTime.Now - state.LastHeartbeat).TotalMinutes >= config.HeartbeatIntervalMin)
@@ -190,7 +219,7 @@ internal sealed class GuardianIterationRunner(
     return PolicyEngine.GetPlanDisplayName(planGuid, config, planCatalog, preferredName);
   }
 
-  private async Task<(int Before, int After)> SwitchWithBrightnessLockAsync(
+  private async Task<(PowerPlanApplyResult Apply, int Before, int After)> SwitchWithBrightnessLockAsync(
     Guid target,
     int brightnessBefore,
     GuardConfig config,
@@ -199,17 +228,26 @@ internal sealed class GuardianIterationRunner(
     if (powerCfgBrightnessSupported && brightnessBefore >= 0)
       (syncPlanBrightness ?? PowerCfgExecutor.SyncPlanBrightness)(target, brightnessBefore);
 
-    (setActivePlan ?? PowerCfgExecutor.SetActivePlan)(target);
+    Func<Guid, CancellationToken, Task<PowerPlanApplyResult>> applyOperation =
+      applyPlan ?? ((targetGuid, token) => PowerCfgExecutor.ApplyAndVerifyAsync(
+        targetGuid,
+        PowerCfgExecutor.RunPowerCfgAsync,
+        Task.Delay,
+        token));
+    var apply = await applyOperation(target, cancellationToken);
+    if (!apply.Succeeded)
+      return (apply, brightnessBefore, brightnessBefore);
+
     await Task.Delay(config.BrightnessRestoreMs, cancellationToken);
 
-    if (brightnessBefore < 0) return (brightnessBefore, brightnessBefore);
+    if (brightnessBefore < 0) return (apply, brightnessBefore, brightnessBefore);
 
     var after = await brightness.RestoreWithRetryAsync(
       brightnessBefore,
       config.BrightnessRetryCount,
       config.BrightnessRetryDelayMs,
       cancellationToken);
-    return (brightnessBefore, after);
+    return (apply, brightnessBefore, after);
   }
 
   private static NotificationEvent CreatePlanSwitchNotification(string planName, int brightness, int brightnessBefore)
