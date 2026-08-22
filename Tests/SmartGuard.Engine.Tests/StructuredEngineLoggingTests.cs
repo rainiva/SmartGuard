@@ -49,6 +49,52 @@ public class StructuredEngineLoggingTests
   }
 
   [Fact]
+  public async Task GuardianLoop_lifecycle_transition_preserves_observed_time_in_structured_event()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "sg-lifecycle-log-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var fallbackPath = Path.Combine(root, "SmartGuard.startup.log");
+
+    try
+    {
+      var loop = new GuardianLoop(
+        root,
+        Path.Combine(root, "SmartGuard.config.json"),
+        Path.Combine(root, "SmartGuard.status.json"),
+        Path.Combine(root, ".SmartGuard.initialized"),
+        fallbackPath,
+        powerCfgBrightnessSupported: false);
+      var writeTransitions = typeof(GuardianLoop).GetMethod(
+        "WriteLifecycleTransitions",
+        BindingFlags.NonPublic | BindingFlags.Instance)!;
+      var pipeline = (LogPipeline)typeof(GuardianLoop).GetField(
+        "_logPipeline",
+        BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(loop)!;
+      var observedAt = new DateTimeOffset(2026, 8, 22, 14, 0, 0, TimeSpan.Zero);
+      var config = GuardConfig.CreateDefault(root);
+
+      pipeline.Start();
+      writeTransitions.Invoke(loop, [
+        config,
+        new[] { new PowerLifecycleSignal(PowerLifecycleKind.Resumed, observedAt) }
+      ]);
+      (await pipeline.StopAsync()).Should().BeTrue();
+
+      var logPath = SmartGuardPaths.ResolveLogFile(config, root);
+      var line = File.ReadAllLines(logPath, Encoding.UTF8).Should().ContainSingle().Subject;
+      LogJsonlFormatter.TryParseLine(line, out var logEvent).Should().BeTrue();
+      logEvent.Should().NotBeNull();
+      logEvent!.EventName.Should().Be(EventNameRegistry.PowerResumeObserved);
+      logEvent.Channel.Should().Be(LogChannelRegistry.Lifecycle);
+      logEvent.Properties["lifecycleObservedAtUtc"].GetDateTimeOffset().Should().Be(observedAt);
+    }
+    finally
+    {
+      try { Directory.Delete(root, recursive: true); } catch { }
+    }
+  }
+
+  [Fact]
   public async Task GuardianLoop_power_transition_writes_handled_structured_event()
   {
     var root = Path.Combine(Path.GetTempPath(), "sg-power-log-" + Guid.NewGuid().ToString("N"));

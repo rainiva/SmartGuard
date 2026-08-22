@@ -30,6 +30,10 @@ public static class EventNameRegistry
   public const string ConfigMutationLogged = nameof(ConfigMutationLogged);
   public const string PipelineHealthSampled = nameof(PipelineHealthSampled);
   public const string InstallProgressLogged = nameof(InstallProgressLogged);
+  public const string PowerSuspendObserved = nameof(PowerSuspendObserved);
+  public const string PowerResumeObserved = nameof(PowerResumeObserved);
+  public const string PowerLifecycleRecoveryForced = nameof(PowerLifecycleRecoveryForced);
+  public const string PowerLifecycleSignalOverflow = nameof(PowerLifecycleSignalOverflow);
 
   static EventNameRegistry()
   {
@@ -51,6 +55,10 @@ public static class EventNameRegistry
     Register(ConfigMutationLogged);
     Register(PipelineHealthSampled);
     Register(InstallProgressLogged);
+    Register(PowerSuspendObserved);
+    Register(PowerResumeObserved);
+    Register(PowerLifecycleRecoveryForced);
+    Register(PowerLifecycleSignalOverflow);
   }
 
   public static void Register(string name)

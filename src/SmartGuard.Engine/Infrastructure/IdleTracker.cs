@@ -2,55 +2,58 @@ namespace SmartGuard.Engine.Infrastructure;
 
 public sealed class IdleTracker
 {
-  /// <summary>
-  /// When wall-clock idle exceeds previous API idle by more than this slack,
-  /// an API idle drop is treated as sleep/wake recovery rather than user activity.
-  /// </summary>
-  public const uint SleepRecoverySlackSeconds = 30;
-
-  private DateTime _lastActivityUtc = DateTime.UtcNow;
+  private readonly TimeProvider _timeProvider;
+  private long _lastSampleTimestamp;
+  private uint _effectiveIdleSeconds;
   private uint _previousApiIdle;
   private bool _seeded;
+  private bool _resumeResetPending;
 
-  public uint Sample(Func<uint> readApiIdle, DateTime utcNow)
+  public IdleTracker(TimeProvider? timeProvider = null)
   {
+    _timeProvider = timeProvider ?? TimeProvider.System;
+  }
+
+  public uint Sample(Func<uint> readApiIdle)
+  {
+    ArgumentNullException.ThrowIfNull(readApiIdle);
     var apiIdle = readApiIdle();
+    var now = _timeProvider.GetTimestamp();
+
     if (!_seeded)
     {
-      _lastActivityUtc = utcNow.AddSeconds(-apiIdle);
+      _effectiveIdleSeconds = _resumeResetPending ? 0u : apiIdle;
+      _resumeResetPending = false;
       _seeded = true;
     }
     else
     {
-      var wallIdle = (uint)Math.Max(0, (utcNow - _lastActivityUtc).TotalSeconds);
-      if (ShouldResetForActivity(apiIdle, _previousApiIdle, wallIdle))
-        _lastActivityUtc = utcNow.AddSeconds(-apiIdle);
+      var elapsed = ToWholeSeconds(_timeProvider.GetElapsedTime(_lastSampleTimestamp, now));
+      _effectiveIdleSeconds = IsUserActivity(apiIdle, _previousApiIdle)
+        ? apiIdle
+        : Math.Max(apiIdle, SaturatingAdd(_effectiveIdleSeconds, elapsed));
     }
 
     _previousApiIdle = apiIdle;
-    var finalWallIdle = (uint)Math.Max(0, (utcNow - _lastActivityUtc).TotalSeconds);
-    return Math.Max(apiIdle, finalWallIdle);
+    _lastSampleTimestamp = now;
+    return _effectiveIdleSeconds;
+  }
+
+  public void ResetAfterResume()
+  {
+    _seeded = false;
+    _resumeResetPending = true;
   }
 
   public static bool IsUserActivity(uint apiIdle, uint previousApiIdle)
   {
     if (apiIdle <= 2) return true;
-    if (apiIdle + 5 < previousApiIdle) return true;
-    return false;
+    return previousApiIdle > apiIdle && previousApiIdle - apiIdle > 5;
   }
 
-  public static bool ShouldResetForActivity(uint apiIdle, uint previousApiIdle, uint wallIdle)
-  {
-    if (apiIdle <= 2) return true;
+  private static uint ToWholeSeconds(TimeSpan elapsed)
+    => elapsed <= TimeSpan.Zero ? 0u : (uint)Math.Min(uint.MaxValue, elapsed.TotalSeconds);
 
-    if (apiIdle + 5 < previousApiIdle)
-    {
-      // Sleep/wake: wall advanced while GetLastInputInfo stalled; API snap-back is not activity.
-      if (wallIdle > previousApiIdle + SleepRecoverySlackSeconds)
-        return false;
-      return true;
-    }
-
-    return false;
-  }
+  private static uint SaturatingAdd(uint left, uint right)
+    => uint.MaxValue - left < right ? uint.MaxValue : left + right;
 }

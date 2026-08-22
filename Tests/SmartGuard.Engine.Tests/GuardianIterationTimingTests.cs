@@ -60,4 +60,31 @@ public class GuardianIterationTimingTests
       try { Directory.Delete(dir, true); } catch { }
     }
   }
+
+  [Fact]
+  public void ResolveWaitSeconds_uses_the_shorter_lifecycle_deadline()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuardLoopTimingLifecycle_" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+    var repository = new GuardConfigRepository(path);
+
+    try
+    {
+      File.WriteAllText(path, """
+          {
+            "CheckIntervalSec": 30
+          }
+          """);
+
+      GuardianIterationTiming.ResolveWaitSeconds(repository, dir, TimeSpan.FromSeconds(2))
+        .Should().Be(2);
+      GuardianIterationTiming.ResolveWaitSeconds(repository, dir, TimeSpan.FromMilliseconds(1))
+        .Should().Be(1);
+    }
+    finally
+    {
+      try { Directory.Delete(dir, true); } catch { }
+    }
+  }
 }

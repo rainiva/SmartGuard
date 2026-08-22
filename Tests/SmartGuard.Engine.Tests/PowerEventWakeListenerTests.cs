@@ -6,6 +6,26 @@ namespace SmartGuard.Engine.Tests;
 public class PowerEventWakeListenerTests
 {
   [Fact]
+  public void Power_mode_signal_is_typed_and_does_not_read_battery_state()
+  {
+    PowerLifecycleSignal? observed = null;
+    PowerEventWakeListener.SubscribeOverrideForTests = _ => { };
+
+    try
+    {
+      using var listener = PowerEventWakeListener.Create(
+        (PowerLifecycleSignal signal) => observed = signal);
+
+      observed.Should().BeNull();
+      listener.IsEnabled.Should().BeTrue();
+    }
+    finally
+    {
+      PowerEventWakeListener.SubscribeOverrideForTests = null;
+    }
+  }
+
+  [Fact]
   public void Create_when_subscribe_throws_PlatformNotSupported_returns_disabled_listener()
   {
     PowerEventWakeListener.SubscribeOverrideForTests = _ =>

@@ -26,6 +26,7 @@ public sealed partial class GuardianLoop
   private readonly LogPipelineHealth _pipelineHealth = new();
   private readonly HeartLogSampler _heartSampler = new();
   private readonly PowerSourceTransitionTracker _powerSourceTransitions = new();
+  private readonly PowerLifecycleStateMachine _powerLifecycle = new();
   private readonly LogPipelineOptions _logOptions = new();
   private readonly LogBackpressureController _backpressure = new();
   private bool _powerCfgBrightnessSupported = true;
@@ -62,7 +63,7 @@ public sealed partial class GuardianLoop
       _brightness,
       _publisher,
       LoadConfig,
-      (c, l, m) => WriteLog(c, l, m, EventNameRegistry.HeartbeatTick),
+      (c, l, m, e) => WriteLog(c, l, m, e),
       ObservePowerSource,
       _powerCfgBrightnessSupported);
     _logPipeline = new LogPipeline(
@@ -91,9 +92,31 @@ public sealed partial class GuardianLoop
       while (!cancellationToken.IsCancellationRequested)
       {
         _deduplication.Reset();
+        var directive = _powerLifecycle.TakeDirective();
+        WriteLifecycleTransitions(config, directive.TransitionsToLog);
+        if (directive.TransitionOverflowed)
+          WriteLog(config, LogLevel.Warn, "电源生命周期转换队列已溢出，已丢弃最旧信号", EventNameRegistry.PowerLifecycleSignalOverflow);
+        if (directive.RecoveryForced)
+          WriteLog(config, LogLevel.Warn, "未在 30 秒内观察到恢复信号，进入受控恢复稳定期", EventNameRegistry.PowerLifecycleRecoveryForced);
+        if (!directive.RunIteration)
+        {
+          WaitForNextIteration(
+            ResolveWaitSeconds(directive.ReevaluateAfter),
+            cancellationToken);
+          continue;
+        }
+
         try
         {
-          await _iterationRunner.RunAsync(_iterationState, cancellationToken);
+          await _iterationRunner.RunAsync(
+            _iterationState,
+            new GuardianIterationContext(
+              directive.AllowPolicyMutation,
+              directive.ResetIdleEpoch,
+              directive.ForcePowerRefresh,
+              directive.AbsorbCurrentPlanAsBaseline,
+              directive.Phase),
+            cancellationToken);
         }
         catch (Exception ex)
         {
@@ -108,11 +131,14 @@ public sealed partial class GuardianLoop
           }
         }
 
-        _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
-          PowerCfgExecutor.GetCurrentPlanGuid,
-          _iterationState.LastKnownGuid,
-          message => WriteLog(config, LogLevel.Warn, message, EventNameRegistry.ExternalPlanChange));
-        WaitForNextIteration(GuardianIterationTiming.ResolveWaitSeconds(_configRepository, _rootPath), cancellationToken);
+        if (directive.AllowPolicyMutation)
+        {
+          _iterationState.LastKnownGuid = GuardianPlanProbe.ProbeOrKeep(
+            PowerCfgExecutor.GetCurrentPlanGuid,
+            _iterationState.LastKnownGuid,
+            message => WriteLog(config, LogLevel.Warn, message, EventNameRegistry.ExternalPlanChange));
+        }
+        WaitForNextIteration(ResolveWaitSeconds(directive.ReevaluateAfter), cancellationToken);
       }
     }
     finally
@@ -121,15 +147,15 @@ public sealed partial class GuardianLoop
     }
   }
 
-  private void HandlePowerEvent(bool isOnAc)
+  private void HandlePowerEvent(PowerLifecycleSignal signal)
   {
     try
     {
-      ObservePowerSource(isOnAc);
+      _powerLifecycle.Observe(signal);
     }
     catch
     {
-      // ignore logging failures on system event thread
+      // State observation is memory-only; event-thread failures must not escape.
     }
 
     _wakeSignal.Release();
@@ -154,6 +180,12 @@ public sealed partial class GuardianLoop
     _wakeSignal.Wait(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
     while (_wakeSignal.Wait(0, cancellationToken)) { }
   }
+
+  private int ResolveWaitSeconds(TimeSpan? lifecycleReevaluateAfter)
+    => GuardianIterationTiming.ResolveWaitSeconds(
+      _configRepository,
+      _rootPath,
+      lifecycleReevaluateAfter);
 
   private GuardConfig LoadConfig() => _configRepository.LoadOrDefault(_rootPath);
 

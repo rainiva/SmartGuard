@@ -12,6 +12,7 @@ public class IdleTrackerTests
     [InlineData(94u, 100u, true)]
     [InlineData(95u, 100u, false)]
     [InlineData(120u, 100u, false)]
+    [InlineData(uint.MaxValue, uint.MaxValue, false)]
     public void Detects_user_activity_when_api_idle_drops_or_is_near_zero(
         uint apiIdle,
         uint previousApiIdle,
@@ -21,94 +22,113 @@ public class IdleTrackerTests
     }
 
     [Fact]
-    public void Seeds_wall_clock_from_api_idle_on_first_sample()
+    public void Seeds_awake_epoch_from_api_idle_on_first_sample()
     {
-        var utcNow = new DateTime(2026, 6, 22, 12, 0, 0, DateTimeKind.Utc);
-        var tracker = new IdleTracker();
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
 
-        tracker.Sample(() => 900, utcNow).Should().Be(900u);
-        tracker.Sample(() => 905, utcNow.AddSeconds(5)).Should().Be(905u);
+        tracker.Sample(() => 900).Should().Be(900u);
+        time.Advance(TimeSpan.FromSeconds(5));
+        tracker.Sample(() => 905).Should().Be(905u);
     }
 
     [Fact]
-    public void Uses_wall_clock_idle_when_api_idle_stalls_across_sleep()
+    public void Uses_monotonic_elapsed_idle_when_api_idle_stalls()
     {
-        var start = new DateTime(2026, 6, 22, 12, 0, 0, DateTimeKind.Utc);
-        var tracker = new IdleTracker();
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
 
-        tracker.Sample(() => 480, start);
-        tracker.Sample(() => 480, start.AddMinutes(48))
+        tracker.Sample(() => 480);
+        time.Advance(TimeSpan.FromMinutes(48));
+        tracker.Sample(() => 480)
             .Should().Be(3360u);
     }
 
     [Fact]
     public void Resets_wall_clock_when_user_activity_is_detected()
     {
-        var start = new DateTime(2026, 6, 22, 12, 0, 0, DateTimeKind.Utc);
-        var tracker = new IdleTracker();
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
 
-        tracker.Sample(() => 600, start);
-        tracker.Sample(() => 620, start.AddMinutes(20)).Should().Be(1800u);
-        tracker.Sample(() => 0, start.AddMinutes(21)).Should().Be(0u);
-        tracker.Sample(() => 120, start.AddMinutes(23)).Should().Be(120u);
+        tracker.Sample(() => 600);
+        time.Advance(TimeSpan.FromMinutes(20));
+        tracker.Sample(() => 620).Should().Be(1800u);
+        time.Advance(TimeSpan.FromMinutes(1));
+        tracker.Sample(() => 0).Should().Be(0u);
+        time.Advance(TimeSpan.FromMinutes(2));
+        tracker.Sample(() => 120).Should().Be(120u);
     }
 
     [Fact]
-    public void Does_not_reset_wall_idle_when_api_drops_after_sleep_stall()
+    public void Resume_reset_handles_api_idle_snapback_as_a_new_epoch()
     {
-        var start = new DateTime(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
-        var tracker = new IdleTracker();
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
 
-        tracker.Sample(() => 480u, start);
-        tracker.Sample(() => 480u, start.AddMinutes(48)).Should().Be(3360u);
+        tracker.Sample(() => 480u);
+        time.Advance(TimeSpan.FromMinutes(48));
+        tracker.Sample(() => 480u).Should().Be(3360u);
 
-        // Wake: GetLastInputInfo often snaps back without real user input.
-        tracker.Sample(() => 30u, start.AddMinutes(48).AddSeconds(30))
-            .Should().BeGreaterThanOrEqualTo(3390u);
+        tracker.ResetAfterResume();
+        tracker.Sample(() => 30u).Should().Be(0u);
     }
 
     [Fact]
     public void Resets_when_api_idle_drops_while_wall_idle_is_consistent()
     {
-        var start = new DateTime(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
-        var tracker = new IdleTracker();
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
 
-        tracker.Sample(() => 100u, start);
-        tracker.Sample(() => 120u, start.AddSeconds(20)).Should().Be(120u);
-        tracker.Sample(() => 10u, start.AddSeconds(30)).Should().Be(10u);
-    }
-
-    [Theory]
-    [InlineData(0u, 100u, 100u, true)]
-    [InlineData(30u, 480u, 3360u, false)]
-    [InlineData(10u, 120u, 130u, true)]
-    [InlineData(50u, 100u, 100u, true)]
-    public void ShouldResetForActivity_distinguishes_real_input_from_sleep_recovery(
-        uint apiIdle,
-        uint previousApiIdle,
-        uint wallIdle,
-        bool expected)
-    {
-        IdleTracker.ShouldResetForActivity(apiIdle, previousApiIdle, wallIdle).Should().Be(expected);
+        tracker.Sample(() => 100u);
+        time.Advance(TimeSpan.FromSeconds(20));
+        tracker.Sample(() => 120u).Should().Be(120u);
+        time.Advance(TimeSpan.FromSeconds(10));
+        tracker.Sample(() => 10u).Should().Be(10u);
     }
 
     [Fact]
     public void Monotonic_api_idle_reaches_balanced_threshold_without_reset()
     {
-        var start = new DateTime(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
-        var tracker = new IdleTracker();
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
         uint api = 0;
         uint lastIdle = 0;
 
         for (var i = 0; i < 25; i++)
         {
             api += 30;
-            var sampleAt = start.AddSeconds(i * 30);
-            var idle = tracker.Sample(() => api, sampleAt);
+            if (i > 0)
+                time.Advance(TimeSpan.FromSeconds(30));
+            var idle = tracker.Sample(() => api);
             idle.Should().BeGreaterThanOrEqualTo(lastIdle);
             lastIdle = idle;
         }
 
         lastIdle.Should().BeGreaterThanOrEqualTo(300u);
+    }
+
+    [Fact]
+    public void Mouse_wake_sampled_eight_seconds_later_starts_a_new_awake_epoch()
+    {
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
+        tracker.Sample(() => 295).Should().Be(295);
+        time.Advance(TimeSpan.FromMinutes(1));
+        tracker.ResetAfterResume();
+        time.Advance(TimeSpan.FromSeconds(8));
+        tracker.Sample(() => 8).Should().Be(0);
+        time.Advance(TimeSpan.FromSeconds(15));
+        tracker.Sample(() => 23).Should().BeInRange(15u, 23u);
+    }
+
+    [Fact]
+    public void Awake_idle_uses_monotonic_elapsed_time_and_ignores_utc_clock_changes()
+    {
+        var time = new ManualTimeProvider();
+        var tracker = new IdleTracker(time);
+        tracker.Sample(() => 10).Should().Be(10);
+        time.AdvanceTimestamp(TimeSpan.FromSeconds(30));
+        time.SetUtcNow(time.GetUtcNow().AddHours(-8));
+        tracker.Sample(() => 40).Should().Be(40);
     }
 }

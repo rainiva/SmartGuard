@@ -6,6 +6,8 @@ public static class LogEventChannels
     => eventName switch
     {
       EventNameRegistry.AppStarted or EventNameRegistry.AppStopping => LogChannelRegistry.Lifecycle,
+      EventNameRegistry.PowerSuspendObserved
+        or EventNameRegistry.PowerResumeObserved => LogChannelRegistry.Lifecycle,
       EventNameRegistry.PowerPlanSwitched
         or EventNameRegistry.PowerSourceChanged
         or EventNameRegistry.ExternalPlanChange
@@ -16,7 +18,9 @@ public static class LogEventChannels
         or EventNameRegistry.ConfigMutationLogged => LogChannelRegistry.Policy,
       EventNameRegistry.IterationError
         or EventNameRegistry.RecoveryDegraded
-        or EventNameRegistry.RecoveryRestored => LogChannelRegistry.Recovery,
+        or EventNameRegistry.RecoveryRestored
+        or EventNameRegistry.PowerLifecycleRecoveryForced
+        or EventNameRegistry.PowerLifecycleSignalOverflow => LogChannelRegistry.Recovery,
       EventNameRegistry.LogBackpressureApplied
         or EventNameRegistry.LogDeduplicationEmitted
         or EventNameRegistry.PipelineHealthSampled => LogChannelRegistry.Diagnostics,

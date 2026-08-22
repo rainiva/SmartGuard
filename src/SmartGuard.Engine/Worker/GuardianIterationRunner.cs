@@ -23,31 +23,48 @@ internal sealed class GuardianIterationRunner(
   BrightnessService brightness,
   StatusPublisher publisher,
   Func<GuardConfig> loadConfig,
-  Action<GuardConfig, LogLevel, string> writeLog,
+  Action<GuardConfig, LogLevel, string, string> writeLog,
   Action<bool> observePowerSource,
-  bool powerCfgBrightnessSupported)
+  bool powerCfgBrightnessSupported,
+  Func<uint>? readIdleSeconds = null,
+  Func<bool, (int Percent, bool IsOnAc)>? readBatteryInfo = null,
+  Func<PowerSchemeInfo?>? readCurrentPlanInfo = null,
+  Action<Guid>? setActivePlan = null,
+  Action<Guid, int>? syncPlanBrightness = null)
 {
-  public async Task RunAsync(GuardianLoopIterationState state, CancellationToken cancellationToken)
+  public async Task RunAsync(
+    GuardianLoopIterationState state,
+    GuardianIterationContext context,
+    CancellationToken cancellationToken)
   {
     OperationIdContext.GenerateNew();
     TraceIdContext.GenerateNew();
     var config = loadConfig();
     var planCatalog = state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad();
     state.PlanCatalog = planCatalog;
-    var idle = (int)idleTracker.Sample(IdleDetector.GetIdleSeconds, DateTime.UtcNow);
-    var (batteryPercent, isOnAc) = BatteryInfoProvider.GetBatteryInfo();
+    if (context.ResetIdleEpoch)
+      idleTracker.ResetAfterResume();
+    var idle = (int)idleTracker.Sample(readIdleSeconds ?? IdleDetector.GetIdleSeconds);
+    var (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(context.ForcePowerRefresh);
     observePowerSource(isOnAc);
-    var activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
+    var activePlanInfo = (readCurrentPlanInfo ?? PowerCfgExecutor.GetCurrentPlanInfo)();
     var current = activePlanInfo?.Guid;
+    if (context.AbsorbCurrentPlanAsBaseline)
+    {
+      state.LastKnownGuid = current;
+      state.ScriptJustSwitched = false;
+    }
     var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);
-    var externalChangeDetected = PolicyEngine.IsExternalPlanChange(
-      state.LastKnownGuid, current, state.ScriptJustSwitched, expected);
+    var externalChangeDetected = context.AllowPolicyMutation &&
+      !context.AbsorbCurrentPlanAsBaseline &&
+      PolicyEngine.IsExternalPlanChange(
+        state.LastKnownGuid, current, state.ScriptJustSwitched, expected);
     string? externalPlanNameForNotify = null;
 
     if (externalChangeDetected)
     {
       externalPlanNameForNotify = ResolvePlanName(current, config, planCatalog, activePlanInfo);
-      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {externalPlanNameForNotify} ({current}) | 下轮纠偏");
+      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {externalPlanNameForNotify} ({current}) | 下轮纠偏", EventNameRegistry.ExternalPlanChange);
     }
     state.ScriptJustSwitched = false;
 
@@ -60,26 +77,28 @@ internal sealed class GuardianIterationRunner(
     var switchBrightnessAfter = bright;
     var switchBrightnessBefore = bright;
 
-    if (expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
+    if (context.AllowPolicyMutation &&
+        expected is not null &&
+        PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
       var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, cancellationToken);
       state.ScriptJustSwitched = true;
       planSwitched = true;
       switchBrightnessBefore = result.Before;
       switchBrightnessAfter = result.After;
-      activePlanInfo = PowerCfgExecutor.GetCurrentPlanInfo();
+      activePlanInfo = (readCurrentPlanInfo ?? PowerCfgExecutor.GetCurrentPlanInfo)();
       current = activePlanInfo?.Guid;
       var pwr = isOnAc ? "插电" : "电池";
       switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
       if (bright >= 0)
       {
-        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}");
+        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}", EventNameRegistry.PowerPlanSwitched);
         if (result.After != result.Before)
-          writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次");
+          writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次", EventNameRegistry.IterationError);
       }
       else
       {
-        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持");
+        writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持", EventNameRegistry.PowerPlanSwitched);
       }
       state.LastStatusLabel = label;
     }
@@ -87,7 +106,8 @@ internal sealed class GuardianIterationRunner(
     {
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       writeLog(config, LogLevel.Info,
-        GuardianLogMessages.FormatStatusLabelChange(label, idle, planName, batteryPercent, isOnAc, bright));
+        GuardianLogMessages.FormatStatusLabelChange(label, idle, planName, batteryPercent, isOnAc, bright),
+        EventNameRegistry.IdleDetected);
       state.LastStatusLabel = label;
     }
 
@@ -96,7 +116,8 @@ internal sealed class GuardianIterationRunner(
     {
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       writeLog(config, LogLevel.Heart,
-        GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright));
+        GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright),
+        EventNameRegistry.HeartbeatTick);
       state.LastHeartbeat = DateTime.Now;
     }
 
@@ -149,12 +170,12 @@ internal sealed class GuardianIterationRunner(
     GuardConfig config,
     int brightness,
     GuardianLoopIterationState state,
-    Action<GuardConfig, LogLevel, string> writeLog)
+    Action<GuardConfig, LogLevel, string, string> writeLog)
   {
     if (brightness < 0) return;
 
     if (state.LastBrightness is int previous && previous != brightness)
-      writeLog(config, LogLevel.Info, GuardianLogMessages.FormatBrightnessChange(previous, brightness));
+      writeLog(config, LogLevel.Info, GuardianLogMessages.FormatBrightnessChange(previous, brightness), EventNameRegistry.BrightnessAdjusted);
 
     state.LastBrightness = brightness;
   }
@@ -176,9 +197,9 @@ internal sealed class GuardianIterationRunner(
     CancellationToken cancellationToken)
   {
     if (powerCfgBrightnessSupported && brightnessBefore >= 0)
-      PowerCfgExecutor.SyncPlanBrightness(target, brightnessBefore);
+      (syncPlanBrightness ?? PowerCfgExecutor.SyncPlanBrightness)(target, brightnessBefore);
 
-    PowerCfgExecutor.SetActivePlan(target);
+    (setActivePlan ?? PowerCfgExecutor.SetActivePlan)(target);
     await Task.Delay(config.BrightnessRestoreMs, cancellationToken);
 
     if (brightnessBefore < 0) return (brightnessBefore, brightnessBefore);

@@ -2,9 +2,10 @@ using Microsoft.Win32;
 
 namespace SmartGuard.Engine.Infrastructure;
 
-public sealed class PowerEventWakeListener : IDisposable
+internal sealed class PowerEventWakeListener : IDisposable
 {
-  private readonly Action<bool> _onPowerChanged;
+  private readonly Action<PowerLifecycleSignal> _onPowerChanged;
+  private readonly TimeProvider _timeProvider;
   private bool _subscribed;
   private bool _usedTestOverride;
 
@@ -13,14 +14,13 @@ public sealed class PowerEventWakeListener : IDisposable
 
   public bool IsEnabled { get; private set; }
 
-  public PowerEventWakeListener(Action<bool> onPowerChanged)
-    : this(onPowerChanged, subscribe: true)
-  {
-  }
-
-  private PowerEventWakeListener(Action<bool> onPowerChanged, bool subscribe)
+  private PowerEventWakeListener(
+    Action<PowerLifecycleSignal> onPowerChanged,
+    TimeProvider timeProvider,
+    bool subscribe)
   {
     _onPowerChanged = onPowerChanged;
+    _timeProvider = timeProvider;
     if (!subscribe)
       return;
 
@@ -35,8 +35,17 @@ public sealed class PowerEventWakeListener : IDisposable
     }
   }
 
-  public static PowerEventWakeListener Create(Action<bool> onPowerChanged)
-    => new(onPowerChanged, subscribe: true);
+  internal PowerEventWakeListener(
+    Action<PowerLifecycleSignal> onPowerChanged,
+    TimeProvider? timeProvider = null)
+    : this(onPowerChanged, timeProvider ?? TimeProvider.System, subscribe: true)
+  {
+  }
+
+  internal static PowerEventWakeListener Create(
+    Action<PowerLifecycleSignal> onPowerChanged,
+    TimeProvider? timeProvider = null)
+    => new(onPowerChanged, timeProvider ?? TimeProvider.System, subscribe: true);
 
   private void Subscribe()
   {
@@ -55,10 +64,13 @@ public sealed class PowerEventWakeListener : IDisposable
 
   private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
   {
-    var isOnAc = PowerEventStateResolver.Resolve(
-      e.Mode,
-      readBatteryInfo: () => BatteryInfoProvider.GetBatteryInfo(forceRefresh: true));
-    _onPowerChanged(isOnAc);
+    var kind = e.Mode switch
+    {
+      PowerModes.Suspend => PowerLifecycleKind.Suspending,
+      PowerModes.Resume => PowerLifecycleKind.Resumed,
+      _ => PowerLifecycleKind.StatusChanged,
+    };
+    _onPowerChanged(new PowerLifecycleSignal(kind, _timeProvider.GetUtcNow()));
   }
 
   public void Dispose()
