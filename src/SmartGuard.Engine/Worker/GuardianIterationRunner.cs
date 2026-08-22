@@ -30,7 +30,8 @@ internal sealed class GuardianIterationRunner(
   Func<bool, (int Percent, bool IsOnAc)>? readBatteryInfo = null,
   Func<PowerPlanProbeResult>? readCurrentPlan = null,
   Func<Guid, CancellationToken, Task<PowerPlanApplyResult>>? applyPlan = null,
-  Action<Guid, int>? syncPlanBrightness = null)
+  Action<Guid, int>? syncPlanBrightness = null,
+  TimeProvider? timeProvider = null)
 {
   public async Task RunAsync(
     GuardianLoopIterationState state,
@@ -39,6 +40,7 @@ internal sealed class GuardianIterationRunner(
   {
     OperationIdContext.GenerateNew();
     TraceIdContext.GenerateNew();
+    var nowUtc = (timeProvider ?? TimeProvider.System).GetUtcNow();
     var config = loadConfig();
     var planCatalog = state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad();
     state.PlanCatalog = planCatalog;
@@ -182,7 +184,7 @@ internal sealed class GuardianIterationRunner(
 
     publisher.Publish(new StatusPayload
     {
-      timestamp = DateTime.Now.ToString("s"),
+      timestamp = nowUtc.ToString("O"),
       currentPlan = ResolvePlanName(current, config, planCatalog, activePlanInfo),
       currentPlanGUID = current?.ToString(),
       expectedPlan = expected is null ? null : ResolvePlanName(expected, config, planCatalog, activePlanInfo),

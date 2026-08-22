@@ -1,10 +1,11 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SmartGuard.Contracts;
 
 namespace SmartGuard.Engine.Infrastructure;
 
-public sealed class StatusPublisher(string statusPath)
+public sealed class StatusPublisher
 {
   private static readonly JsonSerializerOptions JsonOptions = new()
   {
@@ -12,27 +13,60 @@ public sealed class StatusPublisher(string statusPath)
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
   };
 
+  private readonly string _statusPath;
+  private readonly TimeProvider _timeProvider;
+  private readonly TimeSpan _maxStaleness;
   private StatusPayload? _lastPayload;
+  private long? _lastWriteTimestamp;
+
+  public StatusPublisher(
+    string statusPath,
+    TimeProvider? timeProvider = null,
+    TimeSpan? maxStaleness = null)
+  {
+    _statusPath = statusPath;
+    _timeProvider = timeProvider ?? TimeProvider.System;
+    _maxStaleness = maxStaleness ?? TimeSpan.FromSeconds(60);
+    if (_maxStaleness <= TimeSpan.Zero)
+      throw new ArgumentOutOfRangeException(nameof(maxStaleness));
+  }
 
   public void Publish(StatusPayload payload)
   {
-    if (_lastPayload is not null
-        && StatusPayloadEquals(_lastPayload, payload)
-        && !IdleDroppedSignificantly(_lastPayload, payload))
+    ArgumentNullException.ThrowIfNull(payload);
+    var now = _timeProvider.GetTimestamp();
+    var meaningfulChange = _lastPayload is null
+      || !StatusPayloadEquals(_lastPayload, payload)
+      || IdleDroppedSignificantly(_lastPayload, payload);
+    var freshnessDue = _lastWriteTimestamp is null
+      || _timeProvider.GetElapsedTime(_lastWriteTimestamp.Value, now) >= _maxStaleness;
+
+    if (!meaningfulChange && !freshnessDue)
       return;
 
     WritePayload(payload);
+    _lastPayload = payload;
+    _lastWriteTimestamp = now;
   }
 
   private void WritePayload(StatusPayload payload)
   {
-    var dir = Path.GetDirectoryName(statusPath);
+    var dir = Path.GetDirectoryName(_statusPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    var temp = statusPath + ".tmp";
-    File.WriteAllText(temp, JsonSerializer.Serialize(payload, JsonOptions));
-    if (File.Exists(statusPath)) File.Delete(statusPath);
-    File.Move(temp, statusPath);
-    _lastPayload = payload;
+    var temp = _statusPath + ".tmp";
+    try
+    {
+      File.WriteAllText(
+        temp,
+        JsonSerializer.Serialize(payload, JsonOptions),
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+      File.Move(temp, _statusPath, overwrite: true);
+    }
+    catch
+    {
+      try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+      throw;
+    }
   }
 
   private static bool IdleDroppedSignificantly(StatusPayload previous, StatusPayload current)

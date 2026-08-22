@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Infrastructure;
 
@@ -114,6 +115,41 @@ public class StatusPublisherTests : IDisposable
 
         File.ReadAllText(_statusPath).Should().Be(firstJson,
             "operationId 每轮迭代都会 GenerateNew，若纳入去重比较将导致状态无实质变化仍每轮重写 status.json");
+    }
+
+    [Fact]
+    public void Unchanged_status_is_refreshed_when_max_staleness_is_reached()
+    {
+        var time = new ManualTimeProvider();
+        var publisher = new StatusPublisher(_statusPath, time, TimeSpan.FromSeconds(60));
+        var payload = CreatePayload(idleSeconds: 0, batteryPercent: 90, Guid.NewGuid().ToString());
+
+        publisher.Publish(payload);
+        var firstWrite = File.GetLastWriteTimeUtc(_statusPath);
+
+        time.Advance(TimeSpan.FromSeconds(59));
+        publisher.Publish(payload);
+        File.GetLastWriteTimeUtc(_statusPath).Should().Be(firstWrite);
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        payload.timestamp = time.GetUtcNow().ToString("O");
+        publisher.Publish(payload);
+        using var document = JsonDocument.Parse(File.ReadAllText(_statusPath));
+        document.RootElement.GetProperty("timestamp").GetString().Should().Be(payload.timestamp);
+    }
+
+    [Fact]
+    public void Idle_growth_is_visible_at_refresh_cadence()
+    {
+        var time = new ManualTimeProvider();
+        var publisher = new StatusPublisher(_statusPath, time, TimeSpan.FromSeconds(60));
+        var planGuid = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(0, 90, planGuid));
+
+        time.Advance(TimeSpan.FromSeconds(60));
+        publisher.Publish(CreatePayload(60, 90, planGuid));
+
+        File.ReadAllText(_statusPath).Should().Contain("\"idleSeconds\": 60");
     }
 
     private static StatusPayload CreatePayload(int idleSeconds, int batteryPercent, string planGuid)
