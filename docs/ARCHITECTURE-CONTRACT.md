@@ -15,6 +15,8 @@
 | 配置文件 | `{root}/SmartGuard.config.json` | 全部经 `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save`、`ConfigMutationService` | Engine 直调 `GuardConfig.LoadFromFile` |
 | 运行时状态 | `{root}/SmartGuard.status.json` | `StatusJsonReader` / `StatusStore` | `StatusPublisher`（Engine） | Settings/Tray 各自解析 JSON |
 | 电池与供电状态 | `BatteryInfoProvider`；Windows `GetSystemPowerStatus` 为主来源，WMI 仅作未知字段的可选补充 | Engine 轮询、电源事件、状态发布 | — | WMI 异常覆盖原生状态；独立采集入口；异常直接伪造 `100% / 插电` |
+| 电源生命周期 | `PowerLifecycleStateMachine`（Engine 进程内） | `PowerEventWakeListener` typed signal；`GuardianLoop` 消费有界 directive batch | `PowerLifecycleStateMachine` | Suspend/Resume 压缩为 AC/DC；UI/PolicyEngine 自建生命周期；转换批次无界增长 |
+| Awake 空闲时间 | `IdleTracker` + 注入的 `TimeProvider` | `GuardianIterationRunner` | `IdleTracker` | 睡眠墙钟直接进入 300/900 秒阈值；Settings 重复计算策略 idle |
 | 主日志路径 | `config.LogFile` 或 `SmartGuardPaths.DefaultLogFile(root)` | Engine、Settings 日志页 | Engine、`AppendInfoLog` | Settings 硬编码 `SmartGuard.log` |
 | 启动日志路径 | `SmartGuardPaths.StartupLogFile(root)` | Engine CLI、Settings/Tray 暂停回退 | — | `InstallCommands` 硬编码 `SmartGuard.startup.log` |
 | 日志行追加落盘 | `SmartGuardLogWriter.TryAppendLine` | 全部进程 | `SmartGuardLogWriter` | 各处 `File.AppendAllText` 直写日志 |
@@ -132,6 +134,18 @@
 | `LogJsonlFormatter` | `SmartGuard.Configuration` | versioned JSONL 编解码：只处理纯 JSONL；legacy 文本由 `LogEventDecoder` 负责 |
 | `LogQueryFilterSpec` | `SmartGuard.Configuration` | 结构化筛选规格 record：时间/等级/模块/事件/OperationId/TraceId/PID/TID/关键词 + 分页 |
 | `LogFilterBuilder` | `SmartGuard.Configuration` | 流式筛选构建器：链式 With 方法构建 LogQueryFilterSpec |
+
+---
+
+## 3.1 电源生命周期稳定不变量
+
+| ID | 状态 | 契约 |
+|---|---|---|
+| PWR-LIFE-OWNER | 阻断 | `PowerLifecycleStateMachine` 是 `Running`/`Suspending`/`ResumeStabilizing` 唯一 Owner；`PolicyEngine` 不拥有生命周期。 |
+| PWR-LIFE-SUSPEND | 阻断 | Suspend 期间禁止计划仲裁、`powercfg /setactive` 和外部计划变更判定。 |
+| PWR-LIFE-RESUME | 阻断 | Resume 建立新的 awake-idle epoch；先吸收 OS 当前计划并完成恢复稳定期，再允许普通策略仲裁。 |
+| PWR-LIFE-TIME | 阻断 | awake 持续时间和心跳间隔只使用注入的 `TimeProvider` 单调时间；持久化时间为 UTC offset。 |
+| PWR-LIFE-VERIFY | 阻断 | 单元/组合测试通过不等于真实待机验收；Lid/Mouse/AC/DC 未执行时标记 `NOT RUN` 或 `BLOCKED`。 |
 
 ---
 
