@@ -75,6 +75,7 @@
 | `ConfigMutationService` | `SmartGuard.Configuration` | 原子局部写：Paused、ManualHighPerformanceUntil |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
+| `PowerPlanCatalogProvider` | `SmartGuard.Configuration` | 三档 Windows 电源计划目录唯一真源；Settings 只经可取消的 `LoadWithRetryAsync`，有效目录缓存并限制并发；Engine/兼容调用才使用同步 `TryLoad` |
 | `ScheduledTaskRegistrar` | `SmartGuard.Configuration` | 任务名与 XML 唯一源 |
 | `ScheduledTaskInstallGate` | `SmartGuard.Configuration` | 安装时跳过计划任务/shell 注册（CLI `--skip-scheduled-tasks` 或 env `SMARTGUARD_SKIP_SCHEDULED_TASKS`） |
 | `EngineLifecycle` | `SmartGuard.Configuration` | 停止进程与任务顺序 |
@@ -212,7 +213,7 @@
 | S-01 | **已关闭** | Tray 暂停菜单/切换读 `status.paused`（`TrayPauseState`） |
 | S-02 | **已关闭** | `GuardianRecovery` 消费 `enginePid` 跳过多余 `schtasks` |
 | S-03/S-04 | **已关闭** | `CreateDefault` → `PowerPlanCatalogProvider` + `SmartGuardPaths.DefaultLogFile` |
-| S-05 | **已关闭** | Settings 计划目录 `PowerPlanCatalogProvider.TryLoad()` |
+| S-05 | **已关闭** | Settings 计划目录由 `SettingsPlanCatalogCoordinator` 以可取消的 `PowerPlanCatalogProvider.LoadWithRetryAsync` 加载；`PowerPlanCatalogProvider` 负责有效缓存与单槽并发，`TryLoad()` 仅保留同步 Engine/兼容路径 |
 | S-06 | **已关闭** | AutoStart UI 读 `config.AutoStartEnabled`；写经 `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` |
 | S-07 | **已关闭** | 长生命周期 `TrayDisplaySettingsCache` 使用共享 `ConfigFileWatcher`；短生命周期 `GuardConfigRepository` 使用时间戳检测，避免监听器泄漏 |
 | S-08 | **已关闭** | `Status.cmd` 与 `ScheduledTaskRegistrar` 任务名一致 |

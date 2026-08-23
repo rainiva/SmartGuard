@@ -10,15 +10,6 @@ internal sealed class WpfApplicationFixture : IDisposable
 
     public WpfApplicationFixture()
     {
-        // Blocking-hook tests (10s gated log reads) pile up busy pool workers;
-        // once the worker count passes the default minimum (CPU count), the
-        // thread pool throttles new-thread injection to ~1/s and a fresh
-        // Task.Run log flight can sit "queued" for seconds, failing WaitUntil
-        // gates (observed: flight stage=queued+5017ms, pending=18). Raise the
-        // floor so refresh flights always schedule promptly under test load.
-        ThreadPool.GetMinThreads(out var minWorkers, out var minIo);
-        ThreadPool.SetMinThreads(Math.Max(minWorkers, 128), minIo);
-
         _staThread = new Thread(StaThreadMain)
         {
             IsBackground = true,

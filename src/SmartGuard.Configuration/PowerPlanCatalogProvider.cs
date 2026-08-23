@@ -33,6 +33,7 @@ public static class PowerPlanCatalogProvider
     PowerSaverPlanGuid,
   ];
 
+  private static readonly SemaphoreSlim AsyncLoadGate = new(1, 1);
   private static IReadOnlyDictionary<Guid, string>? _sessionCache;
 
   internal static Func<IReadOnlyDictionary<Guid, string>>? LoadImplementationForTests;
@@ -56,11 +57,49 @@ public static class PowerPlanCatalogProvider
   }
 
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
-    => Task.Run(() =>
+    => LoadWithRetryAsync(cancellationToken: cancellationToken);
+
+  public static async Task<IReadOnlyDictionary<Guid, string>> LoadWithRetryAsync(
+    int maxAttempts = 3,
+    CancellationToken cancellationToken = default)
+  {
+    if (maxAttempts <= 0)
+      throw new ArgumentOutOfRangeException(nameof(maxAttempts));
+
+    cancellationToken.ThrowIfCancellationRequested();
+    var cached = _sessionCache;
+    if (cached is not null && !HasMissingKnownSchemes(cached))
+      return cached;
+
+    await AsyncLoadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+    try
     {
+      cached = _sessionCache;
+      if (cached is not null && !HasMissingKnownSchemes(cached))
+        return cached;
+
+      for (var attempt = 0; attempt < maxAttempts; attempt++)
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (attempt > 0)
+          InvalidateSessionCache();
+        var catalog = await TryLoadAsync(cancellationToken).ConfigureAwait(false);
+        if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
+          return catalog;
+
+        if (attempt < maxAttempts - 1)
+          await Task.Delay(300, cancellationToken).ConfigureAwait(false);
+      }
+
       cancellationToken.ThrowIfCancellationRequested();
-      return TryLoad();
-    });
+      InvalidateSessionCache();
+      return await TryLoadAsync(cancellationToken).ConfigureAwait(false);
+    }
+    finally
+    {
+      AsyncLoadGate.Release();
+    }
+  }
 
   public static IReadOnlyDictionary<Guid, string> LoadWithRetry(int maxAttempts = 3)
   {
@@ -123,6 +162,73 @@ public static class PowerPlanCatalogProvider
     return catalog;
   }
 
+  private static async Task<IReadOnlyDictionary<Guid, string>> TryLoadAsync(
+    CancellationToken cancellationToken)
+  {
+    if (_sessionCache is not null)
+      return _sessionCache;
+
+    try
+    {
+      var catalog = LoadImplementationForTests is { } loader
+        ? await Task.Run(loader, cancellationToken).ConfigureAwait(false)
+        : await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+
+      cancellationToken.ThrowIfCancellationRequested();
+      if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
+        _sessionCache = catalog;
+      return catalog;
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      throw;
+    }
+    catch
+    {
+      return new Dictionary<Guid, string>();
+    }
+  }
+
+  private static async Task<IReadOnlyDictionary<Guid, string>> LoadCoreAsync(
+    CancellationToken cancellationToken)
+  {
+    var listResult = await PowerCfgProcessRunner.RunPowerCfgAsync(
+        "/list",
+        cancellationToken,
+        TimeSpan.FromSeconds(15))
+      .ConfigureAwait(false);
+    cancellationToken.ThrowIfCancellationRequested();
+    if (!listResult.Succeeded)
+      return new Dictionary<Guid, string>();
+
+    var catalog = PowerPlanCatalogParser.ParseList(listResult.StandardOutput);
+    await EnrichWithHiddenSchemesAsync(catalog, cancellationToken).ConfigureAwait(false);
+
+    if (HasMissingKnownSchemes(catalog))
+    {
+      await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+      await EnrichWithHiddenSchemesAsync(catalog, cancellationToken).ConfigureAwait(false);
+    }
+
+    return catalog;
+  }
+
+  private static async Task EnrichWithHiddenSchemesAsync(
+    IDictionary<Guid, string> catalog,
+    CancellationToken cancellationToken)
+  {
+    foreach (var guid in KnownSchemeGuids)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      if (catalog.ContainsKey(guid))
+        continue;
+
+      var name = await TryQueryPlanNameAsync(guid, cancellationToken).ConfigureAwait(false);
+      if (!string.IsNullOrWhiteSpace(name))
+        catalog[guid] = name!;
+    }
+  }
+
   private static PowerCfgCommandResult RunPowerCfg(string arguments)
     => PowerCfgProcessRunner.RunPowerCfg(arguments, TimeSpan.FromSeconds(15));
 
@@ -138,6 +244,34 @@ public static class PowerPlanCatalogProvider
         return null;
 
       return parsedGuid == guid ? name : null;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private static async Task<string?> TryQueryPlanNameAsync(
+    Guid guid,
+    CancellationToken cancellationToken)
+  {
+    try
+    {
+      var result = await PowerCfgProcessRunner.RunPowerCfgAsync(
+          $"/query {guid:D}",
+          cancellationToken,
+          TimeSpan.FromSeconds(15))
+        .ConfigureAwait(false);
+      cancellationToken.ThrowIfCancellationRequested();
+      if (!result.Succeeded ||
+          !PowerPlanCatalogParser.TryParseQueryHeader(result.StandardOutput, out var parsedGuid, out var name))
+        return null;
+
+      return parsedGuid == guid ? name : null;
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+      throw;
     }
     catch
     {

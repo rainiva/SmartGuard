@@ -117,6 +117,392 @@ print(json.dumps(result))" $icon $officialDir
             $hostSource | Should -Match '\bAssertQuiescent\s*\('
         }
 
+        It 'WPF stability probe owns an isolated fail-closed controller contract' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $projectPath = Join-Path $root 'Tests\SmartGuard.Settings.StabilityProbe\SmartGuard.Settings.StabilityProbe.csproj'
+            $programPath = Join-Path $root 'Tests\SmartGuard.Settings.StabilityProbe\Program.cs'
+            $probePath = Join-Path $root 'scripts\Invoke-WpfStabilityProbe.ps1'
+
+            Test-Path -LiteralPath $projectPath | Should -BeTrue
+            Test-Path -LiteralPath $programPath | Should -BeTrue
+            Test-Path -LiteralPath $probePath | Should -BeTrue
+
+            $project = Get-Content -LiteralPath $projectPath -Raw -Encoding UTF8
+            $program = Get-Content -LiteralPath $programPath -Raw -Encoding UTF8
+            $probe = Get-Content -LiteralPath $probePath -Raw -Encoding UTF8
+
+            $project | Should -Match '<OutputType>Exe</OutputType>'
+            $program | Should -Match 'test-contamination'
+            $program | Should -Match 'production-equivalent'
+            $program | Should -Match 'TimedOut'
+            $program | Should -Match 'TRX'
+            $program | Should -Match 'startInfo\.Arguments'
+            $program | Should -Not -Match 'ArgumentList\.Add\(command\)'
+            $program | Should -Match 'TestOrderPath'
+            $program | Should -Match 'ReproductionStatus'
+            $program | Should -Match 'CleanupTimedOut'
+            $program | Should -Match 'ControllerTimedOut'
+            $program | Should -Match 'SelectionPath'
+            $probe | Should -Match 'RequireReproduction'
+            $probe | Should -Match '\[string\]\$ToolRoot'
+            $probe | Should -Not -Match '\[string\]\$ToolRoot\s*=\s*\(Join-Path \$PSScriptRoot'
+            $probe | Should -Match 'IsNullOrWhiteSpace\(\$ToolRoot\)'
+            $probe | Should -Match 'function Resolve-WpfStabilityTestHostPid'
+            $probe | Should -Match 'function Start-WpfStabilityController'
+            $probe | Should -Match 'Start-Process'
+            $probe | Should -Match '-FilePath \$dotnetCommand\.Source'
+            $probe | Should -Match 'function Start-WpfStabilityDiagnosticCapture'
+            $probe | Should -Match 'function Invoke-WpfStabilityTestSelection'
+            $probe | Should -Match 'test-selection'
+            $probe | Should -Match 'dotnet-counters\.exe'
+            $probe | Should -Match 'dotnet-stack\.exe'
+            $probe | Should -Match 'dotnet-trace\.exe'
+            $probe | Should -Match 'capture-status\.json'
+            $probe | Should -Match 'CapturePhase'
+            $probe | Should -Match 'CaptureDeadlineUtc'
+            $probe | Should -Match 'ControllerTimedOut'
+            $probe | Should -Match 'AddSeconds\(2\)'
+            $probe | Should -Match 'timeout-pre-terminate'
+            $probe | Should -Match 'Unavailable|Blocked'
+            $probe | Should -Match 'Read-SmartGuardWpfStabilityProbeResult'
+            $probe | Should -Not -Match 'production-equivalent[\s\S]{0,600}test-contamination'
+        }
+
+        It 'WPF stability probe result reader rejects missing and malformed evidence' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-wpf-probe-result-' + [guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                $missing = Read-SmartGuardWpfStabilityProbeResult -Path (Join-Path $tempDirectory 'missing.json')
+                $missing.Status | Should -Be 'Failed'
+
+                $malformedPath = Join-Path $tempDirectory 'malformed.json'
+                [System.IO.File]::WriteAllText($malformedPath, '{', [System.Text.UTF8Encoding]::new($false))
+                $malformed = Read-SmartGuardWpfStabilityProbeResult -Path $malformedPath
+                $malformed.Status | Should -Be 'Failed'
+
+                $zeroPath = Join-Path $tempDirectory 'zero.json'
+                [System.IO.File]::WriteAllText(
+                    $zeroPath,
+                    '{"Status":"Passed","TrxStatus":"Passed","TotalCount":0,"TestPid":123,"TimedOut":false}',
+                    [System.Text.UTF8Encoding]::new($false))
+                $zero = Read-SmartGuardWpfStabilityProbeResult -Path $zeroPath
+                $zero.Status | Should -Be 'Failed'
+
+                $nonZeroPath = Join-Path $tempDirectory 'passed-with-nonzero-exit.json'
+                $nonZero = [ordered]@{
+                    Status = 'Passed';
+                    ExecutionStatus = 'Passed';
+                    ReproductionStatus = 'NotReproduced';
+                    Mode = 'test-contamination';
+                    Iteration = 1;
+                    Seed = 7;
+                    ControllerPid = 123;
+                    StartUtc = '2026-08-23T00:00:00Z';
+                    EndUtc = '2026-08-23T00:00:01Z';
+                    ExitCode = 23;
+                    ControllerTimedOut = $false;
+                    TimedOut = $false;
+                    TrxPath = (Join-Path $tempDirectory 'missing.trx');
+                    StdoutPath = (Join-Path $tempDirectory 'stdout.log');
+                    StderrPath = (Join-Path $tempDirectory 'stderr.log');
+                    Filter = 'self-test';
+                    TrxStatus = 'Passed';
+                    TotalCount = 1;
+                    CleanupTimedOut = $false;
+                    CleanupError = $null;
+                    TestOrderPath = (Join-Path $tempDirectory 'test-order.json')
+                }
+                [System.IO.File]::WriteAllText(
+                    $nonZeroPath,
+                    ($nonZero | ConvertTo-Json),
+                    [System.Text.UTF8Encoding]::new($false))
+                $nonZeroResult = Read-SmartGuardWpfStabilityProbeResult -Path $nonZeroPath
+                $nonZeroResult.Status | Should -Be 'Failed'
+
+                $failedMissingOrderPath = Join-Path $tempDirectory 'failed-missing-order.json'
+                $failedMissingOrder = [ordered]@{
+                    Status = 'Failed';
+                    ExecutionStatus = 'Failed';
+                    ReproductionStatus = 'Blocked';
+                    Mode = 'test-contamination';
+                    Iteration = 1;
+                    Seed = 7;
+                    Filter = 'self-test';
+                    ControllerPid = 123;
+                    StartUtc = '2026-08-23T00:00:00Z';
+                    EndUtc = '2026-08-23T00:00:01Z';
+                    ExitCode = 23;
+                    ControllerTimedOut = $false;
+                    TimedOut = $false;
+                    TrxPath = (Join-Path $tempDirectory 'missing.trx');
+                    StdoutPath = (Join-Path $tempDirectory 'stdout.log');
+                    StderrPath = (Join-Path $tempDirectory 'stderr.log');
+                    TestOrderPath = (Join-Path $tempDirectory 'missing-test-order.json');
+                    TrxStatus = 'Missing';
+                    TotalCount = 0;
+                    CleanupTimedOut = $false;
+                    CleanupError = $null;
+                }
+                [System.IO.File]::WriteAllText(
+                    $failedMissingOrderPath,
+                    ($failedMissingOrder | ConvertTo-Json),
+                    [System.Text.UTF8Encoding]::new($false))
+                $failedMissingOrderResult = Read-SmartGuardWpfStabilityProbeResult -Path $failedMissingOrderPath
+                $failedMissingOrderResult.Error | Should -Match 'test-order'
+
+                $badReproducedOrderPath = Join-Path $tempDirectory 'bad-reproduced-order.json'
+                $badReproducedOrder = [ordered]@{
+                    Status = 'Selection';
+                    Mode = 'test-contamination';
+                    Iteration = 1;
+                    Seed = 7;
+                    Filter = 'self-test';
+                    Tests = @([ordered]@{ Ordinal = 1; Name = 'self-test' });
+                }
+                [System.IO.File]::WriteAllText(
+                    $badReproducedOrderPath,
+                    ($badReproducedOrder | ConvertTo-Json),
+                    [System.Text.UTF8Encoding]::new($false))
+                $badReproducedStdoutPath = Join-Path $tempDirectory 'bad-reproduced.stdout.log'
+                [System.IO.File]::WriteAllText(
+                    $badReproducedStdoutPath,
+                    'paged-queued',
+                    [System.Text.UTF8Encoding]::new($false))
+                $badReproducedPath = Join-Path $tempDirectory 'bad-reproduced.json'
+                $badReproduced = [ordered]@{
+                    Status = 'Failed';
+                    ExecutionStatus = 'Failed';
+                    ReproductionStatus = 'Reproduced';
+                    Mode = 'test-contamination';
+                    Iteration = 1;
+                    Seed = 7;
+                    Filter = 'self-test';
+                    ControllerPid = 123;
+                    StartUtc = '2026-08-23T00:00:00Z';
+                    EndUtc = '2026-08-23T00:00:01Z';
+                    ExitCode = 0;
+                    ControllerTimedOut = $true;
+                    TimedOut = $true;
+                    TrxPath = (Join-Path $tempDirectory 'missing.trx');
+                    StdoutPath = $badReproducedStdoutPath;
+                    StderrPath = (Join-Path $tempDirectory 'stderr.log');
+                    TestOrderPath = $badReproducedOrderPath;
+                    TrxStatus = 'Missing';
+                    TotalCount = 0;
+                    CleanupTimedOut = $false;
+                    CleanupError = $null;
+                }
+                [System.IO.File]::WriteAllText(
+                    $badReproducedPath,
+                    ($badReproduced | ConvertTo-Json),
+                    [System.Text.UTF8Encoding]::new($false))
+                $badReproducedResult = Read-SmartGuardWpfStabilityProbeResult -Path $badReproducedPath
+                $badReproducedResult.Error | Should -Match 'Reproduced'
+
+                $validReproducedTrxPath = Join-Path $tempDirectory 'valid-reproduced.trx'
+                [System.IO.File]::WriteAllText(
+                    $validReproducedTrxPath,
+                    '<TestRun><ResultSummary outcome="Completed"><Counters total="1" executed="1" passed="0" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" notExecuted="0" /></ResultSummary><Results><UnitTestResult testName="self-test" outcome="Failed" /></Results></TestRun>',
+                    [System.Text.UTF8Encoding]::new($false))
+                $validReproducedOrderPath = Join-Path $tempDirectory 'valid-reproduced-order.json'
+                $validReproducedOrder = [ordered]@{
+                    Status = 'Captured';
+                    Mode = 'test-contamination';
+                    Iteration = 1;
+                    Seed = 7;
+                    Filter = 'self-test';
+                    Tests = @([ordered]@{ Ordinal = 1; Name = 'self-test' });
+                }
+                [System.IO.File]::WriteAllText(
+                    $validReproducedOrderPath,
+                    ($validReproducedOrder | ConvertTo-Json),
+                    [System.Text.UTF8Encoding]::new($false))
+                $validReproducedPath = Join-Path $tempDirectory 'valid-reproduced.json'
+                $validReproduced = [ordered]@{
+                    Status = 'Failed';
+                    ExecutionStatus = 'Failed';
+                    ReproductionStatus = 'Reproduced';
+                    Mode = 'test-contamination';
+                    Iteration = 1;
+                    Seed = 7;
+                    Filter = 'self-test';
+                    ControllerPid = 123;
+                    StartUtc = '2026-08-23T00:00:00Z';
+                    EndUtc = '2026-08-23T00:00:01Z';
+                    ExitCode = 1;
+                    ControllerTimedOut = $false;
+                    TimedOut = $false;
+                    TrxPath = $validReproducedTrxPath;
+                    StdoutPath = $badReproducedStdoutPath;
+                    StderrPath = (Join-Path $tempDirectory 'stderr.log');
+                    TestOrderPath = $validReproducedOrderPath;
+                    TrxStatus = 'Failed';
+                    TotalCount = 1;
+                    CleanupTimedOut = $false;
+                    CleanupError = $null;
+                }
+                [System.IO.File]::WriteAllText(
+                    $validReproducedPath,
+                    ($validReproduced | ConvertTo-Json),
+                    [System.Text.UTF8Encoding]::new($false))
+                $validReproducedResult = Read-SmartGuardWpfStabilityProbeResult -Path $validReproducedPath
+                $validReproducedResult.Status | Should -Be 'Failed'
+                $validReproducedResult.ReproductionStatus | Should -Be 'Reproduced'
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'WPF stability probe reproduction gate distinguishes expected failure from infrastructure failure' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+
+            $notReproduced = [pscustomobject]@{
+                ControllerExitCode = 0
+                ControllerTimedOut = $false
+                ControllerEvidenceError = ''
+                CaptureStatus = 'Passed'
+                Result = [pscustomobject]@{
+                    Status = 'Passed'
+                    ReproductionStatus = 'NotReproduced'
+                    ControllerTimedOut = $false
+                    TimedOut = $false
+                    ExitCode = 0
+                    TrxStatus = 'Passed'
+                    CleanupTimedOut = $false
+                    CleanupError = $null
+                }
+            }
+            Get-SmartGuardWpfStabilityProbeExitCode -Results @($notReproduced) -RequireReproduction | Should -Be 2
+
+            $reproduced = [pscustomobject]@{
+                ControllerExitCode = 0
+                ControllerTimedOut = $false
+                ControllerEvidenceError = ''
+                CaptureStatus = 'Passed'
+                Result = [pscustomobject]@{
+                    Status = 'Failed'
+                    ReproductionStatus = 'Reproduced'
+                    ControllerTimedOut = $false
+                    TimedOut = $false
+                    ExitCode = 23
+                    TrxStatus = 'Failed'
+                    CleanupTimedOut = $false
+                    CleanupError = $null
+                }
+            }
+            Get-SmartGuardWpfStabilityProbeExitCode -Results @($reproduced) -RequireReproduction | Should -Be 0
+
+            $reproducedWithoutCapture = [pscustomobject]@{
+                ControllerExitCode = 0
+                ControllerTimedOut = $false
+                ControllerEvidenceError = ''
+                CaptureStatus = 'Failed'
+                Result = [pscustomobject]@{
+                    Status = 'Failed'
+                    ReproductionStatus = 'Reproduced'
+                    ControllerTimedOut = $false
+                    CleanupTimedOut = $false
+                    CleanupError = $null
+                }
+            }
+            Get-SmartGuardWpfStabilityProbeExitCode -Results @($reproducedWithoutCapture) -RequireReproduction | Should -Be 1
+
+            $invalidReproduced = [pscustomobject]@{
+                ControllerExitCode = 0
+                ControllerTimedOut = $false
+                ControllerEvidenceError = ''
+                CaptureStatus = 'Passed'
+                Result = [pscustomobject]@{
+                    Status = 'Failed'
+                    ReproductionStatus = 'Reproduced'
+                    ControllerTimedOut = $true
+                    TimedOut = $true
+                    ExitCode = 0
+                    TrxStatus = 'Missing'
+                    CleanupTimedOut = $false
+                    CleanupError = $null
+                }
+            }
+            Get-SmartGuardWpfStabilityProbeExitCode -Results @($invalidReproduced) -RequireReproduction | Should -Be 1
+
+            $maskedControllerTimeout = [pscustomobject]@{
+                ControllerExitCode = 0
+                ControllerTimedOut = $true
+                ControllerEvidenceError = ''
+                CaptureStatus = 'Passed'
+                Result = [pscustomobject]@{
+                    Status = 'Passed'
+                    ReproductionStatus = 'NotReproduced'
+                    ControllerTimedOut = $false
+                    TimedOut = $false
+                    ExitCode = 0
+                    TrxStatus = 'Passed'
+                    CleanupTimedOut = $false
+                    CleanupError = $null
+                }
+            }
+            Get-SmartGuardWpfStabilityProbeExitCode -Results @($maskedControllerTimeout) | Should -Be 1
+            Get-SmartGuardWpfStabilityProbeExitCode -Results @($maskedControllerTimeout) -RequireReproduction | Should -Be 1
+        }
+
+        It 'WPF stability probe controller records real non-zero and timeout children' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $projectPath = Join-Path $root 'Tests\SmartGuard.Settings.StabilityProbe\SmartGuard.Settings.StabilityProbe.csproj'
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-wpf-probe-child-' + [guid]::NewGuid().ToString('N'))
+            $failedDirectory = Join-Path $tempDirectory 'failed'
+            $timeoutDirectory = Join-Path $tempDirectory 'timeout'
+            $selectionPath = Join-Path $tempDirectory 'selection.txt'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                [System.IO.File]::WriteAllLines(
+                    $selectionPath,
+                    @('SmartGuard.Settings.Tests.WpfStaTestHostTests.self_test'),
+                    [System.Text.UTF8Encoding]::new($false))
+                & dotnet run --project $projectPath --no-restore -- `
+                    --mode test-contamination `
+                    --run-directory $failedDirectory `
+                    --iteration 1 `
+                    --seed 7 `
+                    --filter 'self-test' `
+                    --timeout-seconds 5 `
+                    --selection-path $selectionPath `
+                    --test-command 'exit /b 23'
+                $LASTEXITCODE | Should -Be 0
+                $failed = Get-Content -LiteralPath (Join-Path $failedDirectory 'probe-result.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                $failed.Status | Should -Be 'Failed'
+                $failed.ExitCode | Should -Be 23
+                $failed.TimedOut | Should -BeFalse
+                $failedOrder = Get-Content -LiteralPath (Join-Path $failedDirectory 'test-order.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                $failedOrder.Status | Should -Be 'Selection'
+                @($failedOrder.Tests).Count | Should -Be 1
+
+                & dotnet run --project $projectPath --no-restore -- `
+                    --mode test-contamination `
+                    --run-directory $timeoutDirectory `
+                    --iteration 2 `
+                    --seed 8 `
+                    --filter 'self-test' `
+                    --timeout-seconds 1 `
+                    --selection-path $selectionPath `
+                    --test-command 'ping 127.0.0.1 -n 30'
+                $LASTEXITCODE | Should -Be 0
+                $timeout = Get-Content -LiteralPath (Join-Path $timeoutDirectory 'probe-result.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                $timeout.Status | Should -Be 'Failed'
+                $timeout.TimedOut | Should -BeTrue
+                $timeout.TestPid | Should -BeGreaterThan 0
+                $timeoutOrder = Get-Content -LiteralPath (Join-Path $timeoutDirectory 'test-order.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+                $timeoutOrder.Status | Should -Be 'Selection'
+                @($timeoutOrder.Tests).Count | Should -Be 1
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'adversarial review document defines required WPF stability triggers and fields' {
             $root = Split-Path -Parent $PSScriptRoot
             $reviewPath = Join-Path $root 'docs\testing\WPF-TEST-ADVERSARIAL-REVIEW.md'

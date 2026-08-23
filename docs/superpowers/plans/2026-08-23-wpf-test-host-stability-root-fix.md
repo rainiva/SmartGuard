@@ -230,7 +230,32 @@ git add Tests/SmartGuard.Settings.StabilityProbe scripts/Invoke-WpfStabilityProb
 git commit -m "test(wpf): add isolated starvation evidence probe"
 ```
 
-**执行状态（2026-08-23）：** Task 2 的 fail-closed 控制器已在工作树形成，但按硬停止线暂不提交、不勾选完成。新 probe 构建为 0 警告/0 错误；定向 WPF probe Pester 为 3/3，既有 strict-TRX 回归为 1/1。真实 contamination 仅完成 1 次、TRX 6 tests Passed，未形成 5/5 RED；实际 `testhost` PID 未解析，`dotnet-counters`、`dotnet-stack`、`dotnet-trace` 不可用，production-equivalent 明确 `Blocked`。因此禁止进入生产调度改造，下一次必须先补充可归属的失败现场或明确授权安装/提供诊断工具。
+**执行状态（2026-08-23，最新）：** Task 2 仍按硬停止线保持 `BLOCKED`，不提交、不勾选完成。诊断工具已在用户授权后以固定 `9.0.661903` 版本安装到项目隔离目录 `.work/diagnostics/dotnet-tools/`。审查指出的结果真值、test-order、执行/复现分离和超时边界缺口已以 RED→GREEN 修正：Passed 必须同时满足 child exit 0、TRX 二次校验、非空有序 manifest 和未超时清理。探针构建为 0 警告/0 错误，定向 WPF probe Pester 为 3/3；最新连续 5 次 contamination 运行均为真实 child/testhost exit 0、TRX 6 tests Passed、六项有序 test manifest、实际 `testhost` PID 和非空 counters/stack/trace（工具 exit 0），机器结论为 `ReproductionStatus=NotReproduced`。这证明证据链可用，但没有形成 5/5 失败复现，也没有失败时间点的可归属堆栈；passing-run stack 不能替代 failure attribution。`production-equivalent` 仍明确 `Blocked`，因为现有选择器无法证明 test hooks 和 artificial worker blocking 已禁用。禁止进入生产调度改造；下一步必须先取得失败现场或补充一个不修改生产语义、能明确关闭测试污染的合法选择器。
+
+**最新复核补充（2026-08-23）：** 上述状态仍有效。运行前已增加有界 `dotnet test --list-tests` 发现，按 Ordinal 排序写入 controller 专属 Selection 清单；失败、超时和 Blocked 结果均必须持有可解析且非空的 Selection/Captured 清单，不能用单一 filter 字符串伪装顺序。`RequireReproduction` 现在区分完整复现成功（0）、健康但未复现（2）和基础设施/证据失败（1）；超时采集三工具共享 controller timeout+5s 的 `CaptureDeadlineUtc`。探针构建 0 警告/0 错误，定向 WPF probe Pester 4/4；最新真实污染 smoke 6/6、TRX Passed、PID 24644、三种诊断产物均非空且退出 0。最新完整门禁 Pester 126/126、.NET 1542/1542，但 Tray Integration 因提权 PowerShell 被取消而 `BLOCKED`，Installer Integration 因上游未通过而 `NOT RUN`，Run-Tests 退出 1；不得宣称 full green。无生产调度改动、无提交，继续停在 Task 2 硬停止线。
+
+**最终对抗复核（2026-08-23）：** 无 Critical/Important 阻塞项。`Reproduced` 仅在污染模式、非零子进程、非超时/清理成功、Captured 顺序、失败 TRX 且 `paged-queued` 输出签名同时成立时有效；伪造 JSON 与 discovery 超时遗留进程均有回归门禁。最新 smoke 为 `.work/test-results/wpf-stability/20260823T121532573Z-i1-s20260829-1427e9a00ca644b3b872503ced28a32c/`，`-RequireReproduction` 对健康未复现结果按设计返回非零。Task 2 仍未形成失败现场或 production-equivalent 合法选择器，不得进入 Task 3 或任何生产调度修复。
+
+**用户授权安装后的最终验证（2026-08-23）：** 用户已授权将固定版本 `9.0.661903` 的 `dotnet-counters`、`dotnet-stack`、`dotnet-trace` 安装到项目隔离目录 `.work/diagnostics/dotnet-tools/`。最终探针构建为 0 警告/0 错误，提升权限下聚焦 WPF Pester 为 4/4。新鲜 contamination smoke（seed `20260833`）为真实 testhost、TRX 6/6 Passed、三种诊断产物非空且退出 0，机器结论仍是 `NotReproduced`；刻意一秒超时（seed `20260832`）已能在统一截止时间和额外有界收尾窗口内写出完整 `TimedOut`/cleanup/capture 证据。工具链和超时边界已验证，但没有失败时间点 `paged-queued` 归属，也没有合法 production-equivalent 选择器；Task 2 继续 `BLOCKED`，不进入 Task 3 或生产调度改造。
+
+## 2026-08-23 真实 RED 后的决策修正
+
+上面的“没有失败时间点”结论已被新的提升权限完整门禁取代，但不能把一次 RED 夸大为已完成归因。
+
+**已确认事实：**
+
+1. `.work/test-results/run-tests-20260823T123758579Z-55e98de61a4a45358ffd3af7af2f432a.summary.json` 的完整门禁结果为 Pester `126/126`，.NET `1541/1542`，一例失败；Tray Integration 和 Installer Integration 均 `NOT RUN`，父退出码 `1`。
+2. 失败 TRX `.work/test-results/0080d122911740ffa94e5843d407e1c6-SmartGuard.Settings.Tests.trx` 的唯一失败是 `User_clicks_refresh_button_and_sees_new_log_lines`：`paged-queued+10006ms`、`active refresh=1`、`global flights running=1`、`started=137`、`pending=18`、`log read hook=False`、日志项为 0。这证明分页 flight 没有及时取得执行机会。
+3. `SettingsPlanCatalogCoordinator.BeginLoadPlanCatalogAsync` 对每个 Settings controller 启动未拥有的 `Task.Run(() => PowerPlanCatalogProvider.LoadWithRetry())`；CTS 没有传入 loader，`Dispose` 只能取消未被消费的 CTS，不能取消、等待或观察已启动的同步工作。
+4. `PowerPlanCatalogProvider.LoadWithRetry` 的 `powercfg` 查询和重试等待是同步的；长 Settings 诊断运行 `.work/diagnostics/settings-suite-20260823T124905458Z-537d542e719d44249e49a4c9187ab7f4/` 的多次 `dotnet-stack` 快照反复看到该 coordinator 的加载 lambda 在 ThreadPool 上执行。
+
+**合理推测：** 未拥有的电源计划加载任务造成测试污染并占用共享 ThreadPool，随后与日志分页路径的嵌套 `Task.Run` 共同放大队列延迟，最终表现为 `paged-queued`。这是当前最强解释，但长诊断快照不是失败瞬间采集，仍不等同于直接失败堆栈归属。
+
+**暂时无法验证：** 失败进程中第一个饥饿工作项的直接堆栈；关闭电源计划后台任务后的 production-equivalent 结果；去除分页外层 `Task.Run` 后是否仍独立失败。
+
+**决策修正：** 原 Task 3 的文件清单只覆盖测试夹具和 cleanup，而当前最强 Owner 是 `src/SmartGuard.Settings/SettingsPlanCatalogCoordinator.cs` 与 `src/SmartGuard.Configuration/PowerPlanCatalogProvider.cs` 的取消边界。按“按堆栈归属修复测试污染”的原则，不能照原 Task 3 直接改测试层；先新增一个有界的 owner-scoped RED，验证：取消可到达 loader、Dispose 后任务可观察且不再 late apply、重复 Begin 只保留最新 generation、异常不丢失。这个 RED 通过前，不修改日志分页生产调度，也不恢复/提高 `SetMinThreads`。
+
+**当前状态：** Task 2 = `RED reproduced / attribution strong but not failure-time direct`；原 Task 3 = `BLOCKED until scope rewrite`。这不是 full green，也不是根治完成。
 
 ---
 
@@ -583,4 +608,56 @@ git commit -m "test(wpf): close adversarial stability gate"
 | 个人判断 | 最可能的首要修复是测试隔离和 Owner 级 cleanup，而不是立即增加生产专用线程。 |
 | 未验证 | 生产等价负载是否也会饥饿；专用 worker 是否必要；最终连续 10/3 次门禁能否通过。 |
 
-**下一执行入口：Task 1。** 在 Task 2 取得可归属 RED 前，不修改生产调度代码。
+**本节结论已被上方“2026-08-23 真实 RED 后的决策修正”取代。** 当前下一执行入口不是原 Task 1/Task 3，而是先重写并执行一个 owner-scoped RED：验证 `SettingsPlanCatalogCoordinator` 对 `PowerPlanCatalogProvider` 的取消传递、任务观察、generation 丢弃和 Dispose 收敛。没有该 RED 的 GREEN 证据，不修改日志分页生产调度，也不宣称根治。
+
+## Task 3a：owner-scoped 修复与最终验证（2026-08-23）
+
+本节取代上面的“下一执行入口”结论：owner-scoped RED 已完成，最小生产修复已实现；但 Task 2 的“失败时间点直接堆栈/production-equivalent 选择器”硬门禁仍未满足，因此不把诊断阻塞伪装成已完成。
+
+### TDD 记录
+
+先取得并保留了以下 RED：
+
+1. `SettingsPlanCatalogCoordinator` 旧实现会在 `Dispose` 后 late-apply 目录，第二次 `Dispose` 可能抛 `ObjectDisposedException`。
+2. 异步电源计划加载所需符号不存在，新增取消/单槽 API 首先以编译失败暴露缺口。
+3. 并发 `LoadWithRetryAsync` 在没有闸门时观察到 `maxActive=2`；没有缓存复用时观察到并发调用数为 `2`。
+4. `WpfApplicationFixture` 仍写入 `ThreadPool.SetMinThreads(128)` 的源码契约测试为 RED。
+5. 10 轮稳定性脚本最初没有可靠读取 `Start-Process` 的退出码；这是测试编排自身的 RED，不是产品失败，已先修正脚本再采信结果。
+
+### 采纳的最小修复
+
+- `SettingsPlanCatalogCoordinator` 现在拥有 CTS、generation 和后台任务的启动/取消边界；`Dispose` 幂等，取消后不再 late-apply，取消为正常结束，异常仍会被观察并收敛到状态。
+- `PowerPlanCatalogProvider` 增加可取消的 `LoadWithRetryAsync`：共享单槽 `SemaphoreSlim`、等待前后双重缓存检查、取消可达 `powercfg` 异步进程及重试 delay；保留 Engine 兼容所需同步 API。
+- `PowerCfgProcessRunner` 只增加内部测试替身入口，不改变真实命令语义。
+- 删除 WPF fixture 的全局 `ThreadPool.SetMinThreads(128)` 容量补丁；不以扩大线程池、增加 timeout 或 retry 作为修复。
+- 未改动日志分页算法、心跳日志写入、空闲判定或真实电源策略语义；它们仍是后续独立业务验证对象。
+
+### GREEN 证据
+
+- owner-scoped coordinator：`2/2`。
+- WPF host contract + coordinator：`9/9`。
+- `PowerPlanCatalogProvider`：`11/11`。
+- 无全局线程池补丁的完整 Settings suite：`549/549`。
+- 提升权限长诊断：`549/549`；`ThreadPool Queue Length` 最大 `1`、结束为 `0`，快照未再出现 `SettingsPlanCatalogCoordinator`、`LoadWithRetry` 或 `PowerCfgProcessRunner` 线程栈。证据：`.work/diagnostics/settings-suite-20260823T132507442Z-2250439a43ee473ab86a951ef2fc1e26/diagnostic-summary.json`。
+- 10 轮连续 Settings 长跑：每轮 `549/549`、`0` 失败、`0` 跳过、退出码 `0`，`AllPassed=true`。证据：`.work/diagnostics/settings-stability-20260823T133641057Z-4d7995baee514d68a8aedabc3dbef529/summary.json`。
+
+### 三次完整门禁
+
+三次均为提升权限、无重试的完整 `Run-Tests.ps1`，均 `ExitCode=0`：
+
+| Summary | Pester | .NET | Tray | Installer |
+|---|---:|---:|---:|---:|
+| `.work/test-results/run-tests-20260823T131637592Z-ea6fdf046f5a49788cd4f1c45986a694.summary.json` | 126/126 | 1548/1548 | 2/2 | 9/9 |
+| `.work/test-results/run-tests-20260823T135242162Z-11b6b5fca41b485e8d055444d58d3276.summary.json` | 126/126 | 1548/1548 | 2/2 | 9/9 |
+| `.work/test-results/run-tests-20260823T135931124Z-df2a47cc866d471c8a0ca7772da68769.summary.json` | 126/126 | 1548/1548 | 2/2 | 9/9 |
+
+### 对抗审查结论
+
+- **已确认：** 原始 RED 的失败点是分页 work item 长时间停在 `paged-queued`；目录加载是未拥有的 fire-and-forget 同步 `powercfg` 工作；CTS 未传入 loader；长诊断曾捕获其 ThreadPool 压力；修复后的 owner 测试、549/549 Settings、10 轮长跑和三次完整门禁均通过。
+- **强支持的推断：** 未拥有的计划目录加载是测试污染的首要来源；嵌套分页 `Task.Run` 是调度放大器，而不是已证明的唯一根因。修复后队列/栈证据消失，说明 owner 修复闭合了当前 RED 的最强解释，但这仍不是失败瞬间的因果堆栈证明。
+- **仍未验证：** 正式 probe 尚未取得一次失败时间点直接堆栈；仓库也没有能证明关闭测试 hook/artificial worker blocking 的 production-equivalent 选择器。因此 Task 2 的形式化 reproduction 状态继续为 `BLOCKED`。
+- **本轮非目标：** 未据此宣称插拔事件、心跳日志写入、空闲时间判定或三档电源计划业务切换已被真实桌面验收；这些需要真实运行路径和对应证据。
+
+### 当前状态与回滚
+
+`Task 3a owner-scoped repair = GREEN`；`Task 2 diagnostic reproduction = BLOCKED`；原 Task 3 的测试夹具文件清单不再作为生产修复入口。回滚 `SettingsPlanCatalogCoordinator`/`PowerPlanCatalogProvider` 变更后，必须重新执行 10 轮 Settings 与 3 次完整门禁，不能保留“稳定/根治”声明。诊断工具仍为用户授权的项目隔离工具，不成为产品依赖。

@@ -209,4 +209,113 @@ public class PowerPlanCatalogProviderTests
       PowerPlanCatalogProvider.ClearSessionCacheForTests();
     }
   }
+
+  [Fact]
+  public async Task LoadWithRetryAsync_propagates_cancellation_to_powercfg()
+  {
+    PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    using var cancellation = new CancellationTokenSource();
+    using var started = new ManualResetEventSlim();
+    PowerCfgProcessRunner.RunAsyncOverrideForTests = async (_, _, token) =>
+    {
+      started.Set();
+      await Task.Delay(Timeout.InfiniteTimeSpan, token);
+      return new PowerCfgCommandResult(true, false, 0, string.Empty, string.Empty);
+    };
+
+    try
+    {
+      var loadTask = PowerPlanCatalogProvider.LoadWithRetryAsync(
+        maxAttempts: 1,
+        cancellationToken: cancellation.Token);
+
+      started.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the async powercfg call should start");
+      cancellation.Cancel();
+
+      await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await loadTask);
+    }
+    finally
+    {
+      PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
+      PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    }
+  }
+
+  [Fact]
+  public async Task LoadWithRetryAsync_serializes_concurrent_powercfg_loaders()
+  {
+    PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    var active = 0;
+    var maximumActive = 0;
+    PowerCfgProcessRunner.RunAsyncOverrideForTests = async (_, _, token) =>
+    {
+      var current = Interlocked.Increment(ref active);
+      var observedMaximum = Volatile.Read(ref maximumActive);
+      while (current > observedMaximum)
+      {
+        var replaced = Interlocked.CompareExchange(
+          ref maximumActive,
+          current,
+          observedMaximum);
+        if (replaced == observedMaximum)
+          break;
+        observedMaximum = replaced;
+      }
+
+      try
+      {
+        await Task.Delay(100, token);
+        return new PowerCfgCommandResult(true, false, 0, string.Empty, string.Empty);
+      }
+      finally
+      {
+        Interlocked.Decrement(ref active);
+      }
+    };
+
+    try
+    {
+      await Task.WhenAll(
+        PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1),
+        PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1));
+
+      maximumActive.Should().Be(1, "concurrent Settings windows must share one catalog load slot");
+    }
+    finally
+    {
+      PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
+      PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    }
+  }
+
+  [Fact]
+  public async Task LoadWithRetryAsync_reuses_completed_catalog_for_concurrent_callers()
+  {
+    PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    var calls = 0;
+    PowerPlanCatalogProvider.LoadImplementationForTests = () =>
+    {
+      Interlocked.Increment(ref calls);
+      Thread.Sleep(100);
+      return new Dictionary<Guid, string>
+      {
+        [PowerPlanCatalogProvider.HighPerformancePlanGuid] = PowerPlanCatalogProvider.HighPerformanceDisplayName,
+        [PowerPlanCatalogProvider.BalancedPlanGuid] = PowerPlanCatalogProvider.BalancedDisplayName,
+        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = PowerPlanCatalogProvider.PowerSaverDisplayName,
+      };
+    };
+
+    try
+    {
+      await Task.WhenAll(
+        PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1),
+        PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1));
+
+      calls.Should().Be(1, "a completed catalog is shared by concurrent Settings windows");
+    }
+    finally
+    {
+      PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    }
+  }
 }

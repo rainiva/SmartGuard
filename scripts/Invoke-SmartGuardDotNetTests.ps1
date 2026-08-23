@@ -534,6 +534,236 @@ function Read-SmartGuardTrxResult {
     }
 }
 
+function Read-SmartGuardWpfStabilityProbeResult {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $failed = [ordered]@{
+        Status = 'Failed'
+        Error = ''
+        ResultPath = $Path
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        $failed.Error = "WPF stability probe result was not found: $Path"
+        return [pscustomobject]$failed
+    }
+
+    try {
+        $json = [System.IO.File]::ReadAllText($Path, [System.Text.UTF8Encoding]::new($false, $true))
+        $result = $json | ConvertFrom-Json -ErrorAction Stop
+        foreach ($field in @(
+            'Status', 'ExecutionStatus', 'ReproductionStatus', 'Mode', 'Iteration', 'Seed',
+            'Filter', 'ControllerPid', 'StartUtc', 'EndUtc', 'ExitCode', 'TimedOut', 'TrxPath',
+            'StdoutPath', 'StderrPath', 'TestOrderPath', 'TrxStatus', 'TotalCount',
+            'ControllerTimedOut', 'CleanupTimedOut', 'CleanupError'
+        )) {
+            if ($result.PSObject.Properties.Name -notcontains $field) {
+                throw "Probe result field '$field' is missing."
+            }
+        }
+
+        if ($result.Status -notin @('Passed', 'Failed', 'Blocked')) {
+            throw "Probe result has invalid status '$($result.Status)'."
+        }
+        if ($result.ExecutionStatus -notin @('Passed', 'Failed', 'Blocked') -or
+            $result.ExecutionStatus -ne $result.Status) {
+            throw 'Probe result execution status is missing or inconsistent with Status.'
+        }
+        if ($result.ReproductionStatus -notin @('NotReproduced', 'Reproduced', 'Blocked')) {
+            throw "Probe result has invalid reproduction status '$($result.ReproductionStatus)'."
+        }
+        if ($result.Mode -notin @('test-contamination', 'production-equivalent')) {
+            throw "Probe result has invalid mode '$($result.Mode)'."
+        }
+        if ($result.Mode -eq 'production-equivalent' -and $result.ReproductionStatus -ne 'Blocked') {
+            throw 'production-equivalent probe results must remain reproduction-blocked until a no-hook selector exists.'
+        }
+        if ([int]$result.Iteration -lt 1 -or [int]$result.ControllerPid -lt 1) {
+            throw 'Probe result iteration or controller PID is invalid.'
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$result.Filter)) {
+            throw 'Probe result filter is missing or empty.'
+        }
+        if ([bool]$result.ControllerTimedOut -and $result.Status -eq 'Passed') {
+            throw 'A probe result cannot be Passed after the outer controller reached its deadline.'
+        }
+        if ([int]$result.TotalCount -le 0 -and $result.Status -eq 'Passed') {
+            throw 'A passed probe result must report at least one executed test.'
+        }
+
+        if ([string]::IsNullOrWhiteSpace([string]$result.TestOrderPath) -or
+            -not (Test-Path -LiteralPath ([string]$result.TestOrderPath))) {
+            throw "Probe test-order manifest was not found: $($result.TestOrderPath)"
+        }
+        $orderText = [System.IO.File]::ReadAllText(
+            [string]$result.TestOrderPath,
+            [System.Text.UTF8Encoding]::new($false, $true))
+        $order = $orderText | ConvertFrom-Json -ErrorAction Stop
+        foreach ($field in @('Status', 'Mode', 'Iteration', 'Seed', 'Filter', 'Tests')) {
+            if ($order.PSObject.Properties.Name -notcontains $field) {
+                throw "Probe test-order field '$field' is missing."
+            }
+        }
+        if ($order.Mode -ne $result.Mode -or
+            [int]$order.Iteration -ne [int]$result.Iteration -or
+            [int]$order.Seed -ne [int]$result.Seed -or
+            [string]::IsNullOrWhiteSpace([string]$order.Filter) -or
+            $order.Filter -ne $result.Filter) {
+            throw 'Probe test-order manifest is inconsistent with the result.'
+        }
+        if ($order.Status -notin @('Selection', 'Captured')) {
+            throw "Probe test-order manifest has invalid status '$($order.Status)'."
+        }
+        $tests = @($order.Tests)
+        if ($tests.Count -le 0) {
+            throw 'Probe test-order manifest must contain at least one selection or executed test.'
+        }
+        for ($index = 0; $index -lt $tests.Count; $index++) {
+            if ([int]$tests[$index].Ordinal -ne ($index + 1) -or
+                [string]::IsNullOrWhiteSpace([string]$tests[$index].Name)) {
+                throw 'Probe test-order manifest has an invalid ordinal or test name.'
+            }
+        }
+        if ($order.Status -eq 'Captured' -and [int]$result.TotalCount -gt 0 -and
+            $tests.Count -ne [int]$result.TotalCount) {
+            throw 'Captured probe test-order manifest does not match the reported test total.'
+        }
+
+        if ($result.ReproductionStatus -eq 'Reproduced') {
+            if ($result.Mode -ne 'test-contamination' -or $result.Status -ne 'Failed') {
+                throw 'Reproduced is valid only for a failed test-contamination execution.'
+            }
+            if ([bool]$result.TimedOut -or [bool]$result.ControllerTimedOut -or [bool]$result.CleanupTimedOut -or
+                -not [string]::IsNullOrWhiteSpace([string]$result.CleanupError)) {
+                throw 'Reproduced evidence cannot be timed out or have cleanup failures.'
+            }
+            if ($null -eq $result.ExitCode -or [int]$result.ExitCode -eq 0) {
+                throw 'Reproduced evidence requires a nonzero child exit code.'
+            }
+            if ($order.Status -ne 'Captured') {
+                throw 'Reproduced evidence requires a captured test-order manifest.'
+            }
+
+            $reproducedTrx = Read-SmartGuardTrxResult -Path ([string]$result.TrxPath) -ExitCode ([int]$result.ExitCode)
+            if ($reproducedTrx.Result -ne 'Failed' -or [int]$reproducedTrx.TotalCount -le 0 -or
+                [int]$reproducedTrx.FailedCount -le 0) {
+                throw 'Reproduced evidence requires a non-empty failed TRX with at least one failed test.'
+            }
+            $reproductionOutput = (@($result.StdoutPath, $result.StderrPath) | ForEach-Object {
+                if (Test-Path -LiteralPath ([string]$_)) {
+                    [System.IO.File]::ReadAllText(
+                        [string]$_,
+                        [System.Text.UTF8Encoding]::new($false, $true))
+                }
+            }) -join [Environment]::NewLine
+            if ($reproductionOutput -notmatch 'paged-queued') {
+                throw 'Reproduced evidence requires the paged-queued failure signature in child output.'
+            }
+        }
+
+        if ($result.Status -eq 'Passed') {
+            if ($result.ReproductionStatus -ne 'NotReproduced') {
+                throw 'A passed probe execution must remain explicitly not-reproduced.'
+            }
+            if ($null -eq $result.ExitCode -or [int]$result.ExitCode -ne 0) {
+                throw 'A passed probe result requires child exit code 0.'
+            }
+            if ($result.TrxStatus -ne 'Passed' -or [bool]$result.TimedOut -or [bool]$result.CleanupTimedOut -or
+                -not [string]::IsNullOrWhiteSpace([string]$result.CleanupError)) {
+                throw 'A passed probe result requires a completed non-timeout TRX.'
+            }
+
+            $trxResult = Read-SmartGuardTrxResult -Path ([string]$result.TrxPath) -ExitCode ([int]$result.ExitCode)
+            if ($trxResult.Result -ne 'Passed' -or [int]$trxResult.TotalCount -ne [int]$result.TotalCount) {
+                throw "Probe result TRX revalidation failed: $($trxResult.Error)"
+            }
+
+            if ($order.Status -ne 'Captured' -or $tests.Count -le 0 -or
+                $tests.Count -ne [int]$result.TotalCount) {
+                throw 'A passed probe result requires a non-empty test-order manifest matching TRX total.'
+            }
+        }
+        if ($result.Status -eq 'Blocked' -and [string]::IsNullOrWhiteSpace([string]$result.BlockedReason)) {
+            throw 'A blocked probe result requires BlockedReason.'
+        }
+
+        $result | Add-Member -NotePropertyName ResultPath -NotePropertyValue $Path -Force
+        return $result
+    }
+    catch {
+        $failed.Error = "Unable to validate WPF stability probe result '$Path': $($_.Exception.Message)"
+        return [pscustomobject]$failed
+    }
+}
+
+function Get-SmartGuardWpfStabilityProbeExitCode {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject[]]$Results,
+
+        [switch]$RequireReproduction
+    )
+
+    if (@($Results).Count -eq 0) {
+        return 1
+    }
+
+    $healthFailures = @($Results | Where-Object {
+        $result = if ($_.PSObject.Properties.Name -contains 'Result') { $_.Result } else { $null }
+        $resultProperties = if ($null -eq $result) { @() } else { @($result.PSObject.Properties.Name) }
+        $resultStatus = if ($resultProperties -contains 'Status') { [string]$result.Status } else { 'Failed' }
+        $reproductionStatus = if ($resultProperties -contains 'ReproductionStatus') { [string]$result.ReproductionStatus } else { '' }
+        $timedOut = if ($resultProperties -contains 'TimedOut') { [bool]$result.TimedOut } else { $true }
+        $controllerTimedOut = if ($_.PSObject.Properties.Name -contains 'ControllerTimedOut') { [bool]$_.ControllerTimedOut } else { $true }
+        $controllerEvidenceError = if ($_.PSObject.Properties.Name -contains 'ControllerEvidenceError') { [string]$_.ControllerEvidenceError } else { 'missing' }
+        $exitCode = if ($resultProperties -contains 'ExitCode') { $result.ExitCode } else { $null }
+        $trxStatus = if ($resultProperties -contains 'TrxStatus') { [string]$result.TrxStatus } else { '' }
+        $cleanupTimedOut = if ($resultProperties -contains 'CleanupTimedOut') { [bool]$result.CleanupTimedOut } else { $true }
+        $cleanupError = if ($resultProperties -contains 'CleanupError') { [string]$result.CleanupError } else { 'missing' }
+        $innerControllerTimedOut = if ($resultProperties -contains 'ControllerTimedOut') { [bool]$result.ControllerTimedOut } else { $true }
+        $expectedReproduction = $RequireReproduction -and
+            $resultStatus -eq 'Failed' -and
+            $reproductionStatus -eq 'Reproduced' -and
+            -not $timedOut -and
+            -not $controllerTimedOut -and
+            -not $innerControllerTimedOut -and
+            $null -ne $exitCode -and
+            [int]$exitCode -ne 0 -and
+            $trxStatus -eq 'Failed' -and
+            $_.ControllerExitCode -eq 0 -and
+            $_.CaptureStatus -eq 'Passed' -and
+            [string]::IsNullOrWhiteSpace($controllerEvidenceError) -and
+            -not $cleanupTimedOut -and
+            [string]::IsNullOrWhiteSpace($cleanupError)
+        (-not $expectedReproduction) -and (
+            $_.ControllerExitCode -ne 0 -or
+            $controllerTimedOut -or
+            $innerControllerTimedOut -or
+            -not [string]::IsNullOrWhiteSpace($controllerEvidenceError) -or
+            $resultStatus -ne 'Passed' -or
+            $_.CaptureStatus -ne 'Passed')
+    })
+    if ($healthFailures.Count -ne 0) {
+        return 1
+    }
+    if ($RequireReproduction -and @($Results | Where-Object {
+        $result = if ($_.PSObject.Properties.Name -contains 'Result') { $_.Result } else { $null }
+        $reproductionStatus = if ($null -ne $result -and $result.PSObject.Properties.Name -contains 'ReproductionStatus') {
+            [string]$result.ReproductionStatus
+        }
+        else {
+            ''
+        }
+        $reproductionStatus -ne 'Reproduced'
+    }).Count -ne 0) {
+        return 2
+    }
+    return 0
+}
+
 function ConvertTo-SmartGuardCmdArgument {
     param(
         [Parameter(Mandatory = $true)]

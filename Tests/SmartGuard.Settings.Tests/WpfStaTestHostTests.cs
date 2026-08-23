@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using System.Text;
 using SmartGuard.Settings.LogView;
 
 namespace SmartGuard.Settings.Tests;
@@ -9,6 +10,25 @@ namespace SmartGuard.Settings.Tests;
 [Trait("Category", "WpfUi")]
 public sealed class WpfStaTestHostTests
 {
+    [Fact]
+    public void WpfApplicationFixture_does_not_raise_the_process_thread_pool_floor()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null &&
+               !File.Exists(Path.Combine(directory.FullName, "SmartGuard.slnx")))
+            directory = directory.Parent;
+
+        directory.Should().NotBeNull();
+        var fixturePath = Path.Combine(
+            directory!.FullName,
+            "Tests",
+            "SmartGuard.Settings.Tests",
+            "WpfApplicationFixture.cs");
+        var source = File.ReadAllText(fixturePath, Encoding.UTF8);
+
+        source.Should().NotContain("ThreadPool.SetMinThreads");
+    }
+
     [Fact]
     public void WaitUntil_pumps_dispatcher_until_condition_is_true()
     {

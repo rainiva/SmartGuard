@@ -10,6 +10,7 @@ internal static class PowerCfgProcessRunner
   private static readonly Encoding ConsoleEncoding = CreateConsoleEncoding();
 
   internal static Func<string, TimeSpan, PowerCfgCommandResult>? RunOverrideForTests;
+  internal static Func<string, TimeSpan, CancellationToken, Task<PowerCfgCommandResult>>? RunAsyncOverrideForTests;
 
   internal static PowerCfgCommandResult RunPowerCfg(string arguments, TimeSpan? timeout = null)
   {
@@ -24,6 +25,9 @@ internal static class PowerCfgProcessRunner
     CancellationToken cancellationToken = default,
     TimeSpan? timeout = null)
   {
+    if (RunAsyncOverrideForTests is not null)
+      return RunAsyncOverrideForTests(arguments, timeout ?? DefaultTimeout, cancellationToken);
+
     if (RunOverrideForTests is not null)
       return Task.FromResult(RunOverrideForTests(arguments, timeout ?? DefaultTimeout));
 
