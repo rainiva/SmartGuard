@@ -103,7 +103,7 @@
 
 **Produces:** WPF testhost Owner、不变量、证据格式、对抗审查触发条件和禁止项。
 
-- [ ] **Step 1：写架构 RED**
+- [x] **Step 1：写架构 RED**
 
 新增契约断言，要求存在以下稳定条款：
 
@@ -120,11 +120,11 @@ dotnet test .\Tests\SmartGuard.Architecture.Tests\SmartGuard.Architecture.Tests.
 
 Expected RED: 缺少新契约条款。
 
-- [ ] **Step 2：写回唯一契约真源**
+- [x] **Step 2：写回唯一契约真源**
 
 更新 `LOG-P4-UI-ASYNC`：只要求“受控后台执行 + Dispatcher apply”，不再把具体 `Task.Run` 写死为架构目标。新增上面四条 `WPF-TEST-*`，并明确在线 LLM 不是自动门禁依赖。
 
-- [ ] **Step 3：建立对抗审查规范**
+- [x] **Step 3：建立对抗审查规范**
 
 `docs/testing/WPF-TEST-ADVERSARIAL-REVIEW.md` 只定义流程，不复制架构真源。每次触发审查必须记录：
 
@@ -137,7 +137,7 @@ Expected RED: 缺少新契约条款。
 
 触发器包括修改：`WpfApplicationFixture`、`WpfStaTestHost`、测试项目编排、全局静态 hook、timeout/retry、parallelism、ThreadPool、后台 flight 生命周期或结构化结果格式。
 
-- [ ] **Step 4：GREEN 与提交**
+- [x] **Step 4：GREEN 与提交**
 
 Run Task 1 Step 1 命令，再运行：
 
@@ -153,6 +153,8 @@ Commit:
 git add docs/ARCHITECTURE-CONTRACT.md docs/testing/WPF-TEST-ADVERSARIAL-REVIEW.md Tests/SmartGuard.Architecture.Tests/ArchitectureContractLoggingPhase4Tests.cs Tests/SmartGuard.Tests.ps1
 git commit -m "test(wpf): define stability and adversarial review contract"
 ```
+
+**执行记录（2026-08-23）：** 提交 `12d6405`。架构门禁 RED 为 0/1（缺少 `WPF-TEST-OWNER`），GREEN 为 1/1；Pester `-FullNameFilter` 定向门禁为 1/1，另有 121 项因过滤而 `NotRun`。四个目标文件均通过严格 UTF-8 无 BOM 与 `git diff --check`。独立任务审查结论为 Spec compliant、Task quality Approved；唯一 Minor 是证据报告未显式写静态检查退出码，已在本地报告补为 `exit 0; files 4`。本 Task 只建立契约和治理，未修复或关闭 WPF flaky 根因。
 
 ---
 
