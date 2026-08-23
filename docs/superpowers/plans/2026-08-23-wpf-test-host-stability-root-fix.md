@@ -230,6 +230,8 @@ git add Tests/SmartGuard.Settings.StabilityProbe scripts/Invoke-WpfStabilityProb
 git commit -m "test(wpf): add isolated starvation evidence probe"
 ```
 
+**执行状态（2026-08-23）：** Task 2 的 fail-closed 控制器已在工作树形成，但按硬停止线暂不提交、不勾选完成。新 probe 构建为 0 警告/0 错误；定向 WPF probe Pester 为 3/3，既有 strict-TRX 回归为 1/1。真实 contamination 仅完成 1 次、TRX 6 tests Passed，未形成 5/5 RED；实际 `testhost` PID 未解析，`dotnet-counters`、`dotnet-stack`、`dotnet-trace` 不可用，production-equivalent 明确 `Blocked`。因此禁止进入生产调度改造，下一次必须先补充可归属的失败现场或明确授权安装/提供诊断工具。
+
 ---
 
 ## Task 3：按堆栈归属修复测试污染
