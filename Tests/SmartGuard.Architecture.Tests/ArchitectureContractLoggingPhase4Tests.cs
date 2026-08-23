@@ -187,4 +187,19 @@ public class ArchitectureContractLoggingPhase4Tests
     ContractContent.Should().NotContain("保留兼容前缀");
     ContractContent.Should().Contain("主日志保持纯文本");
   }
+
+  [Fact]
+  public void Wpf_test_stability_contract_defines_ownership_isolation_evidence_and_adversarial_review()
+  {
+    ContractContent.Should().Contain("WPF-TEST-OWNER");
+    ContractContent.Should().Contain("fixture/host owns Window, Dispatcher, hook, timer, controller, and test-created background flight");
+    ContractContent.Should().Contain("WPF-TEST-ISOLATION");
+    ContractContent.Should().Contain("deliberate ThreadPool blocking must run in a child process");
+    ContractContent.Should().Contain("ordinary WPF suite must not change global ThreadPool capacity");
+    ContractContent.Should().Contain("WPF-TEST-EVIDENCE");
+    ContractContent.Should().Contain("exit code, TRX, summary, test order, counters, stack/trace or an explicit capture-failure reason");
+    ContractContent.Should().Contain("WPF-TEST-ADVERSARIAL");
+    ContractContent.Should().Contain("review hypothesis, falsifier/counterexample, contamination, ownership, resource bounds, and fail-closed evidence");
+    ContractContent.Should().Contain("online LLM is not a runtime dependency of the deterministic automated gate");
+  }
 }

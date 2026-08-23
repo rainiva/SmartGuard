@@ -116,6 +116,50 @@ print(json.dumps(result))" $icon $officialDir
             $hostSource | Should -Not -Match '\bThread\.Sleep\s*\('
             $hostSource | Should -Match '\bAssertQuiescent\s*\('
         }
+
+        It 'adversarial review document defines required WPF stability triggers and fields' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $reviewPath = Join-Path $root 'docs\testing\WPF-TEST-ADVERSARIAL-REVIEW.md'
+            Test-Path -LiteralPath $reviewPath | Should -Be $true
+            $content = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8
+
+            $requiredTriggers = @(
+                'WpfApplicationFixture',
+                'WpfStaTestHost',
+                'test-project orchestration',
+                'global static hooks',
+                'timeout/retry',
+                'parallelism',
+                'ThreadPool',
+                'background-flight lifetime',
+                'structured result format'
+            )
+            $triggerMatches = @($requiredTriggers | Where-Object { $content.Contains($_) })
+            $triggerMatches.Count | Should -Be $requiredTriggers.Count
+            $triggerMatches.Count | Should -BeGreaterThan 0
+
+            foreach ($field in @(
+                'claim',
+                'falsification condition',
+                'facts',
+                'hypotheses',
+                'unknowns',
+                'counterexample',
+                'cross-test contamination',
+                'thread/queue/time',
+                'cancellation/Dispose',
+                'evidence completeness',
+                'ADOPT',
+                'REVISE',
+                'BLOCK',
+                'adopted changes',
+                'commit',
+                'RED/GREEN evidence path',
+                'reviewer type'
+            )) {
+                $content | Should -Match ([regex]::Escape($field))
+            }
+        }
     }
 
     Describe 'Phase 7.5 dotnet publish chain' {

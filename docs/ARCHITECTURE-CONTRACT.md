@@ -415,6 +415,10 @@
 | TEST-TRUTH | **阻断** | 测试子进程真值 = `Process.ExitCode` + TRX `ResultSummary/Counters` 双重校验；两者矛盾、TRX 缺失、损坏、`total = 0` 或 Outcome 非 `Completed` 时必须判 Failed（fail-closed），不得以 stdout 文本或局部计数替代 |
 | ELEVATED-TRUTH | **阻断** | 提权测试真值 = 子进程磁盘 JSON + transcript + 父进程验证三者齐备；零测试、缺 JSON、JSON 损坏或子退出码非零均判 Failed，父门禁不得把"提权窗口成功返回"当作通过 |
 | WPF-QUIESCENT | **阻断** | WPF controller `Dispose` 后不得再有任何 UI apply（apply 计数必须为 0）；每个 WPF 用例结束必须 quiescent：窗口数 0、active refresh 0、timer/测试钩子复位；禁止固定 `Thread.Sleep` 充当 UI 完成条件 |
+| WPF-TEST-OWNER | **阻断** | WPF test fixture/host owns Window, Dispatcher, hook, timer, controller, and test-created background flight；所有资源必须在用例结束前由同一 owner 取消、Dispose 并证明 quiescent。 |
+| WPF-TEST-ISOLATION | **阻断** | deliberate ThreadPool blocking must run in a child process；ordinary WPF suite must not change global ThreadPool capacity。隔离试验的退出、超时与清理不得污染常规 WPF 测试进程。 |
+| WPF-TEST-EVIDENCE | **阻断** | WPF 失败必须保留 exit code, TRX, summary, test order, counters, stack/trace or an explicit capture-failure reason；任一必要证据缺失、损坏或零测试均 fail-closed。 |
+| WPF-TEST-ADVERSARIAL | **阻断** | 高影响 WPF 测试基础设施改动必须 review hypothesis, falsifier/counterexample, contamination, ownership, resource bounds, and fail-closed evidence；review 流程见 `docs/testing/WPF-TEST-ADVERSARIAL-REVIEW.md`，它不替代本文档。online LLM is not a runtime dependency of the deterministic automated gate。 |
 | INT-LIFECYCLE | **阻断** | Integration 必须按 Capture → Stop → Test → Restore 执行；Stop 失败或 Restore 失败任一发生，当前测试必须判红，不得 best-effort 吞掉后继续；恢复按快照决定进程运行态，孤儿进程只清理不复活 |
 | NO-RETRY-GREEN | **阻断** | 稳定性门禁（`scripts/Invoke-TestStabilityGate.ps1`）任一轮失败立即停止并整体判 Failed；禁止重跑失败轮以"重试后成功"覆盖第一失败证据 |
 | DOC-11 | **已关闭** | 本文档 §18 + Pester `Run-Tests optimization contract`/`Invoke-TestStabilityGate` 契约测试（Tasks 2–8，commits e9dc556..f148110）终验 |
@@ -473,7 +477,7 @@
 | LOG-P4-TRACE | 阻断 | `TraceIdContext`/`SpanIdContext`/`UserActionIdContext` AsyncLocal 进程内传播；`LogLineFormatter.Format` 扩展可选上下文参数；`GuardianLoop.WriteLog` 传入 `Current` 值 |
 | LOG-P4-QUERY | 阻断 | `LogIndexBuilder` + `LogQueryService` 查询索引架构：日志文件 → 内存索引 → 多条件过滤 + 分页查询；CancellationToken 可取消；索引可重建 |
 | LOG-P4-UI-FILTER | 阻断 | `LogViewController` 新增 `OperationIdFilter`/`EventNameFilter`/`ProcessIdFilter`/`ThreadIdFilter` 属性并扩展 `GetFilteredLines`；S3 解锁阶段三 4 个 WIP 禁触 UI 文件 |
-| LOG-P4-UI-ASYNC | 阻断 | `SettingsLogRefreshPipeline` 为 UI 非阻塞唯一入口（后台 `Task.Run` 读取 + `Dispatcher.BeginInvoke` 回 UI）；`LogViewBackgroundQuery` 为可复用后台查询原语；`CancellationToken` 取消；禁止 UI 线程执行大日志文件过滤 |
+| LOG-P4-UI-ASYNC | 阻断 | `SettingsLogRefreshPipeline` 为 UI 非阻塞唯一入口：受控的后台执行完成读取/过滤，结果仅经 Dispatcher apply 回 UI；`LogViewBackgroundQuery` 为可复用后台查询原语；`CancellationToken` 取消；禁止 UI 线程执行大日志文件过滤。具体调度原语不得取代上述所有权、取消与资源边界契约。 |
 | LOG-P4-JSONL | 阻断 | `LogJsonlFormatter` 日志行与 JSONL 双向转换（D1 落点：主日志保持纯文本，JSONL 为独立诊断文件 `logs/SmartGuard.jsonl`；`FormatLine` 输出纯 JSON）；`DiagnosticBundleExporter` 追加 `logs/SmartGuard.jsonl` 导出条目 |
 | LOG-P4-FILTERSPEC | 阻断 | `LogQueryFilterSpec` 结构化筛选规格 + `LogFilterBuilder` 流式构建器；`LogViewController.ApplyFilterSpec` 接入统一筛选入口；`LogQueryFilterSpec.ToQueryRequest` 组合器统一 UI 直筛与索引查询筛选真源 |
 | LOG-P4-HISTORY | 阻断 | `LogTailReader` 为日志页历史读取唯一入口：按新到旧消费 `SmartGuard.log` 与同目录 `SmartGuard.log.*.bak`，恢复为时间顺序后与 startup 回退合并；总载入量受最近 256KB 预算约束，状态栏统计仅基于该已载入集合 |
