@@ -22,12 +22,14 @@ public class GuardianIterationTimingTests
           """);
 
       GuardianIterationTiming.ResolveWaitSeconds(repository, dir).Should().Be(30);
+      var firstWriteTimeUtc = File.GetLastWriteTimeUtc(path);
 
       File.WriteAllText(path, """
           {
             "CheckIntervalSec": 5
           }
           """);
+      File.SetLastWriteTimeUtc(path, firstWriteTimeUtc.AddSeconds(1));
 
       GuardianIterationTiming.ResolveWaitSeconds(repository, dir).Should().Be(5);
     }
