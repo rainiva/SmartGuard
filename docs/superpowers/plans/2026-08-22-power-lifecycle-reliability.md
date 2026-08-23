@@ -1611,6 +1611,16 @@ Task 8 -> Task 7 -> Task 6 -> Task 5 -> Task 4 -> Task 3 -> Task 2 -> Task 1
 - 针对“插电/拔电不写日志”的现场复核已排除日志写入器故障：隔离的 2026-08-23 修复版 Engine 捕获 5 条 `PowerSourceChanged` 且 `outcome=handled`，管线健康样本 `dropped=0/failed=0`；初始症状根因是“运行实例/日志根错位或 Engine 未启动”，不是写入器静默丢日志。用户确认后已发布并部署 Release 产物，旧安装完整备份至 `.work/deployment/installed-backup-20260823`，逐文件 SHA256 校验通过，Guardian/Tray 已重新注册并启动。随后人工完成一次插拔循环，安装实例记录 `2026-08-23T13:51:21.3916227+08:00` 插电与 `2026-08-23T13:51:32.5121987+08:00` 拔电，两条均为 `outcome=handled`；第二条事件后的状态为 `isOnAC=false`、电量 `83%`、`enginePid=15880`；随后 `2026-08-23T13:52:52.3846911+08:00` 的 `PipelineHealthSampled` 仍为 `droppedNormal=0`、`droppedHigh=0`、`failedBatches=0`、队列深度均为 0。
 - 依据 G6/G7/G8 停止线，当前交付状态为：**实现已落库，插拔日志链路已完成一轮真实验收，自动化全门禁仍阻塞，合盖/鼠标及完整电源矩阵尚未验收；不得宣称全绿或完成完整发布**。下一步仅有两个可接受动作：在稳定的 WPF 测试环境重新运行完整门禁，及在真实 Engine 运行时补齐 Lid/Mouse/AC/DC 矩阵；不得放宽断言或扩大超时。
 
+### WPF 全门禁阻塞的后续根治计划（2026-08-23）
+
+“在稳定环境重跑”不再视为足够的根治动作；它只能补充证据，不能解释随机换例失败。独立调查和单模型反方审查已经形成专项计划：[`2026-08-23-wpf-test-host-stability-root-fix.md`](2026-08-23-wpf-test-host-stability-root-fix.md)。
+
+专项计划不预设生产专用线程为答案：先在独立子进程采集可归属堆栈，区分测试阻塞污染与无钩子的生产等价调度缺陷；只在后者被证明后，才按“删除外层冗余 `Task.Run` → 仍失败才使用页面拥有的 `1 active + 1 latest pending` 单 worker”逐级升级。`SetMinThreads(128)` 在新方案验收中必须删除，禁止用超时、retry 或提高线程池容量取得绿色。
+
+新的 WPF 测试系统将试点全面对抗审查：确定性反例进入自动 PASS/FAIL；判断型审查以可追溯记录约束高影响测试基础设施变更，但在线 AI 不成为 `Run-Tests.ps1` 的运行依赖。全项目推广需要另立计划，并以本试点的缺陷发现率、误报、耗时和维护成本为依据，当前不宣称已批准全项目接入。
+
+在专项计划完成连续 10 次干净 Settings suite、3 次完整门禁且结构化证据一致前，本计划的 G6 仍为 **FAILED CLOSED**；原有真实 Lid/Mouse/AC/DC 验收要求不变。
+
 ## 自审记录
 
 - Spec coverage：共同根因、空闲、计划、心跳、状态新鲜度、powercfg 真相、真实待机、性能、回滚均有对应 Task。
