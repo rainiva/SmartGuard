@@ -184,21 +184,24 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   private readonly HeartbeatSchedule _heartbeatSchedule;
   private readonly string _root;
   private readonly GuardianIterationRunner _runner;
+  private readonly bool _onAc;
+  private readonly List<string> _notificationIds = [];
   private Guid _activePlan;
   private uint _apiIdle;
   private PowerPlanProbeResult? _forcedProbeFailure;
   private bool _failNextApply;
 
-  private GuardianLifecycleHarness(Guid activePlan, uint apiIdle)
+  private GuardianLifecycleHarness(Guid activePlan, uint apiIdle, bool onAc = true)
   {
     _root = Path.Combine(Path.GetTempPath(), "SmartGuardLifecycleHarness_" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(_root);
     _activePlan = activePlan;
     _apiIdle = apiIdle;
+    _onAc = onAc;
     _config = GuardConfig.CreateDefault(_root);
     _config.BrightnessRestoreMs = 0;
     _config.HeartbeatIntervalMin = 0;
-    _publisher = new StatusPublisher(Path.Combine(_root, "SmartGuard.status.json"));
+    _publisher = new StatusPublisher(Path.Combine(_root, "SmartGuard.status.json"), _time);
     _lifecycle = new PowerLifecycleStateMachine(_time);
     _heartbeatSchedule = new HeartbeatSchedule(_time);
     _state.PlanCatalog = new Dictionary<Guid, string>
@@ -222,7 +225,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       powerCfgBrightnessSupported: false,
       heartbeatSchedule: _heartbeatSchedule,
       readIdleSeconds: () => _apiIdle,
-      readBatteryInfo: _ => (70, true),
+      readBatteryInfo: _ => (70, _onAc),
       readCurrentPlan: () => _forcedProbeFailure ?? new PowerPlanProbeResult(
         true,
         new PowerSchemeInfo(_activePlan, null),
@@ -249,7 +252,8 @@ internal sealed class GuardianLifecycleHarness : IDisposable
           target,
           PowerPlanFailureKind.None,
           string.Empty));
-      });
+      },
+      timeProvider: _time);
   }
 
   public List<Guid> AppliedPlans { get; } = [];
@@ -259,10 +263,22 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   public IReadOnlyList<HarnessEvent> ExternalChangeEvents
     => Events.Where(x => x.EventName == EventNameRegistry.ExternalPlanChange).ToArray();
   public Guid LastKnownPlan => _activePlan;
+  public DateTimeOffset CurrentTime => _time.GetUtcNow();
   public int LastPublishedIdle { get; private set; }
+  public DateTimeOffset? LastStatusTimestamp { get; private set; }
+  public int PlanWrites => AppliedPlans.Count;
+  public int SuccessfulPlanEvents
+    => Events.Count(x => x.EventName == EventNameRegistry.PowerPlanSwitched);
+  public int PlanNotifications => _notificationIds.Count;
+  public int FailureEvents
+    => Events.Count(x => x.EventName is EventNameRegistry.PowerPlanProbeFailed
+      or EventNameRegistry.PowerPlanApplyFailed);
+  public int HeartbeatEvents
+    => Events.Count(x => x.EventName == EventNameRegistry.HeartbeatTick);
+  public IReadOnlyList<HarnessEvent> AllEvents => Events;
 
-  public static GuardianLifecycleHarness Create(Guid activePlan, uint apiIdle)
-    => new(activePlan, apiIdle);
+  public static GuardianLifecycleHarness Create(Guid activePlan, uint apiIdle, bool onAc = true)
+    => new(activePlan, apiIdle, onAc);
 
   public void Signal(PowerLifecycleKind kind)
     => _lifecycle.Observe(new(kind, _time.GetUtcNow()));
@@ -272,11 +288,14 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   public void EnableHeartbeat() => _config.HeartbeatIntervalMin = 10;
 
   public void FailPlanProbe(string diagnostic)
+    => FailPlanProbe(PowerPlanFailureKind.CommandFailed, diagnostic);
+
+  public void FailPlanProbe(PowerPlanFailureKind kind, string? diagnostic = null)
     => _forcedProbeFailure = new PowerPlanProbeResult(
       false,
       null,
-      PowerPlanFailureKind.CommandFailed,
-      diagnostic);
+      kind,
+      diagnostic ?? kind.ToString());
 
   public void FailNextPlanApply() => _failNextApply = true;
 
@@ -326,6 +345,14 @@ internal sealed class GuardianLifecycleHarness : IDisposable
     {
       using var document = JsonDocument.Parse(File.ReadAllText(statusPath));
       LastPublishedIdle = document.RootElement.GetProperty("idleSeconds").GetInt32();
+      LastStatusTimestamp = document.RootElement.GetProperty("timestamp").GetDateTimeOffset();
+      if (document.RootElement.TryGetProperty("notificationEvent", out var notification)
+          && notification.TryGetProperty("id", out var notificationId))
+      {
+        var id = notificationId.GetString();
+        if (!string.IsNullOrWhiteSpace(id) && !_notificationIds.Contains(id))
+          _notificationIds.Add(id);
+      }
     }
   }
 

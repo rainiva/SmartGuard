@@ -147,6 +147,7 @@
 | PWR-LIFE-TIME | 阻断 | awake 持续时间和心跳间隔只使用注入的 `TimeProvider` 单调时间；持久化时间为 UTC offset。 |
 | PWR-LIFE-VERIFY | 阻断 | 单元/组合测试通过不等于真实待机验收；Lid/Mouse/AC/DC 未执行时标记 `NOT RUN` 或 `BLOCKED`。 |
 | STATUS-FRESH | 阻断 | `StatusPublisher` 对有意义变化立即写；无变化按单调时钟最多 60 秒刷新一次，且不以 delete+move 暴露缺失窗口。 |
+| PWR-LIFE-ACCEPT | 阻断 | `scripts/Invoke-PowerLifecycleAcceptance.ps1` 是唯一真实待机观察入口；结果缺证据为 `Blocked`/退出码 2，不自动触发睡眠、改计划或改系统时间。 |
 
 ---
 
