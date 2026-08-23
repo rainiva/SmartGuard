@@ -482,8 +482,8 @@ print(json.dumps(result))" $icon $officialDir
             $iss | Should -Match 'UninstallSilent'
             $iss | Should -Match 'DeleteUserConfigCheckBox := TNewCheckBox\.Create'
             $iss | Should -Match 'DeleteUserLogsCheckBox := TNewCheckBox\.Create'
-            $iss | Should -Match '删除用户数据（配置与状态）'
-            $iss | Should -Match '删除日志文件'
+            $iss | Should -Match '\u5220\u9664\u7528\u6237\u6570\u636E\uFF08\u914D\u7F6E\u4E0E\u72B6\u6001\uFF09'
+            $iss | Should -Match '\u5220\u9664\u65E5\u5FD7\u6587\u4EF6'
             $iss | Should -Match 'DeleteUserConfigCheckBox\.Checked := False'
             $iss | Should -Match 'DeleteUserLogsCheckBox\.Checked := False'
             $iss | Should -Not -Match 'CreateCustomPage'
@@ -497,7 +497,7 @@ print(json.dumps(result))" $icon $officialDir
             $writer = Get-Content -LiteralPath (Join-Path $root 'src\SmartGuard.Packaging\Inno\InnoDistributionManifestWriter.cs') -Raw -Encoding UTF8
             $iss | Should -Match 'generated\\SmartGuard\.Distribution\.Run\.iss\.inc'
             $writer | Should -Match '\{#GuardianTaskName\}'
-            $writer | Should -Match '正在启动核心服务'
+            $writer | Should -Match '\u6B63\u5728\u542F\u52A8\u6838\u5FC3\u670D\u52A1'
         }
 
         It 'allows only one installed SmartGuard instance' {
@@ -562,7 +562,7 @@ print(json.dumps(result))" $icon $officialDir
             $contract = Join-Path $root 'docs\ARCHITECTURE-CONTRACT.md'
             Test-Path -LiteralPath $contract | Should -Be $true
             $content = Get-Content -LiteralPath $contract -Raw -Encoding UTF8
-            $content | Should -Match '真源注册表'
+            $content | Should -Match '\u771F\u6E90\u6CE8\u518C\u8868'
             $content | Should -Match 'InstallRootResolver'
             $content | Should -Match 'GuardConfigRepository'
         }
@@ -584,11 +584,11 @@ print(json.dumps(result))" $icon $officialDir
             $root = Split-Path -Parent $PSScriptRoot
             $agents = Get-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Raw -Encoding UTF8
             $projectRules = Get-Content -LiteralPath (Join-Path $root 'docs\PROJECT-RULES.md') -Raw -Encoding UTF8
-            $agents | Should -Match '行为改动必须 TDD'
-            $agents | Should -Match 'SmartGuard 架构硬门禁'
-            $agents | Should -Match '关键模块治理'
-            $projectRules | Should -Match '### 2\.5 关键模块治理'
-            $projectRules | Should -Match '模块不变量'
+            $agents | Should -Match '\u884C\u4E3A\u6539\u52A8\u5FC5\u987B TDD'
+            $agents | Should -Match 'SmartGuard \u67B6\u6784\u786C\u95E8\u7981'
+            $agents | Should -Match '\u5173\u952E\u6A21\u5757\u6CBB\u7406'
+            $projectRules | Should -Match '### 2\.5 \u5173\u952E\u6A21\u5757\u6CBB\u7406'
+            $projectRules | Should -Match '\u6A21\u5757\u4E0D\u53D8\u91CF'
         }
 
         It 'SmartGuard.Architecture.Tests project is wired in Run-Tests.ps1' {
@@ -714,7 +714,7 @@ print(json.dumps(result))" $icon $officialDir
             $root = Split-Path -Parent $PSScriptRoot
             $contract = Get-Content -LiteralPath (Join-Path $root 'docs\ARCHITECTURE-CONTRACT.md') -Raw -Encoding UTF8
             $acceptance = Get-Content -LiteralPath (Join-Path $root 'docs\MULTI-SOURCE-GOVERNANCE-ACCEPTANCE.md') -Raw -Encoding UTF8
-            $contract | Should -Not -Match '见 MIGRATION'
+            $contract | Should -Not -Match '\u89C1 MIGRATION'
             $contract | Should -Match 'generated/SmartGuard\.Distribution\.Constants\.iss\.inc'
             $contract | Should -Match 'LegacyScheduledTaskCatalog'
             $acceptance | Should -Match 'scripts/archive/'
@@ -2304,5 +2304,4 @@ function Exit-PesterFileLifecycle {
             }
         }
     }
-}
 }
