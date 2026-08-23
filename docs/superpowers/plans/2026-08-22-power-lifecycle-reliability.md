@@ -1607,9 +1607,9 @@ Task 8 -> Task 7 -> Task 6 -> Task 5 -> Task 4 -> Task 3 -> Task 2 -> Task 1
 - `3ccc972`：架构契约与生命周期门禁；`2b68069`：生命周期状态机/主循环仲裁；`a9fb6de`：powercfg 探测与切换复核；`ffe8222`：心跳成功投递推进；`f3bd5af`：状态新鲜度上限；`208df21`：真实验收入口；`2a2da8d`：Pester 套件闭合；`1f1c07b`、`6503794`、`30ba67c`：Windows PowerShell 兼容与时间戳测试稳定性。
 - Task 8 目标测试已通过：Engine 42/42、Configuration 35/35、Architecture 9/9；性能复测 3/3（证据见 `.work/test-results/power-lifecycle/task-08-verification-summary.txt`）。
 - 最新两次 `Run-Tests.ps1` 均为 **FAILED CLOSED**：父退出码 1，Pester 121/121，.NET 1540/1541，Tray/Installer 因上游失败而 `NotRun`。失败测试在两次运行中分别为 `User_clicks_refresh_button_and_sees_new_log_lines` 与 `User_typing_custom_range_waits_for_debounce_before_updating_view`；两者分别定向连续 5/5 通过，独立 Settings 套件已有 546/546 通过证据。这排除了固定单测回归，指向全套 WPF host 的间歇性调度/资源问题；未修改生产超时或用重试掩盖门禁。
-- 真实待机矩阵已执行脚本入口但当前条件无 System 电源事件，三个场景均为 `Blocked`/退出码 2；未执行合盖、鼠标唤醒或 AC/DC 拔插，故 `PWR-LIFE-ACCEPT` 保持阻断。
-- 针对“插电/拔电不写日志”的现场复核已排除日志写入器故障：隔离的 2026-08-23 修复版 Engine 捕获 5 条 `PowerSourceChanged` 且 `outcome=handled`，管线健康样本 `dropped=0/failed=0`；初始症状根因是“运行实例/日志根错位或 Engine 未启动”，不是写入器静默丢日志。用户确认后已发布并部署 Release 产物，旧安装完整备份至 `.work/deployment/installed-backup-20260823`，逐文件 SHA256 校验通过，Guardian/Tray 已重新注册并启动；最终插拔证据仍待人工电缆循环。
-- 依据 G6/G7/G8 停止线，当前交付状态为：**实现已落库，自动化全门禁阻塞，真实硬件验收未运行；不得宣称全绿或已完成发布**。下一步仅有两个可接受动作：在稳定的 WPF 测试环境重新运行完整门禁，及在真实 Engine 运行时执行 Lid/Mouse/AC/DC 矩阵；不得放宽断言或扩大超时。
+- 真实待机矩阵已执行脚本入口但当前条件无 System 电源事件，三个场景均为 `Blocked`/退出码 2；合盖与鼠标唤醒仍未执行，AC/DC 已完成一轮插拔并由安装实例记录两条 `PowerSourceChanged`，但完整场景矩阵仍不足，故 `PWR-LIFE-ACCEPT` 保持阻断。
+- 针对“插电/拔电不写日志”的现场复核已排除日志写入器故障：隔离的 2026-08-23 修复版 Engine 捕获 5 条 `PowerSourceChanged` 且 `outcome=handled`，管线健康样本 `dropped=0/failed=0`；初始症状根因是“运行实例/日志根错位或 Engine 未启动”，不是写入器静默丢日志。用户确认后已发布并部署 Release 产物，旧安装完整备份至 `.work/deployment/installed-backup-20260823`，逐文件 SHA256 校验通过，Guardian/Tray 已重新注册并启动。随后人工完成一次插拔循环，安装实例记录 `2026-08-23T13:51:21.3916227+08:00` 插电与 `2026-08-23T13:51:32.5121987+08:00` 拔电，两条均为 `outcome=handled`；第二条事件后的状态为 `isOnAC=false`、电量 `83%`、`enginePid=15880`。
+- 依据 G6/G7/G8 停止线，当前交付状态为：**实现已落库，插拔日志链路已完成一轮真实验收，自动化全门禁仍阻塞，合盖/鼠标及完整电源矩阵尚未验收；不得宣称全绿或完成完整发布**。下一步仅有两个可接受动作：在稳定的 WPF 测试环境重新运行完整门禁，及在真实 Engine 运行时补齐 Lid/Mouse/AC/DC 矩阵；不得放宽断言或扩大超时。
 
 ## 自审记录
 
