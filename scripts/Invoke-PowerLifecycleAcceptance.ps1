@@ -44,17 +44,14 @@ function Write-Result {
 try {
   $logPath = Join-Path $Root 'SmartGuard.log'
   $statusPath = Join-Path $Root 'SmartGuard.status.json'
-  $baselineHealth = Get-Content -LiteralPath $logPath -Encoding utf8 -Tail 2000 |
-    ForEach-Object { try { $_ | ConvertFrom-Json -Depth 20 } catch { $null } } |
-    Where-Object eventName -eq 'PipelineHealthSampled' |
-    Select-Object -Last 1
+  $baselineHealth = @(Get-Content -LiteralPath $logPath -Encoding utf8 -Tail 2000 | ForEach-Object { try { $_ | ConvertFrom-Json -Depth 20 } catch { $null } } | Where-Object eventName -eq 'PipelineHealthSampled' | Select-Object -Last 1)
   $initialLength = (Get-Item -LiteralPath $logPath).Length
 
-  Write-Host "开始场景 $Scenario。脚本不会自动睡眠或修改电源计划。"
-  Read-Host '完成操作并保持唤醒，确认出现下一条 LogPipeline health sample 后按 Enter' | Out-Null
+  Write-Host "Starting scenario $Scenario. The script will not sleep or change power plans."
+  Read-Host 'Complete the manual operation, keep the machine awake, wait for the next LogPipeline health sample, then press Enter' | Out-Null
 
   if ((Get-Item -LiteralPath $logPath).Length -lt $initialLength) {
-    throw '验收期间主日志发生轮转，当前 cursor 不再有效；请重新运行单个场景。'
+    throw 'The main log rotated during acceptance; rerun this scenario.'
   }
 
   $stream = [System.IO.File]::Open(
@@ -68,20 +65,14 @@ try {
   try { $appendedText = $reader.ReadToEnd() }
   finally { $reader.Dispose(); $stream.Dispose() }
 
-  $newLines = $appendedText -split "`r?`n" |
-    ForEach-Object {
+  $newLines = @([regex]::Split($appendedText, '\r?\n') | ForEach-Object {
       try { $_ | ConvertFrom-Json -Depth 20 } catch { $null }
-    } |
-    Where-Object {
+    } | Where-Object {
       $_ -and [DateTimeOffset]$_.timestamp -ge $startedAt.ToUniversalTime()
-    }
-  $postHealth = $newLines |
-    Where-Object eventName -eq 'PipelineHealthSampled' |
-    Select-Object -Last 1
+    })
+  $postHealth = @($newLines | Where-Object eventName -eq 'PipelineHealthSampled' | Select-Object -Last 1)
 
-  $status = [System.IO.File]::ReadAllText(
-    $statusPath, [System.Text.UTF8Encoding]::new($false, $true)) |
-    ConvertFrom-Json
+  $status = [System.IO.File]::ReadAllText($statusPath, [System.Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json
 
   $powerEvents = Get-WinEvent -FilterHashtable @{
     LogName = 'System'
@@ -94,12 +85,8 @@ try {
   }
 
   if ($Scenario -in @('LidMouseBattery','LidMouseAC')) {
-    $suspend = $newLines |
-      Where-Object eventName -eq 'PowerSuspendObserved' |
-      Select-Object -Last 1
-    $resume = $newLines |
-      Where-Object eventName -eq 'PowerResumeObserved' |
-      Select-Object -First 1
+    $suspend = @($newLines | Where-Object eventName -eq 'PowerSuspendObserved' | Select-Object -Last 1)
+    $resume = @($newLines | Where-Object eventName -eq 'PowerResumeObserved' | Select-Object -First 1)
     $suspendObservedAt = $(if ($null -ne $suspend) {
       [DateTimeOffset]$suspend.properties.lifecycleObservedAtUtc
     })
@@ -135,8 +122,7 @@ try {
   else {
     $checks.Add([pscustomobject]@{
       name = 'external-change-observed-once'
-      status = $(if (@($newLines |
-        Where-Object eventName -eq 'ExternalPlanChange').Count -eq 1) {
+      status = $(if (@($newLines | Where-Object eventName -eq 'ExternalPlanChange').Count -eq 1) {
           'Passed'
         } else { 'Failed' })
     })

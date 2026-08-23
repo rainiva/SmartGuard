@@ -567,6 +567,18 @@ print(json.dumps(result))" $icon $officialDir
             $content | Should -Match 'GuardConfigRepository'
         }
 
+        It 'power lifecycle acceptance script parses in Windows PowerShell 5.1' {
+            $root = Split-Path -Parent $PSScriptRoot
+            $script = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-PowerLifecycleAcceptance.ps1') -Raw -Encoding UTF8
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseInput(
+                $script,
+                [ref]$tokens,
+                [ref]$errors) | Out-Null
+            @($errors).Count | Should -Be 0
+        }
+
         It 'single-entry single-source rule doc exists as the short governance entrypoint' {
             $root = Split-Path -Parent $PSScriptRoot
             $ruleDoc = Join-Path $root 'docs\architecture\single-entry-single-source.md'
