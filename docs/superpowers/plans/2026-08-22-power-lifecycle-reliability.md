@@ -1606,7 +1606,7 @@ Task 8 -> Task 7 -> Task 6 -> Task 5 -> Task 4 -> Task 3 -> Task 2 -> Task 1
 
 - `3ccc972`：架构契约与生命周期门禁；`2b68069`：生命周期状态机/主循环仲裁；`a9fb6de`：powercfg 探测与切换复核；`ffe8222`：心跳成功投递推进；`f3bd5af`：状态新鲜度上限；`208df21`：真实验收入口；`2a2da8d`：Pester 套件闭合；`1f1c07b`、`6503794`、`30ba67c`：Windows PowerShell 兼容与时间戳测试稳定性。
 - Task 8 目标测试已通过：Engine 42/42、Configuration 35/35、Architecture 9/9；性能复测 3/3（证据见 `.work/test-results/power-lifecycle/task-08-verification-summary.txt`）。
-- 最新 `Run-Tests.ps1` 的结构化真相为 **FAILED CLOSED**：父退出码 1，Pester 121/121，.NET 1540/1541；失败为偶发 Settings WPF 刷新等待，Tray/Installer 因上游失败而 `NotRun`。同一失败测试定向连续 5/5、独立 Settings 套件 546/546 通过，因此未修改生产超时或用重试掩盖门禁。
+- 最新两次 `Run-Tests.ps1` 均为 **FAILED CLOSED**：父退出码 1，Pester 121/121，.NET 1540/1541，Tray/Installer 因上游失败而 `NotRun`。失败测试在两次运行中分别为 `User_clicks_refresh_button_and_sees_new_log_lines` 与 `User_typing_custom_range_waits_for_debounce_before_updating_view`；两者分别定向连续 5/5 通过，独立 Settings 套件已有 546/546 通过证据。这排除了固定单测回归，指向全套 WPF host 的间歇性调度/资源问题；未修改生产超时或用重试掩盖门禁。
 - 真实待机矩阵已执行脚本入口但当前条件无 System 电源事件，三个场景均为 `Blocked`/退出码 2；未执行合盖、鼠标唤醒或 AC/DC 拔插，故 `PWR-LIFE-ACCEPT` 保持阻断。
 - 依据 G6/G7/G8 停止线，当前交付状态为：**实现已落库，自动化全门禁阻塞，真实硬件验收未运行；不得宣称全绿或已完成发布**。下一步仅有两个可接受动作：在稳定的 WPF 测试环境重新运行完整门禁，及在真实 Engine 运行时执行 Lid/Mouse/AC/DC 矩阵；不得放宽断言或扩大超时。
 
