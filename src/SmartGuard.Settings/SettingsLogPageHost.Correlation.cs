@@ -104,7 +104,6 @@ internal sealed partial class SettingsLogPageHost
     _logController.ScopeExpression = activeKey is null
       ? null
       : LogOperationGraph.BuildCorrelationExpression(activeKey);
-    ScheduleStatisticsRefresh();
     LogStatusLiveRegion.Set(_lblLogStatus, "正在加载关联事件…");
     UpdateCorrelationBannerVisibility(true);
 
@@ -188,7 +187,6 @@ internal sealed partial class SettingsLogPageHost
     _logController.ScopeExpression = null;
 
     RestoreMainViewState(restored);
-    ScheduleStatisticsRefresh();
 
     if (resetMainView)
     {

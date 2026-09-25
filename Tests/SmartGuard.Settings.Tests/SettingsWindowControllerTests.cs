@@ -212,20 +212,21 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
-    public void About_maintenance_owns_statistics_instead_of_log_page()
+    public void About_maintenance_hosts_diagnostic_export_without_statistics_inspector()
     {
         RunOnSta(() =>
         {
             var window = LoadCompiledWindow();
             var pageLogs = window.FindName("pageLogs") as FrameworkElement;
             var pageAbout = window.FindName("pageAbout") as FrameworkElement;
-            var statisticsInspector = window.FindName("logStatisticsInspector") as FrameworkElement;
+            var diagnosticExportButton = window.FindName("btnExportDiagnostic") as FrameworkElement;
 
             pageLogs.Should().NotBeNull();
             pageAbout.Should().NotBeNull();
-            statisticsInspector.Should().NotBeNull();
-            statisticsInspector!.IsDescendantOf(pageLogs!).Should().BeFalse();
-            statisticsInspector.IsDescendantOf(pageAbout!).Should().BeTrue();
+            diagnosticExportButton.Should().NotBeNull();
+            diagnosticExportButton!.IsDescendantOf(pageLogs!).Should().BeFalse();
+            diagnosticExportButton.IsDescendantOf(pageAbout!).Should().BeTrue();
+            window.FindName("logStatisticsInspector").Should().BeNull();
             window.FindName("cmbLogRetentionDays").Should().NotBeNull();
             window.FindName("pwdGitHubToken").Should().BeNull();
             window.FindName("btnSaveGitHubToken").Should().BeNull();

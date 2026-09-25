@@ -163,7 +163,6 @@ internal sealed partial class SettingsLogPageHost
 
     WireCorrelationUi();
     WireSessionUi();
-    WireStatisticsUi();
     _logViewport.SyncFollowLatestFromUi();
     if (_logController is not null)
       _logController.FollowTail = _logViewport.FollowLatest;
@@ -189,12 +188,10 @@ internal sealed partial class SettingsLogPageHost
     if (_logPageActive && IsPagedLogSource())
     {
       RequestPagedQuery(captureNewSnapshot: false);
-      ScheduleStatisticsRefresh();
       return;
     }
 
     ScheduleLogRefresh(LogViewRefreshKind.Refilter, forceRedraw);
-    ScheduleStatisticsRefresh();
   }
 
   private void OnLogMatchGenerationChanged(int _)

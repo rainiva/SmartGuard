@@ -1215,47 +1215,6 @@
                   </Grid>
                 </Border>
 
-                <Border Style="{StaticResource SettingsItemRow}">
-                  <Expander x:Name="logStatisticsInspector"
-                            Header="诊断详情"
-                            IsExpanded="False">
-                    <StackPanel Margin="0,8,0,0">
-                      <TextBlock Text="基于保留期内全部日志统计错误趋势和组件分布。"
-                                 Style="{StaticResource SettingsItemHint}"
-                                 Margin="0,0,0,8"/>
-                      <TextBlock x:Name="lblLogStatisticsEmpty"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextTertiary}"
-                                 Margin="0,0,0,6"
-                                 Visibility="Collapsed"
-                                 Text="展开后按当前查询加载统计。"/>
-                      <local:LogErrorTrendChart x:Name="logErrorTrendChart"
-                                                Height="72"
-                                                Margin="0,0,0,8"
-                                                Visibility="Collapsed"/>
-                      <ItemsControl x:Name="logComponentDistribution"
-                                    Visibility="Collapsed">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate>
-                            <DockPanel Margin="0,0,0,4" LastChildFill="True">
-                              <TextBlock DockPanel.Dock="Right"
-                                         Text="{Binding Count}"
-                                         FontSize="11"
-                                         Foreground="{DynamicResource TextTertiary}"
-                                         Margin="8,0,0,0"
-                                         VerticalAlignment="Center"/>
-                              <TextBlock Text="{Binding Name}"
-                                         FontSize="11"
-                                         Foreground="{DynamicResource TextSecondary}"
-                                         VerticalAlignment="Center"/>
-                            </DockPanel>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </StackPanel>
-                  </Expander>
-                </Border>
-
                 <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
                   <Grid>
                     <Grid.ColumnDefinitions>

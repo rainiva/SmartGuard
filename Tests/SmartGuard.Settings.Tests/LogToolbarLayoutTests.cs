@@ -178,27 +178,13 @@ public class LogToolbarLayoutTests
     }
 
     [Fact]
-    public void About_maintenance_hosts_diagnostic_statistics_without_a_standalone_page()
+    public void About_maintenance_keeps_diagnostic_export_without_statistics_dashboard()
     {
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
-
-        var aboutPageIndex = RequireIndex(xaml, "<!-- About Page -->");
-        var logPageIndex = RequireIndex(xaml, "<!-- Logs Page -->");
-        var diagnosticInspectorIndex = RequireIndex(xaml, "x:Name=\"logStatisticsInspector\"");
-        diagnosticInspectorIndex.Should().BeGreaterThan(aboutPageIndex);
-        diagnosticInspectorIndex.Should().BeLessThan(logPageIndex);
-        xaml.Should().NotContain("<!-- Diagnostic details page");
-        xaml.Substring(logPageIndex).Should().NotContain("x:Name=\"logStatisticsInspector\"");
-        xaml.Should().MatchRegex(
-            "x:Name=\"logStatisticsInspector\"[\\s\\S]{0,1200}x:Name=\"lblLogStatisticsEmpty\"[\\s\\S]{0,1200}x:Name=\"logErrorTrendChart\"[\\s\\S]{0,1200}x:Name=\"logComponentDistribution\"",
-            "About maintenance should host the diagnostic statistics controls together");
-        xaml.Should().Contain("基于保留期内全部日志统计错误趋势和组件分布");
-        xaml.Should().NotContain("按日志页当前筛选条件查看错误趋势和组件分布");
-
-        xaml.Should().NotContain("x:Name=\"logSessionInspector\"");
-        xaml.Should().NotContain("x:Name=\"logSessionBanner\"");
-        xaml.Should().NotContain("x:Name=\"lblLogSessionTitle\"");
-        xaml.Should().NotContain("x:Name=\"btnLogSessionBack\"");
+        xaml.Should().Contain("x:Name=\"btnExportDiagnostic\"");
+        xaml.Should().NotContain("x:Name=\"logStatisticsInspector\"");
+        xaml.Should().NotContain("x:Name=\"logErrorTrendChart\"");
+        xaml.Should().NotContain("x:Name=\"logComponentDistribution\"");
     }
 
     [Fact]

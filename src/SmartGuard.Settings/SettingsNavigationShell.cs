@@ -14,7 +14,6 @@ internal sealed class SettingsNavigationShell
   internal void Wire(
     ListBox navList,
     Action<bool> setLogPageActive,
-    Action<bool> setDiagnosticPageActive,
     Action stabilizeLayout)
   {
     var pageGeneral = _window.FindName("pageGeneral") as StackPanel;
@@ -30,7 +29,6 @@ internal sealed class SettingsNavigationShell
     {
       var selected = navList.SelectedIndex;
       var isLogsPage = selected == 3;
-      var isDiagnosticPage = selected == 5;
       UpdatePageTitle(selected, txtPageTitle);
 
       if (pageGeneral != null) pageGeneral.Visibility = Visibility.Collapsed;
@@ -71,7 +69,6 @@ internal sealed class SettingsNavigationShell
         ResetContentScroll(scrollViewer);
 
       setLogPageActive(isLogsPage);
-      setDiagnosticPageActive(isDiagnosticPage);
     };
   }
 
@@ -123,22 +120,19 @@ internal sealed class SettingsNavigationShell
 
   internal void WireWindowState(
     ListBox navList,
-    Action<bool, LogPageActivationReason> setLogPageActive,
-    Action<bool> setDiagnosticPageActive)
+    Action<bool, LogPageActivationReason> setLogPageActive)
   {
     _window.StateChanged += (_, _) =>
     {
       if (_window.WindowState == WindowState.Minimized)
       {
         setLogPageActive(false, LogPageActivationReason.Navigation);
-        setDiagnosticPageActive(false);
       }
       else
       {
         setLogPageActive(
           navList.SelectedIndex == 3,
           LogPageActivationReason.WindowRestored);
-        setDiagnosticPageActive(navList.SelectedIndex == 5);
       }
     };
   }

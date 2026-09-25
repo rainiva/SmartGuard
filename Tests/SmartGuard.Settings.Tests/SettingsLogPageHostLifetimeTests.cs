@@ -381,7 +381,6 @@ public sealed class SettingsLogPageHostLifetimeTests
                     () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
                     TimeSpan.FromSeconds(5),
                     "initial log view refresh to settle before replacing the controller with a controllable fake");
-                CollapseStatisticsInspector(window);
 
                 var host = GetLogPageHost(controller);
                 StopLogTimer(host);
@@ -440,7 +439,6 @@ public sealed class SettingsLogPageHostLifetimeTests
                     () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
                     TimeSpan.FromSeconds(5),
                     "initial log view refresh to settle before replacing the controller with a controllable fake");
-                CollapseStatisticsInspector(window);
 
                 var host = GetLogPageHost(controller);
                 StopLogTimer(host);
@@ -511,7 +509,6 @@ public sealed class SettingsLogPageHostLifetimeTests
                     () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
                     TimeSpan.FromSeconds(5),
                     "initial log view refresh to settle before replacing the controller with a controllable fake");
-                CollapseStatisticsInspector(window);
 
                 var host = GetLogPageHost(controller);
                 StopLogTimer(host);
@@ -592,7 +589,6 @@ public sealed class SettingsLogPageHostLifetimeTests
                     () => controller.IsLogViewInitializedForTests && !controller.IsLogRefreshInFlightForTests,
                     TimeSpan.FromSeconds(5),
                     "initial log view refresh to settle before replacing the controller with a controllable fake");
-                CollapseStatisticsInspector(window);
 
                 var host = GetLogPageHost(controller);
                 StopLogTimer(host);
@@ -656,61 +652,6 @@ public sealed class SettingsLogPageHostLifetimeTests
             finally
             {
                 eventSource.ReleaseAll();
-                controller?.Dispose();
-                TryDelete(installRoot);
-            }
-        });
-    }
-
-    [Fact]
-    public void Maintenance_statistics_ignore_log_page_filters_and_active_session()
-    {
-        WpfStaTestHost.Run(() =>
-        {
-            var installRoot = CreateInstallRoot();
-            SettingsWindowController? controller = null;
-
-            try
-            {
-                WriteLog(installRoot);
-                controller = CreateController(installRoot);
-                WpfStaTestHost.Track(controller);
-                var window = GetWindow(controller);
-                WpfStaTestHost.ShowAndWait(window);
-                controller.NavigateTo("logs");
-
-                var host = GetLogPageHost(controller);
-                var baseTime = new DateTimeOffset(2026, 8, 2, 10, 0, 0, TimeSpan.Zero);
-                var session = CreateSession("s:stats", baseTime);
-                var savedMainView = new LogSessionMainViewState(
-                    BaseExpression: LogQueryParser.Parse("message:saved-only").Expression!,
-                    SearchKeyword: "saved-only",
-                    ActiveTags: [],
-                    TimeRange: LogViewTimeRange.All,
-                    CustomRangeStart: null,
-                    CustomRangeEnd: null,
-                    SearchCaseSensitive: false,
-                    Anchor: null,
-                    SelectedEventId: null);
-                GetSessionCoordinator(host).SelectSession(session, savedMainView);
-
-                GetSearchFilterBar(host).SetKeyword("current-only");
-                var request = InvokeBuildAggregationRequest(host);
-
-                LogQueryExpressionEvaluator.Matches(
-                    CreateEvent("current", baseTime.AddMinutes(1), "current-only"),
-                    request.Expression).Should().BeTrue();
-                LogQueryExpressionEvaluator.Matches(
-                    CreateEvent("saved", baseTime.AddMinutes(2), "saved-only"),
-                    request.Expression).Should().BeTrue(
-                    "maintenance diagnostics must not inherit the hidden log-page filter");
-                LogQueryExpressionEvaluator.Matches(
-                    CreateEvent("outside", baseTime.AddHours(1), "current-only"),
-                    request.Expression).Should().BeTrue(
-                    "maintenance diagnostics must not inherit the active log session");
-            }
-            finally
-            {
                 controller?.Dispose();
                 TryDelete(installRoot);
             }
@@ -887,12 +828,6 @@ public sealed class SettingsLogPageHostLifetimeTests
         return (IReadOnlyList<string>)field!.GetValue(host)!;
     }
 
-    private static void CollapseStatisticsInspector(Window window)
-    {
-        if (window.FindName("logStatisticsInspector") is Expander statisticsInspector)
-            statisticsInspector.IsExpanded = false;
-    }
-
     private static void StopLogTimer(object host)
     {
         var field = host.GetType().GetField(
@@ -918,15 +853,6 @@ public sealed class SettingsLogPageHostLifetimeTests
             BindingFlags.NonPublic | BindingFlags.Instance);
         if (field?.GetValue(host) is CheckBox checkBox)
             checkBox.IsChecked = false;
-    }
-
-    private static LogAggregationRequest InvokeBuildAggregationRequest(object host)
-    {
-        var method = host.GetType().GetMethod(
-            "BuildAggregationRequest",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        method.Should().NotBeNull();
-        return (LogAggregationRequest)method!.Invoke(host, [])!;
     }
 
     private static void InvokePrivate(object instance, string methodName, params object[] args)
