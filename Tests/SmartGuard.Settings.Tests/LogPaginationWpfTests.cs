@@ -107,26 +107,22 @@ public class LogPaginationWpfTests
     }
 
     [Fact]
-    public void Log_table_uses_shared_scrollbar_level_colors_and_aligned_column_separators()
+    public void Log_table_uses_subtle_horizontal_dividers_without_vertical_grid_lines()
     {
         var source = SettingsSourcePaths.ReadSettingsXamlSource();
         var xaml = SliceLogPage(source);
 
-        source.Should().Contain("x:Key=\"LogTableLevelTextStyle\"");
-        xaml.Should().Contain("ElementStyle=\"{StaticResource LogTableLevelTextStyle}\"");
-        source.Should().Contain("#1A6FBF");
-        source.Should().Contain("#C47A00");
-        source.Should().Contain("#C62828");
-        source.Should().Contain("#5F6B7A");
         source.Should().MatchRegex(
-            "x:Key=\"LogTableHeaderStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0,0,1,1\"");
+            "x:Key=\"LogTableHeaderStyle\"[\\s\\S]{0,500}Property=\"BorderBrush\" Value=\"\\{DynamicResource DividerBrush\\}\"[\\s\\S]{0,120}Property=\"BorderThickness\" Value=\"0,0,0,1\"");
         source.Should().MatchRegex(
-            "x:Key=\"LogTableCellStyle\"[\\s\\S]{0,500}Property=\"Padding\" Value=\"16,0\"");
+            "x:Key=\"LogTableCellStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0\"",
+            "cells must not draw vertical separators between columns");
         source.Should().MatchRegex(
-            "x:Key=\"LogTableCellTextStyle\"[\\s\\S]{0,500}Property=\"Margin\" Value=\"16,0,16,0\"",
-            "text element margins must provide visible spacing even when the platform DataGridCell template ignores Padding");
+            "x:Key=\"LogTableRowStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0,0,0,1\"");
         xaml.Should().MatchRegex(
-            "x:Name=\"logTable\"[\\s\\S]{0,2400}<DataGrid.Resources>[\\s\\S]{0,500}SettingsScrollBar");
+            "x:Name=\"logViewportBorder\"[\\s\\S]{0,300}BorderBrush=\"\\{DynamicResource DividerBrush\\}\"");
+        source.Should().NotContain("x:Key=\"CardShadowColor\"",
+            "the retired shadow token must not linger and invite the dark-block mechanism back");
     }
 
     [Fact]
@@ -259,7 +255,7 @@ public class LogPaginationWpfTests
     }
 
     [Fact]
-    public void Log_table_body_text_keeps_a_balanced_gap_from_column_separators()
+    public void Log_table_body_text_keeps_a_balanced_gap_from_cell_edge()
     {
         WpfStaTestHost.Run(() =>
         {

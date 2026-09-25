@@ -27,7 +27,6 @@
       <SolidColorBrush x:Key="NavigationBorderBrush" Color="#E0E0E0"/>
       <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF"/>
       <SolidColorBrush x:Key="CardBorderBrush" Color="#E5E5E5"/>
-      <Color x:Key="CardShadowColor">#20000000</Color>
       <SolidColorBrush x:Key="TextPrimary" Color="#1A1A1A"/>
       <SolidColorBrush x:Key="TextSecondary" Color="#616161"/>
       <SolidColorBrush x:Key="TextTertiary" Color="#8A8A8A"/>
@@ -523,7 +522,7 @@
         <Setter Property="Background" Value="{DynamicResource NumberBoxBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
-        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Padding" Value="16,0"/>
         <Setter Property="Height" Value="38"/>
@@ -533,7 +532,7 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
-        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="16,0"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
       </Style>
@@ -1467,7 +1466,7 @@
             <Border x:Name="logViewportBorder"
                     Grid.Row="1"
                     Background="{DynamicResource NumberBoxBackground}"
-                    BorderBrush="{DynamicResource NumberBoxBorderBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="1"
                     CornerRadius="4"
                     ClipToBounds="True"
