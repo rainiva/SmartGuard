@@ -126,6 +126,24 @@ public class LogPaginationWpfTests
     }
 
     [Fact]
+    public void Log_table_pins_level_palette_level_text_style_and_scrollbar_resource()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+
+        source.Should().Contain("#1A6FBF");
+        source.Should().Contain("#C47A00");
+        source.Should().Contain("#C62828");
+        source.Should().Contain("#5F6B7A");
+        source.Should().Contain("x:Key=\"LogTableLevelTextStyle\"");
+        xaml.Should().Contain("ElementStyle=\"{StaticResource LogTableLevelTextStyle}\"",
+            "the level column must keep its dedicated text style or every level would render the default foreground");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logTable\"[\\s\\S]{0,2400}<DataGrid.Resources>[\\s\\S]{0,500}SettingsScrollBar",
+            "the log table must style its scrollbars through the shared SettingsScrollBar resource");
+    }
+
+    [Fact]
     public void Filter_popup_stays_within_log_toolbar_at_narrow_window_width()
     {
         const double toolbarLeftRelativeToButton = -215;
