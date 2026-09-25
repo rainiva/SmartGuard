@@ -289,6 +289,84 @@ public class SettingsWindowResizeStabilityTests
     }
 
     [Fact]
+    public void Rapid_maximize_restore_keeps_log_surface_inside_content_bounds()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            var lines = Enumerable.Range(1, 200)
+                .Select(index => $"[INFO] 2026-08-07 10:{index / 60:00}:{index % 60:00} maximize probe event {index}")
+                .ToArray();
+            File.WriteAllText(
+                Path.Combine(installRoot, "SmartGuard.log"),
+                string.Join(Environment.NewLine, lines),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                try
+                {
+                    window.Width = 1200;
+                    window.Height = 900;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("logs");
+                    window.UpdateLayout();
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                    WpfStaTestHost.WaitForRender();
+                    Pump(window);
+
+                    // Single-shot, non-retryable gate: the first failing round fails
+                    // the whole test; a later successful run must never mask it.
+                    for (var round = 1; round <= 20; round++)
+                    {
+                        RunGateRound(window, round, "maximized", () =>
+                        {
+                            window.WindowState = WindowState.Maximized;
+                            WpfStaTestHost.WaitForRender();
+                            Pump(window);
+                            AssertLogSurfaceContained(window, round, "maximized");
+                        });
+
+                        RunGateRound(window, round, "restored", () =>
+                        {
+                            window.WindowState = WindowState.Normal;
+                            WpfStaTestHost.WaitForRender();
+                            Pump(window);
+                            AssertLogSurfaceContained(window, round, "restored");
+                        });
+                    }
+                }
+                finally
+                {
+                    WindowTitleBarTheme.Apply(window, isDarkMode: false);
+                    try
+                    {
+                        window.WindowState = WindowState.Normal;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 清理期的状态回置失败不得掩盖门禁本体失败；
+                        // 窗口是否真正关闭仍由 RunOnSta 的 AssertQuiescent 兜底。
+                        System.Diagnostics.Debug.WriteLine($"maximize gate cleanup state reset failed: {ex.Message}");
+                    }
+
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void User_scrolling_about_page_can_reach_both_vertical_bounds_after_resize()
     {
         RunOnSta(() =>
@@ -604,6 +682,68 @@ public class SettingsWindowResizeStabilityTests
                 TryDelete(installRoot);
             }
         });
+    }
+
+    private static void RunGateRound(Window window, int round, string phase, Action body)
+    {
+        try
+        {
+            body();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Maximize gate failed at round {round} ({phase}): {ex.Message}",
+                ex);
+        }
+    }
+
+    private static void AssertLogSurfaceContained(Window window, int round, string phase)
+    {
+        var rightContentRoot = window.FindName("rightContentRoot") as FrameworkElement;
+        var pageLogs = window.FindName("pageLogs") as FrameworkElement;
+        var logViewportBorder = window.FindName("logViewportBorder") as FrameworkElement;
+        var logTable = window.FindName("logTable") as FrameworkElement;
+        var logPager = window.FindName("logPager") as FrameworkElement;
+
+        rightContentRoot.Should().NotBeNull($"round {round} ({phase}) needs rightContentRoot");
+        pageLogs.Should().NotBeNull($"round {round} ({phase}) needs pageLogs");
+        logViewportBorder.Should().NotBeNull($"round {round} ({phase}) needs logViewportBorder");
+        logTable.Should().NotBeNull($"round {round} ({phase}) needs logTable");
+        logPager.Should().NotBeNull($"round {round} ({phase}) needs logPager");
+
+        pageLogs!.Visibility.Should().Be(Visibility.Visible, $"round {round} ({phase}) shows the log page");
+
+        var contentRoot = window.Content as FrameworkElement;
+        contentRoot.Should().NotBeNull($"round {round} ({phase}) needs a FrameworkElement window content root");
+        AssertContained(contentRoot!, rightContentRoot!);
+
+        foreach (var element in new[] { rightContentRoot!, pageLogs, logViewportBorder!, logTable!, logPager! })
+        {
+            element.ActualHeight.Should().BeGreaterThan(
+                0,
+                $"round {round} ({phase}) keeps {element.Name} at a positive height");
+            element.IsMeasureValid.Should().BeTrue(
+                $"round {round} ({phase}) keeps {element.Name} measure-valid");
+            element.IsArrangeValid.Should().BeTrue(
+                $"round {round} ({phase}) keeps {element.Name} arrange-valid");
+        }
+
+        AssertContained(rightContentRoot!, pageLogs);
+        AssertContained(pageLogs, logViewportBorder!);
+        AssertContained(logViewportBorder!, logTable!);
+        AssertContained(pageLogs, logPager!);
+    }
+
+    private static void AssertContained(FrameworkElement container, FrameworkElement child)
+    {
+        var origin = child.TranslatePoint(new Point(0, 0), container);
+        origin.X.Should().BeGreaterThanOrEqualTo(-1);
+        origin.Y.Should().BeGreaterThanOrEqualTo(-1);
+        (origin.X + child.ActualWidth).Should().BeLessThanOrEqualTo(container.ActualWidth + 1);
+        (origin.Y + child.ActualHeight).Should().BeLessThanOrEqualTo(container.ActualHeight + 1);
+        child.IsMeasureValid.Should().BeTrue();
+        child.IsArrangeValid.Should().BeTrue();
     }
 
     private static string RepoXamlPath() => SettingsSourcePaths.ProjectSettingsXamlPath();
