@@ -172,6 +172,114 @@ public class LogPaginationWpfTests
     }
 
     [Fact]
+    public void Filter_popup_stays_inside_settings_content_in_normal_window()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var contentRoot = (FrameworkElement)window.FindName("rightContentRoot");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+            var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                // The four-edge contract is defined against the content area of a
+                // really shown window, so move the window onto the primary monitor
+                // instead of leaving it parked off-screen by the headless helper.
+                window.Left = 64;
+                window.Top = 64;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                foreach (var (width, height) in new[] { (800d, 640d), (700d, 560d), (600d, 500d) })
+                {
+                    window.Width = width;
+                    window.Height = height;
+                    WpfStaTestHost.PumpDispatcher(window);
+
+                    foreach (var customTimeExpanded in new[] { false, true })
+                    {
+                        customRange.Visibility = customTimeExpanded
+                            ? Visibility.Visible
+                            : Visibility.Collapsed;
+                        SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                        popup.IsOpen = true;
+                        SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                        WpfStaTestHost.PumpDispatcher(window);
+                        WpfStaTestHost.WaitForRender();
+
+                        AssertPanelInsideContentRoot(
+                            window,
+                            contentRoot,
+                            panel,
+                            $"window {width:0}x{height:0} with {(customTimeExpanded ? "custom time expanded" : "default filter content")}");
+
+                        popup.IsOpen = false;
+                        WpfStaTestHost.PumpDispatcher(window);
+                    }
+                }
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                customRange.Visibility = Visibility.Collapsed;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Filter_popup_placements_clamp_to_content_client_area_on_all_edges()
+    {
+        const double contentLeft = -280;
+        const double contentWidth = 332;
+        const double contentTop = -92;
+        const double contentHeight = 464;
+        var placements = SettingsLogPageHost.CreateLogFilterPopupPlacements(
+            new Size(300, 300),
+            new Size(46, 36),
+            new Point(),
+            contentLeft,
+            contentWidth,
+            contentTop,
+            contentHeight);
+
+        foreach (var placement in placements)
+        {
+            placement.Point.X.Should().BeGreaterThanOrEqualTo(contentLeft,
+                "the popup left edge must stay inside the content client area");
+            placement.Point.X.Should().BeLessThanOrEqualTo(contentLeft + contentWidth,
+                "the popup right edge must stay inside the content client area");
+            placement.Point.Y.Should().BeGreaterThanOrEqualTo(contentTop,
+                "the popup top edge must stay inside the content client area");
+            placement.Point.Y.Should().BeLessThanOrEqualTo(contentTop + contentHeight,
+                "the popup bottom edge must stay inside the content client area");
+        }
+
+        placements[0].Point.Y.Should().Be(36 + 8,
+            "the below candidate keeps the 8 DIP gap under the button while it fits");
+        placements[1].Point.Y.Should().Be(contentTop,
+            "an above candidate that would poke out of the client top is pulled back inside");
+
+        // With room on both sides the 8 DIP gap opens away from the button in
+        // both directions instead of overlapping the button.
+        var roomy = SettingsLogPageHost.CreateLogFilterPopupPlacements(
+            new Size(300, 200),
+            new Size(46, 36),
+            new Point(),
+            containerTop: -400,
+            containerHeight: 900);
+        roomy[0].Point.Y.Should().Be(36 + 8);
+        roomy[1].Point.Y.Should().Be(-200 - 8);
+    }
+
+    [Fact]
     public void Filter_popup_follows_filter_button_in_maximized_window()
     {
         WpfStaTestHost.Run(() =>
@@ -182,6 +290,7 @@ public class LogPaginationWpfTests
 
             var logPage = (FrameworkElement)window!.FindName("pageLogs");
             var filterButton = (Button)window.FindName("btnLogFilter");
+            var contentRoot = (FrameworkElement)window.FindName("rightContentRoot");
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
             var panel = (FrameworkElement)window.FindName("logFilterPanel");
 
@@ -189,6 +298,12 @@ public class LogPaginationWpfTests
             {
                 logPage.Visibility = Visibility.Visible;
                 WpfStaTestHost.ShowAndWait(window);
+                // Popup measurements compare screen coordinates of two different
+                // HWNDs; bring the window onto the primary monitor instead of
+                // leaving it parked off-screen by the headless helper.
+                window.Left = 64;
+                window.Top = 64;
+                WpfStaTestHost.PumpDispatcher(window);
                 SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
                 var tracking = SettingsLogPageHost.TrackLogFilterPopupWhileOpen(window, popup);
                 popup.IsOpen = true;
@@ -207,6 +322,11 @@ public class LogPaginationWpfTests
                 popup.PlacementTarget.Should().BeSameAs(filterButton);
                 buttonCenter.Should().BeInRange(panelLeft, panelRight,
                     "the popup should remain visually attached to the filter button after maximizing");
+                AssertPanelInsideContentRoot(
+                    window,
+                    contentRoot,
+                    panel,
+                    "maximized window");
 
                 var repositionCountAfterMaximize = tracking.RepositionCount;
                 repositionCountAfterMaximize.Should().BeGreaterThan(0);
@@ -217,6 +337,11 @@ public class LogPaginationWpfTests
                 tracking.RepositionCount.Should().BeGreaterThan(
                     repositionCountAfterMaximize,
                     "restoring and moving the window must request fresh popup placement");
+                AssertPanelInsideContentRoot(
+                    window,
+                    contentRoot,
+                    panel,
+                    "restored window after move");
 
                 popup.IsOpen = false;
                 WpfStaTestHost.WaitUntil(
@@ -243,8 +368,10 @@ public class LogPaginationWpfTests
             window.Should().NotBeNull();
 
             var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var contentRoot = (FrameworkElement)window.FindName("rightContentRoot");
             var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
             var timeRange = (ComboBox)window.FindName("cmbLogTimeRange");
             var level = (ComboBox)window.FindName("cmbLogLevel");
             var source = (ComboBox)window.FindName("cmbLogSource");
@@ -256,6 +383,12 @@ public class LogPaginationWpfTests
                 logPage.Visibility = Visibility.Visible;
                 customRange.Visibility = Visibility.Visible;
                 WpfStaTestHost.ShowAndWait(window);
+                // Popup measurements compare screen coordinates of two different
+                // HWNDs; bring the window onto the primary monitor instead of
+                // leaving it parked off-screen by the headless helper.
+                window.Left = 64;
+                window.Top = 64;
+                WpfStaTestHost.PumpDispatcher(window);
                 SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
                 popup.IsOpen = true;
                 SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
@@ -273,6 +406,22 @@ public class LogPaginationWpfTests
                         grid.ActualWidth + 0.5,
                         "the time text box and its left margin must fit inside the custom-range row");
                 }
+
+                AssertPanelInsideContentRoot(
+                    window,
+                    contentRoot,
+                    panel,
+                    "custom time expanded in the default window");
+
+                var scrollViewer = FindVisualChildren<ScrollViewer>(panel).FirstOrDefault();
+                scrollViewer.Should().NotBeNull(
+                    "the filter content must scroll inside a height-constrained popup");
+                panel.MaxHeight = 220;
+                WpfStaTestHost.PumpDispatcher(window);
+                scrollViewer!.ScrollableHeight.Should().BeGreaterThan(0,
+                    "constraining the popup height must expose a scrollable range instead of clipping content");
+                scrollViewer.VerticalOffset.Should().Be(0,
+                    "the constrained popup must start at the top of its scrollable range");
             }
             finally
             {
@@ -467,6 +616,34 @@ public class LogPaginationWpfTests
                 window.Close();
             }
         });
+    }
+
+    private static void AssertPanelInsideContentRoot(
+        Window window,
+        FrameworkElement contentRoot,
+        FrameworkElement panel,
+        string context)
+    {
+        var tolerance = VisualTreeHelper.GetDpi(panel).PixelsPerDip;
+        var rootTopLeft = contentRoot.PointToScreen(new Point(0, 0));
+        var rootRight = contentRoot.PointToScreen(new Point(contentRoot.ActualWidth, 0)).X;
+        var rootBottom = contentRoot.PointToScreen(new Point(0, contentRoot.ActualHeight)).Y;
+        var panelTopLeft = panel.PointToScreen(new Point(0, 0));
+        var panelRight = panel.PointToScreen(new Point(panel.ActualWidth, 0)).X;
+        var panelBottom = panel.PointToScreen(new Point(0, panel.ActualHeight)).Y;
+
+        panelTopLeft.X.Should().BeGreaterThanOrEqualTo(rootTopLeft.X - tolerance,
+            $"popup left edge must stay inside the settings content area ({context}; " +
+            $"panel left {panelTopLeft.X:0.##}, content left {rootTopLeft.X:0.##})");
+        panelRight.Should().BeLessThanOrEqualTo(rootRight + tolerance,
+            $"popup right edge must stay inside the settings content area ({context}; " +
+            $"panel right {panelRight:0.##}, content right {rootRight:0.##})");
+        panelTopLeft.Y.Should().BeGreaterThanOrEqualTo(rootTopLeft.Y - tolerance,
+            $"popup top edge must stay inside the settings content area ({context}; " +
+            $"panel top {panelTopLeft.Y:0.##}, content top {rootTopLeft.Y:0.##})");
+        panelBottom.Should().BeLessThanOrEqualTo(rootBottom + tolerance,
+            $"popup bottom edge must stay inside the settings content area ({context}; " +
+            $"panel bottom {panelBottom:0.##}, content bottom {rootBottom:0.##})");
     }
 
     private static string SliceLogPage(string xaml)

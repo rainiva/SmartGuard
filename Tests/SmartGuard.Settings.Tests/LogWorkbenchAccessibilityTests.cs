@@ -128,6 +128,44 @@ public class LogWorkbenchAccessibilityTests
         });
     }
 
+    [Fact]
+    public void Filter_popup_scroll_container_keeps_time_level_and_source_keyboard_reachable()
+    {
+        var xaml = File.ReadAllText(
+            SettingsSourcePaths.ProjectSettingsXamlPath(),
+            Encoding.UTF8);
+
+        var panelIndex = RequireIndex(xaml, "x:Name=\"logFilterPanel\"");
+        var scrollIndex = xaml.IndexOf("<ScrollViewer", panelIndex, StringComparison.Ordinal);
+        scrollIndex.Should().BeGreaterThan(panelIndex,
+            "the filter popup content must live inside a scroll container so a height-constrained popup stays keyboard reachable");
+        var scrollCloseIndex = xaml.IndexOf("</ScrollViewer>", scrollIndex, StringComparison.Ordinal);
+        scrollCloseIndex.Should().BeGreaterThan(scrollIndex);
+
+        var scrollSlice = xaml[scrollIndex..scrollCloseIndex];
+        scrollSlice.Should().Contain("VerticalScrollBarVisibility=\"Auto\"",
+            "the constrained popup must offer a visible scroll affordance instead of clipping content");
+        scrollSlice.Should().Contain("HorizontalScrollBarVisibility=\"Disabled\"",
+            "the popup must not introduce horizontal scrolling");
+
+        var timeIndex = scrollSlice.IndexOf("x:Name=\"cmbLogTimeRange\"", StringComparison.Ordinal);
+        var levelIndex = scrollSlice.IndexOf("x:Name=\"cmbLogLevel\"", StringComparison.Ordinal);
+        var sourceIndex = scrollSlice.IndexOf("x:Name=\"cmbLogSource\"", StringComparison.Ordinal);
+        timeIndex.Should().BeGreaterThan(-1, "the time picker must stay inside the scroll container");
+        levelIndex.Should().BeGreaterThan(-1, "the level picker must stay inside the scroll container");
+        sourceIndex.Should().BeGreaterThan(-1, "the source picker must stay inside the scroll container");
+        timeIndex.Should().BeLessThan(levelIndex);
+        levelIndex.Should().BeLessThan(sourceIndex,
+            "Tab order inside the popup must run time -> level -> source in visual order");
+
+        foreach (var controlName in new[] { "cmbLogTimeRange", "cmbLogLevel", "cmbLogSource" })
+        {
+            scrollSlice.Should().MatchRegex(
+                $"x:Name=\"{controlName}\"[\\s\\S]{{0,400}}KeyboardNavigation\\.IsTabStop=\"True\"|KeyboardNavigation\\.IsTabStop=\"True\"[\\s\\S]{{0,400}}x:Name=\"{controlName}\"",
+                $"{controlName} must stay explicitly keyboard reachable inside the popup scroll container");
+        }
+    }
+
     private static int RequireIndex(string text, string value)
     {
         var index = text.IndexOf(value, StringComparison.Ordinal);

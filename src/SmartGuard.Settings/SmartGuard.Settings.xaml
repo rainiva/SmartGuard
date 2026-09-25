@@ -1299,12 +1299,12 @@
                 <Border x:Name="logFilterPanel"
                         Width="420"
                         MaxWidth="420"
-                        Margin="0,8,0,0"
                         Padding="16,14"
                         Background="{DynamicResource NumberBoxBackground}"
                         BorderBrush="{DynamicResource NumberBoxBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="6">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                   <StackPanel>
                     <WrapPanel Margin="0,0,0,10">
                       <TextBlock Text="时间" Width="52" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
@@ -1382,6 +1382,7 @@
                         </ComboBox.ItemContainerStyle>
                       </ComboBox>
                   </StackPanel>
+                  </ScrollViewer>
                 </Border>
               </Popup>
 

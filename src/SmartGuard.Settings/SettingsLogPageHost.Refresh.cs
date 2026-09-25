@@ -630,7 +630,7 @@ internal sealed partial class SettingsLogPageHost
     ArgumentNullException.ThrowIfNull(popup);
 
     if (window.FindName("btnLogFilter") is not Button filterButton
-        || window.FindName("logToolbar") is not FrameworkElement toolbar
+        || window.FindName("rightContentRoot") is not FrameworkElement contentRoot
         || window.FindName("logFilterPanel") is not FrameworkElement panel)
       return;
 
@@ -638,28 +638,51 @@ internal sealed partial class SettingsLogPageHost
     popup.Placement = PlacementMode.Custom;
     popup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
     {
-      var toolbarOrigin = toolbar.TranslatePoint(new Point(0, 0), filterButton);
-      var measuredPopupSize = new Size(
-        double.IsNaN(panel.Width) ? popupSize.Width : panel.Width,
-        popupSize.Height);
+      var contentOrigin = contentRoot.TranslatePoint(new Point(0, 0), filterButton);
+      // WPF 与回调交换的 popupSize/targetSize 及返回点共用同一坐标系；
+      // 在 >100% DPI 的缩放显示器上该坐标系是设备像素（例如 200% 时
+      // targetSize.Width = 2 × 按钮 DIP 宽度）。从目标的实际尺寸自校准
+      // 设备比例，使客户区夹紧计算与返回点保持同一单位，否则返回的
+      // DIP 点会被按设备像素解释，弹窗被推向客户区之外。
+      var deviceScale = filterButton.ActualWidth > 0 && targetSize.Width > 0
+        ? targetSize.Width / filterButton.ActualWidth
+        : 1.0;
+      var measuredPopupWidth = double.IsNaN(panel.Width)
+        ? popupSize.Width
+        : panel.Width * deviceScale;
       return CreateLogFilterPopupPlacements(
-        measuredPopupSize,
+        new Size(measuredPopupWidth, popupSize.Height),
         targetSize,
         offset,
-        toolbarOrigin.X,
-        toolbar.ActualWidth);
+        contentOrigin.X * deviceScale,
+        contentRoot.ActualWidth * deviceScale,
+        contentOrigin.Y * deviceScale,
+        contentRoot.ActualHeight * deviceScale,
+        FilterPopupVerticalGap * deviceScale);
     };
 
-    if (toolbar.ActualWidth > 0)
-      panel.Width = Math.Min(panel.MaxWidth, toolbar.ActualWidth);
+    if (contentRoot.ActualWidth > 0)
+      panel.Width = Math.Min(panel.MaxWidth, contentRoot.ActualWidth);
+    if (contentRoot.ActualHeight > 0)
+      panel.MaxHeight = Math.Max(1, contentRoot.ActualHeight - 16);
   }
+
+  /// <summary>
+  /// 弹窗与筛选按钮之间的固定间距（DIP）。间距进入定位偏移而不是
+  /// <c>logFilterPanel</c> 的 Border Margin，避免边距被漏算出客户区。
+  /// 调用方须按与 <paramref name="targetSize"/> 相同的单位传入。
+  /// </summary>
+  internal const double FilterPopupVerticalGap = 8;
 
   internal static CustomPopupPlacement[] CreateLogFilterPopupPlacements(
     Size popupSize,
     Size targetSize,
     Point offset,
     double containerLeft = double.NegativeInfinity,
-    double containerWidth = double.PositiveInfinity)
+    double containerWidth = double.PositiveInfinity,
+    double containerTop = double.NegativeInfinity,
+    double containerHeight = double.PositiveInfinity,
+    double verticalGap = FilterPopupVerticalGap)
   {
     var alignedLeft = targetSize.Width - popupSize.Width;
     if (double.IsFinite(containerLeft) && double.IsFinite(containerWidth))
@@ -671,13 +694,26 @@ internal sealed partial class SettingsLogPageHost
     }
 
     alignedLeft += offset.X;
+
+    var clampVertically = double.IsFinite(containerTop) && double.IsFinite(containerHeight);
+    var maximumTop = clampVertically
+      ? Math.Max(containerTop, containerTop + containerHeight - popupSize.Height)
+      : double.PositiveInfinity;
+    var belowTop = targetSize.Height + offset.Y + verticalGap;
+    var aboveTop = -popupSize.Height + offset.Y - verticalGap;
+    if (clampVertically)
+    {
+      belowTop = Math.Clamp(belowTop, containerTop, maximumTop);
+      aboveTop = Math.Clamp(aboveTop, containerTop, maximumTop);
+    }
+
     return
     [
       new CustomPopupPlacement(
-        new Point(alignedLeft, targetSize.Height + offset.Y),
+        new Point(alignedLeft, belowTop),
         PopupPrimaryAxis.Horizontal),
       new CustomPopupPlacement(
-        new Point(alignedLeft, -popupSize.Height + offset.Y),
+        new Point(alignedLeft, aboveTop),
         PopupPrimaryAxis.Horizontal),
     ];
   }

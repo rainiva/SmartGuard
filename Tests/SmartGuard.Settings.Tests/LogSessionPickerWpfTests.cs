@@ -124,8 +124,8 @@ public sealed class LogSessionPickerWpfTests
         var sourceCombo = window.FindName("cmbLogSource") as ComboBox
           ?? throw new InvalidOperationException("cmbLogSource was not found.");
         var sessionCombo = RequireCombo(window);
-        var toolbar = window.FindName("logToolbar") as Grid
-          ?? throw new InvalidOperationException("logToolbar was not found.");
+        var contentRoot = window.FindName("rightContentRoot") as FrameworkElement
+          ?? throw new InvalidOperationException("rightContentRoot was not found.");
 
         levelCombo.Visibility.Should().Be(Visibility.Visible);
         sourceCombo.Visibility.Should().Be(Visibility.Visible);
@@ -134,7 +134,8 @@ public sealed class LogSessionPickerWpfTests
         sourceCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Content, "全部来源"));
         sourceCombo.Items.OfType<ComboBoxItem>().Should().Contain(item => Equals(item.Tag, LogComponentRegistry.Engine));
         filterPopup.PlacementTarget.Should().BeSameAs(filterButton);
-        filterPanel.ActualWidth.Should().BeLessThanOrEqualTo(toolbar.ActualWidth + 0.5);
+        // 定位边界真源是设置窗口内容客户区，弹窗宽度以 rightContentRoot 为上限。
+        filterPanel.ActualWidth.Should().BeLessThanOrEqualTo(contentRoot.ActualWidth + 0.5);
       }
       finally
       {

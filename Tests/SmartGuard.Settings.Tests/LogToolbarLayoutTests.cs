@@ -126,6 +126,12 @@ public class LogToolbarLayoutTests
         xaml.Should().MatchRegex(
             "x:Name=\"logFilterPanel\"[\\s\\S]{0,500}MaxWidth=\"420\"",
             "the filter surface should retain the standard maximum width");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logFilterPanel\"[\\s\\S]{0,420}<ScrollViewer[\\s\\S]{0,160}VerticalScrollBarVisibility=\"Auto\"[\\s\\S]{0,120}HorizontalScrollBarVisibility=\"Disabled\"",
+            "the filter content must scroll inside a height-constrained popup instead of overflowing the client area");
+        xaml.Should().NotMatchRegex(
+            "x:Name=\"logFilterPanel\"[\\s\\S]{0,200}Margin=\"0,8,0,0\"",
+            "the 8 DIP spacing to the filter button lives in the placement offset, not in a Border Margin that can be dropped out of the client-area math");
         refreshSource.Should().Contain("popup.IsOpen = true");
         refreshSource.Should().Contain("ConfigureLogFilterPopup(_window, popup)");
 
