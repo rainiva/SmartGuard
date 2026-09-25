@@ -41,7 +41,6 @@ internal static class LogPagedMatchNavigator
     return row.LevelText.Contains(keyword, StringComparison.OrdinalIgnoreCase)
       || row.TimeText.Contains(keyword, StringComparison.OrdinalIgnoreCase)
       || row.SourceText.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-      || row.EventText.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-      || row.StatusText.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+      || row.EventText.Contains(keyword, StringComparison.OrdinalIgnoreCase);
   }
 }

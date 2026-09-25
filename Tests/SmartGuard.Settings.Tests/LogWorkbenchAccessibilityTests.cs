@@ -100,6 +100,19 @@ public class LogWorkbenchAccessibilityTests
     }
 
     [Fact]
+    public void Log_table_help_text_names_exactly_the_four_visible_columns()
+    {
+        var xaml = File.ReadAllText(
+            SettingsSourcePaths.ProjectSettingsXamlPath(),
+            Encoding.UTF8);
+
+        xaml.Should().Contain(
+            "AutomationProperties.HelpText=\"按级别、时间、来源和事件查看当前页日志\"",
+            "级别、时间、来源、事件 are the only visible columns the table should advertise");
+        xaml.Should().NotContain("按级别、时间、来源、事件和状态查看当前页日志");
+    }
+
+    [Fact]
     public void Search_bar_can_move_keyboard_focus_to_the_keyword_input()
     {
         WpfStaTestHost.Run(() =>

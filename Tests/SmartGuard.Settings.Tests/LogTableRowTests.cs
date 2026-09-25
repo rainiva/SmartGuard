@@ -6,7 +6,7 @@ namespace SmartGuard.Settings.Tests;
 public sealed class LogTableRowTests
 {
   [Fact]
-  public void Structured_event_projects_level_time_source_event_and_status()
+  public void Structured_event_projects_level_time_source_and_event()
   {
     var source = CreateEvent(
       severity: LogSeverity.Info,
@@ -22,7 +22,6 @@ public sealed class LogTableRowTests
     row.TimeText.Should().Be(source.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
     row.SourceText.Should().Be("PowerManager");
     row.EventText.Should().Be("平衡模式已应用");
-    row.StatusText.Should().Be("—");
   }
 
   [Fact]
@@ -50,47 +49,6 @@ public sealed class LogTableRowTests
     row.SourceText.Should().Be(LogComponentRegistry.Legacy);
     row.EventText.Should().Be("旧格式日志内容");
     row.SourceEvent.Message.Should().Be("旧格式日志内容");
-    row.StatusText.Should().Be("—");
-  }
-
-  [Fact]
-  public void Unregistered_status_property_projects_dash_when_coverage_has_no_confirmed_keys()
-  {
-    var source = CreateEvent(
-      severity: LogSeverity.Info,
-      message: "success completed",
-      properties: new Dictionary<string, JsonElement>
-      {
-        ["status"] = JsonDocument.Parse("\"success\"").RootElement,
-      });
-
-    LogTableRow.FromEvent(source).StatusText.Should().Be("—");
-  }
-
-  [Fact]
-  public void Registered_outcome_property_projects_localized_status_text()
-  {
-    var source = CreateEvent(
-      properties: new Dictionary<string, JsonElement>
-      {
-        ["outcome"] = JsonDocument.Parse("\"handled\"").RootElement,
-      });
-
-    LogTableRow.FromEvent(source).StatusText.Should().Be("已处理");
-  }
-
-  [Theory]
-  [InlineData("\"unexpected\"")]
-  [InlineData("42")]
-  public void Unknown_or_non_string_outcome_projects_dash(string json)
-  {
-    var source = CreateEvent(
-      properties: new Dictionary<string, JsonElement>
-      {
-        [LogEventOutcome.PropertyName] = JsonDocument.Parse(json).RootElement,
-      });
-
-    LogTableRow.FromEvent(source).StatusText.Should().Be("—");
   }
 
   [Fact]
@@ -104,7 +62,7 @@ public sealed class LogTableRowTests
 
     row.LevelText.Should().Be("ERROR");
     row.EventText.Should().Contain("failed");
-    row.StatusText.Should().Be("—");
+    row.SourceEvent.Should().BeSameAs(source);
   }
 
   [Fact]
@@ -114,6 +72,31 @@ public sealed class LogTableRowTests
       .GetProperties()
       .Should()
       .NotContain(property => property.Name.Contains("Icon", StringComparison.OrdinalIgnoreCase));
+  }
+
+  [Fact]
+  public void Row_projection_allocates_no_resident_status_property()
+  {
+    typeof(LogTableRow)
+      .GetProperties()
+      .Should()
+      .NotContain(
+        property => property.Name.Contains("Status", StringComparison.Ordinal),
+        "the default table allocates no resident column for sparse outcomes; outcome stays in SourceEvent");
+  }
+
+  [Fact]
+  public void Registered_outcome_survives_in_source_event_without_localized_projection()
+  {
+    var source = CreateEvent(
+      properties: LogEventOutcome.CreateProperties(LogEventOutcome.Handled));
+
+    var row = LogTableRow.FromEvent(source);
+
+    row.SourceEvent.Should().BeSameAs(source);
+    row.SourceEvent.Properties[LogEventOutcome.PropertyName]
+      .GetString()
+      .Should().Be(LogEventOutcome.Handled);
   }
 
   [Theory]

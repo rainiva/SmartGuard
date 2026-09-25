@@ -347,7 +347,9 @@ public class LogWorkbenchP1AcceptanceTests
                       && logEvent.Message.Contains("插电", StringComparison.Ordinal));
         var powerRow = LogTableRow.FromEvent(coordinator.CurrentEvents.Single(
           logEvent => logEvent.EventName == EventNameRegistry.PowerSourceChanged));
-        powerRow.StatusText.Should().Be("已处理");
+        powerRow.SourceEvent.Properties[LogEventOutcome.PropertyName]
+          .GetString()
+          .Should().Be(LogEventOutcome.Handled);
       }
       finally
       {

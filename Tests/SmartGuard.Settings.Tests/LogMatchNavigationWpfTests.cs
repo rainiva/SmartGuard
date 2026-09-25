@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows.Input;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
@@ -62,7 +63,28 @@ public class LogMatchNavigationWpfTests
         result.TargetPage.Should().Be(1);
     }
 
-    private static LogEvent CreateEvent(string eventId, string message)
+    [Fact]
+    public void Keyword_search_does_not_match_outcome_stored_only_in_source_event_properties()
+    {
+        var state = LogPaginationState.Initial.ApplyExactCount(1, isScanComplete: true);
+        var row = LogTableRow.FromEvent(CreateEvent(
+            "e:outcome",
+            "电源事件已记录",
+            LogEventOutcome.CreateProperties(LogEventOutcome.Handled)));
+
+        var rawOutcome = LogPagedMatchNavigator.Resolve([row], "handled", -1, forward: true, state);
+        rawOutcome.RowIndex.Should().BeNull();
+        rawOutcome.TargetPage.Should().BeNull();
+
+        var localizedOutcome = LogPagedMatchNavigator.Resolve([row], "已处理", -1, forward: true, state);
+        localizedOutcome.RowIndex.Should().BeNull();
+        localizedOutcome.TargetPage.Should().BeNull();
+    }
+
+    private static LogEvent CreateEvent(
+        string eventId,
+        string message,
+        IReadOnlyDictionary<string, JsonElement>? properties = null)
         => new(
             LogEvent.CurrentSchemaVersion,
             eventId,
@@ -79,5 +101,5 @@ public class LogMatchNavigationWpfTests
             UserActionId: null,
             ProcessId: null,
             ThreadId: null,
-            LogEvent.EmptyProperties);
+            properties ?? LogEvent.EmptyProperties);
 }

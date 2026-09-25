@@ -9,15 +9,12 @@ namespace SmartGuard.Settings;
 /// </summary>
 public sealed class LogTableRow
 {
-  public const string UnknownStatusText = "—";
-
   private LogTableRow(
     LogEvent sourceEvent,
     string levelText,
     string timeText,
     string sourceText,
     string eventText,
-    string statusText,
     string exportText)
   {
     SourceEvent = sourceEvent;
@@ -25,7 +22,6 @@ public sealed class LogTableRow
     TimeText = timeText;
     SourceText = sourceText;
     EventText = eventText;
-    StatusText = statusText;
     ExportText = exportText;
   }
 
@@ -40,8 +36,6 @@ public sealed class LogTableRow
   public string SourceText { get; }
 
   public string EventText { get; }
-
-  public string StatusText { get; }
 
   public string ExportText { get; }
 
@@ -64,7 +58,6 @@ public sealed class LogTableRow
       sourceEvent.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
       sourceEvent.Component,
       BuildEventText(sourceEvent),
-      ResolveStatus(sourceEvent),
       BuildExportText(sourceEvent));
   }
 
@@ -74,19 +67,6 @@ public sealed class LogTableRow
       return sourceEvent.Message;
 
     return sourceEvent.EventName ?? string.Empty;
-  }
-
-  private static string ResolveStatus(LogEvent sourceEvent)
-  {
-    if (!sourceEvent.Properties.TryGetValue(LogEventOutcome.PropertyName, out var outcome)
-        || outcome.ValueKind != System.Text.Json.JsonValueKind.String)
-      return UnknownStatusText;
-
-    return outcome.GetString() switch
-    {
-      LogEventOutcome.Handled => "已处理",
-      _ => UnknownStatusText,
-    };
   }
 
   private static string BuildExportText(LogEvent sourceEvent)

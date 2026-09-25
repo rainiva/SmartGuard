@@ -144,6 +144,16 @@ public class LogPaginationWpfTests
     }
 
     [Fact]
+    public void Log_table_omits_sparse_status_column_and_describes_visible_columns()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+
+        xaml.Should().NotContain("Header=\"状态\"");
+        xaml.Should().NotContain("Binding=\"{Binding StatusText}\"");
+        xaml.Should().Contain("按级别、时间、来源和事件查看当前页日志");
+    }
+
+    [Fact]
     public void Filter_popup_stays_within_log_toolbar_at_narrow_window_width()
     {
         const double toolbarLeftRelativeToButton = -215;
@@ -293,7 +303,6 @@ public class LogPaginationWpfTests
                     TimeText = "2026-08-09 20:59:52",
                     SourceText = "Engine",
                     EventText = "电源事件：插电，立即重新评估",
-                    StatusText = "已处理",
                 },
             };
 

@@ -54,6 +54,30 @@ public class ArchitectureContractLoggingPhase3Tests
   }
 
   [Fact]
+  public void Default_log_table_allocates_no_resident_column_for_sparse_outcomes()
+  {
+    var settingsXaml = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SmartGuard.Settings.xaml");
+    var logPageStart = settingsXaml.IndexOf("<!-- Logs Page -->", StringComparison.Ordinal);
+    logPageStart.Should().BeGreaterThanOrEqualTo(0, "the Logs Page marker should exist in Settings XAML");
+    var logPage = settingsXaml[logPageStart..];
+
+    logPage.Should().NotContain("Header=\"状态\"",
+      "默认日志表不为稀疏 outcome 分配常驻列");
+    logPage.Should().NotContain("Binding=\"{Binding StatusText}\"");
+    logPage.Should().Contain("按级别、时间、来源和事件查看当前页日志");
+
+    var tableRow = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogTableRow.cs");
+    tableRow.Should().NotContain("StatusText",
+      "行投影不保留状态文本，结构化 outcome 仍保留在 LogEvent 与 JSONL 诊断数据中");
+    tableRow.Should().Contain("SourceEvent");
+
+    ContractContent.Should().Contain("生产端显式写已登记 outcome");
+    ContractContent.Should().Contain("默认表格不分配常驻列");
+    ContractContent.Should().Contain("结构化 outcome 保留在 `LogEvent` 与 JSONL");
+    ContractContent.Should().NotContain("缺失或未知值显示 `—`");
+  }
+
+  [Fact]
   public void GuardianLoop_WriteLog_uses_registered_event_names()
   {
     var source = SourceScanHelper.ReadGuardianLoopSource();

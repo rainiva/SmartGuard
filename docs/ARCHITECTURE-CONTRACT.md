@@ -464,7 +464,7 @@
 | LOG-P3-OPID | 阻断 | `OperationIdContext` AsyncLocal 进程内传播 + `status.json` `operationId` 字段跨进程中继；禁止引入独立共享内存/命名管道 |
 | LOG-P3-OPID-READ | 阻断 | `StatusStore` / `StatusReader` 读取 `status.json` `operationId` 字段并调用 `OperationIdContext.Set`/`Clear` |
 | LOG-P3-EVENTNAME | 阻断 | `EventNameRegistry` 事件名称唯一注册表 + 门禁扫描 `WriteLog` 调用点；`EventNameMigration` 维护历史别名兼容；阶段三不做全量重命名 |
-| LOG-P3-OUTCOME | 阻断 | `LogEventOutcome` 是日志事件结果属性唯一注册表；生产端必须显式写入已登记 `outcome`，UI 只映射已登记值；禁止从 Severity 或 Message 推导状态，缺失或未知值显示 `—` |
+| LOG-P3-OUTCOME | 阻断 | `LogEventOutcome` 是日志事件结果属性唯一注册表；生产端显式写已登记 outcome，禁止从 Severity 或 Message 推导状态；默认表格不分配常驻列，结构化 outcome 保留在 `LogEvent` 与 JSONL |
 | LOG-P3-INJECT | 阻断 | `LogFailureInjector` 故障注入测试框架：磁盘写满/路径权限/文件锁定/消费线程异常；不修改生产代码路径 |
 | LOG-P3-HEALTH | 阻断 | `LogPipelineHealth` + `LogHealthSnapshot` 可观测健康指标：8 项内部指标；由 `FormatLogLine` 输出 `[DIAG]` 标签、标准时间戳与单行 JSON 后追加到日志末尾（D4 裁决） |
 | DOC-LOG-P3 | 已关闭 | 本文档 §3/§6/§21 + `ArchitectureContractLoggingPhase3Tests` 终验 |
