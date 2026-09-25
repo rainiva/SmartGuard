@@ -517,6 +517,76 @@
         </Setter>
       </Style>
 
+      <!-- Overlay grid frame for the log table: the vertical scrollbar spans the
+           header band as well as the rows, so the thumb can reach the table top.
+           The track stays transparent (SettingsScrollBar) so the pinned header
+           shows through — Edge/VS floating-scrollbar look. Structure mirrors the
+           default DataGrid template; the only delta is RowSpan=2 on
+           PART_VerticalScrollBar. -->
+      <Style x:Key="LogTableOverlayGridStyle" TargetType="DataGrid">
+        <Setter Property="Background" Value="{DynamicResource NumberBoxBackground}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="DataGrid">
+              <Border Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      Padding="{TemplateBinding Padding}"
+                      SnapsToDevicePixels="True">
+                <ScrollViewer Focusable="False" Name="DG_ScrollViewer">
+                  <ScrollViewer.Template>
+                    <ControlTemplate TargetType="ScrollViewer">
+                      <Grid Background="{TemplateBinding Background}">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="*"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto"/>
+                          <RowDefinition Height="*"/>
+                          <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Button Command="SelectAll" Focusable="False"
+                                Style="{DynamicResource {ComponentResourceKey TypeInTargetAssembly={x:Type DataGrid}, ResourceId=DataGridSelectAllButtonStyle}}"
+                                Visibility="Visible" Width="Auto"/>
+                        <DataGridColumnHeadersPresenter x:Name="PART_ColumnHeadersPresenter" Grid.Column="1" Visibility="Visible"/>
+                        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                Grid.Row="1" Grid.ColumnSpan="2"
+                                                CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                                                Content="{TemplateBinding Content}"
+                                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                ContentStringFormat="{TemplateBinding ContentStringFormat}"/>
+                        <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                                   Orientation="Vertical"
+                                   Maximum="{TemplateBinding ScrollViewer.ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ScrollViewer.ViewportHeight}"
+                                   Visibility="{TemplateBinding ScrollViewer.ComputedVerticalScrollBarVisibility}"/>
+                        <Grid Grid.Column="1" Grid.Row="2">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                          </Grid.ColumnDefinitions>
+                          <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                     Grid.Column="1"
+                                     Orientation="Horizontal"
+                                     Maximum="{TemplateBinding ScrollViewer.ScrollableWidth}"
+                                     ViewportSize="{TemplateBinding ScrollViewer.ViewportWidth}"
+                                     Visibility="{TemplateBinding ScrollViewer.ComputedHorizontalScrollBarVisibility}"/>
+                        </Grid>
+                      </Grid>
+                    </ControlTemplate>
+                  </ScrollViewer.Template>
+                  <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                </ScrollViewer>
+              </Border>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
       <!-- Lightweight table styles for the paged log workbench. -->
       <Style x:Key="LogTableHeaderStyle" TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="{DynamicResource NumberBoxBackground}"/>
@@ -1433,6 +1503,7 @@
                     VerticalAlignment="Stretch">
               <Grid>
                 <DataGrid x:Name="logTable"
+                          Style="{StaticResource LogTableOverlayGridStyle}"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
                           CanUserDeleteRows="False"

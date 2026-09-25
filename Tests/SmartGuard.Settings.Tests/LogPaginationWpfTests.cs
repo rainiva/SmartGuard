@@ -1,6 +1,7 @@
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
 using SmartGuard.Settings;
@@ -345,6 +346,58 @@ public class LogPaginationWpfTests
             if (nested is not null) return nested;
         }
         return null;
+    }
+
+    [Fact]
+    public void Log_table_vertical_scrollbar_spans_header_and_rows()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var table = (DataGrid)window.FindName("logTable");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                ScrollBar? scrollbar = null;
+                foreach (var bar in FindDescendants<ScrollBar>(table!))
+                {
+                    if (bar.Name == "PART_VerticalScrollBar")
+                    {
+                        scrollbar = bar;
+                        break;
+                    }
+                }
+
+                scrollbar.Should().NotBeNull("the log table must own a named vertical scrollbar");
+                Grid.GetRow(scrollbar!).Should().Be(0, "the overlay scrollbar must start at the table top, level with the pinned header");
+                Grid.GetRowSpan(scrollbar!).Should().Be(2, "the overlay scrollbar must span the header and rows bands so the thumb can reach the table top");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private static System.Collections.Generic.IEnumerable<T> FindDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var nested in FindDescendants<T>(child)) yield return nested;
+        }
     }
 
     [Fact]
