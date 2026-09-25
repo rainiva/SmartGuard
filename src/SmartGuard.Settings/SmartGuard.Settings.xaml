@@ -364,7 +364,7 @@
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
                       CornerRadius="4">
-                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                <ScrollViewer x:Name="PART_ContentHost"/>
               </Border>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsKeyboardFocused" Value="True">
@@ -1427,6 +1427,7 @@
                     Background="{DynamicResource NumberBoxBackground}"
                     BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="1"
+                    Padding="1"
                     CornerRadius="4"
                     ClipToBounds="True"
                     VerticalAlignment="Stretch">

@@ -81,7 +81,7 @@ public class SettingsContentLayoutTests
         var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
 
         xaml.Should().MatchRegex(
-            "x:Name=\"logViewportBorder\"[\\s\\S]{0,420}x:Name=\"logTable\"",
+            "x:Name=\"logViewportBorder\"[\\s\\S]{0,470}x:Name=\"logTable\"",
             "log viewport border should wrap the paged table so the frame stays fixed");
         xaml.Should().Contain("VirtualizingPanel.IsVirtualizing=\"True\"");
     }

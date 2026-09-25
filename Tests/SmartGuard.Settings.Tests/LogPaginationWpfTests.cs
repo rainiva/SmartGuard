@@ -122,6 +122,9 @@ public class LogPaginationWpfTests
         xaml.Should().MatchRegex(
             "x:Name=\"logViewportBorder\"[\\s\\S]{0,300}BorderBrush=\"\\{DynamicResource DividerBrush\\}\"");
         xaml.Should().MatchRegex(
+            "x:Name=\"logViewportBorder\"[\\s\\S]{0,300}Padding=\"1\"",
+            "the table child must sit 2px inside the border; a square child corner would overpaint the 4px corner arc and break the outline");
+        xaml.Should().MatchRegex(
             "x:Name=\"logTable\"[\\s\\S]{0,600}BorderThickness=\"0\"",
             "the viewport border is the single outer frame; the DataGrid's own default border would render as a dark second outline inside it");
         source.Should().NotContain("x:Key=\"CardShadowColor\"",
@@ -279,6 +282,69 @@ public class LogPaginationWpfTests
                 window.Close();
             }
         });
+    }
+
+    [Fact]
+    public void Filter_popup_custom_time_text_area_is_tall_enough_for_text()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
+            var startBox = (TextBox)window.FindName("txtLogRangeStartTime");
+            var endBox = (TextBox)window.FindName("txtLogRangeEndTime");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                customRange!.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Width = 800;
+                window.Height = 640;
+                WpfStaTestHost.PumpDispatcher(window);
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                popup!.IsOpen = true;
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                foreach (var box in new[] { startBox!, endBox! })
+                {
+                    var presenter = FindDescendant<ScrollContentPresenter>(box);
+                    presenter.Should().NotBeNull("the time input must host its text in a scroll content presenter");
+                    presenter!.ActualHeight.Should().BeGreaterThanOrEqualTo(
+                        14d,
+                        $"{box.Name} renders {box.FontSize:0}px text; a smaller text window vertically clips the digits (double-applied padding)");
+                }
+
+                popup.IsOpen = false;
+                WpfStaTestHost.PumpDispatcher(window);
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                customRange!.Visibility = Visibility.Collapsed;
+                window.Close();
+            }
+        });
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            var nested = FindDescendant<T>(child);
+            if (nested is not null) return nested;
+        }
+        return null;
     }
 
     [Fact]
