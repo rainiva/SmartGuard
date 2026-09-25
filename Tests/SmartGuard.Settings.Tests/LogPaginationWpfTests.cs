@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -380,6 +381,58 @@ public class LogPaginationWpfTests
                 scrollbar.Should().NotBeNull("the log table must own a named vertical scrollbar");
                 Grid.GetRow(scrollbar!).Should().Be(0, "the overlay scrollbar must start at the table top, level with the pinned header");
                 Grid.GetRowSpan(scrollbar!).Should().Be(2, "the overlay scrollbar must span the header and rows bands so the thumb can reach the table top");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Log_table_vertical_scrollbar_value_tracks_content_scroll()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var table = (DataGrid)window.FindName("logTable");
+            table!.ItemsSource = Enumerable.Range(0, 20)
+                .Select(i => new
+                {
+                    LevelText = "INFO",
+                    TimeText = $"2026-09-25 10:{i:00}:00",
+                    SourceText = "Engine",
+                    EventText = $"event {i}",
+                })
+                .ToArray();
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Width = 800;
+                window.Height = 640;
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                var scrollViewer = FindDescendant<ScrollViewer>(table);
+                scrollViewer.Should().NotBeNull("the log table template must contain its scroll viewer");
+                var scrollbar = FindDescendants<ScrollBar>(table).First(bar => bar.Name == "PART_VerticalScrollBar");
+
+                WpfStaTestHost.PumpDispatcher(window);
+                scrollbar.Value.Should().BeLessThanOrEqualTo(1d, "the view starts at the top");
+
+                scrollViewer.ScrollToVerticalOffset(200);
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                scrollViewer.VerticalOffset.Should().BeGreaterThan(0d, "the content must actually scroll");
+                scrollbar.Value.Should().BeApproximately(scrollViewer.VerticalOffset, 2d,
+                    "the thumb value must track the content offset or the thumb sits still while rows scroll under it");
             }
             finally
             {
