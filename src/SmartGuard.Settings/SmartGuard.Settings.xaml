@@ -1297,7 +1297,6 @@
                      AllowsTransparency="True"
                      PopupAnimation="Fade">
                 <Border x:Name="logFilterPanel"
-                        Width="420"
                         MaxWidth="420"
                         Padding="16,14"
                         Background="{DynamicResource NumberBoxBackground}"
@@ -1437,6 +1436,7 @@
                           CanUserAddRows="False"
                           CanUserDeleteRows="False"
                           CanUserReorderColumns="False"
+                          BorderThickness="0"
                           CanUserResizeRows="False"
                           CanUserSortColumns="True"
                           EnableRowVirtualization="True"

@@ -121,6 +121,9 @@ public class LogPaginationWpfTests
             "x:Key=\"LogTableRowStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0,0,0,1\"");
         xaml.Should().MatchRegex(
             "x:Name=\"logViewportBorder\"[\\s\\S]{0,300}BorderBrush=\"\\{DynamicResource DividerBrush\\}\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logTable\"[\\s\\S]{0,600}BorderThickness=\"0\"",
+            "the viewport border is the single outer frame; the DataGrid's own default border would render as a dark second outline inside it");
         source.Should().NotContain("x:Key=\"CardShadowColor\"",
             "the retired shadow token must not linger and invite the dark-block mechanism back");
     }
@@ -229,6 +232,50 @@ public class LogPaginationWpfTests
             {
                 popup.IsOpen = false;
                 customRange.Visibility = Visibility.Collapsed;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Filter_popup_panel_hugs_content_without_dead_width()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Left = 64;
+                window.Top = 64;
+                window.Width = 800;
+                window.Height = 640;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                popup.IsOpen = true;
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                panel.ActualWidth.Should().BeLessThanOrEqualTo(
+                    360d,
+                    "the popup must hug its roughly 320 DIP of content; a forced 420 DIP width leaves dead whitespace to the right of the combos");
+
+                popup.IsOpen = false;
+                WpfStaTestHost.PumpDispatcher(window);
+            }
+            finally
+            {
+                popup.IsOpen = false;
                 window.Close();
             }
         });

@@ -662,7 +662,11 @@ internal sealed partial class SettingsLogPageHost
     };
 
     if (contentRoot.ActualWidth > 0)
-      panel.Width = Math.Min(panel.MaxWidth, contentRoot.ActualWidth);
+    {
+      // 只封顶不强制宽度：弹窗按内容自适应宽度，固定 Width 会在组合框
+      // 右侧留下大面积空白；窄窗口时由 MaxWidth 收缩并依靠内部滚动。
+      panel.MaxWidth = Math.Min(panel.MaxWidth, contentRoot.ActualWidth);
+    }
     if (contentRoot.ActualHeight > 0)
       panel.MaxHeight = Math.Max(1, contentRoot.ActualHeight - 16);
   }
