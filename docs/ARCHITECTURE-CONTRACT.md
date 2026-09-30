@@ -83,6 +83,7 @@
 | `GuardConfigReadResult` | `SmartGuard.Engine.Worker` | Runner 的配置读取有效性结论：仅 `TryLoad` 成功（`IsValid`）授权守护动作；缺失/破损/访问异常降级为仅观测发布，禁止新动作 |
 | `GuardDecisionCodes` | `SmartGuard.Engine.Domain` | `GuardDecisionSource`/`GuardDecisionReason` → `GuardStatusCodes` 登记代码的唯一映射；Engine 不产生展示文案 |
 | `GuardStatusCodes` | `SmartGuard.Contracts` | 跨进程守护状态稳定代码登记表（sources/reasons，kebab-case）；代码语义一经发布不变；读取端未登记代码按未知处理 |
+| `GuardStatusFreshness` | `SmartGuard.Contracts` | 守护状态新鲜度判定唯一实现（3 分钟上界）：Tray/Settings 展示共用，状态缺失/过期不得显示确定的守护声明 |
 | `ForegroundProgramReader` | `SmartGuard.Engine.Infrastructure` | 前台事实采集唯一真源：单次 Win32 查询 + 复核 + finally 释放进程句柄；缓冲上限 32,768 字符；无 hook/监听线程/Timer/事件队列/进程身份缓存；不读取窗口标题；Win32 调用点经构造函数注入可测 |
 | `ForegroundEventListener` | `SmartGuard.Engine.Infrastructure` | 唯一前台事件监听 Owner：一个 hook + 一个阻塞消息循环线程（`MsgWaitForMultipleObjectsEx` + 消息泵，等待时阻塞不忙等）；托管回调委托持有于字段（GC 安全）；注册失败/线程退出经 `IsHealthy`/`LastFailure` 可观测，故障路径不自动重启 |
 | `GuardianCycleCoordinator` | `SmartGuard.Engine.Worker` | 周期唤醒分类与节流唯一 Owner：完整周期截止 = 最近完整轮次 + 配置间隔，前台事件不得推迟截止时间（持续事件不饿死周期轮次）；唯一待处理前台标记（级别触发，最后信号不丢失）；轻路径准入复核 ≤1 次/秒；前台命中转变触发的完整评估 ≥5 秒且节流结束后必补跑；暂停/人工/限制关/名单空/名单非法/配置不可用时不做业务查询，状态变化按原周期重新检查 |
