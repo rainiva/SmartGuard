@@ -11,6 +11,14 @@ internal sealed class GuardianLoopIterationState
   public Guid? LastKnownGuid;
   public string LastStatusLabel = string.Empty;
   public bool ScriptJustSwitched;
+
+  /// <summary>
+  /// 上一轮守护动作资格（自动决策是否 admitted）。有界运行状态，不是通用缓存：
+  /// 从不干预恢复为 admitted 的那一轮先吸收当前计划为基线，避免把守护空窗期的
+  /// 计划变化误报为刚发生的外部变更；null 表示尚无决策历史。
+  /// </summary>
+  public bool? LastForegroundAdmitted;
+
   public int? LastBrightness;
   public NotificationEventRetentionState NotificationRetention;
   public NotificationEvent? LastEmittedNotification;
@@ -21,7 +29,7 @@ internal sealed class GuardianIterationRunner(
   IdleTracker idleTracker,
   BrightnessService brightness,
   StatusPublisher publisher,
-  Func<GuardConfig> loadConfig,
+  Func<GuardConfigReadResult> loadConfig,
   Func<GuardConfig, LogLevel, string, string, GuardianLogWriteResult> writeLog,
   Action<bool> observePowerSource,
   bool powerCfgBrightnessSupported,
@@ -31,7 +39,8 @@ internal sealed class GuardianIterationRunner(
   Func<PowerPlanProbeResult>? readCurrentPlan = null,
   Func<Guid, CancellationToken, Task<PowerPlanApplyResult>>? applyPlan = null,
   Action<Guid, int>? syncPlanBrightness = null,
-  TimeProvider? timeProvider = null)
+  TimeProvider? timeProvider = null,
+  Func<ForegroundObservation>? readForeground = null)
 {
   public async Task RunAsync(
     GuardianLoopIterationState state,
@@ -40,8 +49,11 @@ internal sealed class GuardianIterationRunner(
   {
     OperationIdContext.GenerateNew();
     TraceIdContext.GenerateNew();
-    var nowUtc = (timeProvider ?? TimeProvider.System).GetUtcNow();
-    var config = loadConfig();
+    var time = timeProvider ?? TimeProvider.System;
+    var nowUtc = time.GetUtcNow();
+    var configRead = loadConfig();
+    GuardConfig? configOpt = configRead.Config;
+    var configAvailable = configRead.IsValid && configOpt is not null;
     var planCatalog = state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad();
     state.PlanCatalog = planCatalog;
     if (context.ResetIdleEpoch)
@@ -50,26 +62,76 @@ internal sealed class GuardianIterationRunner(
     var (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(context.ForcePowerRefresh);
     observePowerSource(isOnAc);
     var planProbe = (readCurrentPlan ?? PowerCfgExecutor.ProbeCurrentPlan)();
+    var activePlanInfo = planProbe.Plan;
+    var current = activePlanInfo?.Guid;
+
+    if (!configAvailable)
+    {
+      // 配置不可用（缺失/破损/访问异常）：禁止新动作，也不从默认值重建人工期限；
+      // 继续观察当前计划并发布观测负载，观察到的计划吸收为基线（非守护期间不产生积压纠偏）。
+      AbsorbPlanAsBaseline(state, current);
+      state.LastForegroundAdmitted = false;
+      var brightnessDuringDegrade = brightness.GetBrightness();
+      publisher.Publish(CreateDegradedObservationPayload(
+        state, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, brightnessDuringDegrade));
+      return;
+    }
+
     if (!planProbe.Succeeded)
     {
       writeLog(
-        config,
+        configOpt!,
         LogLevel.Warn,
         $"电源计划探测失败，保留上次计划状态：{planProbe.FailureKind} {planProbe.Diagnostic}",
         EventNameRegistry.PowerPlanProbeFailed);
       return;
     }
 
-    var activePlanInfo = planProbe.Plan;
-    var current = activePlanInfo?.Guid;
+    // 配置可用性已确认（configAvailable 为真），自此按有效配置执行全部决策与动作。
+    var config = configOpt!;
+
     if (context.AbsorbCurrentPlanAsBaseline)
     {
       state.LastKnownGuid = current;
       state.ScriptJustSwitched = false;
     }
-    var expected = PolicyEngine.GetExpectedPlanGuid(idle, isOnAc, batteryPercent, config);
+
+    var nowLocal = time.GetLocalNow().LocalDateTime;
+    var foreground = readForeground?.Invoke() ?? ForegroundObservation.Unknown;
+    var decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config, nowLocal);
+    var expected = decision.TargetPlanGuid;
+
+    // 限制族不干预：守护资格挂起，观察到的计划持续吸收为基线，禁止发“将纠偏”通知。
+    var guardingHeld = decision.Source is GuardDecisionSource.None
+      && decision.Reason is GuardDecisionReason.ForegroundListEmpty
+        or GuardDecisionReason.ForegroundIdentityUnknown
+        or GuardDecisionReason.WaitingForListedProgram
+        or GuardDecisionReason.ForegroundProgramPathsInvalid;
+
+    if (guardingHeld)
+    {
+      AbsorbPlanAsBaseline(state, current);
+      state.LastForegroundAdmitted = false;
+    }
+    else if (decision.Source is GuardDecisionSource.None)
+    {
+      // Paused：保持既有暂停行为（不吸收基线，外部变更判定照旧），仅推进准入跟踪。
+      state.LastForegroundAdmitted = false;
+    }
+    else
+    {
+      var previouslyAdmitted = state.LastForegroundAdmitted;
+      state.LastForegroundAdmitted = true;
+      if (previouslyAdmitted == false)
+      {
+        // 从不干预进入守护：先吸收当前计划为基线，不补发守护空窗期的外部变更通知。
+        AbsorbPlanAsBaseline(state, current);
+      }
+    }
+
     var externalChangeDetected = context.AllowPolicyMutation &&
       !context.AbsorbCurrentPlanAsBaseline &&
+      !guardingHeld &&
       PolicyEngine.IsExternalPlanChange(
         state.LastKnownGuid, current, state.ScriptJustSwitched, expected);
     string? externalPlanNameForNotify = null;
@@ -91,6 +153,7 @@ internal sealed class GuardianIterationRunner(
     var switchBrightnessBefore = bright;
 
     if (context.AllowPolicyMutation &&
+        decision.Source is not GuardDecisionSource.None &&
         expected is not null &&
         PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
@@ -198,6 +261,52 @@ internal sealed class GuardianIterationRunner(
       operationId = OperationIdContext.Current,
       notificationEvent = state.NotificationRetention.Event
     });
+  }
+
+  private static void AbsorbPlanAsBaseline(GuardianLoopIterationState state, Guid? current)
+  {
+    state.LastKnownGuid = current;
+    state.ScriptJustSwitched = false;
+  }
+
+  /// <summary>
+  /// 配置不可用时的降级观测负载：不携带决策目标（expectedPlan 为空），
+  /// 不推断暂停态；仅发布尽力而为的当前计划探测结果与健康采集值。
+  /// </summary>
+  private StatusPayload CreateDegradedObservationPayload(
+    GuardianLoopIterationState state,
+    DateTimeOffset nowUtc,
+    Guid? current,
+    IReadOnlyDictionary<Guid, string>? planCatalog,
+    int idle,
+    bool isOnAc,
+    int batteryPercent,
+    int brightness)
+    => new()
+    {
+      timestamp = nowUtc.ToString("O"),
+      currentPlan = DescribePlanWithoutConfig(current, planCatalog),
+      currentPlanGUID = current?.ToString(),
+      expectedPlan = null,
+      idleSeconds = idle,
+      isOnAC = isOnAc,
+      batteryPercent = batteryPercent,
+      brightness = brightness,
+      paused = false,
+      enginePid = Environment.ProcessId,
+      lastExternalChange = null,
+      operationId = OperationIdContext.Current,
+      notificationEvent = state.NotificationRetention.Event
+    };
+
+  private static string DescribePlanWithoutConfig(Guid? planGuid, IReadOnlyDictionary<Guid, string>? planCatalog)
+  {
+    if (planGuid is null) return string.Empty;
+    if (planCatalog is not null
+        && planCatalog.TryGetValue(planGuid.Value, out var name)
+        && !string.IsNullOrWhiteSpace(name))
+      return name;
+    return planGuid.Value.ToString();
   }
 
   private void LogBrightnessChangeIfNeeded(

@@ -215,7 +215,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       new IdleTracker(_time),
       new BrightnessService(),
       _publisher,
-      () => _config,
+      () => GuardConfigReadResult.FromConfig(_config),
       (config, level, message, eventName) =>
       {
         Events.Add(new(eventName, _time.GetUtcNow(), message));

@@ -62,7 +62,7 @@ public sealed partial class GuardianLoop
       _idleTracker,
       _brightness,
       _publisher,
-      LoadConfig,
+      () => GuardConfigReadResult.TryFromRepository(_configRepository),
       (c, l, m, e) => WriteLog(c, l, m, e),
       ObservePowerSource,
       _powerCfgBrightnessSupported,
