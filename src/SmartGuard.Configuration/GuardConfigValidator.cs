@@ -64,7 +64,9 @@ public static class GuardConfigValidator
     if (candidate.StartsWith(@"\\.\", StringComparison.Ordinal)
       || candidate.StartsWith(@"\\?\", StringComparison.Ordinal))
       return false;
-    if (!Path.IsPathRooted(candidate))
+    // IsPathFullyQualified 而非 IsPathRooted：后者接受盘符相对（"C:app.exe"）与根相对（"\app.exe"），
+    // GetFullPath 会按进程当前目录把它们解析成环境相关的绝对路径后静默保存；这两类是计划禁止的相对路径。
+    if (!Path.IsPathFullyQualified(candidate))
       return false;
     if (!candidate.EndsWith(ExeSuffix, StringComparison.OrdinalIgnoreCase))
       return false;

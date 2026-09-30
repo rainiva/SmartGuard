@@ -306,6 +306,21 @@ public class GuardForegroundRestrictionConfigTests
   }
 
   [Fact]
+  public void Validate_rejects_drive_relative_and_root_relative_paths()
+  {
+    var driveRelative = ValidBaseConfig();
+    driveRelative.ForegroundProgramPaths = new List<string> { "C:app.exe" };
+
+    var rootRelative = ValidBaseConfig();
+    rootRelative.ForegroundProgramPaths = new List<string> { @"\app.exe" };
+
+    GuardConfigValidator.Validate(driveRelative)
+      .Should().Contain("前台程序路径必须为以 .exe 结尾的绝对 Windows 路径");
+    GuardConfigValidator.Validate(rootRelative)
+      .Should().Contain("前台程序路径必须为以 .exe 结尾的绝对 Windows 路径");
+  }
+
+  [Fact]
   public void Validate_rejects_non_exe_paths_case_insensitively()
   {
     var config = ValidBaseConfig();
