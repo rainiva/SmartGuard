@@ -6,18 +6,19 @@ namespace SmartGuard.Settings;
 /// Settings 侧自动守护状态文案：guardSource/guardReason 稳定代码（真源 =
 /// <see cref="GuardStatusCodes"/>）→ 展示文案；文案只在 UI 层维护，Engine 不携带。
 /// 状态缺失、时间戳过期或代码未登记一律显示"状态未知"，不得显示确定的正在守护；
+/// 新鲜度判定与 Tray 共享 <see cref="GuardStatusFreshness"/>，不建立第二套上界；
 /// 读取只经 StatusJsonReader 共享链，不建立第二套状态解析。
 /// </summary>
 internal static class ForegroundGuardStatusText
 {
-  /// <summary>状态新鲜度保守上界：Engine 无变化时最长 60 秒刷新一次，连续 3 个周期未见刷新视为过期。</summary>
-  internal static readonly TimeSpan MaxStatusAge = TimeSpan.FromMinutes(3);
+  /// <summary>状态新鲜度保守上界（真源 = <see cref="GuardStatusFreshness.MaxAge"/>，Tray 共享同一判定）。</summary>
+  internal static readonly TimeSpan MaxStatusAge = GuardStatusFreshness.MaxAge;
 
   internal const string UnknownText = "状态未知";
 
   public static string Describe(StatusPayload? status, DateTimeOffset? nowUtc = null)
   {
-    if (status is null || !IsFresh(status.timestamp, nowUtc ?? DateTimeOffset.UtcNow))
+    if (status is null || !GuardStatusFreshness.IsFresh(status.timestamp, nowUtc ?? DateTimeOffset.UtcNow))
       return UnknownText;
 
     if (status.paused)
@@ -41,17 +42,5 @@ internal static class ForegroundGuardStatusText
       (_, GuardStatusCodes.Reasons.BlockedByLifecycle) => "电源恢复暂缓守护",
       _ => UnknownText,
     };
-  }
-
-  /// <summary>
-  /// timestamp 为 UTC（Engine 以 "O" 写入）。过期或来自未来超过上界（时钟回拨保护）均视为不可信。
-  /// </summary>
-  private static bool IsFresh(string timestamp, DateTimeOffset nowUtc)
-  {
-    if (!DateTimeOffset.TryParse(timestamp, out var written))
-      return false;
-
-    var age = nowUtc - written;
-    return age <= MaxStatusAge && age >= -MaxStatusAge;
   }
 }

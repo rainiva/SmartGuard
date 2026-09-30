@@ -110,6 +110,51 @@ public class TrayGuardStatusDisplayTests
       .Should().Be("计划：平衡 | 50% 电池 | 名单配置异常");
   }
 
+  // ---- 状态过期/时间戳不可信：不得显示任何确定的守护子句（与 Settings 同一新鲜度上界）----
+
+  [Fact]
+  public void FormatStatusLine_omits_guard_claim_when_timestamp_is_stale()
+  {
+    var status = Status(GuardStatusCodes.Reasons.PolicySelected);
+    status.timestamp = DateTimeOffset.UtcNow.AddMinutes(-10).ToString("O");
+
+    TrayStatusFormatter.FormatStatusLine(status)
+      .Should().Be("计划：平衡 | 50% 电池", "状态过期时不得显示确定的正在守护");
+  }
+
+  [Fact]
+  public void FormatTooltip_omits_guard_claim_when_timestamp_is_stale()
+  {
+    var status = Status(GuardStatusCodes.Reasons.WaitingForListedProgram);
+    status.timestamp = DateTimeOffset.UtcNow.AddMinutes(-10).ToString("O");
+
+    TrayStatusFormatter.FormatTooltip(status)
+      .Should().Be("计划: 平衡 | 50% 电池 | 亮度60%", "状态过期时不得显示确定的正在守护");
+  }
+
+  [Fact]
+  public void FormatStatusLine_omits_guard_claim_when_timestamp_missing_or_unparsable()
+  {
+    var missing = Status(GuardStatusCodes.Reasons.PolicySelected);
+    missing.timestamp = string.Empty;
+    TrayStatusFormatter.FormatStatusLine(missing).Should().Be("计划：平衡 | 50% 电池");
+
+    var unparsable = Status(GuardStatusCodes.Reasons.WaitingForListedProgram);
+    unparsable.timestamp = "not-a-timestamp";
+    TrayStatusFormatter.FormatStatusLine(unparsable).Should().Be("计划：平衡 | 50% 电池");
+  }
+
+  [Fact]
+  public void FormatStatusLine_keeps_paused_display_for_stale_status()
+  {
+    var status = Status(GuardStatusCodes.Reasons.PolicySelected);
+    status.timestamp = DateTimeOffset.UtcNow.AddMinutes(-10).ToString("O");
+    status.paused = true;
+
+    TrayStatusFormatter.FormatStatusLine(status)
+      .Should().Be("计划：平衡 | 50% 电池 | 已暂停");
+  }
+
   // ---- 旧状态兼容：字段缺失或代码未知 → 不显示确定的正在守护 ----
 
   [Fact]
@@ -149,6 +194,7 @@ public class TrayGuardStatusDisplayTests
   private static StatusPayload Status(string? reason, string source = GuardStatusCodes.Sources.Automatic)
     => new()
     {
+      timestamp = DateTimeOffset.UtcNow.ToString("O"),
       currentPlan = "平衡",
       batteryPercent = 50,
       isOnAC = false,

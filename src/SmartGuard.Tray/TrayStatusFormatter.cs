@@ -25,7 +25,8 @@ public static class TrayStatusFormatter
   }
 
   /// <summary>
-  /// 守护子句（含分隔符）：只在状态携带已登记的 guardSource/guardReason 时输出；
+  /// 守护子句（含分隔符）：只在状态新鲜（<see cref="GuardStatusFreshness"/>，与 Settings 同一上界）
+  /// 且携带已登记的 guardSource/guardReason 时输出；状态过期、时间戳缺失/不可信、
   /// 旧状态缺字段或代码未登记时输出空串——不得显示确定的正在守护。
   /// 暂停沿用既有"已暂停"展示（paused 布尔字段），paused 原因不重复输出子句。
   /// </summary>
@@ -38,6 +39,8 @@ public static class TrayStatusFormatter
   private static string FormatGuardClause(StatusPayload status)
   {
     if (status.paused) return string.Empty;
+    if (!GuardStatusFreshness.IsFresh(status.timestamp, DateTimeOffset.UtcNow))
+      return string.Empty;
     if (!GuardStatusCodes.IsKnownSource(status.guardSource)
       || !GuardStatusCodes.IsKnownReason(status.guardReason))
       return string.Empty;
