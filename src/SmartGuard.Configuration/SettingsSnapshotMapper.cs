@@ -45,6 +45,10 @@ public static class SettingsSnapshotMapper
       ThemeFollowSystem = current.ThemeFollowSystem,
       ThemeIsDark = current.ThemeIsDark,
       ManualHighPerformanceUntil = current.ManualHighPerformanceUntil,
+      ForegroundRestrictionEnabled = current.ForegroundRestrictionEnabled,
+      ForegroundProgramPaths = current.ForegroundProgramPaths is { } programPaths
+        ? new List<string>(programPaths)
+        : new List<string>(),
     };
   }
 }

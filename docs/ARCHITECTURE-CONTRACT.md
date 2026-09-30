@@ -32,6 +32,7 @@
 | legacy cleanup 任务名 | `LegacyScheduledTaskCatalog.TaskNames` | `LegacyTaskCleaner`（经 `InstallCommands`） | — | `LegacyTaskCleaner` 内联旧任务名；live `scripts/*.ps1` 维护第二份名单 |
 | 开机自启 UI | `config.AutoStartEnabled` | Settings | `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` | Settings 读 `schtasks`/`SyncFromTasks` 决定展示 |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
+| 前台限制规则配置 | `config.ForegroundRestrictionEnabled`（默认 `false`）+ `config.ForegroundProgramPaths`（默认空名单）；旧配置缺字段兼容为关闭+空名单；路径规则与规范化单源 = `GuardConfigValidator`（Win32 绝对 `.exe` 路径、`Path.GetFullPath` 规范化、`OrdinalIgnoreCase` 去重、≤128 项、单条 ≤32767 字符） | Engine 决策、Settings/Tray 展示 | `GuardConfigRepository.Save`、`ConfigMutationService` | 第二套路径规则/规范化算法；通配符、相对路径、设备路径条目；非法名单静默降级为无限制或静默丢弃条目 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `TryStopSmartGuardProcesses`（委托 Engine `--uninstall`，以 `Exec` 成功且退出码 0 为准）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本；Inno 以 `tasklist` 探测结果跳过停止 |
 | 计划任务安装跳过 | `ScheduledTaskInstallGate`；`InstallCommands` 读 `SMARTGUARD_SKIP_SCHEDULED_TASKS` / `--skip-scheduled-tasks` | Engine `--install`、Cli `install`、Inno 集成测试 | `ScheduledTaskInstallGate` | skip 时仍调用 `RegisterGuardian`/`RegisterTray`/`DesktopShellRegistration.Apply` |
@@ -73,6 +74,7 @@
 | `SmartGuardPaths` | `SmartGuard.Configuration` | config、status、log、exe 路径常量 |
 | `GuardConfigRepository` | `SmartGuard.Configuration` | 读（含迁移）、全量 Save；以 `LastWriteTimeUtc` 按需检测外部变更，禁止每实例持有长生命周期文件监听器 |
 | `ConfigMutationService` | `SmartGuard.Configuration` | 原子局部写：Paused、ManualHighPerformanceUntil |
+| `GuardConfigValidator` | `SmartGuard.Configuration` | `GuardConfig` 保存前校验唯一入口；前台程序路径规则与 `NormalizeProgramPaths` 规范化/去重单源（Win32 绝对 `.exe`、≤128 项、单条 ≤32767 字符、无通配符/设备路径） |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
 | `PowerPlanCatalogProvider` | `SmartGuard.Configuration` | 三档 Windows 电源计划目录唯一真源；Settings 只经可取消的 `LoadWithRetryAsync`，有效目录缓存并限制并发；Engine/兼容调用才使用同步 `TryLoad` |

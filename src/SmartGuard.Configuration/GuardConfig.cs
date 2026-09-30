@@ -39,6 +39,8 @@ public sealed class GuardConfig
   public DateTime? ManualHighPerformanceUntil { get; set; }
 
   public LogViewPreferences LogViewPreferences { get; set; } = new();
+  public bool ForegroundRestrictionEnabled { get; set; }
+  public List<string> ForegroundProgramPaths { get; set; } = new();
 
   public bool IsManualHighPerformanceActive(DateTime now)
     => ManualHighPerformanceUntil is { } until && until > now;
@@ -79,6 +81,8 @@ public sealed class GuardConfig
       NotifyOnExternalChange = true,
       HeartbeatIntervalMin = 10,
       AutoStartEnabled = true,
+      ForegroundRestrictionEnabled = false,
+      ForegroundProgramPaths = new List<string>(),
     };
   }
 

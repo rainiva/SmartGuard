@@ -174,6 +174,10 @@ public sealed class GuardConfigRepository
     node["AutoStartEnabled"] = config.AutoStartEnabled;
     node["ThemeFollowSystem"] = config.ThemeFollowSystem;
     node["ThemeIsDark"] = config.ThemeIsDark;
+    node["ForegroundRestrictionEnabled"] = config.ForegroundRestrictionEnabled;
+    node["ForegroundProgramPaths"] = config.ForegroundProgramPaths is { } programPaths
+      ? JsonSerializer.SerializeToNode(programPaths, GuardConfig.JsonOptions) ?? new JsonArray()
+      : new JsonArray();
     ApplyLogViewPreferences(node, config.LogViewPreferences);
     RemoveRetiredSecretFields(node);
     if (config.ManualHighPerformanceUntil is { } until)
