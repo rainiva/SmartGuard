@@ -1133,6 +1133,80 @@
                 </Border>
               </StackPanel>
             </Border>
+
+            <!-- Foreground Restriction Card -->
+            <Border Style="{StaticResource SettingsCard}" x:Name="cardForegroundRestriction">
+              <StackPanel>
+                <TextBlock Text="前台程序限制" Style="{StaticResource SettingsGroupTitle}"/>
+                <TextBlock Text="仅当名单中的程序位于前台时自动切换电源计划" Style="{StaticResource SettingsCardDescription}"/>
+
+                <Border Style="{StaticResource SettingsItemRow}" x:Name="rowForegroundRestriction">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Text="启用前台程序限制" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="开启后，指定程序不在前台时暂停自动切换，回到名单内恢复" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglForegroundRestriction" Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                              AutomationProperties.Name="启用前台程序限制"/>
+                  </Grid>
+                </Border>
+
+                <TextBlock x:Name="txtForegroundGuardStatus"
+                           Style="{StaticResource SettingsItemHint}"
+                           Margin="0,8,0,0"
+                           Text="状态未知"
+                           AutomationProperties.Name="自动守护状态"
+                           AutomationProperties.HelpText="显示引擎发布的自动守护状态"
+                           AutomationProperties.LiveSetting="Polite"/>
+
+                <Border Style="{StaticResource SettingsItemRow}" x:Name="rowForegroundPrograms">
+                  <StackPanel>
+                    <TextBlock Text="前台程序名单" Style="{StaticResource SettingsItemTitle}"/>
+                    <TextBlock Text="添加以 .exe 结尾的完整程序路径；重复项自动合并" Style="{StaticResource SettingsItemHint}"/>
+                    <TextBlock x:Name="lblForegroundListHint"
+                               Text="添加程序后生效"
+                               Style="{StaticResource SettingsItemHint}"
+                               Margin="0,8,0,0"
+                               Foreground="{DynamicResource TextAccent}"
+                               Visibility="Collapsed"
+                               AutomationProperties.Name="名单为空提示"/>
+                    <ListBox x:Name="lstForegroundPrograms"
+                             Height="132"
+                             Margin="0,8,0,0"
+                             BorderBrush="{DynamicResource CardBorderBrush}"
+                             BorderThickness="1"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             AutomationProperties.Name="前台程序名单"
+                             AutomationProperties.HelpText="选择条目后可删除">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding}"
+                                     ToolTip="{Binding}"
+                                     TextTrimming="CharacterEllipsis"
+                                     VerticalAlignment="Center"/>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <Button x:Name="btnAddForegroundProgram"
+                              Content="添加程序…"
+                              Style="{StaticResource SecondaryButton}"
+                              AutomationProperties.Name="添加前台程序"/>
+                      <Button x:Name="btnRemoveForegroundProgram"
+                              Content="删除"
+                              Style="{StaticResource SecondaryButton}"
+                              Margin="8,0,0,0"
+                              IsEnabled="False"
+                              AutomationProperties.Name="删除所选前台程序"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
           </StackPanel>
 
           <!-- Display Page -->

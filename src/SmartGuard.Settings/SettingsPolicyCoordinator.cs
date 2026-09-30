@@ -12,6 +12,7 @@ internal sealed class SettingsPolicyCoordinator
   private readonly ToastNotificationService _toastService;
   private readonly SettingsPlanCatalogCoordinator _planCatalog;
   private readonly SettingsPauseHandler _pauseHandler;
+  private readonly SettingsForegroundCoordinator _foreground;
   private readonly SettingsDebouncedSaver _debouncedSaver;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
@@ -76,6 +77,16 @@ internal sealed class SettingsPolicyCoordinator
       lblPlanMappingStatus,
       () => _originalConfig,
       ReadConfigFromUi);
+    _foreground = new SettingsForegroundCoordinator(
+      root,
+      Require<CheckBox>(window, "tglForegroundRestriction"),
+      Require<ListBox>(window, "lstForegroundPrograms"),
+      Require<Button>(window, "btnAddForegroundProgram"),
+      Require<Button>(window, "btnRemoveForegroundProgram"),
+      Require<TextBlock>(window, "txtForegroundGuardStatus"),
+      Require<TextBlock>(window, "lblForegroundListHint"),
+      (message, isError) => toastService.Show(message, isError),
+      () => _debouncedSaver.QueueSave());
     _pauseHandler = new SettingsPauseHandler(
       root,
       repository,
@@ -107,6 +118,8 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    _foreground.ApplyConfigToUi(config);
+    _foreground.RefreshGuardStatus();
   }
 
   internal void WireInstantApply()
@@ -149,6 +162,7 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotifyExternal.Unchecked += (_, _) => QueueSave();
     _tglAutoStart.Checked += (_, _) => QueueSave();
     _tglAutoStart.Unchecked += (_, _) => QueueSave();
+    _foreground.WireInstantApply();
 
     var btnResetDefaults = _window.FindName("btnResetDefaults") as Button;
     if (btnResetDefaults is not null)
@@ -173,7 +187,9 @@ internal sealed class SettingsPolicyCoordinator
       paused: _originalConfig.Paused,
       notifyOnPlanChange: _tglNotify.IsChecked == true,
       notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
-      autoStartEnabled: _tglAutoStart.IsChecked == true);
+      autoStartEnabled: _tglAutoStart.IsChecked == true,
+      foregroundRestrictionEnabled: _foreground.RestrictionEnabled,
+      foregroundProgramPaths: _foreground.ProgramPaths);
   }
 
   internal void CommitSavedConfig(GuardConfig config) => _originalConfig = config;
@@ -192,6 +208,10 @@ internal sealed class SettingsPolicyCoordinator
     _planCatalog.Dispose();
   }
 
+  private static T Require<T>(Window window, string name) where T : class
+    => window.FindName(name) as T
+      ?? throw new InvalidOperationException($"Missing control: {name}");
+
   private void ApplyConfigToUi(GuardConfig config)
   {
     _sldBalanced.Value = SettingsInitialValues.BalancedThresholdMinutes(config);
@@ -204,6 +224,8 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    _foreground.ApplyConfigToUi(config);
+    _foreground.RefreshGuardStatus();
     _planCatalog.ApplyPlanCombosToUi(config);
   }
 

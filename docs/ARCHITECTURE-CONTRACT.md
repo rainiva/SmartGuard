@@ -145,6 +145,8 @@
 | `LogEvent` | `SmartGuard.Configuration` | 结构化日志 canonical record：schemaVersion/eventId/timestamp/severity/component/channel/message 与关联字段 |
 | `LogEventWindow` | `SmartGuard.Settings.LogView` | 有界显示窗口：2,000 条或 4MB 上限，产出 append/prepend delta，禁止 Reset |
 | `LogViewportController` | `SmartGuard.Settings` | 日志 ScrollViewer 唯一滚动命令所有者 |
+| `SettingsForegroundCoordinator` | `SmartGuard.Settings` | 前台程序限制设置唯一 Owner（开关 + 名单 + 添加/删除）：条目经 `GuardConfigValidator` 规范化/去重，保存走既有防抖保存链；不触碰配置仓库、不维护第二套路径规则 |
+| `ForegroundGuardStatusText` | `SmartGuard.Settings` | Settings 侧守护状态文案映射（`GuardStatusCodes` → 展示文案）：状态缺失/过期/未登记代码显示"状态未知"；只读 `StatusJsonReader` 共享链 |
 | `LogJsonlFormatter` | `SmartGuard.Configuration` | versioned JSONL 编解码：只处理纯 JSONL；legacy 文本由 `LogEventDecoder` 负责 |
 | `LogQueryFilterSpec` | `SmartGuard.Configuration` | 结构化筛选规格 record：时间/等级/模块/事件/OperationId/TraceId/PID/TID/关键词 + 分页 |
 | `LogFilterBuilder` | `SmartGuard.Configuration` | 流式筛选构建器：链式 With 方法构建 LogQueryFilterSpec |
@@ -382,6 +384,7 @@
 | 统一自动决策入口 | `GuardRulesArchitectureTests` |
 | 前台事实采集与受控监听 | `GuardRulesArchitectureTests` |
 | 守护状态稳定代码与展示边界 | `GuardStatusCodesArchitectureTests` |
+| 前台限制设置拆分 &lt;300 行 | `SettingsPolicyCoordinatorLineCountTests` |
 
 ---
 

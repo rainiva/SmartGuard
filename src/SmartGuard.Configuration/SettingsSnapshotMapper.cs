@@ -16,7 +16,9 @@ public static class SettingsSnapshotMapper
     bool paused,
     bool notifyOnPlanChange,
     bool notifyOnExternalChange,
-    bool autoStartEnabled)
+    bool autoStartEnabled,
+    bool? foregroundRestrictionEnabled = null,
+    IReadOnlyList<string>? foregroundProgramPaths = null)
   {
     return new GuardConfig
     {
@@ -45,10 +47,12 @@ public static class SettingsSnapshotMapper
       ThemeFollowSystem = current.ThemeFollowSystem,
       ThemeIsDark = current.ThemeIsDark,
       ManualHighPerformanceUntil = current.ManualHighPerformanceUntil,
-      ForegroundRestrictionEnabled = current.ForegroundRestrictionEnabled,
-      ForegroundProgramPaths = current.ForegroundProgramPaths is { } programPaths
+      ForegroundRestrictionEnabled = foregroundRestrictionEnabled ?? current.ForegroundRestrictionEnabled,
+      ForegroundProgramPaths = foregroundProgramPaths is { } programPaths
         ? new List<string>(programPaths)
-        : new List<string>(),
+        : current.ForegroundProgramPaths is { } existingPaths
+          ? new List<string>(existingPaths)
+          : new List<string>(),
     };
   }
 }
