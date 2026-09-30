@@ -237,8 +237,11 @@ public class ForegroundGuardIntegrationTests
   }
 
   [Fact]
-  public void Initial_throttle_parameters_are_frozen_for_trial()
+  public void Throttle_parameters_are_frozen_with_trial_evidence()
   {
+    // 任务 3b 有界对比试验后维持初始值（证据：.work/guard-rules/trial-verdict.md）：
+    // 静止零额外完整 IO、零自唤醒、无资源增长；切换端到端延迟未获实测（锁定会话），
+    // 无调整证据。冻结为常量，不对用户暴露调参项。
     GuardianIterationTiming.ForegroundLightRecheckFloor.Should().Be(TimeSpan.FromSeconds(1));
     GuardianIterationTiming.ForegroundFullEvaluationFloor.Should().Be(TimeSpan.FromSeconds(5));
   }
