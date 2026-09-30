@@ -82,6 +82,9 @@ public sealed class StatusPublisher
       && a.brightness == b.brightness
       && a.paused == b.paused
       && a.enginePid == b.enginePid
+      && a.guardSource == b.guardSource
+      && a.guardReason == b.guardReason
+      && a.foregroundEventsAvailable == b.foregroundEventsAvailable
       && a.notificationEvent?.id == b.notificationEvent?.id;
   }
 }

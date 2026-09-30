@@ -11,7 +11,7 @@ public enum GuardDecisionSource
 /// <summary>决策原因稳定代码；状态字符串映射在后续状态发布任务中登记，代码值保持稳定。</summary>
 public enum GuardDecisionReason
 {
-  /// <summary>手动临时高性能有效，沿用人工接管目标。</summary>
+  /// <summary>人工高性能接管期限有效，沿用人工接管目标。</summary>
   ManualActive,
 
   /// <summary>前台限制关闭，按空闲/电量/插电链路选择计划。</summary>

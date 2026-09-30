@@ -47,6 +47,16 @@ public sealed partial class GuardianLoop
   }
 
   /// <summary>
+  /// 前台事件监听健康（状态发布用）：限制关闭 → null（不适用）；
+  /// 限制开启 → 监听运行且健康 = true，未运行 / 已降级 / 不存在 = false（周期补偿中）。
+  /// 只读既有监听状态，不新增第二份健康存储。
+  /// </summary>
+  internal bool? ReadForegroundEventsHealthForRunner()
+    => !_foregroundCollectionDesired
+      ? null
+      : _foregroundListener is { IsRunning: true } listener && listener.IsHealthy;
+
+  /// <summary>
   /// 按最新有效配置同步前台订阅：限制开 → 确保 hook + 消息线程运行；限制关 → 卸载并跳过采集；
   /// 配置不可用 → 保持订阅现状（不启停、不猜测授权；轻路径与完整轮次对无效配置本就不做业务动作，
   /// 此处避免每周期启停抖动）。订阅管理失败不得让守护循环退出，等待下一周期重试。

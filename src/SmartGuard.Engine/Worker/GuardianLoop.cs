@@ -69,7 +69,8 @@ public sealed partial class GuardianLoop
       ObservePowerSource,
       _powerCfgBrightnessSupported,
       _heartbeatSchedule,
-      readForeground: ReadForegroundForRunner);
+      readForeground: ReadForegroundForRunner,
+      readForegroundEventsHealth: ReadForegroundEventsHealthForRunner);
     _cycleCoordinator = new GuardianCycleCoordinator(
       () => GuardConfigReadResult.TryFromRepository(_configRepository),
       ReadForegroundForRunner,

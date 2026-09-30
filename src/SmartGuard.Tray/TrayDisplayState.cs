@@ -33,6 +33,9 @@ internal sealed class TrayDisplayState
       && left.isOnAC == right.isOnAC
       && left.brightness == right.brightness
       && left.paused == right.paused
+      && left.guardSource == right.guardSource
+      && left.guardReason == right.guardReason
+      && left.foregroundEventsAvailable == right.foregroundEventsAvailable
       && left.notificationEvent?.id == right.notificationEvent?.id;
   }
 
@@ -53,6 +56,9 @@ internal sealed class TrayDisplayState
       brightness = status.brightness,
       paused = status.paused,
       lastExternalChange = status.lastExternalChange,
+      guardSource = status.guardSource,
+      guardReason = status.guardReason,
+      foregroundEventsAvailable = status.foregroundEventsAvailable,
       notificationEvent = status.notificationEvent is null
         ? null
         : new NotificationEvent

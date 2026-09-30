@@ -6,7 +6,7 @@ public static class PolicyEngine
 {
   /// <summary>
   /// 统一自动决策唯一入口，按优先级矩阵判定：
-  /// 手动临时高性能有效（<paramref name="nowLocal"/> 为显式本地墙钟，人工期限保持本地时间格式）
+  /// 人工高性能接管期限有效（<paramref name="nowLocal"/> 为显式本地墙钟，人工期限保持本地时间格式）
   /// → 用户暂停 → 前台限制准入（空名单 / 身份不可识别 / 未命中 / 名单非法 → 不干预，
   /// 名单非法禁止静默无限制）→ 既有空闲/电量/插电策略链。
   /// 目标计划为 null 明确表示不干预；路径规范化与校验共用 <see cref="GuardConfigValidator"/> 单源。

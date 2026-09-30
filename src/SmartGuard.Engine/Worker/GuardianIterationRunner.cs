@@ -40,7 +40,8 @@ internal sealed class GuardianIterationRunner(
   Func<Guid, CancellationToken, Task<PowerPlanApplyResult>>? applyPlan = null,
   Action<Guid, int>? syncPlanBrightness = null,
   TimeProvider? timeProvider = null,
-  Func<ForegroundObservation>? readForeground = null)
+  Func<ForegroundObservation>? readForeground = null,
+  Func<bool?>? readForegroundEventsHealth = null)
 {
   public async Task RunAsync(
     GuardianLoopIterationState state,
@@ -84,6 +85,9 @@ internal sealed class GuardianIterationRunner(
         LogLevel.Warn,
         $"电源计划探测失败，保留上次计划状态：{planProbe.FailureKind} {planProbe.Diagnostic}",
         EventNameRegistry.PowerPlanProbeFailed);
+      // 探测失败同样必须发布状态：否则 UI 停留在上一轮原因，无法解释守护暂停纠偏。
+      publisher.Publish(CreateProbeFailedObservationPayload(
+        state, configOpt!, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, bright: brightness.GetBrightness()));
       return;
     }
 
@@ -245,6 +249,8 @@ internal sealed class GuardianIterationRunner(
       state.NotificationRetention,
       now);
 
+    var (guardSource, guardReason) = ResolveGuardStatusCodes(decision, context.AllowPolicyMutation);
+
     publisher.Publish(new StatusPayload
     {
       timestamp = nowUtc.ToString("O"),
@@ -259,9 +265,32 @@ internal sealed class GuardianIterationRunner(
       enginePid = Environment.ProcessId,
       lastExternalChange = null,
       operationId = OperationIdContext.Current,
-      notificationEvent = state.NotificationRetention.Event
+      notificationEvent = state.NotificationRetention.Event,
+      guardSource = guardSource,
+      guardReason = guardReason,
+      foregroundEventsAvailable = ResolveForegroundEventsAvailability(config),
     });
   }
+
+  /// <summary>
+  /// 决策 → 稳定代码：来源/原因经 <see cref="GuardDecisionCodes"/> 登记映射；
+  /// 电源生命周期门禁阻止变更时（自动决策无法执行），原因改发 blocked-by-lifecycle，
+  /// 不得把被门禁阻止的轮次显示为普通策略守护。
+  /// </summary>
+  private static (string Source, string Reason) ResolveGuardStatusCodes(
+    GuardDecision decision,
+    bool allowPolicyMutation)
+  {
+    var source = GuardDecisionCodes.ToSourceCode(decision.Source);
+    var reason = GuardDecisionCodes.ToReasonCode(decision.Reason);
+    if (decision.Source is GuardDecisionSource.Automatic && !allowPolicyMutation)
+      reason = GuardStatusCodes.Reasons.BlockedByLifecycle;
+    return (source, reason);
+  }
+
+  /// <summary>前台事件监听健康：限制关闭 = null（不适用）；开启时读取监听健康（false = 降级周期补偿）。</summary>
+  private bool? ResolveForegroundEventsAvailability(GuardConfig config)
+    => config.ForegroundRestrictionEnabled ? readForegroundEventsHealth?.Invoke() : null;
 
   private static void AbsorbPlanAsBaseline(GuardianLoopIterationState state, Guid? current)
   {
@@ -272,6 +301,7 @@ internal sealed class GuardianIterationRunner(
   /// <summary>
   /// 配置不可用时的降级观测负载：不携带决策目标（expectedPlan 为空），
   /// 不推断暂停态；仅发布尽力而为的当前计划探测结果与健康采集值。
+  /// 守护原因发布 config-unavailable，事件监听健康未知（null，不猜测）。
   /// </summary>
   private StatusPayload CreateDegradedObservationPayload(
     GuardianLoopIterationState state,
@@ -296,7 +326,44 @@ internal sealed class GuardianIterationRunner(
       enginePid = Environment.ProcessId,
       lastExternalChange = null,
       operationId = OperationIdContext.Current,
-      notificationEvent = state.NotificationRetention.Event
+      notificationEvent = state.NotificationRetention.Event,
+      guardSource = GuardStatusCodes.Sources.None,
+      guardReason = GuardStatusCodes.Reasons.ConfigUnavailable,
+      foregroundEventsAvailable = null,
+    };
+
+  /// <summary>
+  /// 电源计划探测失败时的观测负载：配置可用（沿用其暂停语义与监听健康），
+  /// 不携带决策目标，守护原因发布 probe-failed，UI 可区分"探测异常"与普通未命中。
+  /// </summary>
+  private StatusPayload CreateProbeFailedObservationPayload(
+    GuardianLoopIterationState state,
+    GuardConfig config,
+    DateTimeOffset nowUtc,
+    Guid? current,
+    IReadOnlyDictionary<Guid, string>? planCatalog,
+    int idle,
+    bool isOnAc,
+    int batteryPercent,
+    int bright)
+    => new()
+    {
+      timestamp = nowUtc.ToString("O"),
+      currentPlan = DescribePlanWithoutConfig(current, planCatalog),
+      currentPlanGUID = current?.ToString(),
+      expectedPlan = null,
+      idleSeconds = idle,
+      isOnAC = isOnAc,
+      batteryPercent = batteryPercent,
+      brightness = bright,
+      paused = config.Paused,
+      enginePid = Environment.ProcessId,
+      lastExternalChange = null,
+      operationId = OperationIdContext.Current,
+      notificationEvent = state.NotificationRetention.Event,
+      guardSource = GuardStatusCodes.Sources.None,
+      guardReason = GuardStatusCodes.Reasons.ProbeFailed,
+      foregroundEventsAvailable = ResolveForegroundEventsAvailability(config),
     };
 
   private static string DescribePlanWithoutConfig(Guid? planGuid, IReadOnlyDictionary<Guid, string>? planCatalog)

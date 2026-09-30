@@ -15,6 +15,24 @@ public sealed class StatusPayload
   public object? lastExternalChange { get; set; }
   public NotificationEvent? notificationEvent { get; set; }
   public string? operationId { get; set; }
+
+  /// <summary>
+  /// 守护决策来源，取值限 <see cref="GuardStatusCodes.Sources"/>；
+  /// null = 旧状态或无决策（UI 不得据此显示确定的正在守护）。
+  /// </summary>
+  public string? guardSource { get; set; }
+
+  /// <summary>
+  /// 守护决策/执行原因，取值限 <see cref="GuardStatusCodes.Reasons"/>；
+  /// null = 旧状态或无决策（UI 不得据此显示确定的正在守护）。
+  /// </summary>
+  public string? guardReason { get; set; }
+
+  /// <summary>
+  /// 前台事件监听健康：true=健康 / false=降级为周期补偿；
+  /// null = 不适用或未知（如限制关闭、配置不可用或旧状态缺字段）。
+  /// </summary>
+  public bool? foregroundEventsAvailable { get; set; }
 }
 
 public sealed class NotificationEvent
