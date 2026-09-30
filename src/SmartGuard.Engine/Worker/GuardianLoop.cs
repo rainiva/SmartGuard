@@ -29,7 +29,8 @@ public sealed partial class GuardianLoop
   private readonly PowerLifecycleStateMachine _powerLifecycle = new();
   private readonly LogPipelineOptions _logOptions = new();
   private readonly LogBackpressureController _backpressure = new();
-  private bool _powerCfgBrightnessSupported = true;
+  private readonly GuardianCycleCoordinator _cycleCoordinator;
+  private bool _powerCfgBrightnessSupported;
 
   public GuardianLoop(
     string rootPath,
@@ -47,7 +48,8 @@ public sealed partial class GuardianLoop
     string statusPath,
     string initMarkerPath,
     string fallbackLogPath,
-    bool powerCfgBrightnessSupported)
+    bool powerCfgBrightnessSupported,
+    TimeProvider? timeProvider = null)
   {
     _rootPath = rootPath;
     _configPath = configPath;
@@ -66,7 +68,17 @@ public sealed partial class GuardianLoop
       (c, l, m, e) => WriteLog(c, l, m, e),
       ObservePowerSource,
       _powerCfgBrightnessSupported,
-      _heartbeatSchedule);
+      _heartbeatSchedule,
+      readForeground: ReadForegroundForRunner);
+    _cycleCoordinator = new GuardianCycleCoordinator(
+      () => GuardConfigReadResult.TryFromRepository(_configRepository),
+      ReadForegroundForRunner,
+      _iterationState,
+      _wakeSignal,
+      (context, token) => _iterationRunner.RunAsync(_iterationState, context, token),
+      timeProvider,
+      consumePowerWake: ConsumePowerWake);
+    _foregroundReader = ForegroundReaderFactoryOverrideForTests?.Invoke() ?? new ForegroundProgramReader();
     _logPipeline = new LogPipeline(
       batch => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, batch, _fallbackLogPath),
       _logOptions);
@@ -93,6 +105,7 @@ public sealed partial class GuardianLoop
       while (!cancellationToken.IsCancellationRequested)
       {
         _deduplication.Reset();
+        SyncForegroundSubscription();
         var directive = _powerLifecycle.TakeDirective();
         WriteLifecycleTransitions(config, directive.TransitionsToLog);
         if (directive.TransitionOverflowed)
@@ -101,40 +114,15 @@ public sealed partial class GuardianLoop
           WriteLog(config, LogLevel.Warn, "未在 30 秒内观察到恢复信号，进入受控恢复稳定期", EventNameRegistry.PowerLifecycleRecoveryForced);
         if (directive.ResetIdleEpoch)
           _heartbeatSchedule.ResetAfterResume();
-        if (!directive.RunIteration)
-        {
-          WaitForNextIteration(
-            ResolveWaitSeconds(directive.ReevaluateAfter),
-            cancellationToken);
-          continue;
-        }
 
-        try
-        {
-          await _iterationRunner.RunAsync(
-            _iterationState,
-            new GuardianIterationContext(
-              directive.AllowPolicyMutation,
-              directive.ResetIdleEpoch,
-              directive.ForcePowerRefresh,
-              directive.AbsorbCurrentPlanAsBaseline,
-              directive.Phase),
-            cancellationToken);
-        }
-        catch (Exception ex)
-        {
-          try
-          {
-            var cfg = LoadConfig();
-            _exceptionStormHandler.TrackAndLogException(ex, cfg);
-          }
-          catch
-          {
-            SmartGuardLogWriter.TryAppendLine(_fallbackLogPath, $"[ERROR] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {ex.Message}");
-          }
-        }
+        var intervalSeconds = ResolveWaitSeconds(directive.ReevaluateAfter);
+        await RunGuardedCycleAsync(directive, intervalSeconds, cancellationToken);
 
-        WaitForNextIteration(ResolveWaitSeconds(directive.ReevaluateAfter), cancellationToken);
+        WaitForWake(
+          directive.RunIteration
+            ? _cycleCoordinator.ComputeWaitDelay()
+            : TimeSpan.FromSeconds(intervalSeconds),
+          cancellationToken);
       }
     }
     finally
@@ -154,6 +142,7 @@ public sealed partial class GuardianLoop
       // State observation is memory-only; event-thread failures must not escape.
     }
 
+    Interlocked.Exchange(ref _powerWakePending, 1);
     _wakeSignal.Release();
   }
 
@@ -170,10 +159,14 @@ public sealed partial class GuardianLoop
       LogEventOutcome.Handled);
   }
 
-  private void WaitForNextIteration(int intervalSeconds, CancellationToken cancellationToken)
+  private void WaitForWake(TimeSpan delay, CancellationToken cancellationToken)
   {
-    if (_wakeSignal.Wait(0, cancellationToken)) return;
-    _wakeSignal.Wait(TimeSpan.FromSeconds(intervalSeconds), cancellationToken);
+    if (delay < TimeSpan.Zero)
+      delay = TimeSpan.Zero;
+    if (!_wakeSignal.Wait(delay, cancellationToken))
+      return;
+
+    // 合并突发唤醒；唤醒原因（电源 / 前台 / 周期截止）由各自标记持有，不会因排空丢失。
     while (_wakeSignal.Wait(0, cancellationToken)) { }
   }
 

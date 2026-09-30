@@ -36,6 +36,7 @@ public static class EventNameRegistry
   public const string PowerLifecycleSignalOverflow = nameof(PowerLifecycleSignalOverflow);
   public const string PowerPlanProbeFailed = nameof(PowerPlanProbeFailed);
   public const string PowerPlanApplyFailed = nameof(PowerPlanApplyFailed);
+  public const string ForegroundListenerDegraded = nameof(ForegroundListenerDegraded);
 
   static EventNameRegistry()
   {
@@ -63,6 +64,7 @@ public static class EventNameRegistry
     Register(PowerLifecycleSignalOverflow);
     Register(PowerPlanProbeFailed);
     Register(PowerPlanApplyFailed);
+    Register(ForegroundListenerDegraded);
   }
 
   public static void Register(string name)

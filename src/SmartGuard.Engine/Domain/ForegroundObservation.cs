@@ -31,4 +31,12 @@ public sealed class ForegroundObservation
 
     return new ForegroundObservation(success: true, executablePath, failureReason: null);
   }
+
+  public static ForegroundObservation Unidentified(string failureReason)
+  {
+    if (string.IsNullOrWhiteSpace(failureReason))
+      throw new ArgumentException("前台识别失败原因不能为空", nameof(failureReason));
+
+    return new ForegroundObservation(success: false, executablePath: null, failureReason);
+  }
 }

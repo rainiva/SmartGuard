@@ -25,49 +25,53 @@ public static class PolicyEngine
     if (config.Paused)
       return new GuardDecision(null, GuardDecisionSource.None, GuardDecisionReason.Paused);
 
-    if (config.ForegroundRestrictionEnabled)
-      return EvaluateForegroundGate(idleSeconds, isOnAc, batteryPercent, foreground, config);
+    var restrictionEnabled = config.ForegroundRestrictionEnabled;
+    if (restrictionEnabled)
+    {
+      var admission = EvaluateAdmission(foreground, config);
+      if (!admission.Admitted)
+        return new GuardDecision(null, GuardDecisionSource.None, admission.Reason);
+    }
 
     return new GuardDecision(
       SelectPlanByPowerState(idleSeconds, isOnAc, batteryPercent, config),
       GuardDecisionSource.Automatic,
-      GuardDecisionReason.PolicySelected);
+      restrictionEnabled ? GuardDecisionReason.ForegroundMatched : GuardDecisionReason.PolicySelected);
   }
 
-  private static GuardDecision EvaluateForegroundGate(
-    int idleSeconds,
-    bool isOnAc,
-    int batteryPercent,
-    ForegroundObservation foreground,
-    GuardConfig config)
+  /// <summary>
+  /// 前台准入子规则唯一产出：限制关闭 → 准入（策略链照常）；限制开启时按
+  /// 空名单 / 名单非法 / 身份不可识别 / 未命中 → 不准入，命中 → 准入。
+  /// <see cref="Evaluate"/> 内部复用同一实现；事件轻路径与周期完整轮次共用，不复制名单逻辑。
+  /// </summary>
+  public static ForegroundAdmission EvaluateAdmission(ForegroundObservation foreground, GuardConfig config)
   {
+    if (!config.ForegroundRestrictionEnabled)
+      return new ForegroundAdmission(true, GuardDecisionReason.PolicySelected);
+
     var storedPaths = config.ForegroundProgramPaths;
     if (storedPaths is null || storedPaths.Count == 0)
-      return new GuardDecision(null, GuardDecisionSource.None, GuardDecisionReason.ForegroundListEmpty);
+      return new ForegroundAdmission(false, GuardDecisionReason.ForegroundListEmpty);
 
     var normalizedStored = new List<string>(storedPaths.Count);
     foreach (var raw in storedPaths)
     {
       if (!GuardConfigValidator.TryNormalizeProgramPath(raw, out var normalized))
-        return new GuardDecision(null, GuardDecisionSource.None, GuardDecisionReason.ForegroundProgramPathsInvalid);
+        return new ForegroundAdmission(false, GuardDecisionReason.ForegroundProgramPathsInvalid);
       normalizedStored.Add(normalized);
     }
 
     if (!foreground.IdentificationSucceeded)
-      return new GuardDecision(null, GuardDecisionSource.None, GuardDecisionReason.ForegroundIdentityUnknown);
+      return new ForegroundAdmission(false, GuardDecisionReason.ForegroundIdentityUnknown);
 
     var matched = foreground.ExecutablePath is { } observedPath
       && GuardConfigValidator.TryNormalizeProgramPath(observedPath, out var observedNormalized)
       && normalizedStored.Exists(entry =>
         string.Equals(entry, observedNormalized, StringComparison.OrdinalIgnoreCase));
 
-    if (!matched)
-      return new GuardDecision(null, GuardDecisionSource.None, GuardDecisionReason.WaitingForListedProgram);
-
-    return new GuardDecision(
-      SelectPlanByPowerState(idleSeconds, isOnAc, batteryPercent, config),
-      GuardDecisionSource.Automatic,
-      GuardDecisionReason.ForegroundMatched);
+    return matched
+      ? new ForegroundAdmission(true, GuardDecisionReason.ForegroundMatched)
+      : new ForegroundAdmission(false, GuardDecisionReason.WaitingForListedProgram);
   }
 
   private static Guid? SelectPlanByPowerState(int idleSeconds, bool isOnAc, int batteryPercent, GuardConfig config)

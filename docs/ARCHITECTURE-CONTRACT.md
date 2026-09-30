@@ -33,7 +33,9 @@
 | 开机自启 UI | `config.AutoStartEnabled` | Settings | `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` | Settings 读 `schtasks`/`SyncFromTasks` 决定展示 |
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
 | 前台限制规则配置 | `config.ForegroundRestrictionEnabled`（默认 `false`）+ `config.ForegroundProgramPaths`（默认空名单）；旧配置缺字段兼容为关闭+空名单；路径规则与规范化单源 = `GuardConfigValidator`（Win32 绝对 `.exe` 路径、`Path.GetFullPath` 规范化、`OrdinalIgnoreCase` 去重、≤128 项、单条 ≤32767 字符） | Engine 决策、Settings/Tray 展示 | `GuardConfigRepository.Save`、`ConfigMutationService` | 第二套路径规则/规范化算法；通配符、相对路径、设备路径条目；非法名单静默降级为无限制或静默丢弃条目 |
-| 自动守护决策 | `PolicyEngine.Evaluate`（Domain 唯一自动决策入口：输入空闲/电源/前台事实 `ForegroundObservation`/配置/显式本地当前时间，输出 `GuardDecision`，空目标 = 不干预；决策原因稳定代码 `GuardDecisionReason`）；`GuardianIterationRunner` 只消费该决策，守护动作资格 = `GuardConfigRepository.TryLoad` 有效性（`LoadOrDefault` 不得授权动作） | `GuardianIterationRunner`；后续状态发布读取决策原因 | `PolicyEngine.Evaluate` | 第二套预期计划推导（`GetExpectedPlanGuid` 已退役）；Runner 内联阈值/人工期限推导；配置不可用时用默认配置猜测授权；限制族不干预期间发“将纠偏”通知或不吸收基线 |
+| 自动守护决策 | `PolicyEngine.Evaluate`（Domain 唯一自动决策入口：输入空闲/电源/前台事实 `ForegroundObservation`/配置/显式本地当前时间，输出 `GuardDecision`，空目标 = 不干预；决策原因稳定代码 `GuardDecisionReason`）；前台准入子规则唯一产出 = `PolicyEngine.EvaluateAdmission`（`Evaluate` 内部复用，轻路径与完整轮次共用同一名单规则，不复制逻辑）；`GuardianIterationRunner` 只消费该决策，守护动作资格 = `GuardConfigRepository.TryLoad` 有效性（`LoadOrDefault` 不得授权动作） | `GuardianIterationRunner`；`GuardianCycleCoordinator`（轻路径准入比较）；后续状态发布读取决策原因 | `PolicyEngine.Evaluate` | 第二套预期计划推导（`GetExpectedPlanGuid` 已退役）；Runner 内联阈值/人工期限推导；第二套名单匹配/准入算法；配置不可用时用默认配置猜测授权；限制族不干预期间发“将纠偏”通知或不吸收基线 |
+| 前台事实采集 | `ForegroundProgramReader`（Engine 进程内）：单次 Win32 查询（`GetForegroundWindow` → `GetWindowThreadProcessId` → `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` → `QueryFullProcessImageNameW`）后复核前台 HWND/PID 仍一致；空 HWND、进程退出、查询失败或查询期间前台变化一律收敛为识别失败，不旁路回退 | `GuardianCycleCoordinator`（事件轻路径）、`GuardianIterationRunner`（周期完整轮次，经注入 `readForeground`） | — | 第二套采集入口；hook、监听线程、Timer、事件队列或进程身份缓存；读取窗口标题；查询后不释放进程句柄；按事件携带的旧窗口直接执行动作 |
+| 前台变化事件 | `ForegroundEventListener`（唯一前台事件监听 Owner：一个 `EVENT_SYSTEM_FOREGROUND` hook + 一个阻塞消息循环线程，注册与卸载都在监听线程；Stop 后回调不再做任何工作）；合并待处理标记由 `GuardianCycleCoordinator` 唯一持有（0→1 转换唤醒 Engine） | `GuardianLoop`（启动/停止/等待退出、降级一次性日志、限制开关同步） | `GuardianLoop.SyncForegroundSubscription`（仅此入口启停监听） | 每事件 Task 或历史事件队列；回调内查询进程/读配置/写日志/触发电源动作；高频路径自动重启监听（重建仅允许限制关闭→开启转换）；hook 未在注册线程卸载 |
 | 版本号（UI） | `installer/version.txt` → 各 csproj `<Version>` | Settings About | Packaging bump | 仅 Settings 同步版本 |
 | Engine 停止 | `EngineLifecycle.StopForUninstall` | CLI uninstall、Inno `TryStopSmartGuardProcesses`（委托 Engine `--uninstall`，以 `Exec` 成功且退出码 0 为准）、测试 helpers | `EngineLifecycle` | 独立 taskkill/schtasks 脚本副本；Inno 以 `tasklist` 探测结果跳过停止 |
 | 计划任务安装跳过 | `ScheduledTaskInstallGate`；`InstallCommands` 读 `SMARTGUARD_SKIP_SCHEDULED_TASKS` / `--skip-scheduled-tasks` | Engine `--install`、Cli `install`、Inno 集成测试 | `ScheduledTaskInstallGate` | skip 时仍调用 `RegisterGuardian`/`RegisterTray`/`DesktopShellRegistration.Apply` |
@@ -78,6 +80,9 @@
 | `GuardConfigValidator` | `SmartGuard.Configuration` | `GuardConfig` 保存前校验唯一入口；前台程序路径规则与 `NormalizeProgramPaths` 规范化/去重单源（Win32 绝对 `.exe`、≤128 项、单条 ≤32767 字符、无通配符/设备路径） |
 | `PolicyEngine`（`Evaluate`）/ `GuardDecision` / `ForegroundObservation` | `SmartGuard.Engine.Domain` | 自动守护统一决策唯一入口（优先级矩阵：手动 → 暂停 → 前台准入 → 空闲/电量/插电链）与决策/前台事实值；`GetExpectedPlanGuid` 已退役；Domain 值不依赖 Win32/WPF、不携带窗口标题 |
 | `GuardConfigReadResult` | `SmartGuard.Engine.Worker` | Runner 的配置读取有效性结论：仅 `TryLoad` 成功（`IsValid`）授权守护动作；缺失/破损/访问异常降级为仅观测发布，禁止新动作 |
+| `ForegroundProgramReader` | `SmartGuard.Engine.Infrastructure` | 前台事实采集唯一真源：单次 Win32 查询 + 复核 + finally 释放进程句柄；缓冲上限 32,768 字符；无 hook/监听线程/Timer/事件队列/进程身份缓存；不读取窗口标题；Win32 调用点经构造函数注入可测 |
+| `ForegroundEventListener` | `SmartGuard.Engine.Infrastructure` | 唯一前台事件监听 Owner：一个 hook + 一个阻塞消息循环线程（`MsgWaitForMultipleObjectsEx` + 消息泵，等待时阻塞不忙等）；托管回调委托持有于字段（GC 安全）；注册失败/线程退出经 `IsHealthy`/`LastFailure` 可观测，故障路径不自动重启 |
+| `GuardianCycleCoordinator` | `SmartGuard.Engine.Worker` | 周期唤醒分类与节流唯一 Owner：完整周期截止 = 最近完整轮次 + 配置间隔，前台事件不得推迟截止时间（持续事件不饿死周期轮次）；唯一待处理前台标记（级别触发，最后信号不丢失）；轻路径准入复核 ≤1 次/秒；前台命中转变触发的完整评估 ≥5 秒且节流结束后必补跑；暂停/人工/限制关/名单空/名单非法/配置不可用时不做业务查询，状态变化按原周期重新检查 |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
 | `PowerPlanCatalogProvider` | `SmartGuard.Configuration` | 三档 Windows 电源计划目录唯一真源；Settings 只经可取消的 `LoadWithRetryAsync`，有效目录缓存并限制并发；Engine/兼容调用才使用同步 `TryLoad` |
@@ -371,6 +376,7 @@
 | 日志工作台 P0 唯一真源 | `LoggingWorkbenchArchitectureTests` |
 | 日志工作台 P1 诊断工作流 | `LoggingWorkbenchArchitectureTests`、`LogWorkbenchP1AcceptanceTests`、`DiagnosticBundleExporterArchitectureTests` |
 | 统一自动决策入口 | `GuardRulesArchitectureTests` |
+| 前台事实采集与受控监听 | `GuardRulesArchitectureTests` |
 
 ---
 
