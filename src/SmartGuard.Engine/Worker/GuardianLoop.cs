@@ -127,6 +127,9 @@ public sealed partial class GuardianLoop
     }
     finally
     {
+      // 归属契约：监听归 GuardianLoop 启动/停止/等待退出——循环退出（含取消与异常路径）
+      // 必须卸载 hook 并等待监听线程退出，不得留下回调写入协调器状态。
+      StopForegroundListener();
       await _logPipeline.StopAsync();
     }
   }

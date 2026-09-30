@@ -692,6 +692,166 @@ public class ForegroundGuardIntegrationTests
     }
   }
 
+  [Fact]
+  public async Task Loop_cancellation_stops_foreground_listener_and_exits_pump_thread()
+  {
+    var created = new List<ForegroundEventListener>();
+    GuardianLoop.ForegroundListenerFactoryOverrideForTests = onSignal =>
+    {
+      var listener = new ForegroundEventListener(
+        onSignal,
+        setHook: _ => new IntPtr(0x5F00 + created.Count),
+        unhook: _ => { },
+        pumpUntilStop: stop =>
+        {
+          stop.WaitOne();
+          return true;
+        });
+      created.Add(listener);
+      return listener;
+    };
+    var root = CreateTempRoot();
+    try
+    {
+      // 名单条目不可能成为真实前台：无论环境如何，真实 Runner 的完整轮次保证不干预（只读探测，无计划切换）。
+      var configPath = Path.Combine(root, "SmartGuard.config.json");
+      File.WriteAllText(
+        configPath,
+        """
+        {
+          "ForegroundRestrictionEnabled": true,
+          "ForegroundProgramPaths": ["C:\\__SmartGuard_Test_Never_Foreground__\\NeverForeground.exe"]
+        }
+        """,
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+      // 电源事件走测试覆盖点（与 PowerEventWakeListenerTests 同一接缝），不依赖真实 SystemEvents。
+      PowerEventWakeListener.SubscribeOverrideForTests = _ => { };
+      var loop = CreateLoop(root, configPath);
+      using var cts = new CancellationTokenSource();
+      // RunAsync 在首个 await 前同步执行整轮（无切换时不产生真实异步点），
+      // 直接调用会占住测试线程；放到线程池上运行，测试线程负责轮询与取消。
+      var runTask = Task.Run(() => loop.RunAsync(cts.Token));
+
+      await WaitForAsync(() => loop.ForegroundListenerRunning);
+      created.Should().HaveCount(1);
+
+      cts.Cancel();
+      await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runTask)
+        .WaitAsync(TimeSpan.FromSeconds(15));
+      await WaitForAsync(() => !loop.ForegroundListenerRunning);
+
+      created[0].IsRunning.Should().BeFalse("RunAsync 退出必须停止前台监听（归 GuardianLoop 启动/停止/等待退出）");
+      created[0].IsHealthy.Should().BeFalse();
+      created[0].LastFailure.Should().BeNull("受控停止不是失败");
+    }
+    finally
+    {
+      PowerEventWakeListener.SubscribeOverrideForTests = null;
+      GuardianLoop.ForegroundListenerFactoryOverrideForTests = null;
+      try { Directory.Delete(root, recursive: true); } catch { }
+    }
+  }
+
+  [Fact]
+  public void Loop_keeps_listener_state_when_config_becomes_unavailable()
+  {
+    var created = new List<ForegroundEventListener>();
+    GuardianLoop.ForegroundListenerFactoryOverrideForTests = onSignal =>
+    {
+      var listener = new ForegroundEventListener(
+        onSignal,
+        setHook: _ => new IntPtr(0x5E00 + created.Count),
+        unhook: _ => { },
+        pumpUntilStop: stop =>
+        {
+          stop.WaitOne();
+          return true;
+        });
+      created.Add(listener);
+      return listener;
+    };
+    var root = CreateTempRoot();
+    try
+    {
+      var configPath = Path.Combine(root, "SmartGuard.config.json");
+      WriteConfig(configPath, restrictionEnabled: true);
+      var loop = CreateLoop(root, configPath);
+
+      loop.SyncForegroundSubscription();
+      created.Should().HaveCount(1);
+      loop.ForegroundListenerRunning.Should().BeTrue();
+
+      File.Delete(configPath);
+      loop.SyncForegroundSubscription();
+      loop.SyncForegroundSubscription();
+      created.Should().HaveCount(1, "配置不可用 = 保持订阅现状，不启停不抖动");
+      loop.ForegroundListenerRunning.Should().BeTrue("配置不可用不卸载监听");
+    }
+    finally
+    {
+      GuardianLoop.ForegroundListenerFactoryOverrideForTests = null;
+      try { Directory.Delete(root, recursive: true); } catch { }
+    }
+  }
+
+  [Fact]
+  public void Listener_start_failure_enters_degradation_memory_without_per_cycle_restart()
+  {
+    var created = new List<ForegroundEventListener>();
+    var failStart = true;
+    GuardianLoop.ForegroundListenerFactoryOverrideForTests = onSignal =>
+    {
+      var listener = new ForegroundEventListener(
+        onSignal,
+        setHook: _ => new IntPtr(0x5D00 + created.Count),
+        unhook: _ => { },
+        pumpUntilStop: stop =>
+        {
+          stop.WaitOne();
+          return true;
+        });
+      if (failStart)
+        listener.Dispose();
+      created.Add(listener);
+      return listener;
+    };
+    var root = CreateTempRoot();
+    try
+    {
+      var configPath = Path.Combine(root, "SmartGuard.config.json");
+      WriteConfig(configPath, restrictionEnabled: true);
+      var loop = CreateLoop(root, configPath);
+
+      // Start() 抛异常（此处用已释放实例模拟）：登记降级，只报一次
+      loop.SyncForegroundSubscription();
+      created.Should().HaveCount(1);
+      loop.ForegroundListenerRunning.Should().BeFalse();
+      loop.ForegroundDegradationReported.Should().BeTrue();
+
+      // 后续周期不得反复重建/重试 Start
+      loop.SyncForegroundSubscription();
+      loop.SyncForegroundSubscription();
+      created.Should().HaveCount(1, "Start 失败与注册失败同样进入降级记忆，不在高频路径重启");
+      loop.ForegroundDegradationReported.Should().BeTrue();
+
+      // 限制关闭→开启转换才允许重建
+      WriteConfig(configPath, restrictionEnabled: false);
+      loop.SyncForegroundSubscription();
+      loop.ForegroundListenerRunning.Should().BeFalse();
+
+      failStart = false;
+      WriteConfig(configPath, restrictionEnabled: true);
+      loop.SyncForegroundSubscription();
+      created.Should().HaveCount(2, "限制关闭→开启转换允许重建监听");
+      loop.ForegroundListenerRunning.Should().BeTrue();
+    }
+    finally
+    {
+      GuardianLoop.ForegroundListenerFactoryOverrideForTests = null;
+      try { Directory.Delete(root, recursive: true); } catch { }
+    }
+  }
+
   // ---- helpers ----
 
   private static string CreateTempRoot()

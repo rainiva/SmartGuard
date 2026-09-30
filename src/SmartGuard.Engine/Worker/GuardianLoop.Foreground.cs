@@ -47,15 +47,18 @@ public sealed partial class GuardianLoop
   }
 
   /// <summary>
-  /// 按最新有效配置同步前台订阅：限制开 → 确保 hook + 消息线程运行；限制关 → 卸载并跳过采集。
-  /// 配置不可用时保持现状（不猜测授权）；订阅管理失败不得让守护循环退出，等待下一周期重试。
+  /// 按最新有效配置同步前台订阅：限制开 → 确保 hook + 消息线程运行；限制关 → 卸载并跳过采集；
+  /// 配置不可用 → 保持订阅现状（不启停、不猜测授权；轻路径与完整轮次对无效配置本就不做业务动作，
+  /// 此处避免每周期启停抖动）。订阅管理失败不得让守护循环退出，等待下一周期重试。
   /// </summary>
   internal void SyncForegroundSubscription()
   {
     try
     {
       var configRead = GuardConfigReadResult.TryFromRepository(_configRepository);
-      var restrictionEnabled = configRead.IsValid && configRead.Config?.ForegroundRestrictionEnabled == true;
+      if (!configRead.IsValid || configRead.Config is null)
+        return;
+      var restrictionEnabled = configRead.Config.ForegroundRestrictionEnabled;
       _foregroundCollectionDesired = restrictionEnabled;
       if (restrictionEnabled)
         EnsureForegroundListenerStarted();
@@ -88,12 +91,10 @@ public sealed partial class GuardianLoop
     }
     catch (Exception ex)
     {
-      _foregroundDegradationReported = true;
-      WriteLog(
-        LoadConfig(),
-        LogLevel.Warn,
-        $"前台事件监听启动失败（{ex.Message}），已降级为周期采样",
-        EventNameRegistry.ForegroundListenerDegraded);
+      // Start 抛异常与注册失败同样进入降级记忆：登记该（非运行态）实例，
+      // 后续周期不再重复创建/重试；重建仅发生在限制关闭→开启转换（届时实例被 Stop 置空）。
+      _foregroundListener = listener;
+      ReportForegroundDegradation(ex.Message);
       return;
     }
 
