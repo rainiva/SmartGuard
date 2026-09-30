@@ -115,6 +115,7 @@ public class LogWorkbenchCommandsTests
         {
             var window = new Window { Width = 320, Height = 80 };
             var navigated = 0;
+            var navigatedPrevious = 0;
 
             WpfStaTestHost.ShowAndWait(window);
             SettingsLogPageHostWiring.WireKeyboardCommands(
@@ -123,7 +124,7 @@ public class LogWorkbenchCommandsTests
                 isTextInputFocused: () => false,
                 focusSearch: () => { },
                 navigateNext: () => navigated++,
-                navigatePrevious: () => { },
+                navigatePrevious: () => navigatedPrevious++,
                 exportVisibleLog: () => { },
                 scrollWindowTop: () => { },
                 scrollWindowBottom: () => { },
@@ -131,8 +132,15 @@ public class LogWorkbenchCommandsTests
                 scrollHistoryEnd: () => { },
                 closeTransientLayer: () => { });
 
+            // The physical desktop keyboard state is world state outside the
+            // test's control: Win32 GetKeyState reflects modifiers held by the
+            // host session (e.g. an engaged Alt key), and the wiring
+            // deliberately refuses to route F3 when a foreign modifier is
+            // down. Resolve keys against a deterministic device so the
+            // invariant under test - the window PreviewKeyDown route into the
+            // command coordinator - stays independent of that state.
             var keyEvent = new KeyEventArgs(
-                Keyboard.PrimaryDevice,
+                DeterministicKeyboardDevice.Create(ModifierKeys.None),
                 PresentationSource.FromVisual(window)!,
                 0,
                 Key.F3)
@@ -143,6 +151,23 @@ public class LogWorkbenchCommandsTests
 
             navigated.Should().Be(1);
             keyEvent.Handled.Should().BeTrue();
+
+            // The wiring must forward the device's modifier state into the
+            // resolver rather than assuming no modifiers: Shift+F3 is the
+            // reverse-navigation gesture.
+            var shiftKeyEvent = new KeyEventArgs(
+                DeterministicKeyboardDevice.Create(ModifierKeys.Shift),
+                PresentationSource.FromVisual(window)!,
+                0,
+                Key.F3)
+            {
+                RoutedEvent = Keyboard.PreviewKeyDownEvent,
+            };
+            window.RaiseEvent(shiftKeyEvent);
+
+            navigatedPrevious.Should().Be(1);
+            navigated.Should().Be(1);
+            shiftKeyEvent.Handled.Should().BeTrue();
         });
     }
 
@@ -331,5 +356,33 @@ public class LogWorkbenchCommandsTests
             .Should().BeTrue();
 
         command.Should().BeSameAs(expected);
+    }
+
+    private sealed class DeterministicKeyboardDevice : KeyboardDevice
+    {
+        private DeterministicKeyboardDevice(InputManager inputManager, ModifierKeys modifiers)
+            : base(inputManager)
+            => ModifiersForTests = modifiers;
+
+        internal static DeterministicKeyboardDevice Create(ModifierKeys modifiers)
+            => new(InputManager.Current, modifiers);
+
+        private ModifierKeys ModifiersForTests { get; }
+
+        // KeyboardDevice.Modifiers is not virtual; the framework computes it
+        // from the per-key states this hook reports, so model the configured
+        // modifier set here and let the real aggregation run.
+        protected override KeyStates GetKeyStatesFromSystem(Key key)
+        {
+            var isDown = key switch
+            {
+                Key.LeftShift or Key.RightShift when ModifiersForTests.HasFlag(ModifierKeys.Shift) => true,
+                Key.LeftCtrl or Key.RightCtrl when ModifiersForTests.HasFlag(ModifierKeys.Control) => true,
+                Key.LeftAlt or Key.RightAlt when ModifiersForTests.HasFlag(ModifierKeys.Alt) => true,
+                Key.LWin or Key.RWin when ModifiersForTests.HasFlag(ModifierKeys.Windows) => true,
+                _ => false,
+            };
+            return isDown ? KeyStates.Down : KeyStates.None;
+        }
     }
 }
