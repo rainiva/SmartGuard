@@ -26,8 +26,16 @@ Engine PID 35020，19:35:08.2461043 观察暂停，19:36:27.2685331 观察恢复
 
 修正后的完整门禁 `run-tests-20261001T120046316Z-068d46c169cf4ebbb8835345a8d54b7a.summary.json` 于 20:05:13 结束，退出 0、Passed：Pester 145/0/0、.NET 1757/0/0、Tray 2/0/0、Installer 9/0/0，无跳过或未运行层。`s4-v2-gates.result.json` 保留前后任务快照。新候选独立根 `s4-v2-desktop-root`，基线 Engine PID 4692，不覆盖首次失败材料。
 
-S4 重验与 60 分钟空闲/稳态尚待记录，不将首次 Failed 或自动测试替代真实复验。
+S4 重验结果见下节，60 分钟空闲/稳态尚待记录，不将首次 Failed 或自动测试替代真实复验。
 
 第二次基线期间自动待机：20:10:13 暂停，规范观察器 20:10:18 启动，20:14:44 恢复，窗口只有恢复而缺起始暂停；未提示用户执行 S4。`s4-v2-power-lifecycle.result.json` 正确为 Blocked/退出 2，`s4-v2-desktop-session.result.json` Restored=true。这是调查环境打断，不计为 S4 复验通过或失败。
 
 第三次基线只在采集五分钟健康样本期间请求 ES_CONTINUOUS|ES_SYSTEM_REQUIRED，基线就绪后清除并记录 BaselineWakeReleased=true，再开始规范观察器、提示人工 S4。请求归属调查脚本线程，finally 清除，不改生产电源超时或默认阈值；[SetThreadExecutionState 官方说明](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate) 定义其清除方式，且不能阻止用户手动休眠。新证据使用 `s4-v3-*`，不覆盖前两次记录。
+
+## S4 重验：Passed
+
+用户确认已休眠并恢复；Engine PID 27568，20:28:38.6898362 暂停，20:30:02.3410800 恢复。`s4-v3-system-events.json` 保存 Kernel-Power 42 原始 XML，TargetState/EffectiveState 均为 5。暂停区间无 PowerPlanSwitched；恢复后建立 idle=0 的观测、稳定期后 20:30:09 恢复高性能计划，没有 ExternalPlanChange 纠偏日志。20:30:05.7513176 健康样本与基线同 PID，丢日志、失败批次和队列深度均为 0。
+
+`s4-v3-power-lifecycle.result.json` 于 20:31:06 返回 Passed/退出 0，lifecycle-events、windows-suspend-resume-events、no-suspend-plan-write、hibernate-state、status-freshness、pipeline-health-delta 六项全部 Passed。`s4-v3-desktop-session.result.json` Stage=scenario-passed、Restored=true、Error 为空，20:31:09 完成任务运行态、配置 Hash、电源与亮度恢复。临时唤醒请求在手工操作前已解除（BaselineWakeReleased=true）。本结果只证明本次真实 S4 路径，电池路径及罕见系统故障注入仍未运行。
+
+下一阶段 `.work/guard-rules/idle-soak-v2-session.ps1` 已启动隔离候选 PID 15724，保存六项 AC 超时原值后临时禁用自动息屏/睡眠。用户选择开始静置，20:35:26.7447185 开始会话；初始样本 AC=true、状态与实际高性能计划一致，随后验证真实 300/900 秒空闲阈值，再额外观察 60 分钟。以真实 idleSeconds 判断阈值，不把会话经过时长替代系统空闲时长。聊天跟进 `smartguard-60` 每五分钟检查一次，仅阈值完成、最终完成、失败或用户操作需求时通知，最终汇报后停用。尚未声明阈值或 60 分钟通过。
