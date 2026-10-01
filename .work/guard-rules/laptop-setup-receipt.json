@@ -1,0 +1,16 @@
+{
+  "createdUtc": "2026-10-01T03:46:19.1475706Z",
+  "candidateCommit": "6f2f643ba85f7098478b9325cb46ec4f0553c3d5",
+  "setup": "D:\\Project\\SmartGuard\\output\\SmartGuard-验收安装包-6f2f643-x64.exe",
+  "bytes": 66593847,
+  "sha256": "7D0A16889F2AA061D9E2C74E4AB0AA1329736867033F21751867A4838C565859",
+  "stagingExitCode": 0,
+  "compilerExitCode": 0,
+  "candidateBinHashesVerified": 34,
+  "runtimeVersion": "8.0.31",
+  "runtimeSignature": "Valid Microsoft Corporation",
+  "runtimeSHA256": "C375DFD80A967405CFEFF634912C1FCCC56261CE3D9209EA473F60A21184D1CC",
+  "setupSignature": "NotSigned",
+  "remoteInstallation": "NOT RUN",
+  "acceptance": "BLOCKED pending known issues and desktop acceptance"
+}
