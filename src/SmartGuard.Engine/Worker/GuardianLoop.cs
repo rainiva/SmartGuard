@@ -100,11 +100,17 @@ public sealed partial class GuardianLoop
       WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}", EventNameRegistry.AppStarted);
 
       using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
+      var powerFailureReported = !powerListener.IsEnabled;
       if (!powerListener.IsEnabled)
-        WriteLog(config, LogLevel.Warn, "电源事件监听不可用（SystemEvents），将仅按轮询间隔工作", EventNameRegistry.AppStarted);
+        WriteLog(config, LogLevel.Warn, $"电源事件监听不可用：{powerListener.FailureReason}，将仅按轮询间隔工作", EventNameRegistry.AppStarted);
 
       while (!cancellationToken.IsCancellationRequested)
       {
+        if (!powerListener.IsEnabled && !powerFailureReported)
+        {
+          powerFailureReported = true;
+          WriteLog(config, LogLevel.Warn, $"电源事件监听已失效：{powerListener.FailureReason}", EventNameRegistry.AppStarted);
+        }
         _deduplication.Reset();
         SyncForegroundSubscription();
         var directive = _powerLifecycle.TakeDirective();

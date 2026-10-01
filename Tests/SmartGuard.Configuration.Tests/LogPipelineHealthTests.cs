@@ -4,6 +4,13 @@ namespace SmartGuard.Configuration.Tests;
 
 public class LogPipelineHealthTests
 {
+  [Fact]
+  public void Health_sample_identifies_the_process_whose_counters_are_reported()
+  {
+    var health = new LogPipelineHealth();
+    var sample = health.CreateHealthEvent(new LogHealthSnapshot(1,0,0,1,0,0,0,0,0,0,0));
+    sample.ProcessId.Should().Be(Environment.ProcessId);
+  }
   private static LogEvent Event(string message)
     => LogEventFactory.Create(
       LogSeverity.Info,

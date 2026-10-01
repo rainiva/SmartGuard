@@ -74,15 +74,10 @@ try {
 
   $status = [System.IO.File]::ReadAllText($statusPath, [System.Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json
 
-  $powerEvents = Get-WinEvent -FilterHashtable @{
-    LogName = 'System'
-    StartTime = $startedAt.LocalDateTime
-  } -ErrorAction Stop | Where-Object {
-    $_.ProviderName -in @(
-      'Microsoft-Windows-Kernel-Power',
-      'Microsoft-Windows-Power-Troubleshooter') -and
-    $_.Id -in @(1,42,107,506,507)
-  }
+  $fromUtc = $startedAt.UtcDateTime.ToString('O')
+  $toUtc = [DateTimeOffset]::UtcNow.UtcDateTime.ToString('O')
+  $powerXPath = "*[System[((Provider[@Name='Microsoft-Windows-Kernel-Power'] and (EventID=42 or EventID=107 or EventID=506 or EventID=507)) or (Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1)) and TimeCreated[@SystemTime >= '$fromUtc' and @SystemTime <= '$toUtc']]]"
+  $powerEvents = Get-WinEvent -LogName System -FilterXPath $powerXPath -ErrorAction Stop
 
   if ($Scenario -in @('LidMouseBattery','LidMouseAC')) {
     $suspend = @($newLines | Where-Object eventName -eq 'PowerSuspendObserved' | Select-Object -Last 1)

@@ -158,7 +158,9 @@
 
 | ID | 状态 | 契约 |
 |---|---|---|
-| PWR-LIFE-OWNER | 阻断 | `PowerLifecycleStateMachine` 是 `Running`/`Suspending`/`ResumeStabilizing` 唯一 Owner；`PolicyEngine` 不拥有生命周期。 |
+  | PWR-LIFE-OWNER | 阻断 | `PowerLifecycleStateMachine` 是 `Running`/`Suspending`/`ResumeStabilizing` 唯一 Owner；`PolicyEngine` 不拥有生命周期。 |
+  | PWR-LIFE-NATIVE | 阻断 | `PowerEventWakeListener` 显式 `PowerRegisterSuspendResumeNotification` 注册暂停/恢复；SystemEvents 只分发 StatusChanged。同一暂停后的 18/7 Resume 仅分发首次；回调 O(1)、使用注入 UTC，不做 IO/计划写入。Dispose 阻止新分发并等待在途分发退出，随后注销单个原生句柄；注销失败保留委托强根并报告错误。注册失败回收 SystemEvents，回调异常不跨 ABI，GuardianLoop 记录一次禁用/失效原因。 |
+  | LOG-HEALTH-PID | 阻断 | `LogStructuredSink.CreatePipelineHealthEvent` 在现有 `LogEvent.ProcessId` 字段记录实际进程 PID；五分钟健康计数仅在同一有效 PID 内比较，旧日志缺 PID 为 Blocked，不按 0==0 通过。 |
 | PWR-LIFE-SUSPEND | 阻断 | Suspend 期间禁止计划仲裁、`powercfg /setactive` 和外部计划变更判定。 |
 | PWR-LIFE-RESUME | 阻断 | Resume 建立新的 awake-idle epoch；先吸收 OS 当前计划并完成恢复稳定期，再允许普通策略仲裁。 |
 | PWR-LIFE-TIME | 阻断 | awake 持续时间和心跳间隔只使用注入的 `TimeProvider` 单调时间；持久化时间为 UTC offset。 |

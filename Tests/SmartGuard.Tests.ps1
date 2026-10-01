@@ -2,6 +2,7 @@ Describe 'SmartGuard' {
     Describe 'Power lifecycle acceptance evidence' {
         It 'classifies <Case> without losing checks to an exception' -ForEach @(
             @{Case='Complete'; State='Passed'; Code=0; Check='lifecycle-events'; CheckState='Passed'},
+            @{Case='NarrowQuery'; State='Passed'; Code=0; Check='windows-suspend-resume-events'; CheckState='Passed'},
             @{Case='MissingLifecycle'; State='Blocked'; Code=2; Check='lifecycle-events'; CheckState='Blocked'},
             @{Case='MissingBaseline'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},
             @{Case='MissingPost'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},

@@ -14,6 +14,14 @@ public class PowerLifecycleArchitectureTests
   }
 
   [Fact]
+  public void Contract_registers_native_notification_and_health_process_identity()
+  {
+    var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
+    contract.Should().Contain("PWR-LIFE-NATIVE");
+    contract.Should().Contain("LOG-HEALTH-PID");
+  }
+
+  [Fact]
   public void Power_events_are_not_collapsed_into_ac_state()
   {
     SourceScanHelper.ReadSource(

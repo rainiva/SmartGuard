@@ -24,6 +24,10 @@ function Read-Host {
     [IO.File]::WriteAllText((Join-Path $Root 'SmartGuard.status.json'), (@{timestamp=[DateTimeOffset]::UtcNow.ToString('O')} | ConvertTo-Json), $encoding)
     return ''
 }
-function Get-WinEvent { param($FilterHashtable, $FilterXPath, $LogName, $ErrorAction) @([pscustomobject]@{ProviderName='Microsoft-Windows-Kernel-Power'; Id=506}, [pscustomobject]@{ProviderName='Microsoft-Windows-Kernel-Power'; Id=507}) }
+function Get-WinEvent {
+    param($FilterHashtable, $FilterXPath, $LogName, $ErrorAction)
+    if ($Case -eq 'NarrowQuery' -and ($LogName -ne 'System' -or $FilterXPath -notmatch 'TimeCreated\[@SystemTime' -or $FilterXPath -notmatch 'Microsoft-Windows-Kernel-Power' -or $FilterXPath -notmatch 'EventID=506')) { throw 'Acceptance must query the UTC power-event window at source' }
+    @([pscustomobject]@{ProviderName='Microsoft-Windows-Kernel-Power'; Id=506}, [pscustomobject]@{ProviderName='Microsoft-Windows-Kernel-Power'; Id=507})
+}
 & $ScriptPath -Root $Root -Scenario LidMouseAC -ResultPath (Join-Path $Root 'result.json') -TranscriptPath (Join-Path $Root 'transcript.txt')
 exit $LASTEXITCODE

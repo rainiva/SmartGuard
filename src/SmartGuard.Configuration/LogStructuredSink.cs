@@ -53,6 +53,7 @@ public static class LogStructuredSink
       LogChannelRegistry.Diagnostics,
       EventNameRegistry.PipelineHealthSampled,
       "LogPipeline health sample",
+      processId: Environment.ProcessId,
       properties: properties);
   }
 
