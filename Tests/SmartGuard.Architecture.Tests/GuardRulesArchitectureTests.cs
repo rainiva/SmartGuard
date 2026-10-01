@@ -66,6 +66,7 @@ public class GuardRulesArchitectureTests
     contract.Should().Contain("PolicyEngine.Evaluate");
     contract.Should().Contain("唯一自动决策入口");
     contract.Should().Contain("GuardRulesArchitectureTests");
+    contract.Should().Contain("配置提交不得先删正式文件");
   }
 
   [Fact]
@@ -149,5 +150,6 @@ public class GuardRulesArchitectureTests
     contract.Should().Contain("前台事实采集");
     contract.Should().Contain("唯一前台事件监听");
     contract.Should().Contain("前台事件不得推迟截止时间");
+    contract.Should().Contain("原始时间戳按 TimestampFrequency 换算");
   }
 }

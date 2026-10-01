@@ -31,8 +31,8 @@ internal sealed class GuardianCycleCoordinator
 
   private int _foregroundPending;
   private long _nextPeriodicDeadline;
-  private long _lastLightRecheck = long.MinValue / 2;
-  private long _lastFullEvaluation = long.MinValue / 2;
+  private long? _lastLightRecheck;
+  private long? _lastFullEvaluation;
   private bool _fullEvaluationPending;
   private bool _recheckAfterGateLift;
 
@@ -130,7 +130,7 @@ internal sealed class GuardianCycleCoordinator
   public TimeSpan ComputeWaitDelay()
   {
     var now = _time.GetTimestamp();
-    var delayTicks = _nextPeriodicDeadline - now;
+    var delayTicks = _time.GetElapsedTime(now, _nextPeriodicDeadline).Ticks;
 
     if (HasPendingForegroundSignal)
     {
@@ -154,8 +154,7 @@ internal sealed class GuardianCycleCoordinator
   /// </summary>
   public void NoteCycleFailure(int intervalSeconds)
   {
-    _nextPeriodicDeadline = _time.GetTimestamp()
-      + TimeSpan.FromSeconds(Math.Max(1, intervalSeconds)).Ticks;
+    _nextPeriodicDeadline = NextPeriodicDeadline(_time.GetTimestamp(), intervalSeconds);
     _fullEvaluationPending = false;
     _recheckAfterGateLift = false;
     Interlocked.Exchange(ref _foregroundPending, 0);
@@ -175,7 +174,7 @@ internal sealed class GuardianCycleCoordinator
     await _runFullIteration(context, cancellationToken);
 
     var now = _time.GetTimestamp();
-    _nextPeriodicDeadline = now + TimeSpan.FromSeconds(Math.Max(1, intervalSeconds)).Ticks;
+    _nextPeriodicDeadline = NextPeriodicDeadline(now, intervalSeconds);
     _lastFullEvaluation = now;
     _fullEvaluationPending = false;
     _recheckAfterGateLift = false;
@@ -231,5 +230,11 @@ internal sealed class GuardianCycleCoordinator
   private bool IsFullEvaluationDue(long now)
     => _fullEvaluationPending && ElapsedSince(_lastFullEvaluation, now) >= _fullEvaluationFloor.Ticks;
 
-  private long ElapsedSince(long since, long now) => now - since;
+  // Raw timestamp units belong to the provider, not TimeSpan (10MHz is only a
+  // coincidence on some hosts). Null means the first evaluation is unrestricted.
+  private long ElapsedSince(long? since, long now)
+    => since is long start ? _time.GetElapsedTime(start, now).Ticks : TimeSpan.MaxValue.Ticks;
+
+  private long NextPeriodicDeadline(long now, int intervalSeconds)
+    => checked(now + (long)Math.Max(1, intervalSeconds) * _time.TimestampFrequency);
 }

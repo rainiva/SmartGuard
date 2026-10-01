@@ -12,7 +12,7 @@
 | 概念 | 权威来源 | 允许读者 | 允许写者 | 禁止模式 |
 |------|----------|----------|----------|----------|
 | 安装根 `{root}` | `InstallRootResolver` | 全部 exe | — | 各 exe 内私有 `RootResolver` |
-| 配置文件 | `{root}/SmartGuard.config.json` | 全部经 `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save`、`ConfigMutationService` | Engine 直调 `GuardConfig.LoadFromFile` |
+| 配置文件 | `{root}/SmartGuard.config.json`；内部提交实现 `GuardConfigAtomicFileWriter`：既有文件 `File.Replace`，首次创建 `File.Move`，提交失败保留最后有效配置并上抛 | 全部经 `GuardConfigRepository.TryLoad` | `GuardConfigRepository.Save`、`ConfigMutationService` | Engine 直调 `GuardConfig.LoadFromFile`；配置提交不得先删正式文件；不把原子发布当作跨进程读改写事务或断电持久性承诺 |
 | 运行时状态 | `{root}/SmartGuard.status.json`；守护字段 `guardSource`/`guardReason` 取值限 `GuardStatusCodes` 登记表，`foregroundEventsAvailable`（null=不适用/未知） | `StatusJsonReader` / `StatusStore`（Tray `TrayDisplayState` 相等判定 + Clone、Settings 展示均含新字段；字段缺失/代码未登记/状态过期 → 显示"未知"，不得显示确定的正在守护） | `StatusPublisher`（Engine，唯一写者；相等判定含守护字段） | Settings/Tray 各自解析 JSON；Engine 携带展示文案；UI 用未登记代码或缺失字段显示确定的守护声明 |
 | 电池与供电状态 | `BatteryInfoProvider`；Windows `GetSystemPowerStatus` 为主来源，WMI 仅作未知字段的可选补充 | Engine 轮询、电源事件、状态发布 | — | WMI 异常覆盖原生状态；独立采集入口；异常直接伪造 `100% / 插电` |
 | 电源生命周期 | `PowerLifecycleStateMachine`（Engine 进程内） | `PowerEventWakeListener` typed signal；`GuardianLoop` 消费有界 directive batch | `PowerLifecycleStateMachine` | Suspend/Resume 压缩为 AC/DC；UI/PolicyEngine 自建生命周期；转换批次无界增长 |
@@ -86,7 +86,7 @@
 | `GuardStatusFreshness` | `SmartGuard.Contracts` | 守护状态新鲜度判定唯一实现（3 分钟上界）：Tray/Settings 展示共用，状态缺失/过期不得显示确定的守护声明；TrayDisplayState 每次刷新比较当前新鲜度，字段相同也须处理自然过期 |
 | `ForegroundProgramReader` | `SmartGuard.Engine.Infrastructure` | 前台事实采集唯一真源：单次 Win32 查询 + 复核 + finally 释放进程句柄；缓冲上限 32,768 字符；无 hook/监听线程/Timer/事件队列/进程身份缓存；不读取窗口标题；Win32 调用点经构造函数注入可测 |
 | `ForegroundEventListener` | `SmartGuard.Engine.Infrastructure` | 唯一前台事件监听 Owner：一个 hook + 一个阻塞消息循环线程（`MsgWaitForMultipleObjectsEx` + 消息泵，等待时阻塞不忙等）；托管回调委托持有于字段（GC 安全）；注册失败/线程退出经 `IsHealthy`/`LastFailure` 可观测，故障路径不自动重启 |
-| `GuardianCycleCoordinator` | `SmartGuard.Engine.Worker` | 周期唤醒分类与节流唯一 Owner：完整周期截止 = 最近完整轮次 + 配置间隔，前台事件不得推迟截止时间（持续事件不饿死周期轮次）；唯一待处理前台标记（级别触发，最后信号不丢失）；轻路径准入复核 ≤1 次/秒；前台命中转变触发的完整评估 ≥5 秒且节流结束后必补跑；暂停/人工/限制关/名单空/名单非法/配置不可用时不做业务查询，状态变化按原周期重新检查 |
+| `GuardianCycleCoordinator` | `SmartGuard.Engine.Worker` | 周期唤醒分类与节流唯一 Owner：完整周期截止 = 最近完整轮次 + 配置间隔，前台事件不得推迟截止时间（持续事件不饿死周期轮次）；原始时间戳按 TimestampFrequency 换算，持续时间经同一 TimeProvider.GetElapsedTime 计算，不与 TimeSpan.Ticks 混算；首次未执行用可空时间戳表达；唯一待处理前台标记（级别触发，最后信号不丢失）；轻路径准入复核 ≤1 次/秒；前台命中转变触发的完整评估 ≥5 秒且节流结束后必补跑；暂停/人工/限制关/名单空/名单非法/配置不可用时不做业务查询，状态变化按原周期重新检查 |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
 | `PowerPlanCatalogProvider` | `SmartGuard.Configuration` | 三档 Windows 电源计划目录唯一真源；Settings 只经可取消的 `LoadWithRetryAsync`，有效目录缓存并限制并发；Engine/兼容调用才使用同步 `TryLoad` |
