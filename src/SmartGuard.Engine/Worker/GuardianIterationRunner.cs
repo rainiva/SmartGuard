@@ -41,7 +41,8 @@ internal sealed class GuardianIterationRunner(
   Action<Guid, int>? syncPlanBrightness = null,
   TimeProvider? timeProvider = null,
   Func<ForegroundObservation>? readForeground = null,
-  Func<bool?>? readForegroundEventsHealth = null)
+  Func<bool?>? readForegroundEventsHealth = null,
+  Func<int>? readBrightness = null)
 {
   public async Task RunAsync(
     GuardianLoopIterationState state,
@@ -72,7 +73,7 @@ internal sealed class GuardianIterationRunner(
       // 继续观察当前计划并发布观测负载，观察到的计划吸收为基线（非守护期间不产生积压纠偏）。
       AbsorbPlanAsBaseline(state, current);
       state.LastForegroundAdmitted = false;
-      var brightnessDuringDegrade = brightness.GetBrightness();
+      var brightnessDuringDegrade = (readBrightness ?? brightness.GetBrightness)();
       publisher.Publish(CreateDegradedObservationPayload(
         state, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, brightnessDuringDegrade));
       return;
@@ -87,7 +88,7 @@ internal sealed class GuardianIterationRunner(
         EventNameRegistry.PowerPlanProbeFailed);
       // 探测失败同样必须发布状态：否则 UI 停留在上一轮原因，无法解释守护暂停纠偏。
       publisher.Publish(CreateProbeFailedObservationPayload(
-        state, configOpt!, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, bright: brightness.GetBrightness()));
+        state, configOpt!, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, bright: (readBrightness ?? brightness.GetBrightness)()));
       return;
     }
 
@@ -101,9 +102,37 @@ internal sealed class GuardianIterationRunner(
     }
 
     var nowLocal = time.GetLocalNow().LocalDateTime;
-    var foreground = readForeground?.Invoke() ?? ForegroundObservation.Unknown;
+    var foreground = ReadForegroundForDecision(config);
     var decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config, nowLocal);
     var expected = decision.TargetPlanGuid;
+
+    var bright = (readBrightness ?? brightness.GetBrightness)();
+    var actionRecheckDenied = false;
+    if (context.AllowPolicyMutation && decision.Source is not GuardDecisionSource.None
+        && expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
+    {
+      // WMI 查询期间用户可能切走或撤销配置。所有切前副作用和纠偏通知只能消费
+      // 最新配置、空闲/供电与当前前台的同一决策；这里不承诺与系统切换绝对原子化。
+      // 强制供电查询也可能回退 WMI，因此必须在最终授权读取之前完成所有慢探测。
+      (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(true);
+      observePowerSource(isOnAc);
+      idle = (int)idleTracker.Sample(readIdleSeconds ?? IdleDetector.GetIdleSeconds);
+      var latest = loadConfig();
+      if (!latest.IsValid || latest.Config is null)
+      {
+        AbsorbPlanAsBaseline(state, current);
+        state.LastForegroundAdmitted = false;
+        publisher.Publish(CreateDegradedObservationPayload(
+          state, time.GetUtcNow(), current, planCatalog, idle, isOnAc, batteryPercent, bright));
+        return;
+      }
+      config = latest.Config;
+      foreground = ReadForegroundForDecision(config);
+      decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config,
+        time.GetLocalNow().LocalDateTime);
+      expected = decision.TargetPlanGuid;
+      actionRecheckDenied = decision.Source is GuardDecisionSource.None;
+    }
 
     // 限制族不干预：守护资格挂起，观察到的计划持续吸收为基线，禁止发“将纠偏”通知。
     var guardingHeld = decision.Source is GuardDecisionSource.None
@@ -135,6 +164,7 @@ internal sealed class GuardianIterationRunner(
 
     var externalChangeDetected = context.AllowPolicyMutation &&
       !context.AbsorbCurrentPlanAsBaseline &&
+      !actionRecheckDenied &&
       !guardingHeld &&
       PolicyEngine.IsExternalPlanChange(
         state.LastKnownGuid, current, state.ScriptJustSwitched, expected);
@@ -148,7 +178,6 @@ internal sealed class GuardianIterationRunner(
     state.ScriptJustSwitched = false;
 
     var label = PolicyEngine.GetStatusLabel(idle, config);
-    var bright = brightness.GetBrightness();
     LogBrightnessChangeIfNeeded(config, bright, state, writeLog);
 
     var planSwitched = false;
@@ -270,6 +299,19 @@ internal sealed class GuardianIterationRunner(
       guardReason = guardReason,
       foregroundEventsAvailable = ResolveForegroundEventsAvailability(config),
     });
+  }
+
+  private ForegroundObservation ReadForegroundForDecision(GuardConfig config)
+  {
+    if (readForeground is null)
+      return ForegroundObservation.Unknown;
+
+    // 复用领域准入规则：空/非法名单无法受益于进程查询，周期补偿也应跳过。
+    var admission = PolicyEngine.EvaluateAdmission(ForegroundObservation.Unknown, config);
+    return admission.Reason is GuardDecisionReason.ForegroundListEmpty
+      or GuardDecisionReason.ForegroundProgramPathsInvalid
+      ? ForegroundObservation.Unknown
+      : readForeground();
   }
 
   /// <summary>

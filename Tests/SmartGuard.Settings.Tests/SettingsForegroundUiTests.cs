@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Diagnostics;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using SmartGuard.Configuration;
@@ -151,6 +153,64 @@ public class SettingsForegroundUiTests
     });
   }
 
+  [Fact]
+  public void Open_window_updates_guard_text_when_engine_publishes_a_new_reason()
+  {
+    RunOnSta(() =>
+    {
+      using var scope = ForegroundScope.Create(
+        config => { },
+        status =>
+        {
+          status.guardSource = GuardStatusCodes.Sources.Automatic;
+          status.guardReason = GuardStatusCodes.Reasons.PolicySelected;
+        });
+      scope.OpenWindow();
+      WpfStaTestHost.ShowAndWait(scope.Window!);
+      var guardText = Find<TextBlock>(scope.Window!, "txtForegroundGuardStatus")!;
+      guardText.Text.Should().Be("守护中");
+
+      scope.WriteStatus(GuardStatusCodes.Sources.None,
+        GuardStatusCodes.Reasons.WaitingForListedProgram);
+
+      WpfStaTestHost.WaitUntil(
+        () => guardText.Text == "等待指定程序",
+        TimeSpan.FromSeconds(7),
+        "the open Settings window to display the Engine's new guard reason");
+    });
+  }
+
+  [Fact]
+  public void Closed_window_stops_applying_later_guard_status_changes()
+  {
+    RunOnSta(() =>
+    {
+      using var scope = ForegroundScope.Create(
+        config => { },
+        status =>
+        {
+          status.guardSource = GuardStatusCodes.Sources.None;
+          status.guardReason = GuardStatusCodes.Reasons.WaitingForListedProgram;
+        });
+      scope.OpenWindow();
+      WpfStaTestHost.ShowAndWait(scope.Window!);
+      var guardText = Find<TextBlock>(scope.Window!, "txtForegroundGuardStatus")!;
+      guardText.Text.Should().Be("等待指定程序");
+
+      scope.Window!.Close();
+      scope.WriteStatus(GuardStatusCodes.Sources.Automatic,
+        GuardStatusCodes.Reasons.PolicySelected);
+      var elapsed = Stopwatch.StartNew();
+      WpfStaTestHost.WaitUntil(
+        () => elapsed.Elapsed >= TimeSpan.FromSeconds(6),
+        TimeSpan.FromSeconds(7),
+        "a closed Settings window to remain quiescent beyond one status refresh interval");
+
+      guardText.Text.Should().Be("等待指定程序",
+        "closing the window must stop its guard-status refresh lifecycle");
+    });
+  }
+
   // ---- helpers ----
 
   private static void RunOnSta(Action action) => WpfStaTestHost.Run(action);
@@ -224,6 +284,22 @@ public class SettingsForegroundUiTests
       Window = (Window)typeof(SettingsWindowController)
         .GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
         .GetValue(Controller!)!;
+    }
+
+    public void WriteStatus(string source, string reason)
+    {
+      var status = new StatusPayload
+      {
+        timestamp = DateTimeOffset.UtcNow.ToString("O"),
+        currentPlan = "高性能",
+        paused = false,
+        guardSource = source,
+        guardReason = reason,
+      };
+      File.WriteAllText(
+        SmartGuardPaths.StatusFile(Root),
+        JsonSerializer.Serialize(status),
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
     }
 
     public void Dispose()

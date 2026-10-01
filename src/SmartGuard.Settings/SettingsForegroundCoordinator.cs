@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 
@@ -13,7 +14,7 @@ namespace SmartGuard.Settings;
 /// （超限等校验失败由保存链的既有错误提示呈现），不直接写配置仓库；
 /// 状态区只读 status.json 共享读取链，不维护第二套路径规则、状态解析或健康存储。
 /// </summary>
-internal sealed class SettingsForegroundCoordinator
+internal sealed class SettingsForegroundCoordinator : IDisposable
 {
   private const string AddDialogFilter = "可执行程序 (*.exe)|*.exe";
 
@@ -28,6 +29,12 @@ internal sealed class SettingsForegroundCoordinator
   private readonly string _statusPath;
   private readonly Func<string?> _pickProgramFile;
   private bool _wired;
+  private readonly Func<StatusPayload?> _readStatus;
+  private readonly Func<DateTimeOffset> _utcNow;
+  private readonly DispatcherTimer _statusTimer;
+  private bool _refreshInFlight;
+  private bool _disposed;
+  private StatusPayload? _displayedStatus;
 
   internal SettingsForegroundCoordinator(
     string root,
@@ -39,7 +46,10 @@ internal sealed class SettingsForegroundCoordinator
     TextBlock lblListHint,
     Action<string, bool> showFeedback,
     Action queueSave,
-    Func<string?>? pickProgramFile = null)
+    Func<string?>? pickProgramFile = null,
+    Func<StatusPayload?>? readStatus = null,
+    TimeSpan? refreshInterval = null,
+    Func<DateTimeOffset>? utcNow = null)
   {
     _tglRestriction = tglRestriction;
     _lstPrograms = lstPrograms;
@@ -51,6 +61,13 @@ internal sealed class SettingsForegroundCoordinator
     _queueSave = queueSave;
     _statusPath = SmartGuardPaths.StatusFile(root);
     _pickProgramFile = pickProgramFile ?? PickProgramFileWithDialog;
+    _readStatus = readStatus ?? (() => StatusJsonReader.TryRead(_statusPath));
+    _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+    _statusTimer = new DispatcherTimer(DispatcherPriority.Background, txtGuardStatus.Dispatcher)
+    {
+      Interval = refreshInterval ?? TimeSpan.FromSeconds(5),
+    };
+    _statusTimer.Tick += OnStatusTick;
   }
 
   internal bool RestrictionEnabled => _tglRestriction.IsChecked == true;
@@ -70,13 +87,11 @@ internal sealed class SettingsForegroundCoordinator
   }
 
   internal void RefreshGuardStatus(DateTimeOffset? nowUtc = null)
-    => _txtGuardStatus.Text = ForegroundGuardStatusText.Describe(
-      StatusJsonReader.TryRead(_statusPath),
-      nowUtc);
+    => ApplyGuardStatus(StatusJsonReader.TryRead(_statusPath), nowUtc);
 
   internal void WireInstantApply()
   {
-    if (_wired)
+    if (_wired || _disposed)
       return;
     _wired = true;
     _tglRestriction.Checked += (_, _) => _queueSave();
@@ -85,6 +100,52 @@ internal sealed class SettingsForegroundCoordinator
     _btnRemove.Click += (_, _) => RemoveSelected();
     _lstPrograms.SelectionChanged += (_, _) => UpdateRemoveEnabled();
     UpdateRemoveEnabled();
+    _statusTimer.Start();
+  }
+
+  private async void OnStatusTick(object? sender, EventArgs e)
+  {
+    // 单个在途读取：慢文件不阻塞 Dispatcher，也不让每个 tick 堆积后台任务。
+    if (_disposed)
+      return;
+    // 即使文件读取阻塞，展示快照也必须随时间过期；不需要另一个健康缓存或读取任务。
+    ApplyGuardStatus(_displayedStatus, null);
+    if (_refreshInFlight)
+      return;
+    _refreshInFlight = true;
+    try
+    {
+      var status = await Task.Run(_readStatus);
+      if (_disposed)
+        return;
+      ApplyGuardStatus(status, null);
+    }
+    catch
+    {
+      // 读取不可用仍明确显示未知；下一周期可恢复，不静默停止刷新。
+      if (!_disposed)
+        ApplyGuardStatus(null, null);
+    }
+    finally
+    {
+      _refreshInFlight = false;
+    }
+  }
+
+  private void ApplyGuardStatus(StatusPayload? status, DateTimeOffset? nowUtc)
+  {
+    _displayedStatus = status;
+    var text = ForegroundGuardStatusText.Describe(status, nowUtc ?? _utcNow());
+    if (_txtGuardStatus.Text != text)
+      _txtGuardStatus.Text = text;
+  }
+
+  public void Dispose()
+  {
+    _disposed = true;
+    _statusTimer.Stop();
+    _statusTimer.Tick -= OnStatusTick;
+    // 文件读取不可中断；其晚到结果由 _disposed 丢弃，不更新已关闭窗口。
   }
 
   internal void AddProgram()

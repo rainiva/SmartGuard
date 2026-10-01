@@ -2,10 +2,11 @@ using SmartGuard.Contracts;
 
 namespace SmartGuard.Tray;
 
-internal sealed class TrayDisplayState
+internal sealed class TrayDisplayState(Func<DateTimeOffset>? utcNow = null)
 {
   private StatusPayload? _lastStatus;
   private bool _hasApplied;
+  private bool _lastFresh;
 
   public string StatusLine { get; private set; } = "加载中…";
 
@@ -13,13 +14,17 @@ internal sealed class TrayDisplayState
 
   public bool Apply(StatusPayload? status)
   {
-    if (_hasApplied && StatusEquals(_lastStatus, status))
+    var now = (utcNow ?? (() => DateTimeOffset.UtcNow))();
+    var fresh = status is not null && GuardStatusFreshness.IsFresh(status.timestamp, now);
+    // Engine 停止后字段不再变化，但时间仍会跨越过期边界，必须撤销旧守护声明。
+    if (_hasApplied && _lastFresh == fresh && StatusEquals(_lastStatus, status))
       return false;
 
     _hasApplied = true;
+    _lastFresh = fresh;
     _lastStatus = Clone(status);
-    StatusLine = TrayStatusFormatter.FormatStatusLine(status);
-    Tooltip = TrayStatusFormatter.FormatTooltip(status);
+    StatusLine = TrayStatusFormatter.FormatStatusLine(status, now);
+    Tooltip = TrayStatusFormatter.FormatTooltip(status, now);
     return true;
   }
 

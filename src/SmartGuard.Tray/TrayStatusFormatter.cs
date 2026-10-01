@@ -4,23 +4,23 @@ namespace SmartGuard.Tray;
 
 public static class TrayStatusFormatter
 {
-  public static string FormatTooltip(StatusPayload? status)
+  public static string FormatTooltip(StatusPayload? status, DateTimeOffset? nowUtc = null)
   {
     if (status is null) return "智能电源守护（等待核心服务）";
     var power = status.isOnAC ? "插电" : "电池";
     var text = $"计划: {status.currentPlan} | {status.batteryPercent}% {power} | 亮度{status.brightness}%";
     if (status.paused) text += " | 已暂停";
-    text += FormatGuardClauseWithSeparator(status, " | ");
+    text += FormatGuardClauseWithSeparator(status, " | ", nowUtc);
     return text;
   }
 
-  public static string FormatStatusLine(StatusPayload? status)
+  public static string FormatStatusLine(StatusPayload? status, DateTimeOffset? nowUtc = null)
   {
     if (status is null) return "等待核心服务…";
     var power = status.isOnAC ? "插电" : "电池";
     var text = $"计划：{status.currentPlan} | {status.batteryPercent}% {power}";
     if (status.paused) text += " | 已暂停";
-    text += FormatGuardClauseWithSeparator(status, " | ");
+    text += FormatGuardClauseWithSeparator(status, " | ", nowUtc);
     return text;
   }
 
@@ -30,16 +30,16 @@ public static class TrayStatusFormatter
   /// 旧状态缺字段或代码未登记时输出空串——不得显示确定的正在守护。
   /// 暂停沿用既有"已暂停"展示（paused 布尔字段），paused 原因不重复输出子句。
   /// </summary>
-  private static string FormatGuardClauseWithSeparator(StatusPayload status, string separator)
+  private static string FormatGuardClauseWithSeparator(StatusPayload status, string separator, DateTimeOffset? nowUtc)
   {
-    var clause = FormatGuardClause(status);
+    var clause = FormatGuardClause(status, nowUtc);
     return string.IsNullOrEmpty(clause) ? string.Empty : separator + clause;
   }
 
-  private static string FormatGuardClause(StatusPayload status)
+  private static string FormatGuardClause(StatusPayload status, DateTimeOffset? nowUtc)
   {
     if (status.paused) return string.Empty;
-    if (!GuardStatusFreshness.IsFresh(status.timestamp, DateTimeOffset.UtcNow))
+    if (!GuardStatusFreshness.IsFresh(status.timestamp, nowUtc ?? DateTimeOffset.UtcNow))
       return string.Empty;
     if (!GuardStatusCodes.IsKnownSource(status.guardSource)
       || !GuardStatusCodes.IsKnownReason(status.guardReason))

@@ -27,7 +27,8 @@ internal sealed class ForegroundEventListener : IDisposable
 
   private const uint InfiniteTimeoutMs = 0xFFFFFFFF;
   private const int WaitObject0 = 0;
-  private const uint QsAllPosted = 0x0400;
+  // QS_ALLPOSTMESSAGE（0x0400 是 QS_RAWINPUT，不能唤醒普通投递消息）。
+  private const uint QsAllPosted = 0x0100;
   private const uint MwmoInputAvailable = 0x0004;
   private const uint PmRemove = 0x0001;
   private const int WmQuit = 0x0012;

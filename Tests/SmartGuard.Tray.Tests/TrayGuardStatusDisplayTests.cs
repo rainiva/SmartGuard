@@ -40,6 +40,24 @@ public class TrayGuardStatusDisplayTests
       "内部 Clone 若丢失新字段，扩展后的相等判定会把相同状态误判为变化");
   }
 
+  [Fact]
+  public void Apply_removes_guard_claim_when_unchanged_status_naturally_expires()
+  {
+    var now = DateTimeOffset.UtcNow;
+    var state = new TrayDisplayState(() => now);
+    var status = Status(GuardStatusCodes.Reasons.PolicySelected);
+    status.timestamp = now.ToString("O");
+
+    state.Apply(status).Should().BeTrue();
+    state.StatusLine.Should().Contain("守护中");
+
+    now += GuardStatusFreshness.MaxAge + TimeSpan.FromTicks(1);
+    state.Apply(status).Should().BeTrue(
+      "the periodic Tray refresh must recompute freshness even when status.json has not changed");
+    state.StatusLine.Should().NotContain("守护中");
+    state.Tooltip.Should().NotContain("守护中");
+  }
+
   // ---- 状态行文案：原因代码 → 展示子句 ----
 
   [Fact]

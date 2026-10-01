@@ -204,6 +204,7 @@ internal sealed class SettingsPolicyCoordinator
 
   internal void Dispose()
   {
+    _foreground.Dispose();
     _debouncedSaver.Dispose();
     _planCatalog.Dispose();
   }

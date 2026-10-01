@@ -203,15 +203,17 @@ internal sealed class GuardianCycleCoordinator
     if (!config.ForegroundRestrictionEnabled)
       return;
 
-    var foreground = _readForeground?.Invoke() ?? ForegroundObservation.Unknown;
-    var admission = PolicyEngine.EvaluateAdmission(foreground, config);
-
+    // 先让规则真源判断无需身份的拒绝条件，空/非法名单不能产生无用进程查询。
+    var admission = PolicyEngine.EvaluateAdmission(ForegroundObservation.Unknown, config);
     if (admission.Reason is GuardDecisionReason.ForegroundListEmpty
       or GuardDecisionReason.ForegroundProgramPathsInvalid)
     {
       _recheckAfterGateLift = true;
       return;
     }
+
+    var foreground = _readForeground?.Invoke() ?? ForegroundObservation.Unknown;
+    admission = PolicyEngine.EvaluateAdmission(foreground, config);
 
     var previouslyAdmitted = _state.LastForegroundAdmitted ?? false;
     if (previouslyAdmitted == admission.Admitted)
