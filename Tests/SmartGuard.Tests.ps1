@@ -1984,14 +1984,14 @@ function Exit-PesterFileLifecycle {
         It 'scheduled-task capture records only valid task-backed production process state' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
-            $productionRoot = 'D:\Apps\SmartGuard'
+            $productionRoot = Join-Path $TestDrive 'installed'
             $guardianSlot = [pscustomobject]@{
-                Command = '"D:\Apps\SmartGuard\bin\SmartGuard.Engine.exe" --root "D:\Apps\SmartGuard"'
+                Command = '"{0}\bin\SmartGuard.Engine.exe" --root "{0}"' -f $productionRoot
                 WorkingDirectory = $productionRoot
                 Root = $productionRoot
             }
             $traySlot = [pscustomobject]@{
-                Command = '"D:\Apps\SmartGuard\bin\SmartGuard.Tray.exe" --root "D:\Apps\SmartGuard"'
+                Command = '"{0}\bin\SmartGuard.Tray.exe" --root "{0}"' -f $productionRoot
                 WorkingDirectory = $productionRoot
                 Root = $productionRoot
             }
@@ -2008,12 +2008,12 @@ function Exit-PesterFileLifecycle {
                 if ($Name -eq 'SmartGuard.Engine') {
                     return [pscustomobject]@{
                         Id = 4242
-                        Path = 'D:\Apps\SmartGuard\bin\SmartGuard.Engine.exe'
+                        Path = Join-Path $productionRoot 'bin\SmartGuard.Engine.exe'
                     }
                 }
                 return [pscustomobject]@{
                     Id = 4243
-                    Path = 'D:\Other\SmartGuard.Tray.exe'
+                    Path = Join-Path $TestDrive 'other\SmartGuard.Tray.exe'
                 }
             }
 
@@ -2028,7 +2028,7 @@ function Exit-PesterFileLifecycle {
         It 'restore keeps valid stopped task slots stopped' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
-            $productionRoot = 'D:\Apps\SmartGuard'
+            $productionRoot = Join-Path $TestDrive 'installed'
             $slot = [pscustomobject]@{
                 Command = 'SmartGuard'
                 WorkingDirectory = $productionRoot
@@ -2056,7 +2056,7 @@ function Exit-PesterFileLifecycle {
         It 'restore starts only task-backed processes that were running in the snapshot' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
-            $productionRoot = 'D:\Apps\SmartGuard'
+            $productionRoot = Join-Path $TestDrive 'installed'
             $slot = [pscustomobject]@{
                 Command = 'SmartGuard'
                 WorkingDirectory = $productionRoot
@@ -2091,7 +2091,7 @@ function Exit-PesterFileLifecycle {
         It 'restore removes a task slot that was missing without reviving its orphan process' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
-            $productionRoot = 'D:\Apps\SmartGuard'
+            $productionRoot = Join-Path $TestDrive 'installed'
             $guardianSlot = [pscustomobject]@{
                 Command = 'SmartGuard'
                 WorkingDirectory = $productionRoot

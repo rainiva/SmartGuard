@@ -30,7 +30,7 @@ public class BuildInstallerCommandTests : IDisposable
             fakeDownloader,
             _ => 0);
 
-        var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: true));
+        var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, IsccPath: Path.Combine(root, "ISCC.exe"), SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: true));
 
         exit.Should().Be(0);
         var filesIncludePath = Path.Combine(generatedFiles, "SmartGuard.Distribution.Files.iss.inc");
@@ -75,7 +75,7 @@ public class BuildInstallerCommandTests : IDisposable
             fakeDownloader,
             _ => 0);
 
-        var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: false));
+        var exit = cmd.Run(new BuildInstallerOptions(root, "Release", staging, IsccPath: Path.Combine(root, "ISCC.exe"), SkipPublish: false, SkipRedistDownload: true, SkipVersionBump: false));
 
         exit.Should().Be(0);
         versionAtStageTime.Should().Be("1.0.6", "version must be bumped before the publish/stage step reads it");
@@ -84,6 +84,8 @@ public class BuildInstallerCommandTests : IDisposable
 
     private string CreateFakeRepo()
     {
+        // The compiler runner is injected; resolution must also use the isolated fixture.
+        File.WriteAllText(Path.Combine(_tempDir, "ISCC.exe"), "test compiler placeholder", new System.Text.UTF8Encoding(false));
         Directory.CreateDirectory(Path.Combine(_tempDir, "bin"));
         foreach (var project in DesktopDistributionManifest.PublishedProjects)
             File.WriteAllText(Path.Combine(_tempDir, "bin", project.OutputFileName), "exe");
