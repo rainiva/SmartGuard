@@ -44,3 +44,24 @@
 18:06:58 恢复完成：原任务定义、启用态和 Guardian/Tray 运行态恢复，配置 SHA256 仍为 9310CFD90225B1932AAFEA863A0DE150D7F02D7501DBFEE0887F187DD517DA93；原高性能 GUID 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c、亮度 30 已核对。原实例 Engine PID 33024、Tray PID 11112。用户 installer/version.txt 和原无关文件未修改。
 
 上一轮完整门禁退出 0，Pester 132/0/0、.NET 1748/0/0、Tray Integration 2/0/0、Installer Integration 9/0/0（通过/失败/跳过）；原性能测试 3/0/0。该通过不替代本次真实待机 Blocked。本轮仅记录验收事实，文档检查 UTF-8 无 BOM、结构、链接及 git diff --check，不重新执行无变更的全量测试。
+
+## 后续调查：显式通知覆盖与验收脚本修复
+
+本节保留上述首次失败，记录后续独立操作；没有把探针通知当成 Engine 已修复。
+
+2026-10-01 18:19:15 启动只读、限时 15 分钟的原生回调 spike，PID 34868。不触发睡眠、不切换计划、不改计划任务；回调最多保留 64 条事件。PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK) 返回 0。用户再次确认插电合盖约一分钟，开盖移动鼠标并唤醒。
+
+| 证据 | UTC 时间 / 结果 |
+|---|---|
+| Windows Kernel-Power 506 | 10:22:48.6160921 |
+| 原生 PBT_APMSUSPEND（4） | 10:22:48.8479049 |
+| 原生 PBT_APMRESUMEAUTOMATIC（18） | 10:23:53.2562063 |
+| 原生 PBT_APMRESUMESUSPEND（7） | 10:23:53.2567222 |
+| Windows Kernel-Power 507 | 10:23:54.1260159 |
+| 探针停止及注销 | 10:24:30.6612411；PowerUnregisterSuspendResumeNotification 返回 0 |
+
+原始回执为 `.work/guard-rules/s0-native-probe.result.json`，系统事件 UTC 窗口与 XML 为 `s0-native-probe-system-events.json`。本次单条 AC 路径证明显式原生回调可以收到 S0 暂停/恢复；不证明电池、S3、休眠或长期覆盖，也不证明 Engine 生命周期和策略抑制已通过。API 文档允许两种 Resume，本次实际收到两条；后续接入现有 listener 时必须定义重复 Resume 语义、回调退出/注销顺序、委托寿命、失败健康信号，并保持状态机唯一 Owner。
+
+验收脚本行为修复采用 TDD：有效证据通过；缺生命周期事件、缺前/后健康样本、缺 processId 均明确 Blocked；丢日志计数增加仍 Failed。纠正测试子进程退出码传递后，RED 为 4 通过 / 2 失败，分别复现空事件时间转换异常与缺 processId 被 0==0 误判为通过；GREEN 为 6/0/0。证据为 `acceptance-script-red-corrected.xml`、`acceptance-script-green.xml`。同时移除 ConvertFrom-Json 的 PowerShell 7 专属 Depth 参数，支持项目 Windows PowerShell 5.1 门禁。脚本不会因为修复而把第一次现场证据改成通过；实际健康日志仍缺 processId，严格同进程健康门禁依然 Blocked。
+
+修复后全量 `Run-Tests.ps1` 于 18:28:12 完成，退出 0；Pester 138/0/0、.NET 1748/0/0、Tray Integration 2/0/0、Installer Integration 9/0/0，无跳过或未运行层。summary 为 `.work/test-results/run-tests-20261001T102223529Z-868f8fb562a0485a9eead9705941baa4.summary.json`，所有 .NET 项目退出 0、TRX Completed；Windows PowerShell 5.1 已运行六个新增行为用例。`resume-s0-harness-gates.result.json` 前后任务定义与运行态快照完全相等，安装配置 SHA256 仍为 9310CFD90225B1932AAFEA863A0DE150D7F02D7501DBFEE0887F187DD517DA93。完整门禁期间用户执行了上述探针合盖路径，自动门禁仍通过；不把这次并发操作当成新的 Engine 待机验收。

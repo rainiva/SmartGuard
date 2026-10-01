@@ -1,4 +1,24 @@
 Describe 'SmartGuard' {
+    Describe 'Power lifecycle acceptance evidence' {
+        It 'classifies <Case> without losing checks to an exception' -ForEach @(
+            @{Case='Complete'; State='Passed'; Code=0; Check='lifecycle-events'; CheckState='Passed'},
+            @{Case='MissingLifecycle'; State='Blocked'; Code=2; Check='lifecycle-events'; CheckState='Blocked'},
+            @{Case='MissingBaseline'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},
+            @{Case='MissingPost'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},
+            @{Case='MissingPid'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},
+            @{Case='Dropped'; State='Failed'; Code=1; Check='pipeline-health-delta'; CheckState='Failed'}
+        ) {
+            $root = Split-Path -Parent $PSScriptRoot
+            $fixtureRoot = Join-Path $TestDrive $Case
+            & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Integration/PowerLifecycleAcceptance.Fixture.ps1') -ScriptPath (Join-Path $root 'scripts/Invoke-PowerLifecycleAcceptance.ps1') -Root $fixtureRoot -Case $Case | Out-Null
+            $LASTEXITCODE | Should -Be $Code
+            $result = [IO.File]::ReadAllText((Join-Path $fixtureRoot 'result.json'), [Text.Encoding]::UTF8) | ConvertFrom-Json
+            $result.result | Should -Be $State
+            $result.error | Should -BeNullOrEmpty
+            @($result.checks).Count | Should -Be 5
+            ($result.checks | Where-Object name -eq $Check).status | Should -Be $CheckState
+        }
+    }
     Describe 'Tray assets' {
         It 'canonical SmartGuard.ico lives under assets branding and official source frames exist' {
             $root = Split-Path -Parent $PSScriptRoot

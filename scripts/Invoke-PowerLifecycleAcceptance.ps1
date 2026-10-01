@@ -44,7 +44,7 @@ function Write-Result {
 try {
   $logPath = Join-Path $Root 'SmartGuard.log'
   $statusPath = Join-Path $Root 'SmartGuard.status.json'
-  $baselineHealth = @(Get-Content -LiteralPath $logPath -Encoding utf8 -Tail 2000 | ForEach-Object { try { $_ | ConvertFrom-Json -Depth 20 } catch { $null } } | Where-Object eventName -eq 'PipelineHealthSampled' | Select-Object -Last 1)
+  $baselineHealth = @(Get-Content -LiteralPath $logPath -Encoding utf8 -Tail 2000 | ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } | Where-Object eventName -eq 'PipelineHealthSampled' | Select-Object -Last 1)
   $initialLength = (Get-Item -LiteralPath $logPath).Length
 
   Write-Host "Starting scenario $Scenario. The script will not sleep or change power plans."
@@ -66,7 +66,7 @@ try {
   finally { $reader.Dispose(); $stream.Dispose() }
 
   $newLines = @([regex]::Split($appendedText, '\r?\n') | ForEach-Object {
-      try { $_ | ConvertFrom-Json -Depth 20 } catch { $null }
+      try { $_ | ConvertFrom-Json } catch { $null }
     } | Where-Object {
       $_ -and [DateTimeOffset]$_.timestamp -ge $startedAt.ToUniversalTime()
     })
@@ -87,10 +87,10 @@ try {
   if ($Scenario -in @('LidMouseBattery','LidMouseAC')) {
     $suspend = @($newLines | Where-Object eventName -eq 'PowerSuspendObserved' | Select-Object -Last 1)
     $resume = @($newLines | Where-Object eventName -eq 'PowerResumeObserved' | Select-Object -First 1)
-    $suspendObservedAt = $(if ($null -ne $suspend) {
+    $suspendObservedAt = $(if ($suspend.Count -eq 1 -and $suspend[0].properties.lifecycleObservedAtUtc) {
       [DateTimeOffset]$suspend.properties.lifecycleObservedAtUtc
     })
-    $resumeObservedAt = $(if ($null -ne $resume) {
+    $resumeObservedAt = $(if ($resume.Count -eq 1 -and $resume[0].properties.lifecycleObservedAtUtc) {
       [DateTimeOffset]$resume.properties.lifecycleObservedAtUtc
     })
 
@@ -99,6 +99,8 @@ try {
       status = $(if ($null -ne $suspendObservedAt -and
         $null -ne $resumeObservedAt -and $suspendObservedAt -lt $resumeObservedAt) {
           'Passed'
+        } elseif ($null -eq $suspendObservedAt -or $null -eq $resumeObservedAt) {
+          'Blocked'
         } else { 'Failed' })
     })
     $checks.Add([pscustomobject]@{
@@ -116,7 +118,9 @@ try {
           $_.eventName -eq 'PowerPlanSwitched' -and
           [DateTimeOffset]$_.timestamp -gt $suspendObservedAt -and
           [DateTimeOffset]$_.timestamp -lt $resumeObservedAt
-        }).Count -eq 0) { 'Passed' } else { 'Failed' })
+        }).Count -eq 0) { 'Passed' }
+        elseif ($null -eq $suspendObservedAt -or $null -eq $resumeObservedAt) { 'Blocked' }
+        else { 'Failed' })
     })
   }
   else {
@@ -134,7 +138,8 @@ try {
       [TimeSpan]::FromSeconds(90)) { 'Passed' } else { 'Failed' })
   })
 
-  $pipelineStatus = if ($null -eq $baselineHealth -or $null -eq $postHealth -or
+  $pipelineStatus = if ($baselineHealth.Count -ne 1 -or $postHealth.Count -ne 1 -or
+    [int]$baselineHealth.processId -le 0 -or [int]$postHealth.processId -le 0 -or
     [int]$baselineHealth.processId -ne [int]$postHealth.processId) {
     'Blocked'
   }
