@@ -118,6 +118,35 @@ public class StatusPublisherTests : IDisposable
     }
 
     [Fact]
+    public void Successful_replacement_retains_one_previous_snapshot()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var plan = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(10, 80, plan));
+        var previous = File.ReadAllText(_statusPath);
+        publisher.Publish(CreatePayload(10, 70, plan));
+
+        File.ReadAllText(_statusPath + ".bak").Should().Be(previous);
+        previous = File.ReadAllText(_statusPath);
+        publisher.Publish(CreatePayload(10, 60, plan));
+        File.ReadAllText(_statusPath + ".bak").Should().Be(previous);
+        Directory.GetFiles(Path.GetDirectoryName(_statusPath)!, "*.bak").Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void Interrupted_replacement_backup_is_restored_before_a_failing_publish()
+    {
+        var old = JsonSerializer.Serialize(CreatePayload(10, 80, Guid.NewGuid().ToString()));
+        File.WriteAllText(_statusPath + ".bak", old);
+        Directory.CreateDirectory(_statusPath + ".tmp");
+        var publisher = new StatusPublisher(_statusPath);
+
+        Action publish = () => publisher.Publish(CreatePayload(10, 70, Guid.NewGuid().ToString()));
+        publish.Should().Throw<Exception>();
+        File.ReadAllText(_statusPath).Should().Be(old);
+    }
+
+    [Fact]
     public void Unchanged_status_is_refreshed_when_max_staleness_is_reached()
     {
         var time = new ManualTimeProvider();
@@ -150,6 +179,42 @@ public class StatusPublisherTests : IDisposable
         publisher.Publish(CreatePayload(60, 90, planGuid));
 
         File.ReadAllText(_statusPath).Should().Contain("\"idleSeconds\": 60");
+    }
+
+    [Fact]
+    public void Publish_replaces_status_while_a_shared_snapshot_is_open()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var plan = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(0, 90, plan));
+        using var snapshot = new FileStream(_statusPath, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+
+        publisher.Publish(CreatePayload(60, 80, plan));
+
+        SmartGuard.Configuration.StatusJsonReader.TryRead(_statusPath)!.batteryPercent.Should().Be(80);
+        using var old = JsonDocument.Parse(snapshot);
+        old.RootElement.GetProperty("batteryPercent").GetInt32().Should().Be(90);
+    }
+
+    [Fact]
+    public void Rejected_status_replacement_preserves_old_bytes_and_can_be_retried()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var plan = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(0, 90, plan));
+        var original = File.ReadAllBytes(_statusPath);
+        var update = CreatePayload(60, 80, plan);
+        using (var held = new FileStream(_statusPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var publish = () => publisher.Publish(update);
+            publish.Should().Throw<Exception>();
+            File.ReadAllBytes(_statusPath).Should().Equal(original);
+            File.Exists(_statusPath + ".tmp").Should().BeFalse();
+        }
+
+        publisher.Publish(update);
+        SmartGuard.Configuration.StatusJsonReader.TryRead(_statusPath)!.batteryPercent.Should().Be(80);
     }
 
     private static StatusPayload CreatePayload(int idleSeconds, int batteryPercent, string planGuid)

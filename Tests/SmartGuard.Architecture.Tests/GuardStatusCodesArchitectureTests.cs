@@ -63,4 +63,25 @@ public class GuardStatusCodesArchitectureTests
     contract.Should().Contain("STATUS-GUARD-CODES");
     contract.Should().Contain("GuardStatusCodesArchitectureTests");
   }
+
+  [Fact]
+  public void Status_file_contract_allows_snapshot_readers_and_preserves_failed_replacements()
+  {
+    var reader = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/StatusJsonReader.cs");
+    reader.Should().Contain("FileShare.Delete");
+    reader.Should().NotContain("File.ReadAllText");
+    var contract = File.ReadAllText(Path.Combine(SourceScanHelper.RepoRoot, "docs", "ARCHITECTURE-CONTRACT.md"));
+    contract.Should().Contain("STATUS-SNAPSHOT");
+    contract.Should().Contain("替换失败保留旧正式状态");
+  }
+
+  [Fact]
+  public void Status_backup_path_has_one_owner_and_replacement_retains_recovery_copy()
+  {
+    var paths = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/SmartGuardPaths.cs");
+    paths.Should().Contain("StatusBackupForFile");
+    var publisher = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Infrastructure/StatusPublisher.cs");
+    publisher.Should().Contain("SmartGuardPaths.StatusBackupForFile");
+    publisher.Should().NotContain("destinationBackupFileName: null");
+  }
 }

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SmartGuard.Contracts;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Infrastructure;
 
@@ -54,17 +55,34 @@ public sealed class StatusPublisher
     var dir = Path.GetDirectoryName(_statusPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
     var temp = _statusPath + ".tmp";
+    var backup = SmartGuardPaths.StatusBackupForFile(_statusPath);
     try
     {
+      // Recover an interrupted replacement before attempting another write.
+      if (!File.Exists(_statusPath) && File.Exists(backup))
+        File.Move(backup, _statusPath);
       File.WriteAllText(
         temp,
         JsonSerializer.Serialize(payload, JsonOptions),
         new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-      File.Move(temp, _statusPath, overwrite: true);
+      if (File.Exists(_statusPath))
+        File.Replace(temp, _statusPath, destinationBackupFileName: backup);
+      else
+        File.Move(temp, _statusPath);
     }
-    catch
+    catch (Exception writeError)
     {
       try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+      try
+      {
+        if (!File.Exists(_statusPath) && File.Exists(backup))
+          File.Move(backup, _statusPath);
+      }
+      catch (Exception recoveryError)
+      {
+        throw new AggregateException("Status replacement and recovery failed; recovery backup is retained.",
+          writeError, recoveryError);
+      }
       throw;
     }
   }

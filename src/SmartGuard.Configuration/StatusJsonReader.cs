@@ -17,8 +17,9 @@ public static class StatusJsonReader
 
     try
     {
-      var json = File.ReadAllText(statusPath);
-      return JsonSerializer.Deserialize<StatusPayload>(json, JsonOptions);
+      using var stream = new FileStream(statusPath, FileMode.Open, FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete);
+      return JsonSerializer.Deserialize<StatusPayload>(stream, JsonOptions);
     }
     catch
     {
