@@ -2,9 +2,9 @@
 
 ## 当前结论
 
-**工程推荐：保留事件机制作为响应优化的候选，不继续增加框架。正式保留验收尚被真实静止样本阻塞；不能宣称性能/功耗全部通过。** 三轮同相位受控调度均有响应收益，同准入不增加完整业务工作；真实静止轮均出现额外前台事件，未取得有效静止A/B。不能因为桌面扰动直接判定机制失败，也不能把被扰动的CPU结果当保留证据。
+**裁决：保留现有事件机制，本次响应收益与稳定期后静止路径的有限验收收口，不继续增加框架。** 三轮同相位受控调度均有响应收益；此次取得三轮健康监听、零前台通知的真实30秒B样本，未出现事件额外业务工作或持久化。此结论不是整个规则功能、原Engine预算、长期稳定或功耗全部通过。
 
-用户已选择“暂时不方便，先记录待验收”；不再启动真实静止补测。裁决为**候选保留、最终保留验收待定**，不自动删除当前事件代码，不继续叠加抽象。后续只补有效静止样本，再按已确定的成本与延迟证据收敛保留/回退；能耗仍单独标未验证。
+用户在此前延期后于2026-10-01授权继续验收。原连续补测仍受扰动；独立归因发现启动后约1–5秒的通知涉及Codex及四个短暂PID，后者退出后无法确认名称，工具启动扰动仅为合理推测。随后使用预先声明的20秒B稳定期，保留准备期计数，再完整测30秒；三次独立进程均通过样本有效性检查。未删除污染数据，未改变生产节流、过滤通知或添加调度器/缓存/功耗框架。
 
 本轮为测量spike及文档，无生产代码/配置/计划任务/电源计划改动，不重复全量代码门禁或原Engine启动/20MB预算。预算未在本轮重新验证，台架私有内存不能代替Engine预算。原配置SHA256核对仍为97C46A635FA50E07D513318AC1AA55846FE6B38A33189F9C82131E0C093066F2。
 
@@ -13,7 +13,7 @@
 - 基线A：15秒完整周期，不投递前台信号；候选B：同一周期加现有1秒轻路径/5秒完整评估节流。最终生产Reader、PolicyEngine、Coordinator、Runner复用，不复制匹配算法。
 - 受控矩阵：0/1/128项，静止/同准入每秒切换/名单内外每10秒切换/每100ms快速切换；各120秒虚拟时间，三组交替顺序，共72项。真实Reader执行后用控制事实代替其结果，保留实际进程查询成本，匹配置于128项末尾；真实隔离status落盘。配置读取为有效对象委托，日志/供电/亮度/电源API均计数替身，不能把调用数当完整真实IO耗时。台架源及矩阵保留于raw-3；该进程在矩阵完成后主动停止，未生成整轮完成receipt。
 - 延迟：128项、真实单调时钟、每组分别在首次完整轮次后0.5/7.5/14.5秒改变控制事实，三组交替A/B，共18项。分别记录真实Reader返回、拦截电源动作提交、完整轮次完成的时间点。**不是OS事件投递延迟，也不是物理电源切换完成耗时。** raw-4退出0，receipt记录18项延迟、6项静止，matrixCases=0表示该次只补测后半段。
-- 真实监听：实际EVENT_SYSTEM_FOREGROUND和真实前台事实，A/B各3轮30秒；B三轮都有8个事件，全部污染，不能作为纯静止通过。A没有事件监听，events=0不证明期间完全无前台变化。短时间CPU分辨率约15.625ms，矩阵0值不等于零成本。
+- 真实监听：实际EVENT_SYSTEM_FOREGROUND和真实前台事实。raw-4及本次raw-static-next/raw-static-quiet的连续B轮均有通知，不计静止通过。最终raw-static-pair-0/1/2为三次独立A→B，各30秒，B计时前另有20秒稳定期并消化准备期标记、重置计数；期间不请求新的进程输出。最终静止未交替顺序，存在顺序/预热偏差；A没有监听，events=0不证明前台全程未变。CPU差值不当作监听净成本，粒度约15.625ms，0值不等于零成本。
 - 资源：30次真实监听创建/停止/Dispose；普通线程对照及每批强制GC用于区分托管延迟回收，不作为生产优化或要求生产主动GC。
 
 ## 同相位延迟（秒，三次最小–最大）
@@ -44,15 +44,31 @@
 - raw-1及raw-2压缩回放在StatusPublisher.File.Move处发生访问拒绝，原目录保留，不能算性能通过。虚拟分钟挤成毫秒级物理替换存在人工突发；加入每完整轮次100ms的台架间隔后raw-3矩阵完成。未改生产重试策略；根因未确认，不能断言为环境问题或已修复，也不能据此推断自然15秒周期失败。
 - raw-4循环计数包含台架WaitAsync对亚毫秒等待取整形成的样本末端快速循环，不能作为生产唤醒数。后续静止台架将等待向上取整到至少1ms，避免该测量误差；不改生产循环。
 - 回收前句柄每5次增长15个；普通线程也出现同类增长。raw-resources强制回收后真实监听6批均回到240句柄、12线程，未证明持续泄漏；这只覆盖30次启停，不是长期稳定验收。
-- 有效真实静止对比待桌面安静窗口，按用户选择NOT RUN（补测）；当前不批准“静止开销达标”。整机能耗NOT MEASURED，未声称省电；没有安装常驻监控组件。
+- 有效真实静止样本已补齐，结果见下表；只批准稳定期后无额外事件工作及本次有限保留裁决，没有从短测量推断长期或精确CPU成本。整机能耗NOT MEASURED，未声称省电；没有安装常驻监控组件。
+
+## 静止补测结果（2026-10-01 10:49–10:53，UTC+8）
+
+三次独立进程均退出0，各receipt记录2个静止样本、physicalPowerChanges=0。128项中目标位于末项，实际前台为Codex。B稳定期每次另记8个通知，正式计时30秒三次均events=0、listenerHealthy=true；准备期事件没有被默默丢弃。
+
+| 独立对 | CPU A/B（ms） | Reader/完整轮次 A→B | B句柄 起→止 | B线程 起→止 | B私有内存 起→止（字节） |
+|---|---|---|---|---|---|
+| 0 | 31.25 / 31.25 | 2/2→1/1 | 258→258 | 12→12 | 13443072→12357632 |
+| 1 | 31.25 / 0 | 2/2→1/1 | 258→258 | 12→12 | 13516800→12394496 |
+| 2 | 46.875 / 15.625 | 2/2→2/2 | 259→259 | 12→12 | 13512704→12558336 |
+
+A/B六个样本的status/log/apply均为0；B轮次分别2/2/3，没有额外通知驱动的忙循环。B准备期最后一次完整轮次后重新计时，与A的周期边界位置不同，30秒样本可能包含1或2次周期评估；不能将少一轮或更低CPU解释为事件带来的性能提升。没有可分离的显著静止额外工作，句柄/线程在各B窗口内稳定，私有内存回落；结合先前响应收益、调用节流和启停回收对照，足以支持个人项目保留现有机制。未证明零成本、长时间无泄漏或整机功耗改善。
+
+本次前两次连续运行B通知数分别为8/32/24和32/24/8，全部INVALID；归因模式有额外回调查询，单独保留，不纳入成本数据。[WINEVENTPROC官方说明](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nc-winuser-wineventproc)用于核对原生hwnd/PID及事件时间的诊断语义，不以回调次数推断人工操作次数。
 
 原始证据：[矩阵](controlled-performance/raw-3/matrix.json)、[延迟](controlled-performance/raw-4/realtime.json)、[污染静止轮](controlled-performance/raw-4/stationary.json)、[回收对照](controlled-performance/raw-resources/resource-control.json)、[台架](controlled-performance/Program.cs)、[试验边界](controlled-performance-plan.md)。
 
-后续静止补测命令（先取得安静桌面窗口，使用不存在的新输出目录）：
+本次证据：[连续补测一](controlled-performance/raw-static-next/stationary.json)、[连续补测二](controlled-performance/raw-static-quiet/stationary.json)、[归因](controlled-performance/raw-events-next/events.json)、[有效对0](controlled-performance/raw-static-pair-0/stationary.json)、[有效对1](controlled-performance/raw-static-pair-1/stationary.json)、[有效对2](controlled-performance/raw-static-pair-2/stationary.json)。原始JSON保留本地，表格和边界随文档提交。
+
+复现单对命令（先取得安静桌面窗口，使用不存在的新输出目录；重复三次，每次使用新目录）：
 
 ```powershell
 dotnet build .work/guard-rules/controlled-performance/ControlledPerformance.csproj -c Release --no-restore
-dotnet .work/guard-rules/controlled-performance/bin/Release/net8.0-windows10.0.17763.0/SmartGuard.Engine.Tests.dll .work/guard-rules/controlled-performance/raw-static-next stationary-only
+dotnet .work/guard-rules/controlled-performance/bin/Release/net8.0-windows10.0.17763.0/SmartGuard.Engine.Tests.dll .work/guard-rules/controlled-performance/raw-static-reproduction stationary-pair
 ```
 
-产物中的stationary.json才是静止样本；资源检查阶段不属于静止测量。当前尚未执行上述补测，不将构建成功当作其通过证据。
+产物中的stationary.json才是静止样本，稳定期及随后资源检查不属于静止测量。台架构建退出0、0警告/错误；三个独立对进程退出0并核对receipt与原始JSON。只改台架与文档，未重跑Pester/.NET/Tray/Installer全量门禁；原Engine启动/20MB预算及整机能耗未运行，不由台架数据代替。

@@ -17,6 +17,41 @@ if (!observed.IdentificationSucceeded || observed.ExecutablePath is null)
 if (Stopwatch.Frequency != TimeSpan.TicksPerSecond)
   throw new InvalidOperationException("Current production coordinator assumes 10MHz timestamps; cannot benchmark this host honestly.");
 var target = observed.ExecutablePath;
+var stationaryPair = args.Length > 1 && args[1] == "stationary-pair";
+if (args.Length > 1 && args[1] == "events-only")
+{
+  // Attribution spike only: retain bounded native IDs, never window titles. These
+  // extra callback queries invalidate cost measurement, so keep this mode separate.
+  var rows = new List<object>();
+  var watch = Stopwatch.StartNew();
+  var total = 0;
+  WinEventDelegate? probe = null;
+  using var listener = new ForegroundEventListener(() => { }, callback =>
+  {
+    probe = (hook, kind, window, obj, child, thread, tick) =>
+    {
+      total++;
+      if (rows.Count < 256)
+      {
+        EventProbe.GetWindowThreadProcessId(window, out var pid);
+        var current = EventProbe.GetForegroundWindow();
+        EventProbe.GetWindowThreadProcessId(current, out var currentPid);
+        rows.Add(new { elapsedMs = watch.Elapsed.TotalMilliseconds, kind, window = window.ToInt64(), pid,
+          currentWindow = current.ToInt64(), currentPid, obj, child, thread, tick });
+      }
+      callback(hook, kind, window, obj, child, thread, tick);
+    };
+    return EventProbe.SetWinEventHook(3, 3, IntPtr.Zero, probe, 0, 0, 0);
+  });
+  listener.Start();
+  await Task.Delay(30000);
+  var healthy = listener.IsHealthy;
+  listener.Stop();
+  GC.KeepAlive(probe);
+  Save("events.json", new { healthy, total, truncated = total > 256, rows });
+  Console.WriteLine("EVENT ATTRIBUTION COMPLETE");
+  return;
+}
 if (args.Length > 1 && args[1] == "resources-only")
 {
   var rows = new List<object>();
@@ -59,7 +94,7 @@ foreach (var mode in repeat % 2 == 0 ? new[] { "A", "B" } : new[] { "B", "A" })
 }
 
 var realtime = new List<object>();
-if (args.Length < 2 || args[1] != "stationary-only")
+if (!stationaryPair && (args.Length < 2 || args[1] != "stationary-only"))
 {
 for (var repeat = 0; repeat < 3; repeat++)
 foreach (var phase in new[] { 0.5, 7.5, 14.5 })
@@ -71,7 +106,7 @@ foreach (var mode in repeat % 2 == 0 ? new[] { "A", "B" } : new[] { "B", "A" })
 }
 
 var stationary = new List<object>();
-for (var repeat = 0; repeat < 3; repeat++)
+for (var repeat = 0; repeat < (stationaryPair ? 1 : 3); repeat++)
 foreach (var mode in repeat % 2 == 0 ? new[] { "A", "B" } : new[] { "B", "A" })
 {
   stationary.Add(await Stationary(mode, repeat));
@@ -189,6 +224,17 @@ async Task<object> Stationary(string mode, int repeat)
   }) : null;
   listener?.Start();
   await Task.Delay(200);
+  var settlingEvents = 0;
+  if (stationaryPair && mode == "B")
+  {
+    // Interactive tool preparation may activate temporary windows. Separate this
+    // declared settling period from the full 30-second sample; retain its count.
+    await Task.Delay(20000);
+    await rig.Cycle();
+    rig.Drain();
+    settlingEvents = Interlocked.Exchange(ref events, 0);
+    rig.ResetCounts();
+  }
   using var process = Process.GetCurrentProcess();
   process.Refresh();
   var cpu = process.TotalProcessorTime;
@@ -208,7 +254,7 @@ async Task<object> Stationary(string mode, int repeat)
     rig.Drain();
   }
   process.Refresh();
-  var result = new { mode, repeat, seconds = watch.Elapsed.TotalSeconds, events,
+  var result = new { mode, repeat, seconds = watch.Elapsed.TotalSeconds, events, settlingEvents,
     uncontaminated = events == 0, listenerHealthy = listener?.IsHealthy, cpuMs = (process.TotalProcessorTime - cpu).TotalMilliseconds,
     handlesStart = handles, handlesEnd = process.HandleCount, threadsStart = threads, threadsEnd = process.Threads.Count,
     privateStart = memory, privateEnd = process.PrivateMemorySize64, counts = rig.Counts() };
@@ -245,6 +291,17 @@ sealed class VirtualTime : TimeProvider
   public override long GetTimestamp() => _ticks;
   public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(_ticks);
   public void Advance(TimeSpan elapsed) => _ticks += elapsed.Ticks;
+}
+
+static class EventProbe
+{
+  [System.Runtime.InteropServices.DllImport("user32.dll")]
+  internal static extern IntPtr GetForegroundWindow();
+  [System.Runtime.InteropServices.DllImport("user32.dll")]
+  internal static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+  [System.Runtime.InteropServices.DllImport("user32.dll")]
+  internal static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventDelegate callback,
+    uint pid, uint thread, uint flags);
 }
 
 sealed class Rig : IDisposable
