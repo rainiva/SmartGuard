@@ -42,7 +42,8 @@ internal sealed class GuardianIterationRunner(
   TimeProvider? timeProvider = null,
   Func<ForegroundObservation>? readForeground = null,
   Func<bool?>? readForegroundEventsHealth = null,
-  Func<int>? readBrightness = null)
+  Func<int>? readBrightness = null,
+  Func<bool>? canMutatePolicy = null)
 {
   public async Task RunAsync(
     GuardianLoopIterationState state,
@@ -53,6 +54,7 @@ internal sealed class GuardianIterationRunner(
     TraceIdContext.GenerateNew();
     var time = timeProvider ?? TimeProvider.System;
     var nowUtc = time.GetUtcNow();
+    bool PolicyMutationAllowed() => context.AllowPolicyMutation && (canMutatePolicy?.Invoke() ?? true);
     var configRead = loadConfig();
     GuardConfig? configOpt = configRead.Config;
     var configAvailable = configRead.IsValid && configOpt is not null;
@@ -108,7 +110,7 @@ internal sealed class GuardianIterationRunner(
 
     var bright = (readBrightness ?? brightness.GetBrightness)();
     var actionRecheckDenied = false;
-    if (context.AllowPolicyMutation && decision.Source is not GuardDecisionSource.None
+    if (PolicyMutationAllowed() && decision.Source is not GuardDecisionSource.None
         && expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
       // WMI 查询期间用户可能切走或撤销配置。所有切前副作用和纠偏通知只能消费
@@ -162,7 +164,7 @@ internal sealed class GuardianIterationRunner(
       }
     }
 
-    var externalChangeDetected = context.AllowPolicyMutation &&
+    var externalChangeDetected = PolicyMutationAllowed() &&
       !context.AbsorbCurrentPlanAsBaseline &&
       !actionRecheckDenied &&
       !guardingHeld &&
@@ -185,27 +187,31 @@ internal sealed class GuardianIterationRunner(
     var switchBrightnessAfter = bright;
     var switchBrightnessBefore = bright;
 
-    if (context.AllowPolicyMutation &&
+    if (PolicyMutationAllowed() &&
         decision.Source is not GuardDecisionSource.None &&
         expected is not null &&
         PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
     {
-      var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, cancellationToken);
+      var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, PolicyMutationAllowed, cancellationToken);
       switchBrightnessBefore = result.Before;
       switchBrightnessAfter = result.After;
-      if (!result.Apply.Succeeded)
+      if (result.Apply is not PowerPlanApplyResult applied)
+      {
+        // 慢亮度同步期间暂停：尚未启动 setactive，保留观测状态等待恢复。
+      }
+      else if (!applied.Succeeded)
       {
         writeLog(
           config,
           LogLevel.Warn,
-          $"电源计划切换失败：{result.Apply.FailureKind} {result.Apply.Diagnostic}",
+          $"电源计划切换失败：{applied.FailureKind} {applied.Diagnostic}",
           EventNameRegistry.PowerPlanApplyFailed);
       }
       else
       {
         state.ScriptJustSwitched = true;
         planSwitched = true;
-        if (result.Apply.ObservedGuid is Guid observedGuid)
+        if (applied.ObservedGuid is Guid observedGuid)
         {
           current = observedGuid;
           activePlanInfo = new PowerSchemeInfo(observedGuid, null);
@@ -278,7 +284,7 @@ internal sealed class GuardianIterationRunner(
       state.NotificationRetention,
       now);
 
-    var (guardSource, guardReason) = ResolveGuardStatusCodes(decision, context.AllowPolicyMutation);
+    var (guardSource, guardReason) = ResolveGuardStatusCodes(decision, PolicyMutationAllowed());
 
     publisher.Publish(new StatusPayload
     {
@@ -442,14 +448,18 @@ internal sealed class GuardianIterationRunner(
     return PolicyEngine.GetPlanDisplayName(planGuid, config, planCatalog, preferredName);
   }
 
-  private async Task<(PowerPlanApplyResult Apply, int Before, int After)> SwitchWithBrightnessLockAsync(
+  private async Task<(PowerPlanApplyResult? Apply, int Before, int After)> SwitchWithBrightnessLockAsync(
     Guid target,
     int brightnessBefore,
     GuardConfig config,
+    Func<bool> canMutate,
     CancellationToken cancellationToken)
   {
+    if (!canMutate()) return (null, brightnessBefore, brightnessBefore);
     if (powerCfgBrightnessSupported && brightnessBefore >= 0)
       (syncPlanBrightness ?? PowerCfgExecutor.SyncPlanBrightness)(target, brightnessBefore);
+
+    if (!canMutate()) return (null, brightnessBefore, brightnessBefore);
 
     Func<Guid, CancellationToken, Task<PowerPlanApplyResult>> applyOperation =
       applyPlan ?? ((targetGuid, token) => PowerCfgExecutor.ApplyAndVerifyAsync(
@@ -463,7 +473,7 @@ internal sealed class GuardianIterationRunner(
 
     await Task.Delay(config.BrightnessRestoreMs, cancellationToken);
 
-    if (brightnessBefore < 0) return (apply, brightnessBefore, brightnessBefore);
+    if (brightnessBefore < 0 || !canMutate()) return (apply, brightnessBefore, brightnessBefore);
 
     var after = await brightness.RestoreWithRetryAsync(
       brightnessBefore,

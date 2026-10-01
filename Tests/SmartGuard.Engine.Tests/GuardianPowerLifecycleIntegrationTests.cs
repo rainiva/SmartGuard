@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SmartGuard.Configuration;
+using SmartGuard.Contracts;
 using SmartGuard.Engine.Domain;
 using SmartGuard.Engine.Infrastructure;
 using SmartGuard.Engine.Worker;
@@ -8,6 +9,33 @@ namespace SmartGuard.Engine.Tests;
 
 public class GuardianPowerLifecycleIntegrationTests
 {
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public async Task Suspend_during_slow_probe_revokes_inflight_iteration_actions(bool duringFinalPowerProbe)
+  {
+    using var harness = GuardianLifecycleHarness.Create(
+      PowerPlanCatalogProvider.HighPerformancePlanGuid, apiIdle: 10);
+    harness.SetOsPlan(PowerPlanCatalogProvider.BalancedPlanGuid);
+    harness.SuspendDuringProbe(duringFinalPowerProbe);
+
+    await harness.RunNormalIterationAsync();
+
+    harness.AppliedPlans.Should().BeEmpty();
+    harness.ExternalChangeEvents.Should().BeEmpty();
+    harness.LastGuardReason.Should().Be(GuardStatusCodes.Reasons.BlockedByLifecycle);
+  }
+
+  [Fact]
+  public async Task Suspend_during_brightness_sync_prevents_following_plan_activation()
+  {
+    using var harness = GuardianLifecycleHarness.Create(
+      PowerPlanCatalogProvider.BalancedPlanGuid, apiIdle: 10, suspendDuringBrightnessSync: true);
+    await harness.RunNormalIterationAsync();
+    harness.AppliedPlans.Should().BeEmpty();
+    harness.LastGuardReason.Should().Be(GuardStatusCodes.Reasons.BlockedByLifecycle);
+  }
+
   [Fact]
   public void Suspend_context_disallows_policy_mutation_and_preserves_lifecycle_phase()
   {
@@ -190,8 +218,10 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   private uint _apiIdle;
   private PowerPlanProbeResult? _forcedProbeFailure;
   private bool _failNextApply;
+  private bool _suspendDuringPlanProbe;
+  private bool _suspendDuringFinalPowerProbe;
 
-  private GuardianLifecycleHarness(Guid activePlan, uint apiIdle, bool onAc = true)
+  private GuardianLifecycleHarness(Guid activePlan, uint apiIdle, bool onAc = true, bool suspendDuringBrightnessSync = false)
   {
     _root = Path.Combine(Path.GetTempPath(), "SmartGuardLifecycleHarness_" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(_root);
@@ -222,15 +252,23 @@ internal sealed class GuardianLifecycleHarness : IDisposable
         return GuardianLogWriteResult.AcceptedByPipeline;
       },
       _ => { },
-      powerCfgBrightnessSupported: false,
+      powerCfgBrightnessSupported: suspendDuringBrightnessSync,
       heartbeatSchedule: _heartbeatSchedule,
       readIdleSeconds: () => _apiIdle,
-      readBatteryInfo: _ => (70, _onAc),
-      readCurrentPlan: () => _forcedProbeFailure ?? new PowerPlanProbeResult(
+      readBatteryInfo: force =>
+      {
+        if (force && _suspendDuringFinalPowerProbe) Signal(PowerLifecycleKind.Suspending);
+        return (70, _onAc);
+      },
+      readCurrentPlan: () =>
+      {
+        if (_suspendDuringPlanProbe) Signal(PowerLifecycleKind.Suspending);
+        return _forcedProbeFailure ?? new PowerPlanProbeResult(
         true,
         new PowerSchemeInfo(_activePlan, null),
         PowerPlanFailureKind.None,
-        string.Empty),
+        string.Empty);
+      },
       applyPlan: (target, cancellationToken) =>
       {
         if (_failNextApply)
@@ -253,7 +291,10 @@ internal sealed class GuardianLifecycleHarness : IDisposable
           PowerPlanFailureKind.None,
           string.Empty));
       },
-      timeProvider: _time);
+      syncPlanBrightness: (_, _) => Signal(PowerLifecycleKind.Suspending),
+      readBrightness: suspendDuringBrightnessSync ? () => 30 : null,
+      timeProvider: _time,
+      canMutatePolicy: () => _lifecycle.IsPolicyMutationAllowed);
   }
 
   public List<Guid> AppliedPlans { get; } = [];
@@ -266,6 +307,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   public DateTimeOffset CurrentTime => _time.GetUtcNow();
   public int LastPublishedIdle { get; private set; }
   public DateTimeOffset? LastStatusTimestamp { get; private set; }
+  public string? LastGuardReason { get; private set; }
   public int PlanWrites => AppliedPlans.Count;
   public int SuccessfulPlanEvents
     => Events.Count(x => x.EventName == EventNameRegistry.PowerPlanSwitched);
@@ -277,8 +319,8 @@ internal sealed class GuardianLifecycleHarness : IDisposable
     => Events.Count(x => x.EventName == EventNameRegistry.HeartbeatTick);
   public IReadOnlyList<HarnessEvent> AllEvents => Events;
 
-  public static GuardianLifecycleHarness Create(Guid activePlan, uint apiIdle, bool onAc = true)
-    => new(activePlan, apiIdle, onAc);
+  public static GuardianLifecycleHarness Create(Guid activePlan, uint apiIdle, bool onAc = true, bool suspendDuringBrightnessSync = false)
+    => new(activePlan, apiIdle, onAc, suspendDuringBrightnessSync);
 
   public void Signal(PowerLifecycleKind kind)
     => _lifecycle.Observe(new(kind, _time.GetUtcNow()));
@@ -298,6 +340,12 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       diagnostic ?? kind.ToString());
 
   public void FailNextPlanApply() => _failNextApply = true;
+
+  public void SuspendDuringProbe(bool finalPowerProbe)
+  {
+    _suspendDuringPlanProbe = !finalPowerProbe;
+    _suspendDuringFinalPowerProbe = finalPowerProbe;
+  }
 
   public void SetApiIdle(uint idle) => _apiIdle = idle;
 
@@ -346,6 +394,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       using var document = JsonDocument.Parse(File.ReadAllText(statusPath));
       LastPublishedIdle = document.RootElement.GetProperty("idleSeconds").GetInt32();
       LastStatusTimestamp = document.RootElement.GetProperty("timestamp").GetDateTimeOffset();
+      LastGuardReason = document.RootElement.GetProperty("guardReason").GetString();
       if (document.RootElement.TryGetProperty("notificationEvent", out var notification)
           && notification.TryGetProperty("id", out var notificationId))
       {

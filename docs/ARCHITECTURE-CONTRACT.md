@@ -161,14 +161,14 @@
   | PWR-LIFE-OWNER | 阻断 | `PowerLifecycleStateMachine` 是 `Running`/`Suspending`/`ResumeStabilizing` 唯一 Owner；`PolicyEngine` 不拥有生命周期。 |
   | PWR-LIFE-NATIVE | 阻断 | `PowerEventWakeListener` 显式 `PowerRegisterSuspendResumeNotification` 注册暂停/恢复；SystemEvents 只分发 StatusChanged。同一暂停后的 18/7 Resume 仅分发首次；回调 O(1)、使用注入 UTC，不做 IO/计划写入。Dispose 阻止新分发并等待在途分发退出，随后注销单个原生句柄；注销失败保留委托强根并报告错误。注册失败回收 SystemEvents，回调异常不跨 ABI，GuardianLoop 记录一次禁用/失效原因。 |
   | LOG-HEALTH-PID | 阻断 | `LogStructuredSink.CreatePipelineHealthEvent` 在现有 `LogEvent.ProcessId` 字段记录实际进程 PID；五分钟健康计数仅在同一有效 PID 内比较，旧日志缺 PID 为 Blocked，不按 0==0 通过。 |
-| PWR-LIFE-SUSPEND | 阻断 | Suspend 期间禁止计划仲裁、`powercfg /setactive` 和外部计划变更判定。 |
+| PWR-LIFE-SUSPEND | 阻断 | Suspend 期间禁止计划仲裁、`powercfg /setactive` 和外部计划变更判定。Runner 慢探测后与副作用前重新读取生命周期准入（唯一 Owner 的 O(1) 内存状态）；轮首许可不能授权暂停后的新动作。亮度同步后、setactive 前以及恢复亮度前重验；状态拒绝原因为 blocked-by-lifecycle。Owner 锁不跨 WMI、进程等待或 await；已经启动的系统动作只能完成观测，不能回溯撤销，完成事件不等同命令启动时间。 |
 | PWR-LIFE-RESUME | 阻断 | Resume 建立新的 awake-idle epoch；先吸收 OS 当前计划并完成恢复稳定期，再允许普通策略仲裁。 |
 | PWR-LIFE-TIME | 阻断 | awake 持续时间和心跳间隔只使用注入的 `TimeProvider` 单调时间；持久化时间为 UTC offset。 |
 | PWR-LIFE-VERIFY | 阻断 | 单元/组合测试通过不等于真实待机验收；Lid/Mouse/AC/DC 未执行时标记 `NOT RUN` 或 `BLOCKED`。 |
 | STATUS-FRESH | 阻断 | `StatusPublisher` 对有意义变化立即写；无变化按单调时钟最多 60 秒刷新一次，且不以 delete+move 暴露缺失窗口。 |
 | STATUS-SNAPSHOT | 阻断（候选待完整验收） | `StatusPublisher` 首次创建用 Move，已有文件用 Replace，保留 `SmartGuardPaths.StatusBackupForFile` 提供的单份 `.bak` 旧版本；替换失败保留旧正式状态，正式文件缺失时从备份恢复，恢复失败保留备份并报告双重错误，发布前恢复中断遗留备份；成功缓存/时间只在写入成功后推进。`StatusJsonReader` 在短期 `FileShare.ReadWrite \| FileShare.Delete` 句柄内读取完整快照，允许发布端替换；旧句柄保持旧快照，新读取看到新状态。沙箱内 1175 失败证据保留，沙箱外无 reader burst 1000 次通过；尚未实际注入 Win32 1176/1177，不得宣称全部底层故障已逐项验证。证据见 `.work/guard-rules/resume-auto-report.md`。门禁：`GuardStatusCodesArchitectureTests`、`StatusPublisherTests`。 |
 | STATUS-GUARD-CODES | 阻断 | `guardSource`/`guardReason`/`foregroundEventsAvailable` 进入 Publisher 相等判定与 Tray 相等判定 + Clone；探测失败与配置不可用路径同样发布状态；Engine 不携带展示文案；UI 对字段缺失/未登记代码/过期状态显示"未知"，暂停展示只读 `status.paused`。 |
-| PWR-LIFE-ACCEPT | 阻断 | `scripts/Invoke-PowerLifecycleAcceptance.ps1` 是唯一真实待机观察入口；结果缺证据为 `Blocked`/退出码 2，不自动触发睡眠、改计划或改系统时间。 |
+| PWR-LIFE-ACCEPT | 阻断 | `scripts/Invoke-PowerLifecycleAcceptance.ps1` 是唯一真实待机观察入口；HibernateResume 额外核对 Kernel-Power 42 的 TargetState/EffectiveState 均为 5（S4），缺字段 Blocked、非 S4 Failed；结果缺证据为 `Blocked`/退出码 2，不自动触发睡眠、改计划或改系统时间。 |
 
 ---
 

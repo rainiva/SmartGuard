@@ -70,7 +70,8 @@ public sealed partial class GuardianLoop
       _powerCfgBrightnessSupported,
       _heartbeatSchedule,
       readForeground: ReadForegroundForRunner,
-      readForegroundEventsHealth: ReadForegroundEventsHealthForRunner);
+      readForegroundEventsHealth: ReadForegroundEventsHealthForRunner,
+      canMutatePolicy: () => _powerLifecycle.IsPolicyMutationAllowed);
     _cycleCoordinator = new GuardianCycleCoordinator(
       () => GuardConfigReadResult.TryFromRepository(_configRepository),
       ReadForegroundForRunner,

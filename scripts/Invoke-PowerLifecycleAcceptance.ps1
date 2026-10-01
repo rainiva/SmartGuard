@@ -2,7 +2,7 @@
 param(
   [Parameter(Mandatory)]
   [string]$Root,
-  [ValidateSet('LidMouseBattery','LidMouseAC','ExternalPlanRunning')]
+  [ValidateSet('LidMouseBattery','LidMouseAC','HibernateResume','ExternalPlanRunning')]
   [string]$Scenario,
   [string]$ResultPath = '.work/test-results/power-lifecycle-acceptance.result.json',
   [string]$TranscriptPath = '.work/test-results/power-lifecycle-acceptance.transcript.txt'
@@ -79,24 +79,28 @@ try {
   $powerXPath = "*[System[((Provider[@Name='Microsoft-Windows-Kernel-Power'] and (EventID=42 or EventID=107 or EventID=506 or EventID=507)) or (Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1)) and TimeCreated[@SystemTime >= '$fromUtc' and @SystemTime <= '$toUtc']]]"
   $powerEvents = Get-WinEvent -LogName System -FilterXPath $powerXPath -ErrorAction Stop
 
-  if ($Scenario -in @('LidMouseBattery','LidMouseAC')) {
-    $suspend = @($newLines | Where-Object eventName -eq 'PowerSuspendObserved' | Select-Object -Last 1)
-    $resume = @($newLines | Where-Object eventName -eq 'PowerResumeObserved' | Select-Object -First 1)
-    $suspendObservedAt = $(if ($suspend.Count -eq 1 -and $suspend[0].properties.lifecycleObservedAtUtc) {
-      [DateTimeOffset]$suspend.properties.lifecycleObservedAtUtc
-    })
-    $resumeObservedAt = $(if ($resume.Count -eq 1 -and $resume[0].properties.lifecycleObservedAtUtc) {
-      [DateTimeOffset]$resume.properties.lifecycleObservedAtUtc
-    })
+  if ($Scenario -in @('LidMouseBattery','LidMouseAC','HibernateResume')) {
+    $intervals = [System.Collections.Generic.List[object]]::new()
+    $pendingSuspend = $null
+    $lifecycleState = 'Passed'
+    foreach ($event in @($newLines | Where-Object eventName -in @('PowerSuspendObserved','PowerResumeObserved'))) {
+      if (-not $event.properties.lifecycleObservedAtUtc) { $lifecycleState = 'Blocked'; continue }
+      $observed = [DateTimeOffset]$event.properties.lifecycleObservedAtUtc
+      if ($event.eventName -eq 'PowerSuspendObserved') {
+        if ($null -eq $pendingSuspend) { $pendingSuspend = $observed }
+      }
+      elseif ($null -ne $pendingSuspend) {
+        if ($observed -le $pendingSuspend) { $lifecycleState = 'Failed' }
+        $intervals.Add([pscustomobject]@{ Suspend = $pendingSuspend; Resume = $observed })
+        $pendingSuspend = $null
+      }
+      else { $lifecycleState = 'Blocked' }
+    }
+    if ($intervals.Count -eq 0 -or $null -ne $pendingSuspend) { $lifecycleState = 'Blocked' }
 
     $checks.Add([pscustomobject]@{
       name = 'lifecycle-events'
-      status = $(if ($null -ne $suspendObservedAt -and
-        $null -ne $resumeObservedAt -and $suspendObservedAt -lt $resumeObservedAt) {
-          'Passed'
-        } elseif ($null -eq $suspendObservedAt -or $null -eq $resumeObservedAt) {
-          'Blocked'
-        } else { 'Failed' })
+      status = $lifecycleState
     })
     $checks.Add([pscustomobject]@{
       name = 'windows-suspend-resume-events'
@@ -105,18 +109,30 @@ try {
           'Passed'
         } else { 'Failed' })
     })
+    $suspendWrites = @($newLines | Where-Object {
+      if ($_.eventName -ne 'PowerPlanSwitched') { return $false }
+      $writtenAt = [DateTimeOffset]$_.timestamp
+      @($intervals | Where-Object { $writtenAt -gt $_.Suspend -and $writtenAt -lt $_.Resume }).Count -gt 0
+    })
     $checks.Add([pscustomobject]@{
       name = 'no-suspend-plan-write'
-      status = $(if ($null -ne $suspendObservedAt -and
-        $null -ne $resumeObservedAt -and
-        @($newLines | Where-Object {
-          $_.eventName -eq 'PowerPlanSwitched' -and
-          [DateTimeOffset]$_.timestamp -gt $suspendObservedAt -and
-          [DateTimeOffset]$_.timestamp -lt $resumeObservedAt
-        }).Count -eq 0) { 'Passed' }
-        elseif ($null -eq $suspendObservedAt -or $null -eq $resumeObservedAt) { 'Blocked' }
-        else { 'Failed' })
+      status = $(if ($suspendWrites.Count -gt 0) { 'Failed' }
+        elseif ($lifecycleState -ne 'Passed') { $lifecycleState }
+        else { 'Passed' })
     })
+    if ($Scenario -eq 'HibernateResume') {
+      $hibernate = @($powerEvents | Where-Object Id -eq 42 | Select-Object -First 1)
+      $hibernateState = 'Blocked'
+      if ($hibernate.Count -eq 1) {
+        $xml = [xml]$hibernate[0].ToXml()
+        $target = @($xml.Event.EventData.Data | Where-Object Name -eq 'TargetState' | Select-Object -First 1)
+        $effective = @($xml.Event.EventData.Data | Where-Object Name -eq 'EffectiveState' | Select-Object -First 1)
+        if ($target.Count -eq 1 -and $effective.Count -eq 1 -and $target[0].InnerText -and $effective[0].InnerText) {
+          $hibernateState = if ($target[0].InnerText -eq '5' -and $effective[0].InnerText -eq '5') { 'Passed' } else { 'Failed' }
+        }
+      }
+      $checks.Add([pscustomobject]@{ name = 'hibernate-state'; status = $hibernateState })
+    }
   }
   else {
     $checks.Add([pscustomobject]@{

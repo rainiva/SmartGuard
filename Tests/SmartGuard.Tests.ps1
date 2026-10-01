@@ -8,6 +8,12 @@ Describe 'SmartGuard' {
             @{Case='MissingPost'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},
             @{Case='MissingPid'; State='Blocked'; Code=2; Check='pipeline-health-delta'; CheckState='Blocked'},
             @{Case='Dropped'; State='Failed'; Code=1; Check='pipeline-health-delta'; CheckState='Failed'}
+            @{Case='HibernateComplete'; State='Passed'; Code=0; Check='hibernate-state'; CheckState='Passed'},
+            @{Case='HibernateWrongState'; State='Failed'; Code=1; Check='hibernate-state'; CheckState='Failed'},
+            @{Case='HibernateMissingState'; State='Blocked'; Code=2; Check='hibernate-state'; CheckState='Blocked'},
+            @{Case='RepeatedLifecycle'; State='Passed'; Code=0; Check='lifecycle-events'; CheckState='Passed'},
+            @{Case='RepeatedLifecycleWrite'; State='Failed'; Code=1; Check='no-suspend-plan-write'; CheckState='Failed'},
+            @{Case='UnclosedLifecycle'; State='Blocked'; Code=2; Check='lifecycle-events'; CheckState='Blocked'}
         ) {
             $root = Split-Path -Parent $PSScriptRoot
             $fixtureRoot = Join-Path $TestDrive $Case
@@ -16,7 +22,7 @@ Describe 'SmartGuard' {
             $result = [IO.File]::ReadAllText((Join-Path $fixtureRoot 'result.json'), [Text.Encoding]::UTF8) | ConvertFrom-Json
             $result.result | Should -Be $State
             $result.error | Should -BeNullOrEmpty
-            @($result.checks).Count | Should -Be 5
+            @($result.checks).Count | Should -Be $(if($Case -like 'Hibernate*'){6}else{5})
             ($result.checks | Where-Object name -eq $Check).status | Should -Be $CheckState
         }
     }

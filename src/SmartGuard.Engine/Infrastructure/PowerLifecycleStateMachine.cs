@@ -33,6 +33,11 @@ internal sealed class PowerLifecycleStateMachine
       throw new ArgumentOutOfRangeException(nameof(recoveryTimeout));
   }
 
+  public bool IsPolicyMutationAllowed
+  {
+    get { lock (_gate) return _phase == PowerLifecyclePhase.Running; }
+  }
+
   public void Observe(PowerLifecycleSignal signal)
   {
     lock (_gate)

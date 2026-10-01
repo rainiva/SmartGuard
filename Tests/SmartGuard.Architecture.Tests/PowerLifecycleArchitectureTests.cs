@@ -5,6 +5,13 @@ namespace SmartGuard.Architecture.Tests;
 public class PowerLifecycleArchitectureTests
 {
   [Fact]
+  public void Contract_requires_live_lifecycle_admission_after_slow_probes()
+  {
+    SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md")
+      .Should().Contain("慢探测后与副作用前重新读取生命周期准入");
+  }
+
+  [Fact]
   public void Contract_registers_single_power_lifecycle_owner()
   {
     var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
