@@ -1981,6 +1981,47 @@ function Exit-PesterFileLifecycle {
             }
         }
 
+        It 'scheduled-task query rejects unknown native failure instead of capturing Missing' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            Mock cmd.exe { $global:LASTEXITCODE = -2147024891; return '' }
+
+            { Get-SmartGuardScheduledTaskSlot -TaskName 'SmartGuard Guardian' } | Should -Throw
+        }
+
+        It 'scheduled-task query rejects invalid successful XML instead of capturing Missing' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            Mock cmd.exe { $global:LASTEXITCODE = 0; return '<Task>' }
+
+            { Get-SmartGuardScheduledTaskSlot -TaskName 'SmartGuard Guardian' } | Should -Throw
+        }
+
+        It 'scheduled-task query rejects successful empty output instead of capturing Missing' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            Mock cmd.exe { $global:LASTEXITCODE = 0; return '' }
+
+            { Get-SmartGuardScheduledTaskSlot -TaskName 'SmartGuard Guardian' } | Should -Throw
+        }
+
+        It 'scheduled-task query rejects an action without a recoverable root' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            Mock cmd.exe { $global:LASTEXITCODE = 0; return '<Task><Actions><Exec><Command>SmartGuard.Engine.exe</Command></Exec></Actions></Task>' }
+
+            { Get-SmartGuardScheduledTaskSlot -TaskName 'SmartGuard Guardian' } | Should -Throw
+        }
+
+        It 'scheduled-task query accepts only explicit file-not-found as Missing' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            Mock cmd.exe { $global:LASTEXITCODE = -2147024894; return '' }
+
+            Get-SmartGuardScheduledTaskSlot -TaskName 'SmartGuard Guardian' | Should -Be 'Missing'
+            Should -Invoke cmd.exe -Times 1 -Exactly -ParameterFilter { $args -join ' ' -match '/HRESULT' }
+        }
+
         It 'scheduled-task capture records only valid task-backed production process state' {
             $root = Split-Path -Parent $PSScriptRoot
             . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
@@ -2023,6 +2064,18 @@ function Exit-PesterFileLifecycle {
             $snapshot.Tray | Should -Be $traySlot
             $snapshot.GuardianWasRunning | Should -BeTrue
             $snapshot.TrayWasRunning | Should -BeFalse
+        }
+
+        It 'restore native commands preserve a root containing spaces as one argument' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\Restore-SmartGuardScheduledTasks.ps1')
+            $probe = Join-Path $TestDrive 'root-argument.ps1'
+            [IO.File]::WriteAllText($probe, 'param([string]$Root) Write-Output $Root', [Text.UTF8Encoding]::new($false))
+            $expected = 'C:\Program Files\SmartGuard'
+
+            $result = Invoke-SmartGuardNativeExe -FilePath (Get-WindowsPowerShellExePath) -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $probe, '-Root', $expected)
+
+            $result.StdOut | Should -Be $expected
         }
 
         It 'restore keeps valid stopped task slots stopped' {

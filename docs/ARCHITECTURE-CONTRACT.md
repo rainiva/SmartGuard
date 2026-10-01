@@ -442,7 +442,7 @@
 | WPF-TEST-ISOLATION | **阻断** | deliberate ThreadPool blocking must run in a child process；ordinary WPF suite must not change global ThreadPool capacity。隔离试验的退出、超时与清理不得污染常规 WPF 测试进程。 |
 | WPF-TEST-EVIDENCE | **阻断** | WPF 失败必须保留 exit code, TRX, summary, test order, counters, stack/trace or an explicit capture-failure reason；任一必要证据缺失、损坏或零测试均 fail-closed。 |
 | WPF-TEST-ADVERSARIAL | **阻断** | 高影响 WPF 测试基础设施改动必须 review hypothesis, falsifier/counterexample, contamination, ownership, resource bounds, and fail-closed evidence；review 流程见 `docs/testing/WPF-TEST-ADVERSARIAL-REVIEW.md`，它不替代本文档。online LLM is not a runtime dependency of the deterministic automated gate。 |
-| INT-LIFECYCLE | **阻断** | Integration 必须按 Capture → Stop → Test → Restore 执行；Stop 失败或 Restore 失败任一发生，当前测试必须判红，不得 best-effort 吞掉后继续；恢复按快照决定进程运行态，孤儿进程只清理不复活 |
+| INT-LIFECYCLE | **阻断** | Integration 必须按 Capture → Stop → Test → Restore 执行；查询仅将 `/HRESULT` 的 `ERROR_FILE_NOT_FOUND` 视为 Missing，其他查询错误、空或无效 XML 必须阻断 Capture，不得进入 Stop；原生命令复用已有参数转义入口，保持带空格 root 为一个参数；Stop 失败或 Restore 失败任一发生，当前测试必须判红，不得 best-effort 吞掉后继续；恢复按快照决定进程运行态，孤儿进程只清理不复活 |
 | NO-RETRY-GREEN | **阻断** | 稳定性门禁（`scripts/Invoke-TestStabilityGate.ps1`）任一轮失败立即停止并整体判 Failed；禁止重跑失败轮以"重试后成功"覆盖第一失败证据 |
 | DOC-11 | **已关闭** | 本文档 §18 + Pester `Run-Tests optimization contract`/`Invoke-TestStabilityGate` 契约测试（Tasks 2–8，commits e9dc556..f148110）终验 |
 

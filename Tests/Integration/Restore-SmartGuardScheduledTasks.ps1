@@ -71,26 +71,33 @@ function Get-SmartGuardScheduledTaskSlot {
     $xmlText = $null
     try {
         # Route native stderr away so missing tasks don't spam NativeCommandError in Pester transcripts.
-        $xmlText = cmd.exe /c "schtasks.exe /Query /TN `"$TaskName`" /XML 2>nul" | Out-String
+        $xmlText = cmd.exe /c "schtasks.exe /Query /TN `"$TaskName`" /XML /HRESULT 2>nul" | Out-String
     }
     catch {
-        return 'Missing'
+        throw "Unable to query scheduled task '$TaskName': $($_.Exception.Message)"
     }
 
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($xmlText)) {
+    # HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) is the only confirmed absent slot.
+    if ($LASTEXITCODE -eq -2147024894) {
         return 'Missing'
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to query scheduled task '$TaskName': exit $LASTEXITCODE. Baseline is unknown."
+    }
+    if ([string]::IsNullOrWhiteSpace($xmlText)) {
+        throw "Scheduled task '$TaskName' query returned empty XML. Baseline is unknown."
     }
 
     try {
         [xml]$doc = $xmlText.Trim()
     }
     catch {
-        return 'Missing'
+        throw "Scheduled task '$TaskName' query returned invalid XML: $($_.Exception.Message)"
     }
 
     $exec = $doc.SelectSingleNode('//*[local-name()="Exec"]')
     if (-not $exec) {
-        return 'Missing'
+        throw "Scheduled task '$TaskName' has no executable action. Baseline cannot be restored."
     }
 
     $commandNode = $exec.SelectSingleNode('*[local-name()="Command"]')
@@ -103,6 +110,9 @@ function Get-SmartGuardScheduledTaskSlot {
 
     $fullCommand = "$(if ($command) { $command }) $(if ($arguments) { $arguments })".Trim()
     $root = Get-SmartGuardRootFromTaskCommand -Command $command -Arguments $arguments
+    if ([string]::IsNullOrWhiteSpace($command) -or [string]::IsNullOrWhiteSpace($root)) {
+        throw "Scheduled task '$TaskName' has no recoverable executable/root. Baseline is unknown."
+    }
 
     return [PSCustomObject]@{
         Command            = $fullCommand
@@ -239,8 +249,11 @@ function Invoke-SmartGuardNativeExe {
     $stdoutPath = [System.IO.Path]::GetTempFileName()
     $stderrPath = [System.IO.Path]::GetTempFileName()
     try {
+        $quotedArguments = @($ArgumentList | ForEach-Object {
+            ConvertTo-SmartGuardQuotedProcessArgument -Value $_
+        })
         $proc = Start-Process -FilePath $FilePath `
-            -ArgumentList $ArgumentList `
+            -ArgumentList $quotedArguments `
             -PassThru `
             -NoNewWindow `
             -RedirectStandardOutput $stdoutPath `
