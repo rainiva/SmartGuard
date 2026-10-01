@@ -135,7 +135,7 @@ public static class SmartGuardLogWriter
       if (LogArchivePlanner.ShouldRotateForCalendarDay(fileDay, today))
         ArchiveCurrentLog(logPath, fileDay);
 
-      if (new FileInfo(logPath).Length > retention.MaxBytes)
+      else if (new FileInfo(logPath).Length > retention.MaxBytes)
         ArchiveCurrentLog(logPath, today);
     }
 

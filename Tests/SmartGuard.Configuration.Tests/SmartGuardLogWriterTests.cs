@@ -5,6 +5,35 @@ namespace SmartGuard.Configuration.Tests;
 
 public class SmartGuardLogWriterTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Configured_append_rotates_and_writes_the_current_batch(bool previousDay)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "SmartGuard.log");
+        var now = DateTime.Now;
+        var old = "previous-session";
+        try
+        {
+            File.WriteAllText(path, old, new System.Text.UTF8Encoding(false));
+            File.SetLastWriteTime(path, previousDay ? now.AddDays(-1) : now);
+            var retention = new LogRetentionPolicy(previousDay ? 1024 : 1, 7, 30, 104857600);
+
+            SmartGuardLogWriter.TryAppendLines(path, new[] { "startup-marker" }, retention, now)
+                .Should().BeTrue();
+
+            File.ReadAllText(path).Should().Contain("startup-marker").And.NotContain(old);
+            var archive = Directory.GetFiles(dir, "SmartGuard.log.*.bak").Should().ContainSingle().Subject;
+            File.ReadAllText(archive).Should().Be(old);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void TryAppendLine_appends_line_and_returns_true()
     {
