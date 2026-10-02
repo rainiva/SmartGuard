@@ -2,13 +2,13 @@
 
 ## 根因与范围
 
-[八小时v3记录](OVERNIGHT-AC-ACCEPTANCE-2026-10-02.md)保持BLOCKED。现场七次实际计划/状态不一致，其中六次连续；外部修改者尚未确定。本次修复可确定复现的发布窗口，不宣称已查明外部计划竞争原因。
+[八小时v3记录](OVERNIGHT-AC-ACCEPTANCE-2026-10-02.md)保持BLOCKED。现场七次实际计划/状态不一致，其中六次连续。本次修复可确定复现的发布窗口；后续[系统事件调查](ACCEPTANCE-FOLLOWUP-2026-10-02.md)已将两段外部覆盖关联到荣耀电脑管家HnPerformanceCenter.exe，但内部触发条件仍未知。
 
 `PowerCfgExecutor.ApplyAndVerifyAsync`已有setactive退出码和最多三次即时观测验证。`GuardianIterationRunner`随后等待BrightnessRestoreMs并恢复亮度，却仍按较早ObservedGuid生成成功日志、通知和状态；外部在此期间改回计划时，较早观测不再代表动作结束后的计划。另一同类缺口是apply失败携带ObservedGuid时，Runner未将该实测值更新到发布字段。
 
 [PowerSetActiveScheme](https://learn.microsoft.com/en-us/windows/win32/api/powersetting/nf-powersetting-powersetactivescheme)与[PowerGetActiveScheme](https://learn.microsoft.com/en-us/windows/win32/api/powersetting/nf-powersetting-powergetactivescheme)分别设置、获取当前计划，各次成功不保证调用之间没有外部修改。本次不建立原子切换承诺，不尝试无限对抗未知外部进程。
 
-另一个调查线索：现场其他GUID`961cc777-2547-4f9d-8174-7d86181b8a7a`与微软[电源滑块文档](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/customize-power-slider)登记的Better Battery overlay GUID一致。这只确定标识的官方用途，不证明现场调用者、触发动作或基础计划/overlay的采集关系；不能据此断言用户操作或某厂商软件导致竞争。
+最初调查线索：现场其他GUID`961cc777-2547-4f9d-8174-7d86181b8a7a`与微软[电源滑块文档](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/customize-power-slider)登记的Better Battery overlay GUID一致。GUID本身不能证明调用者；后续Windows事件12才直接记录了HnPerformanceCenter.exe的高性能→该GUID改动。仍不能据此断言具体用户操作、内部触发条件或基础计划/overlay的采集关系。
 
 ## 变更与边界
 
@@ -45,7 +45,7 @@
 
 一分钟隔离候选Engine PID19040、Tray PID5584，单调观测60.503秒。19:17:45.004主动将实际计划改为平衡，powercfg退出码0；同PID在19:17:54.824记录ExternalPlanChange，19:17:55.475记录PowerPlanSwitched，距注入10.472秒，随后状态与实际计划均为高性能。此路径证明真实轮询纠偏和最终成功发布；亮度恢复期间被改回、探测失败及后续恢复由前述确定性测试覆盖，短测没有人为制造这两个竞态。
 
-四个真实样本全部同PID、AC、未暂停，实际/状态GUID一致，最大状态年龄32.772秒；样本跨度48.345秒，结束回执距最后样本12.772秒。候选Engine DLL SHA256为`7BD9E96E85C4B3C78E61F5125ED15208B464B1E1AEF0C5FB57FF8A0ACDA82E23`。采集器原始Result=NeedsReview保留，通过结论仅限独立复核的一分钟纠偏路径。未达到300秒健康采样周期，健康样本0，健康长期趋势为NOT RUN；修复后连续八小时为NOT RUN，外部覆盖计划调用者仍未定位，原v3保持BLOCKED。
+四个真实样本全部同PID、AC、未暂停，实际/状态GUID一致，最大状态年龄32.772秒；样本跨度48.345秒，结束回执距最后样本12.772秒。候选Engine DLL SHA256为`7BD9E96E85C4B3C78E61F5125ED15208B464B1E1AEF0C5FB57FF8A0ACDA82E23`。采集器原始Result=NeedsReview保留，通过结论仅限独立复核的一分钟纠偏路径。未达到300秒健康采样周期，健康样本0，健康长期趋势为NOT RUN；修复后连续八小时为NOT RUN并按用户要求延后。外部覆盖调用进程已由后续系统事件定位，内部触发条件仍未知，原v3保持BLOCKED。
 
 恢复复核：Restored=true、Error为空；原任务配置与运行态Before/After一致，生产配置Hash一致，两个候选进程均已退出。六项AC超时逐值精确恢复：高性能睡眠/息屏600/600秒，平衡300/300秒，节能300/300秒；亮度按实例恢复30%。finally恢复原高性能计划的命令退出码已检查，19:22:57独立读取仍为原高性能计划；原安装根恢复运行后可按正常策略再次改计划，后续读取不等同于恢复命令时刻。用户`installer/version.txt`及其他修改未纳入本次提交，没有部署候选。
 
