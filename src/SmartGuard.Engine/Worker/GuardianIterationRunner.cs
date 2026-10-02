@@ -183,6 +183,7 @@ internal sealed class GuardianIterationRunner(
     LogBrightnessChangeIfNeeded(config, bright, state, writeLog);
 
     var planSwitched = false;
+    var planApplyFailed = false;
     string? switchedPlanName = null;
     var switchBrightnessAfter = bright;
     var switchBrightnessBefore = bright;
@@ -201,6 +202,10 @@ internal sealed class GuardianIterationRunner(
       }
       else if (!applied.Succeeded)
       {
+        planApplyFailed = true;
+        // 最终验证失败仍携带最新观测；不得继续发布切换前读数或瞬时成功读数。
+        current = applied.ObservedGuid;
+        activePlanInfo = current is Guid finalObserved ? new PowerSchemeInfo(finalObserved, null) : null;
         writeLog(
           config,
           LogLevel.Warn,
@@ -244,7 +249,7 @@ internal sealed class GuardianIterationRunner(
     if (current is Guid observed && (!externalChangeDetected || planSwitched))
       state.LastKnownGuid = observed;
 
-    if (config.HeartbeatIntervalMin > 0 &&
+    if (!planApplyFailed && config.HeartbeatIntervalMin > 0 &&
         heartbeatSchedule.IsDue(
           TimeSpan.FromMinutes(config.HeartbeatIntervalMin),
           TimeSpan.FromSeconds(Math.Max(0, config.LogHeartMinIntervalSec))))
@@ -473,14 +478,26 @@ internal sealed class GuardianIterationRunner(
 
     await Task.Delay(config.BrightnessRestoreMs, cancellationToken);
 
-    if (brightnessBefore < 0 || !canMutate()) return (apply, brightnessBefore, brightnessBefore);
+    var after = brightnessBefore;
+    if (brightnessBefore >= 0 && canMutate())
+      after = await brightness.RestoreWithRetryAsync(
+        brightnessBefore,
+        config.BrightnessRetryCount,
+        config.BrightnessRetryDelayMs,
+        cancellationToken);
 
-    var after = await brightness.RestoreWithRetryAsync(
-      brightnessBefore,
-      config.BrightnessRetryCount,
-      config.BrightnessRetryDelayMs,
-      cancellationToken);
-    return (apply, brightnessBefore, after);
+    // 亮度等待/恢复也是外部计划竞争窗口。发布成功前只追加一次有界探测，
+    // 不追加 setactive 或盲目重试；该观测仍不承诺与外部变更原子化。
+    cancellationToken.ThrowIfCancellationRequested();
+    var finalProbe = readCurrentPlan is not null
+      ? readCurrentPlan()
+      : PowerCfgExecutor.ParseProbeResult(await PowerCfgExecutor.RunPowerCfgAsync("/getactivescheme", cancellationToken));
+    var verified = finalProbe.Succeeded && finalProbe.ObservedGuid == target;
+    return (new PowerPlanApplyResult(
+      verified, target, finalProbe.ObservedGuid,
+      verified ? PowerPlanFailureKind.None : finalProbe.Succeeded ? PowerPlanFailureKind.VerificationMismatch : finalProbe.FailureKind,
+      verified ? string.Empty : finalProbe.Succeeded ? "Active scheme changed before final publication." : finalProbe.Diagnostic),
+      brightnessBefore, after);
   }
 
   private static NotificationEvent CreatePlanSwitchNotification(string planName, int brightness, int brightnessBefore)
