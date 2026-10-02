@@ -9,8 +9,6 @@
 
 ## 1. 真源注册表
 
-**ADV-A1-OBSERVATION：** 开发工具唯一观察入口为`AdversaryCommand.RunAsync`，CLI仅做有界参数适配；child观察不能包含最终Result、TrustLevel或父退出码。`ParentResultModel`仅为后续父验证器使用的纯结果模型，不是attestation，不能据调用方传入calibrated布尔值授权真实Passed。`EffectPolicy`拥有代码效果上限，catalog不得授权root、进程或权限；A1不执行攻击，正式`Invoke-SmartGuardAdversary.ps1`在A4可信broker实现前退出40，不通过dotnet run启动待审代码。产品项目不得引用工具；CI接入留给计划F1，A2–A5完成前不能声明BootstrapVerified。
-
 **PLAN-FINAL-OBSERVATION：** `GuardianIterationRunner` 在已验证切换及亮度等待/恢复结束后，经既有计划探测入口追加一次有界最终观测，再决定成功日志、通知和状态。最终不匹配或不可读不得沿用瞬时成功；失败结果携带的实际 GUID（未知为 null）也进入发布，失败轮次仅记录失败事件、不追加“计划正常”心跳，后续成功轮次恢复正常心跳。该观测不保证后续外部修改下持续一致，不追加 setactive 重试；每个切换轮次最多增加一次探测（既有进程超时5秒），普通未切换轮次不增加探测，取消沿用已有 token。
 
 | 概念 | 权威来源 | 允许读者 | 允许写者 | 禁止模式 |

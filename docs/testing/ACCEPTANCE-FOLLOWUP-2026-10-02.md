@@ -14,7 +14,7 @@
 
 | 项目 | 当前状态 | 新鲜证据或缺口 |
 | --- | --- | --- |
-| 自动完整门禁 | Passed | 最新2026-10-02 19:43:48；Pester156/.NET1765/Tray2/Installer9，全部0失败0跳过；详见[A1记录](ADVERSARY-A1-2026-10-02.md)；19:15:57修复门禁原证据保留 |
+| 自动完整门禁 | Passed | 最新2026-10-02 20:53:36；Pester156/.NET1763/Tray2/Installer9，全部0失败0跳过；删除开发工具后的新门禁及1.5.9安装包见[构建记录](PACKAGE-BUILD-2026-10-02.md)，历史回执保留 |
 | S0原生通知/合盖唤醒 | 已有通过记录 | [S0原生验收](MODERN-STANDBY-NATIVE-ACCEPTANCE-2026-10-01.md)，不能外推深度低功耗 |
 | S4、300/900阈值、额外60分钟 | Passed（既有候选） | [S4与空闲验收](S4-IDLE-SOAK-ACCEPTANCE-2026-10-01.md) |
 | 电池合盖/开盖鼠标唤醒 | Passed（既有候选） | [电池验收](BATTERY-LID-MOUSE-ACCEPTANCE-2026-10-01.md) |
