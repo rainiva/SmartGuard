@@ -1,6 +1,6 @@
 # 八小时插电开盖连续观察重验（2026-10-02）
 
-状态：BLOCKED（采集器读取状态文件时发生共享冲突），未通过八小时验收，已停止并恢复原环境。[上一轮](OVERNIGHT-AC-ACCEPTANCE-2026-10-01.md)因供电变化而中断；两轮证据全部保留，不拼接时长。
+当前 v3：RUNNING，未通过八小时验收。此前 v2 为 BLOCKED（采集器状态文件共享冲突），已停止并恢复原环境。[上一轮](OVERNIGHT-AC-ACCEPTANCE-2026-10-01.md)因供电变化而中断；旧证据全部保留，不拼接时长。
 
 ## 开始与范围
 
@@ -27,3 +27,11 @@
 只读恢复证据保存于 `overnight-v2-final-review.json`。跟进停用，不自动重启新会话；下一步应先复现并修正采集器在状态发布并发写入时的读取边界，保持 90 秒新鲜度和有界失败语义，再开始全新八小时观察。此轮未修改采集器或生产实现，不用吞异常、放宽预算或拼接窗口宣称通过。
 
 聊天跟进每 15 分钟检查现有 v2 回执；正常保持安静，仅最终完成、失败或需要操作时通知，最终汇报后停用。原始证据为 `.work/guard-rules/overnight-v2-session.result.json`、`overnight-v2-samples.jsonl`、`overnight-v2-root/SmartGuard.log`、候选清单及 `overnight-v2-plan.md`。只提交本轮验收文档，保护用户 `installer/version.txt` 和其他修改。
+
+## 修正后 v3 重验：RUNNING
+
+[采集器修正](SOAK-STATUS-READER-FIX-2026-10-02.md)已提交91ad78e，完整门禁Pester156/.NET1757/Tray2/Installer9零失败零跳过，退出码0；一分钟真实短测恢复通过。正式入口 Invoke-SmartGuardSoakAcceptance 复用共享 reader、有限重试与语义校验，不再使用原临时脚本直读状态。
+
+v3于10:27:57.657开始全新480分钟计时，预计18:27:57结束；Engine PID6548、Tray PID17552、恢复包装42928。新根 bin31文件匹配原通过清单，首样本AC=true、未暂停，读取尝试1次，Error为空。原始证据为 `.work/guard-rules/overnight-v3-session.result.json`、`overnight-v3-samples.jsonl`、`overnight-v3-root/SmartGuard.log`。状态重试次数与耗时进入样本/回执，原恢复和八小时判定要求不变。
+
+此前授权的聊天跟进已切换为仅观察v3，每15分钟有界检查，正常保持安静；失败或完成汇报后停用。用户继续保持插电、开盖、Codex/候选运行，可正常使用但不手动睡眠、改计划或暂停。本轮真实八小时仍未完成，不把已通过的修正测试与短测当作长测通过。
