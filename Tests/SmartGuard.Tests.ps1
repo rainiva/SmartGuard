@@ -1,4 +1,30 @@
 Describe 'SmartGuard' {
+    Describe 'Acceptance status read fault boundaries' {
+        It 'handles <Case> without accepting unavailable or invalid evidence' -ForEach @(
+            @{Case='SharedWriter'; Success=$true},
+            @{Case='TemporaryLock'; Success=$true},
+            @{Case='AtomicPublish'; Success=$true},
+            @{Case='PermanentLock'; Success=$false},
+            @{Case='Corrupt'; Success=$false},
+            @{Case='Stale'; Success=$false},
+            @{Case='Future'; Success=$false},
+            @{Case='WrongPid'; Success=$false},
+            @{Case='DC'; Success=$false},
+            @{Case='Paused'; Success=$false},
+            @{Case='Oversize'; Success=$false}
+        ) {
+            $root=Split-Path -Parent $PSScriptRoot
+            $pwsh=Get-Command pwsh.exe -ErrorAction Stop
+            $fixtureRoot=Join-Path $TestDrive $Case
+            & $pwsh.Source -NoProfile -File (Join-Path $PSScriptRoot 'Integration/AcceptanceStatusReader.Fixture.ps1') -ReaderPath (Join-Path $root 'scripts/Read-SmartGuardAcceptanceStatus.ps1') -BinDirectory (Join-Path $root 'bin') -Root $fixtureRoot -Case $Case | Out-Null
+            $LASTEXITCODE | Should -Be 0
+            $result=Get-Content (Join-Path $fixtureRoot 'result.json') -Raw -Encoding UTF8|ConvertFrom-Json
+            $result.Success | Should -Be $Success
+            $result.ElapsedMs | Should -BeLessThan 2000
+            if($Success){$result.Pid|Should -Be 123; $result.Attempts|Should -BeLessOrEqual 6}
+            else{$result.Error|Should -Not -BeNullOrEmpty}
+        }
+    }
     Describe 'Power lifecycle acceptance evidence' {
         It 'classifies <Case> without losing checks to an exception' -ForEach @(
             @{Case='Complete'; State='Passed'; Code=0; Check='lifecycle-events'; CheckState='Passed'},

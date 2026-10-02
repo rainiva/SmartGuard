@@ -169,6 +169,7 @@
 | STATUS-SNAPSHOT | 阻断（候选待完整验收） | `StatusPublisher` 首次创建用 Move，已有文件用 Replace，保留 `SmartGuardPaths.StatusBackupForFile` 提供的单份 `.bak` 旧版本；替换失败保留旧正式状态，正式文件缺失时从备份恢复，恢复失败保留备份并报告双重错误，发布前恢复中断遗留备份；成功缓存/时间只在写入成功后推进。`StatusJsonReader` 在短期 `FileShare.ReadWrite \| FileShare.Delete` 句柄内读取完整快照，允许发布端替换；旧句柄保持旧快照，新读取看到新状态。沙箱内 1175 失败证据保留，沙箱外无 reader burst 1000 次通过；尚未实际注入 Win32 1176/1177，不得宣称全部底层故障已逐项验证。证据见 `.work/guard-rules/resume-auto-report.md`。门禁：`GuardStatusCodesArchitectureTests`、`StatusPublisherTests`。 |
 | STATUS-GUARD-CODES | 阻断 | `guardSource`/`guardReason`/`foregroundEventsAvailable` 进入 Publisher 相等判定与 Tray 相等判定 + Clone；探测失败与配置不可用路径同样发布状态；Engine 不携带展示文案；UI 对字段缺失/未登记代码/过期状态显示"未知"，暂停展示只读 `status.paused`。 |
 | PWR-LIFE-ACCEPT | 阻断 | `scripts/Invoke-PowerLifecycleAcceptance.ps1` 是唯一真实待机观察入口；HibernateResume 额外核对 Kernel-Power 42 的 TargetState/EffectiveState 均为 5（S4），缺字段 Blocked、非 S4 Failed；结果缺证据为 `Blocked`/退出码 2，不自动触发睡眠、改计划或改系统时间。 |
+| SOAK-STATUS-READ | 阻断 | `scripts/Invoke-SmartGuardSoakAcceptance.ps1` 只采集连续运行证据，不替代真实待机入口；状态经 `Read-SmartGuardAcceptanceStatus` 适配现有 `StatusJsonReader`，禁止另行 JSON 解析或缓存旧状态。最多六次、间隔50ms，只重试不可用读取；PID/AC/暂停、90秒新鲜度、未来5秒与64KiB预检失败立即阻断。重试次数与耗时进入回执/样本；配置复用 `GuardConfigRepository.TryLoad`，不使用默认值充当有效配置。原任务与六项AC超时快照、finally恢复及独立复核为必需。 |
 
 ---
 
