@@ -873,8 +873,25 @@ public class ForegroundGuardIntegrationTests
       Path.Combine(root, "SmartGuard.startup.log"),
       powerCfgBrightnessSupported: false);
 
+  [Fact]
+  public void Configuration_fixture_write_timestamp_advances_from_previous_observation()
+  {
+    var root = CreateTempRoot();
+    try
+    {
+      var path = Path.Combine(root, "SmartGuard.config.json");
+      WriteConfig(path, false);
+      var previous = DateTime.UtcNow.AddMinutes(1);
+      File.SetLastWriteTimeUtc(path, previous);
+      WriteConfig(path, true);
+      File.GetLastWriteTimeUtc(path).Should().BeAfter(previous);
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
   private static void WriteConfig(string configPath, bool restrictionEnabled)
   {
+    var previous = File.Exists(configPath) ? File.GetLastWriteTimeUtc(configPath) : DateTime.MinValue;
     File.WriteAllText(
       configPath,
       $$"""
@@ -886,8 +903,8 @@ public class ForegroundGuardIntegrationTests
       new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
     // GuardConfigRepository 按 LastWriteTimeUtc 缓存：同一时间戳刻度内的连续写入不可见，
     // 显式单调递增时间戳以保证后续 TryLoad 观察到新配置（同 GuardianIterationTimingTests 做法）。
-    var previous = File.GetLastWriteTimeUtc(configPath);
-    File.SetLastWriteTimeUtc(configPath, previous + TimeSpan.FromSeconds(1));
+    var written = File.GetLastWriteTimeUtc(configPath);
+    File.SetLastWriteTimeUtc(configPath, (previous > written ? previous : written) + TimeSpan.FromSeconds(1));
   }
 
   private static async Task WaitForAsync(Func<bool> condition)
