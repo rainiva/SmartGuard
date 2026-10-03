@@ -149,6 +149,7 @@
 | `LogEventWindow` | `SmartGuard.Settings.LogView` | 有界显示窗口：2,000 条或 4MB 上限，产出 append/prepend delta，禁止 Reset |
 | `LogViewportController` | `SmartGuard.Settings` | 日志 ScrollViewer 唯一滚动命令所有者 |
 | `SettingsForegroundCoordinator` | `SmartGuard.Settings` | 前台程序限制设置唯一 Owner（开关 + 名单 + 添加/删除）：条目经 `GuardConfigValidator` 规范化/去重，保存走既有防抖保存链；状态刷新每5秒一次且最多一个后台读取，复用 StatusJsonReader，只更新变化文案；Policy Dispose 停止 Timer 并丢弃晚到结果；不触碰配置仓库、不维护第二套路径规则 |
+| `SettingsProgramCatalog` / `SettingsProgramSearchCoordinator` | `SmartGuard.Settings` | 高级页名称搜索：只读本机开始菜单快捷方式及有窗口的进程，不启动程序、不解析启动参数或读取窗口标题；每窗口首次搜索最多一个STA发现线程，合作取消和两秒预算，最多检查2048对象/512候选，目录深度8、查询128字符、显示20结果；图标后台提取并冻结，COM/进程/图标资源归发现线程释放。仅用户选择具体候选后经 `SettingsForegroundCoordinator.AddProgramPath` 添加完整exe路径，保存/匹配/配置Schema不变。关闭取消并丢弃晚到结果，单次平台调用不可强制中断；未识别/截断目录不代表本机完整应用清单，允许浏览文件补充；候选不是Engine前台事实来源 |
 | `ForegroundGuardStatusText` | `SmartGuard.Settings` | Settings 侧守护状态文案映射（`GuardStatusCodes` → 展示文案）：状态缺失/过期/未登记代码显示"状态未知"；只读 `StatusJsonReader` 共享链 |
 | `LogJsonlFormatter` | `SmartGuard.Configuration` | versioned JSONL 编解码：只处理纯 JSONL；legacy 文本由 `LogEventDecoder` 负责 |
 | `LogQueryFilterSpec` | `SmartGuard.Configuration` | 结构化筛选规格 record：时间/等级/模块/事件/OperationId/TraceId/PID/TID/关键词 + 分页 |

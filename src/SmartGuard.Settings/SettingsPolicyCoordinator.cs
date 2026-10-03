@@ -13,6 +13,7 @@ internal sealed class SettingsPolicyCoordinator
   private readonly SettingsPlanCatalogCoordinator _planCatalog;
   private readonly SettingsPauseHandler _pauseHandler;
   private readonly SettingsForegroundCoordinator _foreground;
+  private readonly SettingsProgramSearchCoordinator _programSearch;
   private readonly SettingsDebouncedSaver _debouncedSaver;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
@@ -87,6 +88,11 @@ internal sealed class SettingsPolicyCoordinator
       Require<TextBlock>(window, "lblForegroundListHint"),
       (message, isError) => toastService.Show(message, isError),
       () => _debouncedSaver.QueueSave());
+    _programSearch = new SettingsProgramSearchCoordinator(
+      Require<TextBox>(window, "txtForegroundProgramSearch"),
+      Require<ListBox>(window, "lstForegroundSearchResults"),
+      Require<TextBlock>(window, "txtForegroundSearchHint"),
+      candidate => _foreground.AddProgramPath(candidate.ExecutablePath, candidate.Name, candidate.Icon));
     _pauseHandler = new SettingsPauseHandler(
       root,
       repository,
@@ -204,6 +210,7 @@ internal sealed class SettingsPolicyCoordinator
 
   internal void Dispose()
   {
+    _programSearch.Dispose();
     _foreground.Dispose();
     _debouncedSaver.Dispose();
     _planCatalog.Dispose();

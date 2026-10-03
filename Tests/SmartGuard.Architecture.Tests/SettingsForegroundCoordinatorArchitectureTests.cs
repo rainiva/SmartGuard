@@ -29,6 +29,20 @@ public class SettingsForegroundCoordinatorArchitectureTests
   }
 
   [Fact]
+  public void Program_discovery_remains_local_bounded_and_separate_from_guard_authority()
+  {
+    var catalog = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsProgramCatalog.cs");
+    catalog.Should().Contain("GuardConfigValidator.TryNormalizeProgramPath");
+    catalog.Should().NotContain("GetForegroundWindow");
+    catalog.Should().NotContain("MainWindowTitle");
+    catalog.Should().NotContain("Process.Start");
+    catalog.Should().Contain("MaxCandidates = 512");
+    var contract = File.ReadAllText(Path.Combine(SourceScanHelper.RepoRoot, "docs", "ARCHITECTURE-CONTRACT.md"));
+    contract.Should().Contain("SettingsProgramCatalog");
+    contract.Should().Contain("SettingsProgramSearchCoordinator");
+  }
+
+  [Fact]
   public void Architecture_contract_registers_foreground_settings_owner()
   {
     var contract = File.ReadAllText(Path.Combine(SourceScanHelper.RepoRoot, "docs", "ARCHITECTURE-CONTRACT.md"));

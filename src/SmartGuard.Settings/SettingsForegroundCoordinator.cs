@@ -11,7 +11,7 @@ namespace SmartGuard.Settings;
 /// UI 只编辑配置、展示 Engine 发布的守护状态：名单条目经
 /// <see cref="GuardConfigValidator"/> 共享规则规范化与 OrdinalIgnoreCase 去重，
 /// 保存走既有 ReadConfigFromUi → SettingsSnapshotMapper → 防抖保存链
-/// （超限等校验失败由保存链的既有错误提示呈现），不直接写配置仓库；
+/// （添加前拒绝超限，其他校验失败沿用保存链提示），不直接写配置仓库；
 /// 状态区只读 status.json 共享读取链，不维护第二套路径规则、状态解析或健康存储。
 /// </summary>
 internal sealed class SettingsForegroundCoordinator : IDisposable
@@ -81,7 +81,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _tglRestriction.IsChecked = config.ForegroundRestrictionEnabled;
     _lstPrograms.Items.Clear();
     foreach (var path in config.ForegroundProgramPaths)
-      _lstPrograms.Items.Add(path);
+      _lstPrograms.Items.Add(new SettingsProgramCandidate(System.IO.Path.GetFileNameWithoutExtension(path), path));
     UpdateListHint();
     UpdateRemoveEnabled();
   }
@@ -154,6 +154,12 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     if (string.IsNullOrWhiteSpace(picked))
       return;
 
+    AddProgramPath(picked);
+  }
+
+  /// <summary>文件选择和名称搜索共用同一名单入口，显示名永远不作为配置身份。</summary>
+  internal void AddProgramPath(string picked, string? displayName = null, System.Windows.Media.ImageSource? icon = null)
+  {
     if (!GuardConfigValidator.TryNormalizeProgramPath(picked, out var normalized))
     {
       _showFeedback("无法添加：只能添加以 .exe 结尾的完整程序路径", true);
@@ -167,7 +173,13 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
       return;
     }
 
-    _lstPrograms.Items.Add(normalized);
+    // Reject before touching the list: a failed save must not leave a 129th, unsaved UI entry.
+    if (_lstPrograms.Items.Count >= GuardConfigValidator.MaxForegroundProgramPaths)
+    {
+      _showFeedback($"程序名单最多 {GuardConfigValidator.MaxForegroundProgramPaths} 项，请先删除不需要的程序", true);
+      return;
+    }
+    _lstPrograms.Items.Add(new SettingsProgramCandidate(displayName ?? System.IO.Path.GetFileNameWithoutExtension(normalized), normalized, icon));
     UpdateListHint();
     _queueSave();
   }

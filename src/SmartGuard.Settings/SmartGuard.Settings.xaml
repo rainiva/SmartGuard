@@ -808,6 +808,17 @@
       <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource SettingsTextBox}"/>
       <Style TargetType="{x:Type ComboBox}" BasedOn="{StaticResource SettingsComboBox}"/>
 
+      <DataTemplate x:Key="ProgramCandidateTemplate">
+        <Grid Margin="4,6" ToolTip="{Binding ExecutablePath}">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Image Source="{Binding Icon}" Width="24" Height="24" VerticalAlignment="Center"/>
+          <StackPanel Grid.Column="1">
+            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding ExecutablePath}" Foreground="{DynamicResource TextSecondary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+        </Grid>
+      </DataTemplate>
+
     </ResourceDictionary>
   </Window.Resources>
 
@@ -899,6 +910,20 @@
                     <CheckBox x:Name="tglAutoStart" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
                   </Grid>
                 </Border>
+              </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="自动守护" Style="{StaticResource SettingsGroupTitle}"/>
+                <Grid Margin="0,12,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="暂停守护" Style="{StaticResource SettingsItemTitle}"/>
+                    <TextBlock Text="仅监控状态，不自动切换电源计划" Style="{StaticResource SettingsItemHint}"/>
+                  </StackPanel>
+                  <CheckBox x:Name="tglPaused" Grid.Column="1" Style="{StaticResource ToggleSwitch}" AutomationProperties.Name="暂停守护"/>
+                </Grid>
               </StackPanel>
             </Border>
 
@@ -1080,65 +1105,10 @@
                 <TextBlock x:Name="lblPlanMappingStatus" Text="" Style="{StaticResource SettingsItemHint}" Margin="0,8,0,0"/>
               </StackPanel>
             </Border>
-          </StackPanel>
-
-          <!-- Notifications Page -->
-          <StackPanel x:Name="pageNotifications" Visibility="Collapsed" HorizontalAlignment="Stretch">
-
-            <Border Style="{StaticResource SettingsCard}">
-              <StackPanel>
-                <TextBlock Text="通知与守护" Style="{StaticResource SettingsGroupTitle}"/>
-                <TextBlock Text="控制通知行为和守护模式" Style="{StaticResource SettingsCardDescription}"/>
-
-                <Border Style="{StaticResource SettingsItemRow}">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                      <TextBlock Text="暂停守护" Style="{StaticResource SettingsItemTitle}"/>
-                      <TextBlock Text="仅监控状态，不自动切换电源计划" Style="{StaticResource SettingsItemHint}"/>
-                    </StackPanel>
-                    <CheckBox x:Name="tglPaused" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
-                  </Grid>
-                </Border>
-
-                <Border Style="{StaticResource SettingsItemRow}">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                      <TextBlock Text="自动切换通知" Style="{StaticResource SettingsItemTitle}"/>
-                      <TextBlock Text="SmartGuard 切换电源计划时弹出系统通知" Style="{StaticResource SettingsItemHint}"/>
-                    </StackPanel>
-                    <CheckBox x:Name="tglNotify" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
-                  </Grid>
-                </Border>
-
-                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                      <TextBlock Text="外部变更通知" Style="{StaticResource SettingsItemTitle}"/>
-                      <TextBlock Text="检测到计划被外部修改时弹出系统通知" Style="{StaticResource SettingsItemHint}"/>
-                    </StackPanel>
-                    <CheckBox x:Name="tglNotifyExternal" Grid.Column="1" Style="{StaticResource ToggleSwitch}"/>
-                  </Grid>
-                </Border>
-              </StackPanel>
-            </Border>
-
             <!-- Foreground Restriction Card -->
             <Border Style="{StaticResource SettingsCard}" x:Name="cardForegroundRestriction">
               <StackPanel>
-                <TextBlock Text="前台程序限制" Style="{StaticResource SettingsGroupTitle}"/>
-                <TextBlock Text="仅当名单中的程序位于前台时自动切换电源计划" Style="{StaticResource SettingsCardDescription}"/>
+                <TextBlock Text="自动切换条件" Style="{StaticResource SettingsGroupTitle}"/>
 
                 <Border Style="{StaticResource SettingsItemRow}" x:Name="rowForegroundRestriction">
                   <Grid>
@@ -1147,8 +1117,8 @@
                       <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                      <TextBlock Text="启用前台程序限制" Style="{StaticResource SettingsItemTitle}"/>
-                      <TextBlock Text="开启后，指定程序不在前台时暂停自动切换，回到名单内恢复" Style="{StaticResource SettingsItemHint}"/>
+                      <TextBlock Text="仅在指定程序位于前台时自动切换" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="离开名单内的程序时暂停自动切换，保留当前电源计划" Style="{StaticResource SettingsItemHint}"/>
                     </StackPanel>
                     <CheckBox x:Name="tglForegroundRestriction" Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                               AutomationProperties.Name="启用前台程序限制"/>
@@ -1159,14 +1129,23 @@
                            Style="{StaticResource SettingsItemHint}"
                            Margin="0,8,0,0"
                            Text="状态未知"
-                           AutomationProperties.Name="自动守护状态"
+                           AutomationProperties.Name="自动守护状态（整体运行状态）"
                            AutomationProperties.HelpText="显示引擎发布的自动守护状态"
                            AutomationProperties.LiveSetting="Polite"/>
 
                 <Border Style="{StaticResource SettingsItemRow}" x:Name="rowForegroundPrograms">
                   <StackPanel>
-                    <TextBlock Text="前台程序名单" Style="{StaticResource SettingsItemTitle}"/>
-                    <TextBlock Text="添加以 .exe 结尾的完整程序路径；重复项自动合并" Style="{StaticResource SettingsItemHint}"/>
+                    <TextBlock Text="指定程序" Style="{StaticResource SettingsItemTitle}"/>
+                    <TextBox x:Name="txtForegroundProgramSearch" MaxLength="128" Margin="0,8,0,0"
+                             AutomationProperties.Name="搜索程序，例如微信"
+                             AutomationProperties.HelpText="输入名称，使用方向键选择结果，按回车添加；Esc清空搜索"/>
+                    <TextBlock x:Name="txtForegroundSearchHint" Text="搜索程序，例如微信" Margin="0,6,0,0"
+                               Style="{StaticResource SettingsItemHint}" AutomationProperties.LiveSetting="Polite"/>
+                    <ListBox x:Name="lstForegroundSearchResults" MaxHeight="190" Margin="0,6,0,0" Visibility="Collapsed"
+                             Background="{DynamicResource CardBackground}" BorderThickness="0"
+                             ItemTemplate="{StaticResource ProgramCandidateTemplate}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             AutomationProperties.Name="程序搜索结果" AutomationProperties.HelpText="点击结果或选中后按回车添加"/>
                     <TextBlock x:Name="lblForegroundListHint"
                                Text="添加程序后生效"
                                Style="{StaticResource SettingsItemHint}"
@@ -1175,25 +1154,18 @@
                                Visibility="Collapsed"
                                AutomationProperties.Name="名单为空提示"/>
                     <ListBox x:Name="lstForegroundPrograms"
-                             Height="132"
+                             MaxHeight="190"
                              Margin="0,8,0,0"
                              BorderBrush="{DynamicResource CardBorderBrush}"
-                             BorderThickness="1"
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             BorderThickness="0" Background="{DynamicResource CardBackground}"
+                             ItemTemplate="{StaticResource ProgramCandidateTemplate}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              AutomationProperties.Name="前台程序名单"
                              AutomationProperties.HelpText="选择条目后可删除">
-                      <ListBox.ItemTemplate>
-                        <DataTemplate>
-                          <TextBlock Text="{Binding}"
-                                     ToolTip="{Binding}"
-                                     TextTrimming="CharacterEllipsis"
-                                     VerticalAlignment="Center"/>
-                        </DataTemplate>
-                      </ListBox.ItemTemplate>
                     </ListBox>
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                       <Button x:Name="btnAddForegroundProgram"
-                              Content="添加程序…"
+                              Content="浏览文件…"
                               Style="{StaticResource SecondaryButton}"
                               AutomationProperties.Name="添加前台程序"/>
                       <Button x:Name="btnRemoveForegroundProgram"
@@ -1204,6 +1176,35 @@
                               AutomationProperties.Name="删除所选前台程序"/>
                     </StackPanel>
                   </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Notifications Page -->
+          <StackPanel x:Name="pageNotifications" Visibility="Collapsed" HorizontalAlignment="Stretch">
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="通知" Style="{StaticResource SettingsGroupTitle}"/>
+                <Border Style="{StaticResource SettingsItemRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="自动切换通知" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="SmartGuard 切换电源计划时弹出系统通知" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglNotify" Grid.Column="1" Style="{StaticResource ToggleSwitch}" AutomationProperties.Name="自动切换通知"/>
+                  </Grid>
+                </Border>
+                <Border Style="{StaticResource SettingsItemRow}" BorderThickness="0">
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="外部变更通知" Style="{StaticResource SettingsItemTitle}"/>
+                      <TextBlock Text="检测到计划被外部修改时弹出系统通知" Style="{StaticResource SettingsItemHint}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="tglNotifyExternal" Grid.Column="1" Style="{StaticResource ToggleSwitch}" AutomationProperties.Name="外部变更通知"/>
+                  </Grid>
                 </Border>
               </StackPanel>
             </Border>

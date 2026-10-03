@@ -3,6 +3,21 @@ namespace SmartGuard.Settings.Tests;
 
 public class SettingsNavigationUiTests
 {
+    [Fact]
+    public void Guard_conditions_belong_to_advanced_and_pause_belongs_to_general()
+    {
+        var document = System.Xml.Linq.XDocument.Parse(SettingsSourcePaths.ReadSettingsXamlSource());
+        var names = System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+        string? PageOf(string control) => document.Descendants()
+            .Single(element => (string?)element.Attribute(names + "Name") == control)
+            .Ancestors().Select(element => (string?)element.Attribute(names + "Name"))
+            .First(name => name?.StartsWith("page", StringComparison.Ordinal) == true);
+
+        PageOf("tglForegroundRestriction").Should().Be("pageAdvanced");
+        PageOf("tglPaused").Should().Be("pageGeneral");
+        PageOf("tglNotify").Should().Be("pageNotifications");
+    }
+
     [Theory]
     [InlineData("navGeneral", "常规")]
     [InlineData("navAdvanced", "高级")]
