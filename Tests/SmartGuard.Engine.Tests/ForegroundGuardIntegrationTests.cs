@@ -746,6 +746,10 @@ public class ForegroundGuardIntegrationTests
       created[0].IsRunning.Should().BeFalse("RunAsync 退出必须停止前台监听（归 GuardianLoop 启动/停止/等待退出）");
       created[0].IsHealthy.Should().BeFalse();
       created[0].LastFailure.Should().BeNull("受控停止不是失败");
+      var stoppedEvents = Directory.EnumerateFiles(root, "*.log")
+        .SelectMany(File.ReadLines)
+        .Where(line => line.Contains("\"eventName\":\"AppStopping\"", StringComparison.Ordinal));
+      stoppedEvents.Should().ContainSingle("停止事件必须在关闭日志接收之前入队并落盘");
     }
     finally
     {

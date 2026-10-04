@@ -475,8 +475,8 @@
 |----|------|-----------|
 | LOG-P2-LEVEL | 阻断 | 日志级别六级 `Trace/Debug/Info/Warn/Error/Critical` + `Heart` 末位；`GuardianLoop.WriteLog` 经 `LogLevelFilter.ShouldWrite` 统一过滤，配置项 `LogMinimumLevel`（默认 `Info`，非法回退 `Info`） |
 | LOG-P2-QUEUE | 阻断 | `LogPipeline` 有界双优先级队列（`FullMode.Wait` + `TryWrite` 非阻塞入队，满时按优先级计数丢弃）；禁用 `DropWrite`（无法计数）；业务线程永不阻塞 |
-| LOG-P2-LIFECYCLE | 阻断 | 管线受控关闭：`StopAsync` 按"停止接收 → 排空队列 → Flush → Stopped"执行，`ShutdownTimeoutMs`（默认 3s）超时上限，超时返回 false 且消费者任务自行收敛不泄漏；批量触发为 `FlushIntervalMs=100` 与 `MaxBatchSize=200` 先到先触发 |
-| LOG-P2-WIRE | 阻断 | `GuardianLoop.WriteLog` 经 `LogPipeline.TryEnqueue` 非阻塞入队（Warn/Error/Critical 走 High），消费侧 `FileLogger.TryWriteLines` 单次打开批量追加；入队失败与批量落盘失败均回退阶段一 `LogFallbackChain` 同步三层降级 |
+| LOG-P2-LIFECYCLE | 阻断 | `FlushAsync` 返回 `Task<bool>`，最多 active/next 两个合并代，各代冻结双队列接受水位，取消仅取消调用者等待；`FlushOnce` 只在无活动消费者时持有 SingleReader。`StopAsync` 关闭接收并冻结最终水位，只有正常消费、本次记录全确认且无超时才 true；默认 3s，晚到消费者/冷排空任务持有信号资源直到退出，不提前 Dispose。Engine 在关接收前入队 AppStopping（停止意图），关闭失败只保留有界 crash ring，不递归入队。批量触发仍为 100ms/200 条。 |
+| LOG-P2-WIRE | 阻断 | `GuardianLoop.WriteLog` 经 `LogPipeline.TryEnqueue` 非阻塞入队（Warn/Error/Critical 走 High）；满队列或背压只计数并返回拒绝，普通异常路径无直写旁路。主批写仅归 `WriteBatchToDisk`，消费侧 `LogConsumerRecovery` 经 `LogFallbackChain.WriteBatch` 各层一次批量追加，保留 JSONL eventId/属性。`LogBatchWriteResult` 按记录划分 PrimaryWritten/FallbackWritten/Lost（非负且和等于批量）；未知 IO 前缀按未确认处理；非法结果或 callback 异常标记消费者失败，不虚报落盘。 |
 | LOG-P2-HEART | 阻断 | Heart 心跳经 `HeartbeatSchedule` 使用 `TimeProvider` 单调时间调度，只有 `GuardianLogWriteResult.IsAccepted` 才推进窗口；Resume 只触发一次立即尝试，配置项 `LogHeartMinIntervalSec`（默认 60 秒，0 禁用） |
 | LOG-P2-RETAIN | 阻断 | 归档保留三重上限：`LogRetentionDays`（默认 7，范围 1–365 天）+ `LogMaxArchiveFiles`（默认 30，0 禁用）+ `LogDirectoryMaxBytes`（默认 104_857_600，0 禁用）；删除只选归档、最旧先删、永不删当前日志（`LogArchivePlanner` 纯函数 + `FileLogger.EnforceArchiveLimits`）；`SmartGuardLogWriter` 跨日归档后不再访问旧主日志路径的长度，同一批继续创建并追加当前日志（`SmartGuardLogWriterTests`）。 |
 | DOC-LOG-P2 | 已关闭 | 本文档 §3/§6/§20 + `ArchitectureContractLoggingPhase2Tests` 终验 |
@@ -488,7 +488,7 @@
 | ID | 状态 | 真源/入口 |
 |----|------|-----------|
 | LOG-P3-CRASH | 阻断 | `CrashRingBuffer` 崩溃环形缓冲 + `EmergencySyncWriter` 应急同步写入；仅接收 Warn/Error/Critical；容量默认 500；崩溃时同步 flush 到 `%TEMP%\SmartGuard\crash-ring.log` |
-| LOG-P3-RECOVER | 阻断 | `LogRecoveryStateMachine` 三态恢复 + `LogConsumerRecovery` 包装消费回调；Failed 态降级到 `LogFallbackChain` 同步写入；连续失败阈值默认 3，恢复探测间隔默认 30s |
+| LOG-P3-RECOVER | 阻断 | `LogRecoveryStateMachine` + `LogConsumerRecovery` 只由消费者推进；连续主写失败阈值 3、冷却 30s，注入 TimeProvider 用单调耗时；冷却跳过不增加主写失败计数，回退成功不代表主写恢复。Healthy 边界转换仅尽力入队一次 RecoveryDegraded/RecoveryRestored，不逐条回退递归写入。 |
 | LOG-P3-DEDUP | 阻断 | `LogDeduplicationFilter` 重复日志聚合：对入队行按指纹聚合，连续相同指纹超过阈值后折叠为 `[DEDUP x{count}]` 前缀行；`GuardianLoop.WriteLog` 替代 `_tickLogFingerprints` HashSet 去重；阈值默认 5 |
 | LOG-P3-BACKPRESSURE | 阻断 | `LogBackpressureController` 背压控制器：监控 Normal 队列深度超过阈值时主动丢弃低价值行；`LogPipeline` 暴露 `NormalQueueDepth`/`HighQueueDepth` 供背压读取；阈值默认容量 80% |
 | LOG-P3-OPID | 阻断 | `OperationIdContext` AsyncLocal 进程内传播 + `status.json` `operationId` 字段跨进程中继；禁止引入独立共享内存/命名管道 |
@@ -496,7 +496,7 @@
 | LOG-P3-EVENTNAME | 阻断 | `EventNameRegistry` 事件名称唯一注册表 + 门禁扫描 `WriteLog` 调用点；`EventNameMigration` 维护历史别名兼容；阶段三不做全量重命名 |
 | LOG-P3-OUTCOME | 阻断 | `LogEventOutcome` 是日志事件结果属性唯一注册表；生产端显式写已登记 outcome，禁止从 Severity 或 Message 推导状态；默认表格不分配常驻列，结构化 outcome 保留在 `LogEvent` 与 JSONL |
 | LOG-P3-INJECT | 阻断 | `LogFailureInjector` 故障注入测试框架：磁盘写满/路径权限/文件锁定/消费线程异常；不修改生产代码路径 |
-| LOG-P3-HEALTH | 阻断 | `LogPipelineHealth` + `LogHealthSnapshot` 可观测健康指标：8 项内部指标；由 `FormatLogLine` 输出 `[DIAG]` 标签、标准时间戳与单行 JSON 后追加到日志末尾（D4 裁决） |
+| LOG-P3-HEALTH | 阻断 | 消费分区用单个不可变快照原子发布，生产丢弃用 Interlocked；累计 WrittenLines=Primary+Fallback，FailedBatches=含 Lost 的批次；单列 PrimaryFailedBatches、LostLines、DroppedByBackpressure。既有 5 分钟健康采样通过正常结构化管线输出，未测量 Average/P99 延迟为 null；跨线程各计数不是全局强一致事务。 |
 | DOC-LOG-P3 | 已关闭 | 本文档 §3/§6/§21 + `ArchitectureContractLoggingPhase3Tests` 终验 |
 
 ---

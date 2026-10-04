@@ -4,6 +4,225 @@ namespace SmartGuard.Configuration.Tests;
 
 public class LogPipelineLifecycleTests
 {
+  [Fact]
+  public async Task Flush_cannot_observe_loss_as_history_before_its_record_is_processed()
+  {
+    using var entered = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    using var returning = new ManualResetEventSlim();
+    var pipeline = new LogPipeline(batch =>
+    {
+      entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); returning.Set();
+      return LogBatchWriteResult.Failed(batch.Count);
+    }, ManualOptions(maxBatchSize: 1));
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("lost-in-flight"));
+    entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+    var gate = typeof(LogPipeline).GetField("_gate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(pipeline)!;
+    Task<bool> flush;
+    Monitor.Enter(gate);
+    try
+    {
+      release.Set();
+      returning.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+      // Hold watermark publication. The old consumer publishes loss first,
+      // allowing a request to mistake this still-pending loss for history.
+      SpinWait.SpinUntil(() => pipeline.Diagnostics.LostLines == 1, 100);
+      flush = pipeline.FlushAsync();
+    }
+    finally { Monitor.Exit(gate); release.Set(); }
+    (await flush).Should().BeFalse();
+    await pipeline.StopAsync();
+  }
+
+  [Fact]
+  public async Task Stop_waits_for_the_cold_reader_to_transfer_ownership()
+  {
+    using var entered = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    var pipeline = new LogPipeline(batch =>
+    {
+      entered.Set();
+      release.Wait(TimeSpan.FromSeconds(5));
+      return LogBatchWriteResult.Primary(batch.Count);
+    }, ManualOptions());
+    pipeline.TryEnqueue(LogPriority.Normal, Event("cold"));
+    var cold = Task.Run(pipeline.FlushOnce);
+    entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+    var stop = pipeline.StopAsync();
+    try
+    {
+      await Task.Delay(50);
+      stop.IsCompleted.Should().BeFalse("the cold reader still owns an accepted record");
+      release.Set();
+      (await cold).Should().BeTrue();
+      (await stop).Should().BeTrue();
+      pipeline.State.Should().Be(LogPipelineState.Stopped);
+    }
+    finally { release.Set(); await cold; await pipeline.StopAsync(); }
+  }
+
+  [Fact]
+  public async Task Flush_confirms_its_frozen_range_without_waiting_for_later_records()
+  {
+    using var firstEntered = new ManualResetEventSlim();
+    using var laterEntered = new ManualResetEventSlim();
+    using var firstRelease = new ManualResetEventSlim();
+    using var laterRelease = new ManualResetEventSlim();
+    var pipeline = new LogPipeline(batch =>
+    {
+      if (batch[0].Message == "first") { firstEntered.Set(); firstRelease.Wait(TimeSpan.FromSeconds(5)); }
+      else { laterEntered.Set(); laterRelease.Wait(TimeSpan.FromSeconds(5)); }
+      return LogBatchWriteResult.Primary(batch.Count);
+    }, ManualOptions(maxBatchSize: 1));
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("first"));
+    firstEntered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+    var flush = pipeline.FlushAsync();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("later"));
+    try
+    {
+      firstRelease.Set();
+      laterEntered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+      (await flush.WaitAsync(TimeSpan.FromSeconds(1))).Should().BeTrue();
+    }
+    finally { firstRelease.Set(); laterRelease.Set(); await pipeline.StopAsync(); }
+  }
+
+  [Fact]
+  public async Task Cold_async_flush_returns_a_task_while_the_writer_is_blocked()
+  {
+    using var entered = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    var returned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var pipeline = new LogPipeline(batch =>
+    {
+      entered.Set();
+      release.Wait(TimeSpan.FromSeconds(5));
+      return LogBatchWriteResult.Primary(batch.Count);
+    }, ManualOptions());
+    pipeline.TryEnqueue(LogPriority.Normal, Event("cold"));
+    var caller = Task.Run(async () =>
+    {
+      var operation = pipeline.FlushAsync();
+      returned.SetResult();
+      await operation;
+    });
+    try
+    {
+      entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+      await returned.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+    finally
+    {
+      release.Set();
+      await caller;
+      await pipeline.StopAsync();
+    }
+  }
+
+  [Fact]
+  public async Task Cancellation_is_caller_local_and_late_writer_keeps_resource_ownership()
+  {
+    using var entered = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    var pipeline = new LogPipeline(batch =>
+    {
+      entered.Set();
+      release.Wait(TimeSpan.FromSeconds(5));
+      return LogBatchWriteResult.Primary(batch.Count);
+    }, ManualOptions(maxBatchSize: 1, shutdownTimeoutMs: 100));
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.High, Event("owned"));
+    entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+    using var cancelled = new CancellationTokenSource();
+    var cancelledWait = pipeline.FlushAsync(cancelled.Token);
+    var otherWait = pipeline.FlushAsync();
+    try
+    {
+      cancelled.Cancel();
+      await ((Func<Task>)(async () => await cancelledWait)).Should().ThrowAsync<OperationCanceledException>();
+      (await pipeline.StopAsync()).Should().BeFalse();
+      release.Set();
+      // The timeout does not dispose resources still owned by the late consumer.
+      await otherWait;
+      var consumer = (Task)typeof(LogPipeline).GetField("_consumerTask", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(pipeline)!;
+      await consumer.WaitAsync(TimeSpan.FromSeconds(2));
+      pipeline.Diagnostics.WrittenLines.Should().Be(1);
+      (await pipeline.StopAsync()).Should().BeFalse("the previously reported stop timeout is not silently rewritten");
+    }
+    finally { release.Set(); await pipeline.StopAsync(); }
+  }
+
+  [Fact]
+  public async Task Flush_confirms_failure_instead_of_only_signalling_completion()
+  {
+    var pipeline = new LogPipeline(batch => LogBatchWriteResult.Failed(batch.Count), ManualOptions());
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("lost"));
+    var flush = pipeline.FlushAsync();
+    flush.Should().BeAssignableTo<Task<bool>>();
+    (await (Task<bool>)flush).Should().BeFalse();
+    await pipeline.StopAsync();
+  }
+
+  [Fact]
+  public async Task Flush_once_cannot_compete_with_running_single_reader()
+  {
+    var calls = 0;
+    var pipeline = new LogPipeline(batch => { Interlocked.Increment(ref calls); return LogBatchWriteResult.Primary(batch.Count); }, ManualOptions());
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("owned"));
+    pipeline.FlushOnce().Should().BeFalse("only the running consumer owns queue reads");
+    Volatile.Read(ref calls).Should().Be(0);
+    await pipeline.StopAsync();
+  }
+
+  [Fact]
+  public async Task Thousand_flush_requests_keep_at_most_two_internal_generations()
+  {
+    using var entered = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    var pipeline = new LogPipeline(batch =>
+    {
+      entered.Set();
+      release.Wait(TimeSpan.FromSeconds(5));
+      return LogBatchWriteResult.Primary(batch.Count);
+    }, ManualOptions(maxBatchSize: 1));
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("blocked"));
+    try
+    {
+      entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+      var requests = Enumerable.Range(0, 1_000).Select(_ => pipeline.FlushAsync()).ToArray();
+      var metric = typeof(LogPipeline).GetProperty("PendingFlushGenerations",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+      metric.Should().NotBeNull("internal resource usage must be measurable without per-caller waiter storage");
+      ((int)metric!.GetValue(pipeline)!).Should().BeInRange(1, 2);
+      release.Set();
+      await Task.WhenAll(requests);
+    }
+    finally
+    {
+      release.Set();
+      await pipeline.StopAsync();
+    }
+  }
+
+  [Fact]
+  public async Task Stop_must_not_report_callback_failure_as_successful_drain()
+  {
+    var pipeline = new LogPipeline(_ => throw new IOException("writer fault"), ManualOptions());
+    pipeline.Start();
+    pipeline.TryEnqueue(LogPriority.Normal, Event("unconfirmed"));
+    (await pipeline.StopAsync()).Should().BeFalse();
+    pipeline.Diagnostics.WrittenLines.Should().Be(0);
+    pipeline.Diagnostics.FailedBatches.Should().Be(1);
+    using var health = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(pipeline.Diagnostics));
+    health.RootElement.GetProperty("ConsumerFailed").GetBoolean().Should().BeTrue();
+    health.RootElement.GetProperty("StopFailed").GetBoolean().Should().BeTrue();
+  }
+
   private static LogEvent Event(string message)
     => LogEventFactory.Create(
       LogSeverity.Info,
@@ -25,7 +244,7 @@ public class LogPipelineLifecycleTests
   [Fact]
   public void State_starts_in_starting_and_start_moves_to_running()
   {
-    var pipeline = new LogPipeline(_ => true, ManualOptions());
+    var pipeline = new LogPipeline(batch => LogBatchWriteResult.Primary(batch.Count), ManualOptions());
     pipeline.State.Should().Be(LogPipelineState.Starting);
     pipeline.Start();
     pipeline.State.Should().Be(LogPipelineState.Running);
@@ -36,7 +255,7 @@ public class LogPipelineLifecycleTests
   {
     var written = new List<LogEvent>();
     var pipeline = new LogPipeline(
-      batch => { lock (written) written.AddRange(batch); return true; }, ManualOptions());
+      batch => { lock (written) written.AddRange(batch); return LogBatchWriteResult.Primary(batch.Count); }, ManualOptions());
 
     pipeline.TryEnqueue(LogPriority.Normal, Event("early")).Should().BeTrue(
       "Starting 状态允许入队暂存，Start 后由消费者落盘");
@@ -52,7 +271,7 @@ public class LogPipelineLifecycleTests
   {
     var written = new List<LogEvent>();
     var pipeline = new LogPipeline(
-      batch => { lock (written) written.AddRange(batch); return true; }, ManualOptions());
+      batch => { lock (written) written.AddRange(batch); return LogBatchWriteResult.Primary(batch.Count); }, ManualOptions());
     pipeline.Start();
 
     pipeline.TryEnqueue(LogPriority.Normal, Event("a"));
@@ -68,7 +287,7 @@ public class LogPipelineLifecycleTests
   {
     var firstBatch = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
     var pipeline = new LogPipeline(
-      batch => { firstBatch.TrySetResult(batch.Count); return true; },
+      batch => { firstBatch.TrySetResult(batch.Count); return LogBatchWriteResult.Primary(batch.Count); },
       ManualOptions(maxBatchSize: 2));
     pipeline.Start();
 
@@ -86,7 +305,7 @@ public class LogPipelineLifecycleTests
   {
     var firstBatch = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
     var pipeline = new LogPipeline(
-      batch => { firstBatch.TrySetResult(batch.Count); return true; },
+      batch => { firstBatch.TrySetResult(batch.Count); return LogBatchWriteResult.Primary(batch.Count); },
       ManualOptions(flushIntervalMs: 50));
     pipeline.Start();
 
@@ -103,7 +322,7 @@ public class LogPipelineLifecycleTests
   {
     var written = new List<LogEvent>();
     var pipeline = new LogPipeline(
-      batch => { lock (written) written.AddRange(batch); return true; }, ManualOptions());
+      batch => { lock (written) written.AddRange(batch); return LogBatchWriteResult.Primary(batch.Count); }, ManualOptions());
     pipeline.Start();
     pipeline.TryEnqueue(LogPriority.Normal, Event("pending-1"));
     pipeline.TryEnqueue(LogPriority.High, Event("pending-2"));
@@ -122,7 +341,7 @@ public class LogPipelineLifecycleTests
   {
     using var gate = new ManualResetEventSlim(false);
     var pipeline = new LogPipeline(
-      _ => { gate.Wait(); return true; },
+      batch => { gate.Wait(); return LogBatchWriteResult.Primary(batch.Count); },
       ManualOptions(maxBatchSize: 1, shutdownTimeoutMs: 200));
     pipeline.Start();
     try
@@ -143,7 +362,7 @@ public class LogPipelineLifecycleTests
   [Fact]
   public async Task Start_is_idempotent()
   {
-    var pipeline = new LogPipeline(_ => true, ManualOptions());
+    var pipeline = new LogPipeline(batch => LogBatchWriteResult.Primary(batch.Count), ManualOptions());
     pipeline.Start();
     pipeline.Start();
     pipeline.State.Should().Be(LogPipelineState.Running);

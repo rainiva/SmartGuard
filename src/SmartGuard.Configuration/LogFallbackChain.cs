@@ -27,6 +27,25 @@ public static class LogFallbackChain
     return Write(tryPrimary, fallbackLogPath, emergencyLine);
   }
 
+  /// <summary>Consumer-only batch fallback; preserve canonical identity and properties.</summary>
+  public static LogBatchWriteResult WriteBatch(string fallbackLogPath,
+    IReadOnlyList<LogEvent> events, bool primaryAttemptFailed)
+  {
+    try
+    {
+      if (LogStructuredSink.TryWriteBatch(fallbackLogPath, events, null))
+        return new(0, events.Count, 0, primaryAttemptFailed);
+    }
+    catch { /* Try the last existing sink, once for the whole batch. */ }
+    try
+    {
+      if (LogStructuredSink.TryWriteBatch(EffectiveEmergencyLogFile, events, null))
+        return new(0, events.Count, 0, primaryAttemptFailed);
+    }
+    catch { /* No confirmed destination; the consumer reports the loss. */ }
+    return new(0, 0, events.Count, primaryAttemptFailed);
+  }
+
   private static string EffectiveEmergencyLogFile =>
     EmergencyLogFileOverrideForTests ?? EmergencyLogFile;
 }

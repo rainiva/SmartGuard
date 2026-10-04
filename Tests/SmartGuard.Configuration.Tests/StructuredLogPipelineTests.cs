@@ -26,7 +26,7 @@ public class StructuredLogPipelineTests
   public void FlushOnce_delivers_typed_events_in_enqueue_order()
   {
     var written = new List<LogEvent>();
-    var pipeline = new LogPipeline(batch => { written.AddRange(batch); return true; }, TinyOptions());
+    var pipeline = new LogPipeline(batch => { written.AddRange(batch); return LogBatchWriteResult.Primary(batch.Count); }, TinyOptions());
 
     pipeline.TryEnqueue(LogPriority.Normal, SampleEngineEvent("a")).Should().BeTrue();
     pipeline.TryEnqueue(LogPriority.Normal, SampleEngineEvent("b")).Should().BeTrue();
@@ -39,7 +39,7 @@ public class StructuredLogPipelineTests
   public void FlushOnce_drains_high_priority_events_before_normal()
   {
     var written = new List<LogEvent>();
-    var pipeline = new LogPipeline(batch => { written.AddRange(batch); return true; }, TinyOptions());
+    var pipeline = new LogPipeline(batch => { written.AddRange(batch); return LogBatchWriteResult.Primary(batch.Count); }, TinyOptions());
 
     pipeline.TryEnqueue(LogPriority.Normal, SampleEngineEvent("normal-1"));
     pipeline.TryEnqueue(LogPriority.High, SampleEngineEvent("high-1", EventNameRegistry.IterationError));
@@ -172,7 +172,7 @@ public class StructuredLogPipelineTests
   {
     var written = new List<LogEvent>();
     var pipeline = new LogPipeline(
-      batch => { lock (written) written.AddRange(batch); return true; }, TinyOptions());
+      batch => { lock (written) written.AddRange(batch); return LogBatchWriteResult.Primary(batch.Count); }, TinyOptions());
     pipeline.Start();
     pipeline.TryEnqueue(LogPriority.Normal, SampleEngineEvent("pending-1"));
     pipeline.TryEnqueue(LogPriority.High, SampleEngineEvent("pending-2", EventNameRegistry.IterationError));

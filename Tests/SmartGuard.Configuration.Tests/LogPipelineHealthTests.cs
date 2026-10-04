@@ -5,6 +5,24 @@ namespace SmartGuard.Configuration.Tests;
 public class LogPipelineHealthTests
 {
   [Fact]
+  public void Unmeasured_latency_is_null_and_health_reports_the_write_partition()
+  {
+    var pipeline = new LogPipeline(batch => new LogBatchWriteResult(0, batch.Count, 0, true));
+    pipeline.TryEnqueue(LogPriority.Normal, Event("fallback"));
+    pipeline.FlushOnce().Should().BeTrue();
+    pipeline.RecordBackpressureDrop();
+    var health = new LogPipelineHealth();
+    var snapshot = health.TakeSnapshot(pipeline);
+    using var json = System.Text.Json.JsonDocument.Parse(health.FormatJson(snapshot));
+    json.RootElement.GetProperty("averageLatencyMs").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+    json.RootElement.GetProperty("p99LatencyMs").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+    json.RootElement.GetProperty("fallbackWrittenLines").GetInt64().Should().Be(1);
+    json.RootElement.GetProperty("primaryFailedBatches").GetInt64().Should().Be(1);
+    json.RootElement.GetProperty("lostLines").GetInt64().Should().Be(0);
+    health.CreateHealthEvent(snapshot).Properties!["droppedByBackpressure"].GetInt64().Should().Be(1);
+  }
+
+  [Fact]
   public void Health_sample_identifies_the_process_whose_counters_are_reported()
   {
     var health = new LogPipelineHealth();
@@ -22,7 +40,7 @@ public class LogPipelineHealthTests
   [Fact]
   public void TakeSnapshot_captures_current_diagnostics()
   {
-    var pipeline = new LogPipeline(_ => true);
+    var pipeline = new LogPipeline(batch => LogBatchWriteResult.Primary(batch.Count));
     pipeline.Start();
     pipeline.TryEnqueue(LogPriority.Normal, Event("line1"));
     pipeline.TryEnqueue(LogPriority.High, Event("line2"));
@@ -67,7 +85,7 @@ public class LogPipelineHealthTests
   [Fact]
   public void TakeSnapshot_computes_rates_from_two_snapshots()
   {
-    var pipeline = new LogPipeline(_ => true);
+    var pipeline = new LogPipeline(batch => LogBatchWriteResult.Primary(batch.Count));
     pipeline.Start();
 
     var health = new LogPipelineHealth();
@@ -91,7 +109,7 @@ public class LogPipelineHealthTests
     {
       foreach (var logEvent in batch)
         writtenEvents.Enqueue(logEvent);
-      return true;
+      return LogBatchWriteResult.Primary(batch.Count);
     });
     pipeline.Start();
 
@@ -113,7 +131,7 @@ public class LogPipelineHealthTests
   [Fact]
   public async Task StopHealthReporting_halts_emission()
   {
-    var pipeline = new LogPipeline(_ => true);
+    var pipeline = new LogPipeline(batch => LogBatchWriteResult.Primary(batch.Count));
     pipeline.Start();
 
     var health = new LogPipelineHealth();

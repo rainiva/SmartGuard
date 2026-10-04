@@ -18,7 +18,7 @@
 |---|---|---|
 | T0 基线 | 已通过 | Configuration 45/45；Engine 27/27；当前源码隔离探针 13 场景复现原缺口 |
 | T1 保存日志真实性 | 实现与目标回归通过 | 目标 38/38；架构 54/54；Configuration 全项目 420/420；真实 UI 留待 T9 |
-| T2 真实写入与非阻塞 | 待执行 | — |
+| T2 真实写入与非阻塞 | 实现与回归通过，展示接入 T3 | Configuration 431/431；Engine 293/293；日志架构 54/54；三轮隔离锁竞争比较 |
 | T3 日志健康 | 待执行 | — |
 | T4 规则观测 | 待执行 | — |
 | T5 停工恢复与心跳 | 待执行 | — |
@@ -27,7 +27,7 @@
 | T8 导出异步所有权 | 待执行 | — |
 | T9 集成与验收 | 待执行 | — |
 
-真实桌面、性能比较、Soak、回滚与全量门禁尚未执行，不能据此认定修复完成。
+真实桌面、规则轻路径/导出性能、Soak、回滚与全量门禁尚未执行，不能据此认定修复完成。
 
 ## T0 / T1 证据
 
@@ -38,3 +38,14 @@
 - 后续系统任务隔离测试初次 RED 为缺少隔离注入点；不会触碰真实任务。坏日志路径测试在旧代码也能通过（writer 已隔离），`t1-path-red.trx` 实际为 PASS，只作为回归，不计作功能 RED。
 - T1 GREEN：目标过滤增加 `GuardForegroundRestrictionConfigTests`，exit 0，`t1-green.trx`（38 / 0 / 0）；架构过滤 `LoggingRepairArchitectureTests|ArchitectureContractLogging|ConfigRepository|ForegroundGuardArchitecture`，exit 0，`t1-architecture-green.trx`（54 / 0 / 0）。Configuration 全项目回归 exit 0，`t1-configuration-regression.trx`（420 / 0 / 0）。
 - T1 自审：原子配置写入 Owner 未变、未知键保留；缓存只在提交后或失败恢复时失效；日志使用已发布配置；AutoStart 失败反馈仅区分阶段，未改变系统任务行为；内置测试 seam 仅隔离真实任务。全套 Run-Tests 与真实桌面证据留在 T9，未宣称整个计划完成。
+
+## T2 证据与自审
+
+- RED：`t2-engine-red.trx`（4/4/0）复现三层失败假成功、拒绝后写盘、背压漏计、回退丢结构；`t2-flush-red.trx`（0/4/0）复现关闭故障假成功、Flush 无确认和竞争读取。各 TRX 数字顺序为 passed/failed/skipped，失败运行 exit 1。
+- 补充 RED：`t2-health-red.trx` 延迟假 0；`t2-stop-event-red.trx` 无停止事件；`t2-cold-flush-red.trx` 冷异步调用被 writer 阻塞；`t2-ownership-red.trx` 冷 reader 未退出即返回；`t2-publication-race-red.trx` 可控交错下把待处理 Lost 当历史，Flush 错误返回 true。后二者按同一短锁原子交接及提交水位/结果修复。
+- `t2-clock-red.trx` / `t2-transitions-red.trx` / `t2-consumer-health-red.trx` 是缺失契约或观测入口 RED，不冒充已经观察到的 OS 时间故障。冻结范围、取消局部性、非法分区继续消费等首次已通过的新增测试只算回归。
+- GREEN：`t2-final-config-target.trx` 48/0/0；`t2-transitions-green.trx` 23/0/0；`t2-architecture-final.trx` 54/0/0（各 exit 0）。旧架构门禁要求业务线程同步回退，与新批准契约冲突；更新为消费侧独占批回退，保留三层与结构化 sink 门禁。
+- 全项目回归：`t2-configuration-regression.trx` 431/0/0、`t2-engine-regression.trx` 293/0/0，exit 0。回退不恢复主写 Healthy；冷却为可注入单调时间；累计写入分区与 ConsumerFailed/StopFailed 可观测。状态和 UI 的健康投影尚待 T3。
+- 性能工具为新建 `benchmark/`，基线来自起点提交的只读 Git archive 展开副本；不运行 Engine，不观察/切换真实计划。每版三轮、每轮 10 个高队列满业务调用，主 sink 命名锁由专用线程持有。初次未预热：原版 P95 2013.80–2052.77ms；修改版首轮冷启动 P95/Max 30.0008ms（超过拟定 P95 20ms，低于 Max 100ms），后两轮 0.2639/0.0729ms；原始结果完整保留，不删除失败预算样本。
+- 等量一次解锁预热后重测，原版 P95 2013.71–2016.27ms；修改版三轮 P95/Max 分别 0.8874、0.0565、0.0820ms，P50 为 0.0036–0.0045ms。原始结果见 `performance-after-warm/results-f973a58b9c5b4f04a458a8c9d5e4391e.json`；独立记录线程/私有内存、队列深度、拒绝计数与回退行数。预热会额外产生 1 次拒绝，累计 DroppedHigh=11，正式样本为 10。原版三轮各写 10 条回退，修改版均 0；源码边界与拒绝测试确认修改版业务侧 writer 入口 0 次，探针未注入 OS 写入计数器，不能把行数称为系统调用数。此实验只证明满队列业务侧无写盘等待，不证明整个 Engine 的性能或长期内存趋势。
+- 自审边界：消费 IO 在 gate 外，信号容量 1，内部 flush 代数 ≤2，双优先级各自 FIFO；异常批次继续消费但健康失败保留。Stop 超时不提前销毁仍被消费任务持有的信号；AppStopping 只表示停止意图。主线程不会尝试同步回退。附加日志保留预算仍待 T6。

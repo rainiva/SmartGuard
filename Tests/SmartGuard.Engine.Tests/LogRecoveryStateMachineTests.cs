@@ -5,6 +5,28 @@ namespace SmartGuard.Engine.Tests;
 public class LogRecoveryStateMachineTests
 {
   [Fact]
+  public void Recovery_uses_elapsed_monotonic_time_even_when_wall_clock_moves_backwards()
+  {
+    var clock = new RecoveryClock();
+    var constructor = typeof(LogRecoveryStateMachine).GetConstructor([typeof(int), typeof(int), typeof(TimeProvider)]);
+    constructor.Should().NotBeNull("cooldown must be testable independently of system UTC changes");
+    var state = (LogRecoveryStateMachine)constructor!.Invoke([1, 30, clock]);
+    state.RecordFailure();
+    clock.Elapsed = TimeSpan.FromSeconds(29);
+    state.TryRecover().Should().BeFalse();
+    clock.Elapsed = TimeSpan.FromSeconds(30);
+    state.TryRecover().Should().BeTrue();
+  }
+
+  private sealed class RecoveryClock : TimeProvider
+  {
+    public TimeSpan Elapsed;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => Elapsed.Ticks;
+    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch - Elapsed;
+  }
+
+  [Fact]
   public void Initial_state_is_Healthy()
   {
     var sm = new LogRecoveryStateMachine(failureThreshold: 3);

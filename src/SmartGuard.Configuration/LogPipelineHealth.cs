@@ -4,8 +4,8 @@ using System.Text.Json;
 namespace SmartGuard.Configuration;
 
 /// <summary>
-/// 可观测健康指标快照：8 项内部指标 + 入队/落盘速率。
-/// 定时（默认 5 分钟）以带标准时间戳的 [DIAG] JSON 行追加到主日志末尾（D4 裁决）。
+/// 累计健康统计；未测量的延迟为 null，不把缺少样本解释为零延迟。
+/// 既有健康采样定时器通过正常管线输出结构化事件。
 /// </summary>
 public sealed record LogHealthSnapshot(
   long EnqueuedTotal,
@@ -17,8 +17,15 @@ public sealed record LogHealthSnapshot(
   int HighQueueDepth,
   double EnqueueRatePerSec,
   double WriteRatePerSec,
-  double AverageLatencyMs,
-  double P99LatencyMs);
+  double? AverageLatencyMs,
+  double? P99LatencyMs,
+  long PrimaryWrittenLines = 0,
+  long FallbackWrittenLines = 0,
+  long LostLines = 0,
+  long PrimaryFailedBatches = 0,
+  long DroppedByBackpressure = 0,
+  bool ConsumerFailed = false,
+  bool StopFailed = false);
 
 public sealed class LogPipelineHealth
 {
@@ -50,8 +57,15 @@ public sealed class LogPipelineHealth
       HighQueueDepth: pipeline.HighQueueDepth,
       EnqueueRatePerSec: Math.Round(enqueueRate, 2),
       WriteRatePerSec: Math.Round(writeRate, 2),
-      AverageLatencyMs: 0,
-      P99LatencyMs: 0);
+      AverageLatencyMs: null,
+      P99LatencyMs: null,
+      PrimaryWrittenLines: diag.PrimaryWrittenLines,
+      FallbackWrittenLines: diag.FallbackWrittenLines,
+      LostLines: diag.LostLines,
+      PrimaryFailedBatches: diag.PrimaryFailedBatches,
+      DroppedByBackpressure: diag.DroppedByBackpressure,
+      ConsumerFailed: diag.ConsumerFailed,
+      StopFailed: diag.StopFailed);
   }
 
   public LogEvent CreateHealthEvent(LogHealthSnapshot snapshot)
@@ -67,6 +81,13 @@ public sealed class LogPipelineHealth
       droppedHigh = snapshot.DroppedHigh,
       writtenLinesTotal = snapshot.WrittenLinesTotal,
       failedBatches = snapshot.FailedBatches,
+      primaryWrittenLines = snapshot.PrimaryWrittenLines,
+      fallbackWrittenLines = snapshot.FallbackWrittenLines,
+      lostLines = snapshot.LostLines,
+      primaryFailedBatches = snapshot.PrimaryFailedBatches,
+      droppedByBackpressure = snapshot.DroppedByBackpressure,
+      consumerFailed = snapshot.ConsumerFailed,
+      stopFailed = snapshot.StopFailed,
       normalQueueDepth = snapshot.NormalQueueDepth,
       highQueueDepth = snapshot.HighQueueDepth,
       enqueueRatePerSec = snapshot.EnqueueRatePerSec,

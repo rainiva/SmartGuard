@@ -11,14 +11,16 @@ public sealed class LogRecoveryStateMachine
 {
   private readonly int _failureThreshold;
   private readonly int _recoveryIntervalSeconds;
+  private readonly TimeProvider _time;
   private int _consecutiveFailures;
-  private DateTime? _failedAt;
+  private long? _failedAt;
   private RecoveryState _state = RecoveryState.Healthy;
 
-  public LogRecoveryStateMachine(int failureThreshold = 3, int recoveryIntervalSeconds = 30)
+  public LogRecoveryStateMachine(int failureThreshold = 3, int recoveryIntervalSeconds = 30, TimeProvider? timeProvider = null)
   {
     _failureThreshold = Math.Max(1, failureThreshold);
     _recoveryIntervalSeconds = Math.Max(0, recoveryIntervalSeconds);
+    _time = timeProvider ?? TimeProvider.System;
   }
 
   public RecoveryState State => _state;
@@ -37,14 +39,14 @@ public sealed class LogRecoveryStateMachine
     if (_consecutiveFailures >= _failureThreshold)
     {
       _state = RecoveryState.Failed;
-      _failedAt ??= DateTime.UtcNow;
+      _failedAt ??= _time.GetTimestamp();
     }
   }
 
   public bool TryRecover()
   {
     if (_state != RecoveryState.Failed || _failedAt is null) return false;
-    if ((DateTime.UtcNow - _failedAt.Value).TotalSeconds < _recoveryIntervalSeconds) return false;
+    if (_time.GetElapsedTime(_failedAt.Value).TotalSeconds < _recoveryIntervalSeconds) return false;
     _state = RecoveryState.Degraded;
     _failedAt = null;
     return true;

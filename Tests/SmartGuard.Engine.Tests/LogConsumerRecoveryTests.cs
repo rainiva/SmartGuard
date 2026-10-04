@@ -3,8 +3,51 @@ using SmartGuard.Engine.Infrastructure;
 
 namespace SmartGuard.Engine.Tests;
 
+[Collection("LoggingFallbackTests")]
 public class LogConsumerRecoveryTests
 {
+  [Fact]
+  public void All_failed_sinks_must_not_be_counted_as_written()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var oldEmergency = LogFallbackChain.EmergencyLogFileOverrideForTests;
+    try
+    {
+      LogFallbackChain.EmergencyLogFileOverrideForTests = root;
+      var recovery = new LogConsumerRecovery(new LogRecoveryStateMachine());
+      var pipeline = new LogPipeline(batch => recovery.ExecuteWithRecovery(_ => false, batch, root));
+      pipeline.TryEnqueue(LogPriority.High, Batch("all-failed")[0]).Should().BeTrue();
+      pipeline.FlushOnce().Should().BeFalse();
+      pipeline.Diagnostics.WrittenLines.Should().Be(0);
+      pipeline.Diagnostics.FailedBatches.Should().Be(1);
+    }
+    finally
+    {
+      LogFallbackChain.EmergencyLogFileOverrideForTests = oldEmergency;
+      Directory.Delete(root, true);
+    }
+  }
+
+  [Fact]
+  public void Fallback_preserves_original_event_identity_channel_and_properties()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+      var original = Event("fallback") with { Properties = new Dictionary<string, System.Text.Json.JsonElement>
+      { ["reason"] = System.Text.Json.JsonSerializer.SerializeToElement("test") } };
+      var path = Path.Combine(root, "startup.log");
+      new LogConsumerRecovery(new LogRecoveryStateMachine()).ExecuteWithRecovery(_ => false, [original], path);
+      LogJsonlFormatter.TryParseLine(File.ReadAllLines(path).Single(), out var decoded).Should().BeTrue();
+      decoded!.EventId.Should().Be(original.EventId);
+      decoded.Channel.Should().Be(original.Channel);
+      decoded.Properties["reason"].GetString().Should().Be("test");
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
   private static LogEvent Event(string message)
     => LogEventFactory.Create(
       LogSeverity.Info,
@@ -22,7 +65,7 @@ public class LogConsumerRecoveryTests
     var recovery = new LogConsumerRecovery(sm);
 
     var result = recovery.ExecuteWithRecovery(_ => true, Batch("line1"), "fallback.log");
-    result.Should().BeTrue();
+    result.Should().Be(LogBatchWriteResult.Primary(1));
     sm.State.Should().Be(RecoveryState.Healthy);
   }
 
@@ -59,7 +102,7 @@ public class LogConsumerRecoveryTests
       Batch("line1"),
       "fallback.log");
 
-    result.Should().BeTrue();
+    result.Should().Be(new LogBatchWriteResult(0, 1, 0, true));
     sm.State.Should().Be(RecoveryState.Degraded);
   }
 }

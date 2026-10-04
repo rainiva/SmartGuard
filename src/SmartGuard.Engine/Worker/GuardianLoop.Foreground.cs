@@ -150,7 +150,7 @@ public sealed partial class GuardianLoop
 
   /// <summary>
   /// 执行一个守护周期并按既有轮次边界收敛异常：协调器周期（完整轮次 / 轻路径）失败时，
-  /// 记入异常风暴处理与回退日志，并让协调器按完整间隔冷却（前台节流请求丢弃，
+  /// 经有界管线记录异常，并让协调器按完整间隔冷却（前台节流请求丢弃，
   /// 下一真实事件重新标记），周期复核为兜底，守护循环永不因前台机制静默退出。
   /// </summary>
   private async Task RunGuardedCycleAsync(
@@ -172,7 +172,10 @@ public sealed partial class GuardianLoop
       }
       catch
       {
-        SmartGuardLogWriter.TryAppendLine(_fallbackLogPath, $"[ERROR] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {ex.Message}");
+        // Error formatting/configuration may also fail. Use a fixed bounded
+        // event, never synchronous disk IO or recursive error logging here.
+        EnqueueLog(LogLevel.Error, EngineLogEvents.Create(
+          LogLevel.Error, EventNameRegistry.IterationError, "守护周期异常，详细诊断不可用"));
       }
     }
   }

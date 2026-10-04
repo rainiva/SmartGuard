@@ -46,11 +46,13 @@ public class ArchitectureContractLoggingPhase1Tests
   }
 
   [Fact]
-  public void GuardianLoop_WriteLog_uses_three_layer_fallback_chain()
+  public void GuardianLoop_consumer_owns_three_layer_fallback_chain()
   {
     var source = SourceScanHelper.ReadGuardianLoopSource();
-    source.Should().Contain("LogFallbackChain.WriteEvent",
-      "WriteLog 必须走三层降级链而非单层 fallback");
+    source.Should().NotContain("LogFallbackChain.WriteEvent",
+      "业务入队失败不得同步回退写盘");
+    SourceScanHelper.ReadSource("src/SmartGuard.Engine/Infrastructure/LogConsumerRecovery.cs")
+      .Should().Contain("LogFallbackChain.WriteBatch", "消费侧按批次执行回退");
     source.Should().Contain("LogStructuredSink.TryWriteBatch",
       "主层写入必须使用结构化 sink 批量落盘");
   }

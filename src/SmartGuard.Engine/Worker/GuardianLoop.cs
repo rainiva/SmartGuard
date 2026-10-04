@@ -22,7 +22,7 @@ public sealed partial class GuardianLoop
   private readonly GuardianFirstRunInitializer _firstRunInitializer;
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
   private readonly LogPipeline _logPipeline;
-  private readonly LogConsumerRecovery _consumerRecovery = new(new LogRecoveryStateMachine());
+  private readonly LogConsumerRecovery _consumerRecovery;
   private readonly LogPipelineHealth _pipelineHealth = new();
   private readonly HeartbeatSchedule _heartbeatSchedule = new();
   private readonly PowerSourceTransitionTracker _powerSourceTransitions = new();
@@ -57,6 +57,7 @@ public sealed partial class GuardianLoop
     _fallbackLogPath = fallbackLogPath;
     _publisher = new StatusPublisher(statusPath);
     _configRepository = new GuardConfigRepository(configPath);
+    _consumerRecovery = new LogConsumerRecovery(new LogRecoveryStateMachine(timeProvider: timeProvider));
     _powerCfgBrightnessSupported = powerCfgBrightnessSupported;
     _firstRunInitializer = new GuardianFirstRunInitializer(_initMarkerPath, _brightness, (c, l, m) => WriteLog(c, l, m, EventNameRegistry.AppStarted));
     _exceptionStormHandler = new GuardianExceptionStormHandler(_iterationState, (c, l, m) => WriteLog(c, l, m, EventNameRegistry.IterationError));
@@ -82,7 +83,7 @@ public sealed partial class GuardianLoop
       consumePowerWake: ConsumePowerWake);
     _foregroundReader = ForegroundReaderFactoryOverrideForTests?.Invoke() ?? new ForegroundProgramReader();
     _logPipeline = new LogPipeline(
-      batch => _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, batch, _fallbackLogPath),
+      WriteConsumerBatch,
       _logOptions);
   }
 
@@ -138,7 +139,13 @@ public sealed partial class GuardianLoop
       // 归属契约：监听归 GuardianLoop 启动/停止/等待退出——循环退出（含取消与异常路径）
       // 必须卸载 hook 并等待监听线程退出，不得留下回调写入协调器状态。
       StopForegroundListener();
-      await _logPipeline.StopAsync();
+      // AppStopping confirms intent only. Admission must precede freezing the
+      // shutdown watermark; failure after that point stays in bounded memory.
+      EnqueueLog(LogLevel.Info, EngineLogEvents.Create(LogLevel.Info,
+        EventNameRegistry.AppStopping, "SmartGuard Engine 正在停止"));
+      if (!await _logPipeline.StopAsync())
+        CrashRingBuffer.Instance.Add(LogJsonlFormatter.FormatLine(EngineLogEvents.Create(
+          LogLevel.Error, EventNameRegistry.IterationError, "日志关闭未确认完成，可能有记录未写入")));
     }
   }
 
