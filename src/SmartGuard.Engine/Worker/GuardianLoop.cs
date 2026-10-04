@@ -32,6 +32,7 @@ public sealed partial class GuardianLoop
   private readonly LogBackpressureController _backpressure = new();
   private readonly GuardianCycleCoordinator _cycleCoordinator;
   private readonly TimeProvider _observationTime;
+  private readonly IReadOnlyList<string> _supplementalMaintenancePaths;
   private bool _powerCfgBrightnessSupported;
 
   public GuardianLoop(
@@ -40,7 +41,8 @@ public sealed partial class GuardianLoop
     string statusPath,
     string initMarkerPath,
     string fallbackLogPath)
-    : this(rootPath, configPath, statusPath, initMarkerPath, fallbackLogPath, true)
+    : this(rootPath, configPath, statusPath, initMarkerPath, fallbackLogPath, true,
+      supplementalMaintenancePaths: [fallbackLogPath, LogFallbackChain.EmergencyLogFile, CrashLogWriter.CrashLogFile, CrashRingBuffer.CrashRingLogFile])
   {
   }
 
@@ -51,10 +53,14 @@ public sealed partial class GuardianLoop
     string initMarkerPath,
     string fallbackLogPath,
     bool powerCfgBrightnessSupported,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IReadOnlyList<string>? supplementalMaintenancePaths = null)
   {
     _rootPath = rootPath;
     _observationTime = timeProvider ?? TimeProvider.System;
+    // Isolated internal harnesses default to their own startup path, so they
+    // never maintain the signed-in user's process-wide crash files.
+    _supplementalMaintenancePaths = supplementalMaintenancePaths ?? [fallbackLogPath];
     _configPath = configPath;
     _initMarkerPath = initMarkerPath;
     _fallbackLogPath = fallbackLogPath;

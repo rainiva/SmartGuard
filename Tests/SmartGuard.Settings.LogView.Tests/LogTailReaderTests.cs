@@ -338,7 +338,7 @@ public class LogTailReaderTests
   }
 
   [Fact]
-  public async Task Startup_fallback_merges_without_polluting_main_cursor()
+  public async Task Startup_fallback_uses_the_visible_chronological_page_boundaries()
   {
     var root = CreateRoot();
     var logPath = Path.Combine(root, "SmartGuard.log");
@@ -353,7 +353,7 @@ public class LogTailReaderTests
 
       page.Events.Should().HaveCount(2);
       page.Events.First().Message.Should().Contain("startup-only");
-      page.OlderCursor!.Source.Should().NotBe(LogSourceIdentity.FromFilePath(startup));
+      page.OlderCursor!.Source.Should().Be(LogSourceIdentity.FromFilePath(startup));
       page.NewerCursor!.Source.Should().NotBe(LogSourceIdentity.FromFilePath(startup));
     }
     finally

@@ -14,9 +14,9 @@ public static class LogFallbackChain
   public static bool Write(Func<bool> tryPrimary, string fallbackLogPath, string emergencyLine)
   {
     try { if (tryPrimary()) return true; } catch { /* 主层异常隔离，降级 */ }
-    try { if (SmartGuardLogWriter.TryAppendLine(fallbackLogPath, "[LOG-FALLBACK] " + emergencyLine)) return true; }
+    try { if (SmartGuardLogWriter.TryAppendSupplementalLines(fallbackLogPath, ["[LOG-FALLBACK] " + emergencyLine])) return true; }
     catch { /* 回退层异常隔离，降级 */ }
-    try { return SmartGuardLogWriter.TryAppendLine(EffectiveEmergencyLogFile, "[LOG-EMERGENCY] " + emergencyLine); }
+    try { return SmartGuardLogWriter.TryAppendSupplementalLines(EffectiveEmergencyLogFile, ["[LOG-EMERGENCY] " + emergencyLine], emergency: true); }
     catch { /* 应急层异常隔离，最终不再上抛 */ }
     return false;
   }
@@ -31,16 +31,17 @@ public static class LogFallbackChain
   public static LogBatchWriteResult WriteBatch(string fallbackLogPath,
     IReadOnlyList<LogEvent> events, bool primaryAttemptFailed)
   {
+    var selected = SupplementalLogPolicy.SelectBatch(events.Select(LogJsonlFormatter.FormatLine).ToArray());
     try
     {
-      if (LogStructuredSink.TryWriteBatch(fallbackLogPath, events, null))
-        return new(0, events.Count, 0, primaryAttemptFailed);
+      if (SmartGuardLogWriter.TryAppendSupplementalLines(fallbackLogPath, selected.Lines))
+        return new(0, selected.OriginalCount, events.Count - selected.OriginalCount, primaryAttemptFailed);
     }
     catch { /* Try the last existing sink, once for the whole batch. */ }
     try
     {
-      if (LogStructuredSink.TryWriteBatch(EffectiveEmergencyLogFile, events, null))
-        return new(0, events.Count, 0, primaryAttemptFailed);
+      if (SmartGuardLogWriter.TryAppendSupplementalLines(EffectiveEmergencyLogFile, selected.Lines, emergency: true))
+        return new(0, selected.OriginalCount, events.Count - selected.OriginalCount, primaryAttemptFailed);
     }
     catch { /* No confirmed destination; the consumer reports the loss. */ }
     return new(0, 0, events.Count, primaryAttemptFailed);

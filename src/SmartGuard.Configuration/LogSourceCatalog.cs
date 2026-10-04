@@ -2,15 +2,18 @@ namespace SmartGuard.Configuration;
 
 public sealed class LogSourceCatalog
 {
+  private readonly string? _startupActivePath;
   public LogSourceCatalog(
     string configuredLogPath,
     IReadOnlyList<LogSourceDescriptor> mainHistoryOldestFirst,
-    LogSourceDescriptor? startupFallback)
+    LogSourceDescriptor? startupFallback,
+    IReadOnlyList<LogSourceDescriptor>? startupHistoryOldestFirst = null)
   {
     ConfiguredLogPath = configuredLogPath;
     MainHistoryOldestFirst = mainHistoryOldestFirst;
     MainHistoryNewestFirst = mainHistoryOldestFirst.Reverse().ToArray();
-    StartupFallback = startupFallback;
+    _startupActivePath = startupFallback?.FilePath;
+    StartupHistoryOldestFirst = startupHistoryOldestFirst ?? (startupFallback is null ? [] : [startupFallback]);
   }
 
   public string ConfiguredLogPath { get; }
@@ -19,7 +22,28 @@ public sealed class LogSourceCatalog
 
   public IReadOnlyList<LogSourceDescriptor> MainHistoryNewestFirst { get; }
 
-  public LogSourceDescriptor? StartupFallback { get; }
+  public LogSourceDescriptor? StartupFallback
+    => StartupHistoryOldestFirst.FirstOrDefault(source => string.Equals(source.FilePath, _startupActivePath, StringComparison.OrdinalIgnoreCase));
+
+  public IReadOnlyList<LogSourceDescriptor> StartupHistoryOldestFirst { get; }
+
+  internal static IReadOnlyList<string> EnumerateSupplementalHistoryPathsNewestFirst(string path)
+  {
+    var paths = new List<string>();
+    if (File.Exists(path)) paths.Add(path);
+    try
+    {
+      var directory = Path.GetDirectoryName(path);
+      if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+        paths.AddRange(Directory.EnumerateFiles(directory, Path.GetFileName(path) + ".*.bak")
+          .Take(SupplementalLogPolicy.MaintenanceCandidateLimit)
+          .Where(candidate => SmartGuardLogWriter.IsSupplementalArchive(path, candidate, out _))
+          .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+          .Take(SupplementalLogPolicy.Retention.MaxArchiveFiles));
+    }
+    catch { /* Active source remains readable when archives cannot be listed. */ }
+    return paths;
+  }
 
   public static LogSourceCatalog Build(string configuredLogPath, string? startupFallbackPath)
   {
@@ -43,7 +67,10 @@ public sealed class LogSourceCatalog
         LogSourceKind.StartupFallback);
     }
 
-    return new LogSourceCatalog(configuredLogPath, oldestFirst, startup);
+    var startupHistory = string.IsNullOrWhiteSpace(startupFallbackPath) ? []
+      : EnumerateSupplementalHistoryPathsNewestFirst(startupFallbackPath).Reverse()
+        .Select(path => new LogSourceDescriptor(path, LogSourceIdentity.FromFilePath(path), LogSourceKind.StartupFallback)).ToArray();
+    return new LogSourceCatalog(configuredLogPath, oldestFirst, startup, startupHistory);
   }
 
   internal static IReadOnlyList<string> EnumerateMainHistoryPathsNewestFirst(string logPath)

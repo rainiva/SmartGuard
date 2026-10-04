@@ -7,14 +7,16 @@ public static class CrashLogWriter
 
   internal static string? CrashLogFileOverrideForTests;
 
-  public static void Write(string component, string? mainLogPath, Exception ex)
+  public static void Write(string component, string? mainLogPath, Exception ex, LogRetentionPolicy? mainRetention = null)
   {
     try
     {
       var line = $"[CRASH][{component}] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {ExceptionFormatter.Format(ex)}";
-      if (!string.IsNullOrWhiteSpace(mainLogPath))
-        SmartGuardLogWriter.TryAppendLine(mainLogPath!, line); // 主日志尽力写
-      SmartGuardLogWriter.TryAppendLine(EffectiveCrashLogFile, line); // 应急崩溃文件必写
+      // Unknown main budgets cannot authorize growth. Neither crash sink waits
+      // for a mutex, rotates history or retries a failed write.
+      if (!string.IsNullOrWhiteSpace(mainLogPath) && mainRetention is not null)
+        SmartGuardLogWriter.TryAppendCrashLine(mainLogPath!, line, mainRetention);
+      SmartGuardLogWriter.TryAppendSupplementalLines(EffectiveCrashLogFile, [line], emergency: true);
     }
     catch
     {

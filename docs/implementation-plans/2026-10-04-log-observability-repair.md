@@ -531,6 +531,8 @@ dotnet test Tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj --filte
 
 ### T6：约束 startup、emergency、crash 与 crash-ring（F7）
 
+实施状态：四类容量、非等待崩溃写入、独立 32 候选维护与 startup 活动/归档可见已落实。Configuration 446/446、Engine 327/327、最终 LogView 62/62、日志架构 61/61、Settings 13/13 通过。只保存两种当前分页边界，修复有界窗口跨源漏记录与截断首行重复。完整证据见[实施记录](2026-10-04-log-observability-repair-progress.md)，真实磁盘故障和整体性能仍归 T9。
+
 **接口：** `SupplementalLogPolicy` 提供 §4.5 的固定预算；所有追加仍由 SmartGuardLogWriter 承担。CrashLogWriter/EmergencySyncWriter 只负责生成内容和选择已登记路径，不直接拥有第二套追加实现。
 
 - [ ] RED：分别对四种文件跨越 1 MiB 边界，追加后活动文件不超预算，归档不超过 3 份；7 天清理只作用于自身合法归档名。

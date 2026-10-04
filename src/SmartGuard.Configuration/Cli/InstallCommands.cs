@@ -168,6 +168,6 @@ public static class InstallCommands
   private static void WriteStartupLog(string startupLog, string message)
   {
     var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
-    SmartGuardLogWriter.TryAppendLine(startupLog, line);
+    SmartGuardLogWriter.TryAppendSupplementalLines(startupLog, [line]);
   }
 }

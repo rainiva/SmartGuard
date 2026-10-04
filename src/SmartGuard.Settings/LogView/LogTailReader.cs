@@ -12,7 +12,7 @@ public sealed record LogFileSlice(long Length, string Text);
 
 public sealed record LogInitialView(long FileLength, string Text, bool IsTailTruncated);
 
-public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILogSnapshotPhysicalLineSource
+public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILogSnapshotPhysicalLineSource
 {
   public const int DefaultTargetEventCount = 200;
   public const int DefaultMaxBytes = 262_144;
@@ -47,7 +47,7 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
     LogReadScope scope,
     CancellationToken cancellationToken)
   {
-    foreach (var source in _catalog.MainHistoryOldestFirst)
+    foreach (var source in EnumerateCatalogSources(_catalog))
     {
       if (scope.Sources.Count > 0 && !scope.Sources.Contains(source.Identity))
         continue;
@@ -110,6 +110,8 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
 
   private LogEventPage ReadLatest(LogReadRequest request, CancellationToken cancellationToken)
   {
+    if (!string.IsNullOrWhiteSpace(_startupFallbackPath))
+      return ReadMergedHistory(request with { Direction = LogReadDirection.Latest }, cancellationToken);
     // Delay hooks live in ReadFromOffset/ReadRecentTail so one Latest flight
     // matches the lifetime-test expectation of ~1-2 physical reads, not an
     // extra bookkeeping hit at the entry point.
@@ -131,18 +133,20 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
     if (stoppedEarly)
       return LogEventPage.Empty;
 
-    var merged = MergeStartupFallback(mainCollected, targetCount, cancellationToken, out var startupOnlyOlder);
+    var merged = mainCollected;
     merged.Sort((a, b) => CompareEventsChronologically(a.Event, b.Event));
 
     if (merged.Count > targetCount)
       merged = merged.Skip(merged.Count - targetCount).ToList();
 
-    var hasOlder = hasMoreMain || startupOnlyOlder;
+    var hasOlder = hasMoreMain;
     return BuildPage(merged, hasOlder, false, mainCollected);
   }
 
   private LogEventPage ReadOlder(LogReadRequest request, CancellationToken cancellationToken)
   {
+    if (!string.IsNullOrWhiteSpace(_startupFallbackPath))
+      return ReadMergedHistory(request with { Direction = LogReadDirection.Older }, cancellationToken);
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 
@@ -175,6 +179,8 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
 
   private LogEventPage ReadNewer(LogReadRequest request, CancellationToken cancellationToken)
   {
+    if (!string.IsNullOrWhiteSpace(_startupFallbackPath))
+      return ReadMergedHistory(request with { Direction = LogReadDirection.Newer }, cancellationToken);
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
 
@@ -385,57 +391,6 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
     return startupEvent.Timestamp;
   }
 
-  private List<(LogEvent Event, LogPhysicalLine Line)> MergeStartupFallback(
-    IReadOnlyList<(LogEvent Event, LogPhysicalLine Line)> mainEvents,
-    int targetCount,
-    CancellationToken cancellationToken,
-    out bool startupOnlyOlder)
-  {
-    startupOnlyOlder = false;
-    var merged = mainEvents.ToList();
-    var startup = _catalog.StartupFallback;
-    if (startup is null)
-      return merged;
-
-    var startupEvents = new List<(LogEvent Event, LogPhysicalLine Line)>();
-    foreach (var line in LogUtf8LineScanner.ReadLinesForward(startup, 0, null, cancellationToken))
-    {
-      if (cancellationToken.IsCancellationRequested)
-        return merged;
-
-      if (!line.IsComplete)
-        break;
-
-      var decoded = LogEventDecoder.Decode(line);
-      var normalized = decoded with { Timestamp = ResolveStartupTimestamp(decoded) };
-      startupEvents.Add((normalized, line));
-    }
-
-    if (startupEvents.Count == 0)
-      return merged;
-
-    var mainIds = new HashSet<string>(merged.Select(e => e.Event.EventId), StringComparer.Ordinal);
-    var mainFirstTimestamp = merged.Count > 0 ? merged[0].Event.Timestamp : DateTimeOffset.MaxValue;
-    foreach (var startupEvent in startupEvents)
-    {
-      if (mainIds.Contains(startupEvent.Event.EventId))
-        continue;
-
-      var startupTimestamp = startupEvent.Event.Timestamp;
-      if (startupTimestamp >= mainFirstTimestamp)
-        continue;
-
-      merged.Add(startupEvent);
-      startupOnlyOlder = true;
-    }
-
-    merged.Sort((a, b) => CompareEventsChronologically(a.Event, b.Event));
-    if (merged.Count > targetCount)
-      merged = merged.Skip(merged.Count - targetCount).ToList();
-
-    return merged;
-  }
-
   private Dictionary<LogSourceIdentity, long> BuildEndBoundary(LogReadCursor cursor)
   {
     var boundaries = new Dictionary<LogSourceIdentity, long>();
@@ -508,7 +463,7 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
 
   private LogSourceDescriptor? FindSource(LogSourceIdentity identity)
     => _catalog.MainHistoryOldestFirst.FirstOrDefault(s => s.Identity == identity)
-       ?? (_catalog.StartupFallback?.Identity == identity ? _catalog.StartupFallback : null);
+       ?? _catalog.StartupHistoryOldestFirst.FirstOrDefault(s => s.Identity == identity);
 
   private bool HasMoreBefore(LogPhysicalLine line, LogSourceDescriptor source)
   {
@@ -588,8 +543,8 @@ public sealed class LogTailReader : ILogEventSource, ILogPhysicalLineSource, ILo
 
   private static IEnumerable<LogSourceDescriptor> EnumerateCatalogSources(LogSourceCatalog catalog)
   {
-    if (catalog.StartupFallback is not null)
-      yield return catalog.StartupFallback;
+    foreach (var startup in catalog.StartupHistoryOldestFirst)
+      yield return startup;
 
     foreach (var source in catalog.MainHistoryOldestFirst)
       yield return source;

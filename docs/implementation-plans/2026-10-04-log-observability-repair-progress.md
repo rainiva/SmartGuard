@@ -22,7 +22,7 @@
 | T3 日志健康 | 实现与目标验证通过 | Engine 40/40；Configuration 42/42；Tray 全项目 87/87；Settings 56/56；日志架构 55/55 |
 | T4 规则观测 | 实现与目标/全项目回归通过 | 目标 116/116；Engine 全项目 308/308；日志架构 57/57；三轮 128 项轻路径比较 |
 | T5 停工恢复与心跳 | 实现与全项目回归通过 | Engine 327/327；Configuration 435/435；日志架构 60/60；读取依赖提前于 T4 |
-| T6 附加文件与回退可见 | 待执行 | — |
+| T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
 | T7 诊断容错 | 待执行 | — |
 | T8 导出异步所有权 | 待执行 | — |
 | T9 集成与验收 | 待执行 | — |
@@ -81,3 +81,11 @@
 - 中间 `t5-core-green.trx` 19/2/0 发现采用摘要的相同数量文案被通用文本去重抑制；这些已有语义确认的三个状态事件改由 Tracker 独占去重，不经过文本聚合。timestamp 测试改按明确事件取行，仍精确核对原 timestamp；不把新增 ConfigReloaded 当作失败。`t5-engine-regression.trx` 323/2/0 是两个旧结构化夹具没有有效配置；为其建立真实已提交配置，保留原结构化字段/handled/观测时间断言，首次无效回退另由新测试证明。
 - GREEN（均 exit 0）：`t5-target-green.trx` 65/0/0；`t5-reasons-green.trx` 15/0/0；`t5-load-io-green.trx` 3/0/0；最终 `t5-engine-complete.trx` 327/0/0、`t5-configuration-regression.trx` 435/0/0、`t5-architecture-final.trx` 60/0/0。受控独占文件锁确认 IO 类别不复用缓存；真实 ACL、真实首次启动留给桌面验收。
 - 自审：快照四个字段、值类型、短锁且无旧 GuardConfig；主不可用直接回退，主失败尝试计数不增加。有效规则读取按缓存指纹识别同数量更换，主题不刷摘要，恢复只一次；所有事件仍走唯一 WriteLog/EnqueueLog。原因回归覆盖身份未知/空名单/非法/未命中/暂停/人工有效及到期/生命周期阻止/最终失败/探测失败；心跳不推策略、不额外探测，失败/未知不声称成功，拒绝不推进既有心跳窗口。完整观测与配置摘要最多各既有周期尝试一次，不建立历史或重试任务。
+
+## T6 证据与自审
+
+- `t6-storage-red.trx` 0/7/0、exit 1，实际确认四类活动越界、整批假确认、环形字节无界、应急绕过互斥；初次断言错误输出过大，证据保留，随后断言只输出字节计数。`t6-crash-budget-red.trx` 0/1/0 复现未知主日志预算仍追加；`t6-startup-history-red.trx` 0/2/0 复现较新回退不可见、回退页无游标。`t6-architecture-red.trx` / `t6-maintenance-red.trx` 是缺失统一入口的契约 RED。
+- `t6-tail-boundary-red.trx` 0/1/0、exit 1，真实输出完整尾行之外的两份截断中文首行；修复共享 scanner，不把片段冒充事件。`t6-history-window-red.trx` 首次单源场景实际 PASS；扩大为主/回退交错后 `t6-history-window-mixed-red.trx` 0/1/0，50 条仅返回 40，保存两份当前边界/源偏移后恢复连续分页。中间 fresh catalog 使小文件追加后的 prefix identity 改变，`t6-history-window-green.trx` 20/1/0；恢复既有 reader 固定身份生命周期，不新增 identity 算法，之后 `t6-history-window-final.trx` 21/0/0。编译错误不计行为 RED。
+- GREEN（exit 0）：`t6-storage-green.trx` 20/0/0、`t6-maintenance-green.trx` 9/0/0、`t6-architecture-green.trx` 8/0/0；首次全项目 `t6-configuration-regression.trx` 446/0/0、`t6-engine-regression.trx` 327/0/0、`t6-logview-regression.trx` 61/0/0。新增分页及其最终回归将另记；不复用旧 TRX 声称新代码通过。
+- 自审：附加目录稳定预算 4MiB、替换瞬时最多多 1MiB；无法修改或候选到顶报告未完成。日常巨大尾读不超过 1MiB、只留完整 UTF-8 行；紧急只零等待互斥及固定文件操作，无扫描/轮转/递归。统计不读取文件、不把截断 marker 算原记录；原 eventId 跨回退保持。正式 Engine 公共构造维护四种权威路径，内部隔离 harness 默认仅本地 startup，避免维护用户真实 crash 文件。主来源与回退来源集合仍独立，普通阅读未纳入 emergency/crash；查询快照复用 catalog。真实跨进程磁盘故障、总体性能与桌面验收尚待 T9。
+- 最终阶段回归（exit 0）：`t6-logview-final.trx` 62/0/0、`t6-architecture-final.trx` 61/0/0、`t6-settings-final.trx` 13/0/0（含既有 LogWorkbenchPerformance）；不同换行使用真实行末偏移，每源最多一次补充行末读取，不按事件重复打开文件。StartupFallback 改为活动源的计算投影；阶段 UTF-8/无 BOM 与 diff 检查完成后提交。

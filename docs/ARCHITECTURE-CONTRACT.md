@@ -1,5 +1,7 @@
 # SmartGuard 架构契约 — 单真源与单入口
 
+**LOG-INV-SUPPLEMENTAL-BOUNDS（2026-10-04）：** SupplementalLogPolicy 固定附加日志活动 1MiB、3 归档、7 天、单批 128KiB，正常维护完成每类 4MiB。SmartGuardLogWriter.TryAppendSupplementalLines 共用命名互斥/UTF-8 无 BOM；日常在追加前按日期/字节轮转，只扫描至多 32 候选，合法自身归档才清理。独立 MaintainSupplementalLog 返回 Succeeded/Completed/ExaminedFiles；巨大旧文件只读 1MiB 内尾部完整行，不能转移巨大归档伪称有界。消费首批及既有 5 分钟健康批次触发，未完成发健康事件；诊断准备复用同入口。紧急模式零等待、无重试、无扫描，在容量不足时原子替换为标记+最新批次，失败保留旧文件。Crash 主日志只在初始化上下文已有预算且无须轮转时尽力追加；全局/桌面异常回调不读配置。截断摘要不算原事件，fallback 按已确认选择计数，剩余 Lost；环形默认 500 条，单条 4KiB、总计 2MiB。LogSourceCatalog.StartupHistoryOldestFirst 独立最多活动+3归档，StartupFallback 是活动投影，不混入 MainHistory。既有 LogTailReader latest/newer/older/snapshot 可见更新回退、按 eventId 去重；顺序分页只保存两份当前边界和各源偏移，合用请求字节预算，不保存页历史；源身份/轮转仍归已有 catalog/snapshot 生命周期。共享 UTF-8 尾扫不能将切开的首行标为完整或重复产出。门禁：LoggingRepairArchitectureTests、SupplementalLogRetentionTests、StartupFallbackHistoryTests、LogUtf8TailBoundaryTests。
+
 **CFG-INV-LOG-AFTER-COMMIT（2026-10-04）：** 暂停与设置保存仍分别经 `ConfigMutationService` / `SettingsSaveCoordinator` 汇入 `GuardConfigRepository.Save`。暂停变更使用配置副本；提交成功后才经 `AppendInfoLog` 发 `ConfigMutationLogged`，该事件只表示已保存，不能表示 Engine 已采用。提交失败使读取缓存失效，经同一 Repository 的 `AppendMutationFailureLog` 尽力发已登记 `ConfigMutationFailed`（Policy、Warn、固定 `failureKind=save-failed`），原异常上抛。日志的准备/路径/落盘/回退全部尽力隔离，不能逆转提交结果。前台规则开关或规范化名单内容变化成功保存后只记数量/开关摘要，无普通日志完整程序路径；无变化不重复记录。AutoStart 同步保持既有 Owner 和语义，提交后失败明确反馈“配置已保存，但开机自启同步失败”，不得记录配置未提交或回滚。门禁：`LoggingRepairArchitectureTests` 与保存/缓存行为测试。
 
 **状态：** 生效  
@@ -120,7 +122,7 @@
 | `ExceptionFormatter` | `SmartGuard.Configuration` | 异常完整链格式化（类型/消息/StackTrace/InnerException/AggregateException 展开）唯一入口 |
 | `SmartGuardLogWriter` | `SmartGuard.Configuration` | 统一日志追加：命名 Mutex + FileShare 重试 + 永不抛出 |
 | `GlobalExceptionHandlers` | `SmartGuard.Configuration` | 注册 AppDomain/TaskScheduler 全局未处理异常处理器 |
-| `CrashLogWriter` | `SmartGuard.Configuration` | 崩溃应急同步写入（主日志尽力 + `%TEMP%\SmartGuard\crash.log` 必写） |
+| `CrashLogWriter` | `SmartGuard.Configuration` | 崩溃应急同步尽力写入：主日志仅在已有预算内非等待追加；独立 `%TEMP%\SmartGuard\crash.log` 受固定预算约束，失败不再抛出 |
 | `LogFallbackChain` | `SmartGuard.Configuration` | 日志三层降级链（主日志 → startup 回退 → `%TEMP%\SmartGuard\emergency.log`），每层异常隔离 |
 | `LogLevelFilter` | `SmartGuard.Engine.Infrastructure` | 日志级别统一过滤入口：`ShouldWrite`（Heart 恒放行）+ `ParseMinimum`（大小写不敏感，非法回退 Info）；配置项 `GuardConfig.LogMinimumLevel` |
 | `LogPipeline` | `SmartGuard.Configuration` | 异步日志管线：有界双优先级队列 + 批量出队（High 先）+ 诊断计数；Slice 3 起含单写者消费线程与生命周期 |

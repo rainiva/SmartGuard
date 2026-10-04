@@ -7,21 +7,5 @@ namespace SmartGuard.Configuration;
 public sealed class EmergencySyncWriter
 {
   public static bool TryWrite(string path, IReadOnlyList<string> lines)
-  {
-    if (lines.Count == 0) return true;
-    try
-    {
-      var dir = Path.GetDirectoryName(path);
-      if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-      using var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-      using var sw = new StreamWriter(fs, new System.Text.UTF8Encoding(false));
-      foreach (var line in lines)
-        sw.WriteLine(line);
-      return true;
-    }
-    catch
-    {
-      return false; // 应急写入失败绝不上抛
-    }
-  }
+    => SmartGuardLogWriter.TryAppendSupplementalLines(path, lines, emergency: true);
 }

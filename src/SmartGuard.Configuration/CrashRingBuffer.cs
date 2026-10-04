@@ -17,6 +17,7 @@ public sealed class CrashRingBuffer
   private readonly int _capacity;
   private int _head;   // 下一个写入位置
   private int _count;  // 当前有效条目数
+  private int _totalBytes;
   private readonly object _lock = new();
 
   public CrashRingBuffer(int capacity = 500)
@@ -29,11 +30,21 @@ public sealed class CrashRingBuffer
 
   public void Add(string line)
   {
+    line = SupplementalLogPolicy.BoundRingLine(line);
+    var bytes = System.Text.Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length;
     lock (_lock)
     {
+      while (_count > 0 && (_count == _capacity || _totalBytes + bytes > SupplementalLogPolicy.RingTotalMaxBytes))
+      {
+        var oldest = (_head - _count + _capacity) % _capacity;
+        _totalBytes -= System.Text.Encoding.UTF8.GetByteCount(_slots[oldest]) + Environment.NewLine.Length;
+        _slots[oldest] = string.Empty;
+        _count--;
+      }
       _slots[_head] = line;
       _head = (_head + 1) % _capacity;
-      if (_count < _capacity) _count++;
+      _count++;
+      _totalBytes += bytes;
     }
   }
 

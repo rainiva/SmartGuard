@@ -1,4 +1,4 @@
-﻿using SmartGuard.Configuration;
+using SmartGuard.Configuration;
 using SmartGuard.Configuration.Cli;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Cli;
@@ -38,7 +38,7 @@ public static class Program
     if (!guard.IsOwner)
     {
       Console.WriteLine("SmartGuard 核心服务已在后台运行。");
-      SmartGuardLogWriter.TryAppendLine(fallbackLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 核心服务已在运行");
+      SmartGuardLogWriter.TryAppendSupplementalLines(fallbackLog, [$"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 核心服务已在运行"]);
       return 0;
     }
 

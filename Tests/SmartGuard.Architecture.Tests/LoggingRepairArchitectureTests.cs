@@ -6,6 +6,17 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Supplemental_budget_and_emergency_append_share_the_canonical_writer()
+  {
+    typeof(SmartGuardLogWriter).GetMethod("TryAppendSupplementalLines").Should().NotBeNull();
+    typeof(SmartGuardLogWriter).Assembly.GetType("SmartGuard.Configuration.SupplementalLogPolicy").Should().NotBeNull();
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/EmergencySyncWriter.cs")
+      .Should().NotContain("new FileStream").And.Contain("SmartGuardLogWriter.TryAppendSupplementalLines");
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/GlobalExceptionHandlers.cs")
+      .Should().NotContain("new GuardConfigRepository", "crash callbacks consume a startup snapshot only");
+  }
+
+  [Fact]
   public void Unavailable_configuration_retains_only_a_finite_logging_snapshot()
   {
     var snapshot = typeof(SmartGuard.Engine.Worker.GuardianLoop).GetNestedType("LogSettingsSnapshot", System.Reflection.BindingFlags.NonPublic);

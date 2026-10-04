@@ -100,6 +100,12 @@ public static class LogUtf8LineScanner
 
     var scanStart = Math.Max(0, endOffsetExclusive - Math.Max(maxBytes, 1));
     scanStart = AlignUtf8Boundary(stream, scanStart);
+    var startsAtLineBoundary = scanStart == 0;
+    if (scanStart > 0)
+    {
+      stream.Seek(scanStart - 1, SeekOrigin.Begin);
+      startsAtLineBoundary = stream.ReadByte() == (byte)'\n';
+    }
     stream.Seek(scanStart, SeekOrigin.Begin);
 
     var bytesToRead = endOffsetExclusive - scanStart;
@@ -133,6 +139,9 @@ public static class LogUtf8LineScanner
     for (var i = lineEnds.Count - 1; i >= 0; i--)
     {
       cancellationToken.ThrowIfCancellationRequested();
+      // A UTF-8 boundary is not necessarily a physical line boundary. Never
+      // decode a cut prefix as a complete event or publish it a second time.
+      if (i == 0 && !startsAtLineBoundary) continue;
 
       var lineEnd = lineEnds[i];
       var prevNewline = i > 0 ? lineEnds[i - 1] + 1 : 0;
@@ -152,20 +161,6 @@ public static class LogUtf8LineScanner
       yield return new LogPhysicalLine(source.Identity, lineOffset, text, true, ordinal);
     }
 
-    if (scanStart > 0 && lineEnds.Count > 0 && lineEnds[0] > 0 && lineEnds[0] < relativeEnd)
-    {
-      var firstLineBytes = new byte[lineEnds[0]];
-      Array.Copy(window, 0, firstLineBytes, 0, lineEnds[0]);
-      if (firstLineBytes.Length > 0 && firstLineBytes[^1] == (byte)'\r')
-        firstLineBytes = firstLineBytes[..^1];
-
-      var text = DecodeUtf8(firstLineBytes);
-      if (!string.IsNullOrEmpty(text))
-      {
-        var ordinal = NextOrdinal(ordinalTracker, scanStart, text);
-        yield return new LogPhysicalLine(source.Identity, scanStart, text, true, ordinal);
-      }
-    }
   }
 
   public static long GetLineEndOffset(string path, long lineStartOffset)

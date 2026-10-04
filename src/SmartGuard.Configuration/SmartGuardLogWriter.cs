@@ -3,7 +3,7 @@ using System.Text;
 
 namespace SmartGuard.Configuration;
 
-public static class SmartGuardLogWriter
+public static partial class SmartGuardLogWriter
 {
   // 统一日志追加入口：命名 Mutex（最佳努力）+ FileShare 追加 + 有限重试；永不抛出。
   public static bool TryAppendLine(string path, string line)

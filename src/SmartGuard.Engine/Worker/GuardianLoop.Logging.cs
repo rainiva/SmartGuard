@@ -11,6 +11,7 @@ public sealed partial class GuardianLoop
     LogLevel MinimumLevel, string? MainPath, LogRetentionPolicy? MainRetention, string StartupPath);
   private readonly object _logSettingsGate = new();
   private LogSettingsSnapshot _lastLogSettings;
+  private long? _lastSupplementalMaintenance;
 
   private LogSettingsSnapshot CaptureLogSettings(GuardConfig? config)
   {
@@ -118,6 +119,7 @@ public sealed partial class GuardianLoop
   {
     var before = _consumerRecovery.State;
     var settings = CaptureLogSettings(LoadConfig());
+    MaintainSupplementalLogs();
     var result = _consumerRecovery.ExecuteWithRecovery(batch => WriteBatchToDisk(batch, settings), events, settings.StartupPath,
       primaryAvailable: settings.MainPath is not null && settings.MainRetention is not null);
     var after = _consumerRecovery.State;
@@ -144,6 +146,28 @@ public sealed partial class GuardianLoop
       }
     }
     return result;
+  }
+
+  private void MaintainSupplementalLogs()
+  {
+    var now = _observationTime.GetTimestamp();
+    if (_lastSupplementalMaintenance is long previous
+        && _observationTime.GetElapsedTime(previous, now) < TimeSpan.FromMinutes(5)) return;
+    _lastSupplementalMaintenance = now;
+    // The existing health timer submits a batch every five minutes, so this
+    // remains single-consumer work even when no new crash is written.
+    foreach (var path in _supplementalMaintenancePaths.Take(4))
+    {
+      var maintenance = SmartGuardLogWriter.MaintainSupplementalLog(path);
+      if (!maintenance.Completed)
+        EnqueueLog(LogLevel.Warn, EngineLogEvents.Create(LogLevel.Warn, EventNameRegistry.PipelineHealthSampled,
+          "附加日志维护未完成", properties: new Dictionary<string, JsonElement>
+          {
+            ["sourceKind"] = JsonSerializer.SerializeToElement(Path.GetFileName(path)),
+            ["maintenanceSucceeded"] = JsonSerializer.SerializeToElement(maintenance.Succeeded),
+            ["examinedFiles"] = JsonSerializer.SerializeToElement(maintenance.ExaminedFiles),
+          }));
+    }
   }
 
   private void TryPublishLogHealth()
