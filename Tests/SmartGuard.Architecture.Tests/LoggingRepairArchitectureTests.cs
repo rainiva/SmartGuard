@@ -6,6 +6,15 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Diagnostic_ui_has_one_window_session_and_no_synchronous_wait()
+  {
+    File.Exists(Path.Combine(SourceScanHelper.RepoRoot, "src/SmartGuard.Settings/SettingsDiagnosticExportSession.cs")).Should().BeTrue();
+    foreach (var file in new[] { "SettingsDiagnosticExportCoordinator", "SettingsLogExportCoordinator" })
+      SourceScanHelper.ReadSource("src/SmartGuard.Settings/" + file + ".cs").Should().NotContain("GetAwaiter().GetResult");
+    SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.cs").Should().Contain("GetDiagnosticPaths()").And.NotContain("GetDiagnosticEventSource()");
+  }
+
+  [Fact]
   public void Diagnostic_evidence_uses_bounded_tail_reader_and_atomic_publication()
   {
     typeof(DiagnosticBundleRequest).GetProperty("IncludeCrashRingLog").Should().NotBeNull();

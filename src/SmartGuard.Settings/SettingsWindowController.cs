@@ -14,6 +14,7 @@ public sealed class SettingsWindowController
   private readonly SettingsNavigationShell _navigationShell;
   private readonly SettingsLogPageHost _logPageHost;
   private readonly ToastNotificationService _toastService;
+  private SettingsDiagnosticExportSession? _diagnosticSession;
 
   private string? _initialPage;
   private bool _disposed;
@@ -115,12 +116,13 @@ public sealed class SettingsWindowController
       Require<CheckBox>(window, "tglNotifyExternal"),
       Require<CheckBox>(window, "tglAutoStart"));
 
+    var diagnosticSession = new SettingsDiagnosticExportSession();
     var logPageHost = new SettingsLogPageHost(
       window,
       root,
       toastService,
       SmartGuardPaths.ResolveLogFile(config, root),
-      SmartGuardPaths.StartupLogFile(root));
+      SmartGuardPaths.StartupLogFile(root), diagnosticSession);
 
     var themeState = new SettingsThemeState
     {
@@ -179,9 +181,27 @@ public sealed class SettingsWindowController
       root,
       SettingsAboutCoordinator.GetDisplayVersion,
       (message, isError) => toastService.Show(message, isError),
-      () => logPageHost.GetDiagnosticEventSource(),
-      () => logPageHost.GetDiagnosticCatalogSnapshot());
+      logPageHost.GetDiagnosticPaths,
+      diagnosticSession,
+      isAlive: () => !controller._disposed && window.FindName("navList") is ListBox { SelectedIndex: 5 });
+    controller._diagnosticSession = diagnosticSession;
     diagnosticExportCoordinator.WireAboutPage(window);
+    diagnosticSession.StateChanged += () =>
+    {
+      if (controller._disposed) return;
+      var busy = diagnosticSession.IsRunning;
+      if (window.FindName("btnExportDiagnostic") is Button aboutExport) aboutExport.IsEnabled = !busy;
+      if (window.FindName("btnLogDiagnostic") is Button logExport) logExport.IsEnabled = !busy;
+      foreach (var name in new[] { "btnCancelDiagnostic", "btnLogCancelDiagnostic", "lblDiagnosticProgress", "lblLogDiagnosticProgress" })
+        if (window.FindName(name) is UIElement element) element.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+    };
+    foreach (var name in new[] { "btnCancelDiagnostic", "btnLogCancelDiagnostic" })
+      if (window.FindName(name) is Button cancel) cancel.Click += (_, _) => diagnosticSession.Cancel();
+    if (window.FindName("navList") is ListBox diagnosticNavigation)
+      diagnosticNavigation.SelectionChanged += (_, _) =>
+      {
+        if (diagnosticNavigation.SelectedIndex != 5) diagnosticSession.Cancel(DiagnosticExportOrigin.About);
+      };
 
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
@@ -266,6 +286,7 @@ public sealed class SettingsWindowController
       return;
 
     _disposed = true;
+    _diagnosticSession?.Dispose();
     _policyCoordinator.Dispose();
     _logPageHost.Dispose();
     _navigationShell.Dispose();

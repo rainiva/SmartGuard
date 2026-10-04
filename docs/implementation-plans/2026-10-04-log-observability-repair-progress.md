@@ -24,12 +24,17 @@
 | T5 停工恢复与心跳 | 实现与全项目回归通过 | Engine 327/327；Configuration 435/435；日志架构 60/60；读取依赖提前于 T4 |
 | T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
 | T7 诊断容错 | 实现与阶段回归通过 | Configuration 455/455；补充诊断回归 34/34；架构 30/30 |
-| T8 导出异步所有权 | 待执行 | — |
+| T8 导出异步所有权 | 实现与目标回归通过 | 相关 WPF/取消/导航/可访问性 30 项；架构 10 项通过 |
 | T9 集成与验收 | 待执行 | — |
 
 真实桌面、规则轻路径/导出性能、Soak、回滚与全量门禁尚未执行，不能据此认定修复完成。
 
-## T0 / T1 证据
+## T8 证据与自审
+
+- `t8-ui-red` 0/1/0、exit 1：可控 300ms exporter 使原调用长期占用 Dispatcher；`t8-architecture-red` 为缺少窗口 session 的契约 RED。编译错误不计行为 RED。
+- 修复后 `t8-core-green` 3/0/0；`t8-lifetime-final` 30/0/0（exit 0），覆盖两个实际 coordinator 交错、取消保持 busy、来源匹配、其他窗口隔离、关闭后忽略结果、About 不初始化日志页、独立 reader 在后台构建；保留既有导航/生命周期/可访问性回归。新增 session 检查属于契约落地后的回归，不冒称旧实现已复现。
+- `t8-architecture-green` 10/0/0、exit 0。UI 显示短状态与取消按钮，没有新 Timer。文件对话框仍在 UI，固定路径准备/压缩在工作线程；取消在 finally 后释放资源，不阻塞窗口关闭。
+- 核对 [WPF 官方线程模型](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/threading-model)，采用 await Task.Run 与 UI continuation；测试宿主的 headless WPF 证据不等于可见桌面/DPI/焦点验收。
 
 ## T7 证据与自审
 
@@ -40,6 +45,8 @@
 - 补充提交竞态/锁定目标/实际 hash/附加 JSONL 脱敏回归 `t7-final-regression` 34/0/0，exit 0。读量不包括后续独立维护的最大 1MiB 遗留修复，两段成本分别有界。
 - 架构原检查将 partial 文件数当 Owner 数，且绑定私有 AddJsonlLogEntry 方法名；保留唯一目录、命名空间、规范主文件、partial 声明和正式 formatter/ZIP 写入边界，最终 `t7-architecture-green` 30/0/0，exit 0。没有新增第二套 exporter/reader。
 - 自动化不覆盖真实 ACL、磁盘故障、真实 UI 或长时间运行，这些证据留在 T9。
+
+## T0 / T1 证据
 
 - T0 命令为原计划 T0 的两个 `dotnet test` 过滤器，添加 `--no-restore`、TRX logger 与上述独立结果目录；退出码均 0：`t0-configuration-baseline.trx`（45 passed / 0 failed / 0 skipped）、`t0-engine-baseline.trx`（27 / 0 / 0）。既有编译警告 CS1717/CS8604/xUnit1031 未由本轮引入，不把输出称为无警告。
 - 审计工具沙箱构建失败无错误诊断，既有二进制运行被沙箱拒绝隔离 status 的 File.Replace；重新正常构建当前源码（0 warning / 0 error，exit 0）并在沙箱外运行同一隔离探针，exit 0。新证据为 `run-3d2e76927e0b4fb4a9170023cd4659dc/evidence.json`，13 个场景。该工具不操作真实电源计划或任务。

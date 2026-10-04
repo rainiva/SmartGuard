@@ -28,6 +28,9 @@ internal sealed class SettingsLogExportCoordinator
   private readonly Func<ILogEventSource?> _getEventSource;
   private readonly Func<LogSortDirection> _getSortDirection;
   private readonly Func<int> _getPageSize;
+  private readonly SettingsDiagnosticExportSession _diagnosticSession;
+  private readonly Func<bool> _isAlive;
+  private readonly Func<DiagnosticBundleRequest, CancellationToken, Task> _exportDiagnostic;
 
   internal SettingsLogExportCoordinator(
     Window window,
@@ -43,11 +46,14 @@ internal sealed class SettingsLogExportCoordinator
     Func<LogCorrelationCoordinator> getCorrelationCoordinator,
     string? logPath,
     string? fallbackLogPath,
+    SettingsDiagnosticExportSession diagnosticSession,
     Func<LogTablePresenter?>? getTablePresenter = null,
     Func<LogQueryPageIndex?>? getPageIndex = null,
     Func<ILogEventSource?>? getEventSource = null,
     Func<LogSortDirection>? getSortDirection = null,
-    Func<int>? getPageSize = null)
+    Func<int>? getPageSize = null,
+    Func<bool>? isAlive = null,
+    Func<DiagnosticBundleRequest, CancellationToken, Task>? exportDiagnostic = null)
   {
     _window = window;
     _root = root;
@@ -67,6 +73,9 @@ internal sealed class SettingsLogExportCoordinator
     _getEventSource = getEventSource ?? (() => null);
     _getSortDirection = getSortDirection ?? (() => LogSortDirection.NewestFirst);
     _getPageSize = getPageSize ?? (() => 20);
+    _diagnosticSession = diagnosticSession;
+    _isAlive = isAlive ?? (() => true);
+    _exportDiagnostic = exportDiagnostic ?? ((request, token) => DiagnosticBundleExporter.ExportAsync(request, cancellationToken: token));
   }
 
   internal void CopyVisible()
@@ -170,7 +179,7 @@ internal sealed class SettingsLogExportCoordinator
     }
   }
 
-  internal void ExportDiagnosticBundle(DiagnosticBundleScope scope)
+  internal async Task ExportDiagnosticBundle(DiagnosticBundleScope scope)
   {
     if (_isRefreshInFlight())
     {
@@ -190,8 +199,19 @@ internal sealed class SettingsLogExportCoordinator
       _getRangeStartTextBox(),
       _getRangeEndTextBox());
 
-    var request = BuildDiagnosticRequest(scope, controller);
-    SettingsLogExportActions.ExportDiagnosticBundle(_window, _toastService, request, ExportDiagnosticToPath);
+    try
+    {
+      await _diagnosticSession.RunAsync(DiagnosticExportOrigin.Logs, async token =>
+      {
+        var request = BuildDiagnosticRequest(scope, controller);
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        { Filter = "ZIP 压缩文件 (*.zip)|*.zip", FileName = $"SmartGuard-diagnostic-{DateTime.Now:yyyyMMdd-HHmmss}.zip", DefaultExt = ".zip" };
+        if (dialog.ShowDialog(_window) != true) return;
+        await ExportDiagnosticWorker(dialog.FileName, request with { OverwriteExisting = true }, token);
+      });
+    }
+    catch (OperationCanceledException) { if (CanApplyDiagnosticResult) _toastService.Show("导出已取消", false); }
+    catch (Exception ex) { if (CanApplyDiagnosticResult) _toastService.Show($"导出诊断包失败：{ex.Message}", true); }
   }
 
   internal void ExportToPath(string destinationPath)
@@ -201,17 +221,35 @@ internal sealed class SettingsLogExportCoordinator
       SettingsLogExportActions.ExportToPath(snapshot, destinationPath, _toastService);
   }
 
-  internal void ExportDiagnosticToPath(string destinationPath, DiagnosticBundleRequest request)
+  internal async Task ExportDiagnosticToPath(string destinationPath, DiagnosticBundleRequest request)
   {
     try
     {
-      Task.Run(() => DiagnosticBundleExporter.ExportAsync(request with { DestinationZipPath = destinationPath })).GetAwaiter().GetResult();
-      _toastService.Show("诊断包已保存", isError: false);
+      await _diagnosticSession.RunAsync(DiagnosticExportOrigin.Logs, token => ExportDiagnosticWorker(destinationPath, request, token));
     }
+    catch (OperationCanceledException) { if (CanApplyDiagnosticResult) _toastService.Show("导出已取消", false); }
     catch (Exception ex)
     {
-      _toastService.Show($"导出诊断包失败：{ex.Message}", isError: true);
+      if (CanApplyDiagnosticResult) _toastService.Show($"导出诊断包失败：{ex.Message}", isError: true);
     }
+  }
+
+  private bool CanApplyDiagnosticResult => _diagnosticSession.IsAlive && _isAlive();
+
+  private async Task ExportDiagnosticWorker(string destination, DiagnosticBundleRequest request, CancellationToken token)
+  {
+    // Freeze the bounded UI window before scheduling. The reader used by
+    // refresh has mutable scan state and must never be shared with this flight.
+    var recent = request.RecentWindowEvents?.ToArray();
+    var logPath = _logPath ?? SmartGuardPaths.DefaultLogFile(_root);
+    var startupPath = _fallbackLogPath ?? SmartGuardPaths.StartupLogFile(_root);
+    await Task.Run(async () =>
+    {
+      token.ThrowIfCancellationRequested();
+      var source = new LogTailReader(logPath, startupPath);
+      await _exportDiagnostic(request with { DestinationZipPath = destination, EventSource = source, CatalogSnapshot = source.Catalog, RecentWindowEvents = recent }, token);
+    }, token);
+    if (CanApplyDiagnosticResult) _toastService.Show("诊断包已保存", false);
   }
 
   internal void OpenFolder()
@@ -249,7 +287,7 @@ internal sealed class SettingsLogExportCoordinator
       FilterExpression = filterExpression,
       OperationKey = operationKey,
       RecentWindowEvents = effectiveScope == DiagnosticBundleScope.RecentWindow
-        ? controller.WindowEventsForDiagnostics
+        ? controller.WindowEventsForDiagnostics.ToArray()
         : null,
       CatalogSnapshot = controller.CatalogSnapshotForDiagnostics,
       IncludeStartupLog = true,

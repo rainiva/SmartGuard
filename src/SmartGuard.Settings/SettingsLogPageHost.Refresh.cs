@@ -119,11 +119,16 @@ internal sealed partial class SettingsLogPageHost
       () => _correlationCoordinator,
       _logPath,
       _fallbackLogPath,
+      _diagnosticSession,
       () => _logTablePresenter,
       () => _logPaginationCoordinator.CurrentIndex,
       () => _logController?.EventSourceForCorrelation,
       () => _logPaginationCoordinator.SortDirection,
-      () => _logPaginationCoordinator.State.PageSize);
+      () => _logPaginationCoordinator.State.PageSize,
+      () => !_disposed && _logPageActive);
+
+    if (_window.FindName("btnLogDiagnostic") is System.Windows.Controls.Button diagnosticButton)
+      diagnosticButton.Click += async (_, _) => await _logExportCoordinator.ExportDiagnosticBundle(DiagnosticBundleScope.CurrentQuery);
 
     SettingsLogPageHostWiring.WireToolbarButtons(
       _window,

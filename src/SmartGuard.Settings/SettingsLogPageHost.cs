@@ -16,6 +16,8 @@ internal sealed partial class SettingsLogPageHost
   private readonly SettingsLogSearchCoordinator _searchCoordinator;
   private readonly LogViewportController _logViewport;
   private readonly SettingsLogRefreshPipeline _refreshPipeline;
+  private readonly SettingsDiagnosticExportSession _diagnosticSession;
+  private readonly bool _ownsDiagnosticSession;
   private LogViewController? _logController;
   private readonly LogTablePresenter _logTablePresenter = new();
   private System.Windows.Threading.DispatcherTimer? _logTimer;
@@ -61,13 +63,16 @@ internal sealed partial class SettingsLogPageHost
     string root,
     ToastNotificationService toastService,
     string logPath,
-    string? fallbackLogPath)
+    string? fallbackLogPath,
+    SettingsDiagnosticExportSession? diagnosticSession = null)
   {
     _window = window;
     _root = root;
     _toastService = toastService;
     _logPath = logPath;
     _fallbackLogPath = fallbackLogPath;
+    _ownsDiagnosticSession = diagnosticSession is null;
+    _diagnosticSession = diagnosticSession ?? new SettingsDiagnosticExportSession();
     _searchCoordinator = new SettingsLogSearchCoordinator(window, () => OnFilterRefresh());
     _logViewport = new LogViewportController(
       window,
@@ -134,6 +139,7 @@ internal sealed partial class SettingsLogPageHost
 
     if (!active)
     {
+      _diagnosticSession.Cancel(DiagnosticExportOrigin.Logs);
       _logPageActive = false;
       _logTimer?.Stop();
       _logViewport.ClearPendingInitialTailScroll();
@@ -213,6 +219,8 @@ internal sealed partial class SettingsLogPageHost
       return;
 
     _disposed = true;
+    _diagnosticSession.Cancel(DiagnosticExportOrigin.Logs);
+    if (_ownsDiagnosticSession) _diagnosticSession.Dispose();
     _logPageActive = false;
     _sessionMetadataCancellation?.Cancel();
     _sessionMetadataCancellation?.Dispose();
@@ -236,13 +244,7 @@ internal sealed partial class SettingsLogPageHost
     _logExportCoordinator?.ExportToPath(destinationPath);
   }
 
-  internal ILogEventSource GetDiagnosticEventSource()
-  {
-    EnsureLogViewInitialized();
-    return _logController?.EventSourceForCorrelation
-      ?? new LogTailReader(_logPath!, _fallbackLogPath);
-  }
-
-  internal LogSourceCatalog? GetDiagnosticCatalogSnapshot()
-    => _logController?.CatalogSnapshotForDiagnostics;
+  // Pure capture: About export must not initialize the log page or scan files.
+  internal (string LogPath, string StartupPath) GetDiagnosticPaths()
+    => (_logPath ?? SmartGuardPaths.DefaultLogFile(_root), _fallbackLogPath ?? SmartGuardPaths.StartupLogFile(_root));
 }

@@ -1337,6 +1337,11 @@
                   </Grid>
                 </Border>
 
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="lblDiagnosticProgress" Text="正在导出…" Visibility="Collapsed" VerticalAlignment="Center" Margin="0,0,12,0" AutomationProperties.LiveSetting="Polite"/>
+                  <Button x:Name="btnCancelDiagnostic" Content="取消导出" Visibility="Collapsed" Style="{StaticResource SecondaryButton}" AutomationProperties.Name="取消诊断包导出"/>
+                </StackPanel>
+
                 <Border Style="{StaticResource SettingsItemRow}">
                   <Grid>
                     <Grid.ColumnDefinitions>
@@ -1431,6 +1436,9 @@
                     <Button x:Name="btnLogRefresh" Height="36" Content="&#x5237;&#x65B0;" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
                     <Button x:Name="btnLogFilter" Height="36" Content="筛选" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
                     <Button x:Name="btnLogExport" Height="36" Content="导出日志" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0"/>
+                    <Button x:Name="btnLogDiagnostic" Height="36" Content="诊断包…" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0" AutomationProperties.Name="导出当前查询诊断包"/>
+                    <TextBlock x:Name="lblLogDiagnosticProgress" Text="正在导出…" Visibility="Collapsed" VerticalAlignment="Center" Margin="0,0,8,0" AutomationProperties.LiveSetting="Polite"/>
+                    <Button x:Name="btnLogCancelDiagnostic" Content="取消导出" Visibility="Collapsed" Style="{StaticResource LogToolbarCompactButton}" Margin="0,0,8,0" AutomationProperties.Name="取消诊断包导出"/>
                     <CheckBox x:Name="chkLogWrap" Height="36" Content="自动换行" Style="{StaticResource SettingsFilterCheckBox}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <Button x:Name="btnLogMore" Content="&#x66F4;&#x591A;" Style="{StaticResource LogToolbarCompactButton}" Visibility="Collapsed"/>
                   </StackPanel>

@@ -737,6 +737,8 @@ dotnet test Tests/SmartGuard.Settings.Tests/SmartGuard.Settings.Tests.csproj --f
 
 ### T9：全链集成、真实用户路径与长期运行
 
+T8 实施记录：两个 Task 入口共享窗口 session，纯路径捕获、后台独立 reader、导航/关闭取消和晚到结果隔离已实现。目标 30/30、架构 10/10 通过；headless 测试不代替真实桌面。详见[实施记录](2026-10-04-log-observability-repair-progress.md)。
+
 - [ ] 汇总复跑各任务已先行补齐的 LoggingRepairArchitectureTests：唯一配置读取/追加/导出入口，前台 hook/light 不直接日志 IO，状态健康只有 Engine 写入；门禁检查依赖边界，不依赖私有方法名或源文本偶然布局。
 - [ ] 核对各任务已同步的 ARCHITECTURE-CONTRACT：新增字段、事件、所有权、预算与不变量完整登记；只更新受影响章节，PROJECT-RULES 不复制默认数值。
 - [ ] 复跑 13 个审计场景，附带新正规测试证据；与原证据逐项对比，不覆盖原 evidence.json。
