@@ -7,7 +7,8 @@ namespace SmartGuard.Engine.Worker;
 /// 才能授权守护动作。缺失、破损或访问异常一律视为配置不可用，
 /// 禁止新动作，也不得用默认配置猜测授权。
 /// </summary>
-internal readonly record struct GuardConfigReadResult(GuardConfig? Config, bool IsValid)
+internal readonly record struct GuardConfigReadResult(
+  GuardConfig? Config, bool IsValid, string? FailureKind = null, string? RuleFingerprint = null)
 {
   public static GuardConfigReadResult FromConfig(GuardConfig? config)
     => new(config, config is not null);
@@ -22,7 +23,8 @@ internal readonly record struct GuardConfigReadResult(GuardConfig? Config, bool 
   {
     try
     {
-      return FromConfig(repository.TryLoad());
+      var result = repository.TryLoadDetailed();
+      return new(result.Config, result.IsValid, result.FailureKind, result.RuleFingerprint);
     }
     catch (Exception)
     {

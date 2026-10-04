@@ -38,7 +38,7 @@ public class PlanPublicationConsistencyTests
       var runner = new GuardianIterationRunner(
         new IdleTracker(time), new BrightnessService(), new StatusPublisher(path, time),
         () => GuardConfigReadResult.FromConfig(config),
-        (_, _, _, eventName) => { events.Add(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
+        (_, _, _, eventName, _, _) => { events.Add(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
         _ => { }, false, new HeartbeatSchedule(time),
         readIdleSeconds: () => 0,
         readBatteryInfo: _ => (100, true),

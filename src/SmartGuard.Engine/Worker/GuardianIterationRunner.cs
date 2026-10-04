@@ -2,6 +2,7 @@ using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Domain;
 using SmartGuard.Engine.Infrastructure;
+using System.Text.Json;
 
 namespace SmartGuard.Engine.Worker;
 
@@ -25,12 +26,12 @@ internal sealed class GuardianLoopIterationState
   public DateTime LastEmittedNotificationAt = DateTime.MinValue;
 }
 
-internal sealed class GuardianIterationRunner(
+internal sealed partial class GuardianIterationRunner(
   IdleTracker idleTracker,
   BrightnessService brightness,
   StatusPublisher publisher,
   Func<GuardConfigReadResult> loadConfig,
-  Func<GuardConfig, LogLevel, string, string, GuardianLogWriteResult> writeLog,
+  Func<GuardConfig?, LogLevel, string, string, IReadOnlyDictionary<string, JsonElement>?, DateTimeOffset?, GuardianLogWriteResult> writeLog,
   Action<bool> observePowerSource,
   bool powerCfgBrightnessSupported,
   HeartbeatSchedule heartbeatSchedule,
@@ -43,8 +44,10 @@ internal sealed class GuardianIterationRunner(
   Func<ForegroundObservation>? readForeground = null,
   Func<bool?>? readForegroundEventsHealth = null,
   Func<int>? readBrightness = null,
-  Func<bool>? canMutatePolicy = null)
+  Func<bool>? canMutatePolicy = null,
+  GuardObservationTracker? observationTracker = null)
 {
+  private readonly GuardObservationTracker _observations = observationTracker ?? new();
   public async Task RunAsync(
     GuardianLoopIterationState state,
     GuardianIterationContext context,
@@ -75,6 +78,7 @@ internal sealed class GuardianIterationRunner(
       // 继续观察当前计划并发布观测负载，观察到的计划吸收为基线（非守护期间不产生积压纠偏）。
       AbsorbPlanAsBaseline(state, current);
       state.LastForegroundAdmitted = false;
+      ObserveUnavailable(configRead, current, GuardStatusCodes.Reasons.ConfigUnavailable, time.GetUtcNow());
       var brightnessDuringDegrade = (readBrightness ?? brightness.GetBrightness)();
       publisher.Publish(CreateDegradedObservationPayload(
         state, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, brightnessDuringDegrade));
@@ -87,7 +91,8 @@ internal sealed class GuardianIterationRunner(
         configOpt!,
         LogLevel.Warn,
         $"电源计划探测失败，保留上次计划状态：{planProbe.FailureKind} {planProbe.Diagnostic}",
-        EventNameRegistry.PowerPlanProbeFailed);
+        EventNameRegistry.PowerPlanProbeFailed, null, null);
+      ObserveUnavailable(configRead, current, GuardStatusCodes.Reasons.ProbeFailed, time.GetUtcNow());
       // 探测失败同样必须发布状态：否则 UI 停留在上一轮原因，无法解释守护暂停纠偏。
       publisher.Publish(CreateProbeFailedObservationPayload(
         state, configOpt!, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, bright: (readBrightness ?? brightness.GetBrightness)()));
@@ -124,11 +129,13 @@ internal sealed class GuardianIterationRunner(
       {
         AbsorbPlanAsBaseline(state, current);
         state.LastForegroundAdmitted = false;
+        ObserveUnavailable(latest, current, GuardStatusCodes.Reasons.ConfigUnavailable, time.GetUtcNow());
         publisher.Publish(CreateDegradedObservationPayload(
           state, time.GetUtcNow(), current, planCatalog, idle, isOnAc, batteryPercent, bright));
         return;
       }
       config = latest.Config;
+      configRead = latest;
       foreground = ReadForegroundForDecision(config);
       decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config,
         time.GetLocalNow().LocalDateTime);
@@ -175,12 +182,12 @@ internal sealed class GuardianIterationRunner(
     if (externalChangeDetected)
     {
       externalPlanNameForNotify = ResolvePlanName(current, config, planCatalog, activePlanInfo);
-      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {externalPlanNameForNotify} ({current}) | 下轮纠偏", EventNameRegistry.ExternalPlanChange);
+      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {externalPlanNameForNotify} ({current}) | 下轮纠偏", EventNameRegistry.ExternalPlanChange, null, null);
     }
     state.ScriptJustSwitched = false;
 
     var label = PolicyEngine.GetStatusLabel(idle, config);
-    LogBrightnessChangeIfNeeded(config, bright, state, writeLog);
+    LogBrightnessChangeIfNeeded(config, bright, state);
 
     var planSwitched = false;
     var planApplyFailed = false;
@@ -210,7 +217,7 @@ internal sealed class GuardianIterationRunner(
           config,
           LogLevel.Warn,
           $"电源计划切换失败：{applied.FailureKind} {applied.Diagnostic}",
-          EventNameRegistry.PowerPlanApplyFailed);
+          EventNameRegistry.PowerPlanApplyFailed, ActionProperties(expected, current, "failed"), null);
       }
       else
       {
@@ -226,13 +233,13 @@ internal sealed class GuardianIterationRunner(
         switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
         if (bright >= 0)
         {
-          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}", EventNameRegistry.PowerPlanSwitched);
+          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
           if (result.After != result.Before)
-            writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次", EventNameRegistry.IterationError);
+            writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次", EventNameRegistry.IterationError, null, null);
         }
         else
         {
-          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持", EventNameRegistry.PowerPlanSwitched);
+          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
         }
         state.LastStatusLabel = label;
       }
@@ -242,7 +249,7 @@ internal sealed class GuardianIterationRunner(
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       writeLog(config, LogLevel.Info,
         GuardianLogMessages.FormatStatusLabelChange(label, idle, planName, batteryPercent, isOnAc, bright),
-        EventNameRegistry.IdleDetected);
+        EventNameRegistry.IdleDetected, null, null);
       state.LastStatusLabel = label;
     }
 
@@ -257,7 +264,7 @@ internal sealed class GuardianIterationRunner(
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       var writeResult = writeLog(config, LogLevel.Heart,
         GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright),
-        EventNameRegistry.HeartbeatTick);
+        EventNameRegistry.HeartbeatTick, null, null);
       if (writeResult.IsAccepted())
         heartbeatSchedule.MarkAccepted();
     }
@@ -290,6 +297,9 @@ internal sealed class GuardianIterationRunner(
       now);
 
     var (guardSource, guardReason) = ResolveGuardStatusCodes(decision, PolicyMutationAllowed());
+    ObserveFinal(configRead, foreground, decision, guardSource, guardReason, current,
+      planSwitched ? "verified" : planApplyFailed ? "failed" :
+      PolicyMutationAllowed() && expected is not null && current == expected ? "already-satisfied" : "not-attempted", time.GetUtcNow());
 
     publisher.Publish(new StatusPayload
     {
@@ -427,20 +437,6 @@ internal sealed class GuardianIterationRunner(
         && !string.IsNullOrWhiteSpace(name))
       return name;
     return planGuid.Value.ToString();
-  }
-
-  private void LogBrightnessChangeIfNeeded(
-    GuardConfig config,
-    int brightness,
-    GuardianLoopIterationState state,
-    Func<GuardConfig, LogLevel, string, string, GuardianLogWriteResult> writeLog)
-  {
-    if (brightness < 0) return;
-
-    if (state.LastBrightness is int previous && previous != brightness)
-      writeLog(config, LogLevel.Info, GuardianLogMessages.FormatBrightnessChange(previous, brightness), EventNameRegistry.BrightnessAdjusted);
-
-    state.LastBrightness = brightness;
   }
 
   private static string ResolvePlanName(

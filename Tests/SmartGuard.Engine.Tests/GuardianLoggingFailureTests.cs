@@ -102,7 +102,7 @@ public class GuardianLoggingFailureTests
       for (var i = 0; i < depth; i++)
         pipeline.TryEnqueue(priority, EngineLogEvents.Create(level, EventNameRegistry.IterationError, "queued"));
       var result = (GuardianLogWriteResult)typeof(GuardianLoop).GetMethod("WriteLog", BindingFlags.NonPublic | BindingFlags.Instance)!
-        .Invoke(loop, [GuardConfig.CreateDefault(root), level, "rejected", EventNameRegistry.IterationError, null])!;
+        .Invoke(loop, [GuardConfig.CreateDefault(root), level, "rejected", EventNameRegistry.IterationError, null, null, null])!;
       result.Should().Be(priority == LogPriority.High ? GuardianLogWriteResult.Rejected : GuardianLogWriteResult.DroppedByBackpressure);
       Directory.EnumerateFiles(root).Should().BeEmpty("daily producers must never fall back to disk");
       (priority == LogPriority.High ? pipeline.Diagnostics.DroppedHigh : pipeline.Diagnostics.DroppedNormal).Should().Be(1);

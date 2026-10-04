@@ -1,19 +1,22 @@
 using SmartGuard.Configuration;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Infrastructure;
+using System.Text.Json;
 
 namespace SmartGuard.Engine.Worker;
 
 public sealed partial class GuardianLoop
 {
   private GuardianLogWriteResult WriteLog(
-    GuardConfig config,
+    GuardConfig? config,
     LogLevel level,
     string message,
     string eventName = EventNameRegistry.IterationError,
-    string? outcome = null)
+    string? outcome = null,
+    IReadOnlyDictionary<string, JsonElement>? properties = null,
+    DateTimeOffset? observedAtUtc = null)
   {
-    if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config.LogMinimumLevel)))
+    if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config?.LogMinimumLevel ?? "Warn")))
       return GuardianLogWriteResult.SuppressedByLevel;
     var fp = message.Trim().ToLowerInvariant();
     if (!_deduplication.TryAccept(fp, message, out var dedupMessage))
@@ -27,8 +30,17 @@ public sealed partial class GuardianLoop
       TraceIdContext.Current,
       SpanIdContext.Current,
       UserActionIdContext.Current,
-      outcome);
+      outcome, properties);
+    if (observedAtUtc is DateTimeOffset at) logEvent = logEvent with { Timestamp = at };
     return EnqueueLog(level, logEvent);
+  }
+
+  private void DrainGuardObservations()
+  {
+    var read = GuardConfigReadResult.TryFromRepository(_configRepository);
+    _guardObservations.ObserveContext(read, GuardObservationGate.For(read, DateTimeOffset.Now));
+    _guardObservations.Drain(read.Config,
+      (c, l, m, e, p, at) => WriteLog(c, l, m, e, properties: p, observedAtUtc: at));
   }
 
   private void WriteLifecycleTransitions(

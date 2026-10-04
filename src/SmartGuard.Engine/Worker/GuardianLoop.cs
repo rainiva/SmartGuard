@@ -18,6 +18,7 @@ public sealed partial class GuardianLoop
   private readonly StatusPublisher _publisher;
   private readonly GuardConfigRepository _configRepository;
   private readonly GuardianLoopIterationState _iterationState = new();
+  private readonly GuardObservationTracker _guardObservations = new();
   private readonly GuardianIterationRunner _iterationRunner;
   private readonly GuardianFirstRunInitializer _firstRunInitializer;
   private readonly GuardianExceptionStormHandler _exceptionStormHandler;
@@ -66,13 +67,14 @@ public sealed partial class GuardianLoop
       _brightness,
       _publisher,
       () => GuardConfigReadResult.TryFromRepository(_configRepository),
-      (c, l, m, e) => WriteLog(c, l, m, e),
+      (c, l, m, e, p, at) => WriteLog(c, l, m, e, properties: p, observedAtUtc: at),
       ObservePowerSource,
       _powerCfgBrightnessSupported,
       _heartbeatSchedule,
       readForeground: ReadForegroundForRunner,
       readForegroundEventsHealth: ReadForegroundEventsHealthForRunner,
-      canMutatePolicy: () => _powerLifecycle.IsPolicyMutationAllowed);
+      canMutatePolicy: () => _powerLifecycle.IsPolicyMutationAllowed,
+      observationTracker: _guardObservations);
     _cycleCoordinator = new GuardianCycleCoordinator(
       () => GuardConfigReadResult.TryFromRepository(_configRepository),
       ReadForegroundForRunner,
@@ -80,7 +82,8 @@ public sealed partial class GuardianLoop
       _wakeSignal,
       (context, token) => _iterationRunner.RunAsync(_iterationState, context, token),
       timeProvider,
-      consumePowerWake: ConsumePowerWake);
+      consumePowerWake: ConsumePowerWake,
+      observationTracker: _guardObservations);
     _foregroundReader = ForegroundReaderFactoryOverrideForTests?.Invoke() ?? new ForegroundProgramReader();
     _logPipeline = new LogPipeline(
       WriteConsumerBatch,
@@ -126,6 +129,7 @@ public sealed partial class GuardianLoop
 
         var intervalSeconds = ResolveWaitSeconds(directive.ReevaluateAfter);
         await RunGuardedCycleAsync(directive, intervalSeconds, cancellationToken);
+        DrainGuardObservations();
         TryPublishLogHealth();
 
         WaitForWake(

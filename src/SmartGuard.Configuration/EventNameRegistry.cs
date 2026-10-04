@@ -38,6 +38,8 @@ public static class EventNameRegistry
   public const string PowerPlanProbeFailed = nameof(PowerPlanProbeFailed);
   public const string PowerPlanApplyFailed = nameof(PowerPlanApplyFailed);
   public const string ForegroundListenerDegraded = nameof(ForegroundListenerDegraded);
+  public const string ForegroundAdmissionChanged = nameof(ForegroundAdmissionChanged);
+  public const string GuardStateChanged = nameof(GuardStateChanged);
 
   static EventNameRegistry()
   {
@@ -67,6 +69,8 @@ public static class EventNameRegistry
     Register(PowerPlanProbeFailed);
     Register(PowerPlanApplyFailed);
     Register(ForegroundListenerDegraded);
+    Register(ForegroundAdmissionChanged);
+    Register(GuardStateChanged);
   }
 
   public static void Register(string name)

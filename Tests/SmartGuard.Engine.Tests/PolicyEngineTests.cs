@@ -490,7 +490,7 @@ internal sealed class GuardDecisionHarness : IDisposable
             new BrightnessService(),
             _publisher,
             () => _configRead,
-            (config, level, message, eventName) =>
+            (config, level, message, eventName, properties, observedAt) =>
             {
                 Events.Add(new(eventName, _time.GetUtcNow(), message));
                 return GuardianLogWriteResult.AcceptedByPipeline;

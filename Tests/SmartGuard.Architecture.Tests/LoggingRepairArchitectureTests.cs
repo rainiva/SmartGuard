@@ -6,6 +6,17 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Rule_observation_events_are_registered_and_owned_by_the_main_loop()
+  {
+    EventNameRegistry.IsRegistered("ForegroundAdmissionChanged").Should().BeTrue();
+    EventNameRegistry.IsRegistered("GuardStateChanged").Should().BeTrue();
+    LogEventChannels.ForEventName("ForegroundAdmissionChanged").Should().Be(LogChannelRegistry.Policy);
+    LogEventChannels.ForEventName("GuardStateChanged").Should().Be(LogChannelRegistry.Policy);
+    SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs")
+      .Should().Contain("DrainGuardObservations");
+  }
+
+  [Fact]
   public void Detailed_configuration_load_and_rule_fingerprint_have_one_repository_owner()
   {
     var method = typeof(GuardConfigRepository).GetMethod("TryLoadDetailed", Type.EmptyTypes);

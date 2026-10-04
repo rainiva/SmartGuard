@@ -28,6 +28,7 @@ internal sealed class GuardianCycleCoordinator
   private readonly Func<bool> _consumePowerWake;
   private readonly TimeSpan _lightRecheckFloor;
   private readonly TimeSpan _fullEvaluationFloor;
+  private readonly GuardObservationTracker? _observations;
 
   private int _foregroundPending;
   private long _nextPeriodicDeadline;
@@ -45,7 +46,8 @@ internal sealed class GuardianCycleCoordinator
     TimeProvider? timeProvider = null,
     Func<bool>? consumePowerWake = null,
     TimeSpan? lightRecheckFloor = null,
-    TimeSpan? fullEvaluationFloor = null)
+    TimeSpan? fullEvaluationFloor = null,
+    GuardObservationTracker? observationTracker = null)
   {
     _loadConfig = loadConfig;
     _readForeground = readForeground;
@@ -56,6 +58,7 @@ internal sealed class GuardianCycleCoordinator
     _consumePowerWake = consumePowerWake ?? (() => false);
     _lightRecheckFloor = lightRecheckFloor ?? GuardianIterationTiming.ForegroundLightRecheckFloor;
     _fullEvaluationFloor = fullEvaluationFloor ?? GuardianIterationTiming.ForegroundFullEvaluationFloor;
+    _observations = observationTracker;
     _nextPeriodicDeadline = _time.GetTimestamp();
   }
 
@@ -181,14 +184,15 @@ internal sealed class GuardianCycleCoordinator
   }
 
   /// <summary>
-  /// 前台事件轻路径：仅做准入状态比较。准入结果未变 → 立即结束（不查电源计划/WMI、
-  /// 不写状态、不写日志）；命中→未命中 → 立即撤销自动动作资格（基线由下一完整轮次吸收，
+  /// 前台事件轻路径：仅做准入状态比较与内存观测。资格结果未变仍提交程序变化，
+  /// 不查电源计划/WMI、不写状态或日志；命中→未命中 → 立即撤销自动动作资格（基线由下一完整轮次吸收，
   /// 轻路径不探测 PowerCfg）；未命中→命中 → 请求受限完整评估（基线吸收与准入历史推进
   /// 由完整轮次的统一决策完成）。
   /// </summary>
   private void ProcessForegroundLight()
   {
     var configRead = _loadConfig();
+    _observations?.ObserveContext(configRead, GuardObservationGate.For(configRead, _time.GetLocalNow()));
     if (!configRead.IsValid || configRead.Config is not { } config)
       return;
 
@@ -208,11 +212,13 @@ internal sealed class GuardianCycleCoordinator
       or GuardDecisionReason.ForegroundProgramPathsInvalid)
     {
       _recheckAfterGateLift = true;
+      _observations?.ObserveAdmission(admission, null, _time.GetUtcNow());
       return;
     }
 
     var foreground = _readForeground?.Invoke() ?? ForegroundObservation.Unknown;
     admission = PolicyEngine.EvaluateAdmission(foreground, config);
+    _observations?.ObserveAdmission(admission, foreground.ExecutablePath, _time.GetUtcNow());
 
     var previouslyAdmitted = _state.LastForegroundAdmitted ?? false;
     if (previouslyAdmitted == admission.Admitted)

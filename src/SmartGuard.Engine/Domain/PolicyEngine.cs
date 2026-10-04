@@ -26,17 +26,20 @@ public static class PolicyEngine
       return new GuardDecision(null, GuardDecisionSource.None, GuardDecisionReason.Paused);
 
     var restrictionEnabled = config.ForegroundRestrictionEnabled;
+    int? matchedRuleIndex = null;
     if (restrictionEnabled)
     {
       var admission = EvaluateAdmission(foreground, config);
       if (!admission.Admitted)
         return new GuardDecision(null, GuardDecisionSource.None, admission.Reason);
+      matchedRuleIndex = admission.MatchedRuleIndex;
     }
 
     return new GuardDecision(
       SelectPlanByPowerState(idleSeconds, isOnAc, batteryPercent, config),
       GuardDecisionSource.Automatic,
-      restrictionEnabled ? GuardDecisionReason.ForegroundMatched : GuardDecisionReason.PolicySelected);
+      restrictionEnabled ? GuardDecisionReason.ForegroundMatched : GuardDecisionReason.PolicySelected,
+      matchedRuleIndex);
   }
 
   /// <summary>
@@ -64,13 +67,13 @@ public static class PolicyEngine
     if (!foreground.IdentificationSucceeded)
       return new ForegroundAdmission(false, GuardDecisionReason.ForegroundIdentityUnknown);
 
-    var matched = foreground.ExecutablePath is { } observedPath
+    var matchedIndex = foreground.ExecutablePath is { } observedPath
       && GuardConfigValidator.TryNormalizeProgramPath(observedPath, out var observedNormalized)
-      && normalizedStored.Exists(entry =>
-        string.Equals(entry, observedNormalized, StringComparison.OrdinalIgnoreCase));
+      ? normalizedStored.FindIndex(entry =>
+        string.Equals(entry, observedNormalized, StringComparison.OrdinalIgnoreCase)) : -1;
 
-    return matched
-      ? new ForegroundAdmission(true, GuardDecisionReason.ForegroundMatched)
+    return matchedIndex >= 0
+      ? new ForegroundAdmission(true, GuardDecisionReason.ForegroundMatched, matchedIndex)
       : new ForegroundAdmission(false, GuardDecisionReason.WaitingForListedProgram);
   }
 

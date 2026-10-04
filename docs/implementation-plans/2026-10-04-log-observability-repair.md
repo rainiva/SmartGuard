@@ -481,6 +481,8 @@ dotnet test Tests/SmartGuard.Settings.Tests/SmartGuard.Settings.Tests.csproj --f
 
 ### T4：记录程序命中、程序变化与退出（F1）
 
+实施状态：规则观测、独立去重/拒绝、原 UTC timestamp 与统一回调已落地；目标 116/116、Engine 全项目 308/308、日志架构 57/57 通过。三轮 128 项轻路径比较已保留原始证据。T5 的详细加载/缓存指纹依赖已提前落实；真实桌面与 Soak 仍待 T9。详见[实施记录](2026-10-04-log-observability-repair-progress.md)。
+
 **接口：** 输入 PolicyEngine 产出的 ForegroundAdmission/GuardDecision；GuardObservationTracker 只保留有界观测；主循环输出既有结构化事件。完整执行日志提取到 Runner.Logging partial，避免继续扩大 524 行 Runner。
 
 - [ ] RED：进入命中时计划原本正确，仍有一次准入日志与“已符合，无需切换”的最终评估记录，apply 调用为 0。

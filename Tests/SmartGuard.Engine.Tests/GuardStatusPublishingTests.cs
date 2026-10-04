@@ -394,7 +394,7 @@ public class GuardStatusPublishingTests : IDisposable
         () => ConfigAvailable
           ? GuardConfigReadResult.FromConfig(Config)
           : GuardConfigReadResult.Unavailable,
-        (_, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
+        (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
         _ => { },
         powerCfgBrightnessSupported: false,
         heartbeatSchedule: new HeartbeatSchedule(time),

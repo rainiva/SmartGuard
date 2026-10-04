@@ -1034,7 +1034,7 @@ internal sealed class ForegroundGuardHarness : IDisposable
       new BrightnessService(),
       new StatusPublisher(Path.Combine(_root, "SmartGuard.status.json"), _time),
       loadConfig,
-      (config, level, message, eventName) =>
+      (config, level, message, eventName, properties, observedAt) =>
       {
         Events.Add(eventName);
         return GuardianLogWriteResult.AcceptedByPipeline;

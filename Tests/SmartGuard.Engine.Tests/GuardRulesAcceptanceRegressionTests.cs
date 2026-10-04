@@ -40,6 +40,8 @@ public sealed class GuardRulesAcceptanceRegressionTests
         LastForegroundAdmitted = true,
       };
       var events = new List<string>();
+      var tracker = new GuardObservationTracker();
+      var guardFacts = new List<System.Text.Json.JsonElement>();
       var synced = new List<Guid>();
       var applied = new List<Guid>();
       var changed = false;
@@ -47,9 +49,10 @@ public sealed class GuardRulesAcceptanceRegressionTests
         new IdleTracker(clock), new BrightnessService(),
         new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => currentConfig,
-        (_, _, _, eventName) =>
+        (_, _, _, eventName, properties, _) =>
         {
           events.Add(eventName);
+          if (eventName == EventNameRegistry.GuardStateChanged) guardFacts.Add(properties!["actionResult"]);
           return GuardianLogWriteResult.AcceptedByPipeline;
         },
         _ => { }, true, new HeartbeatSchedule(clock),
@@ -96,9 +99,15 @@ public sealed class GuardRulesAcceptanceRegressionTests
             }
           }
           return 50;
-        });
+        }, observationTracker: tracker);
 
       await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      tracker.Drain(currentConfig.Config, (_, _, _, name, properties, _) =>
+      {
+        events.Add(name);
+        if (name == EventNameRegistry.GuardStateChanged) guardFacts.Add(properties!["actionResult"]);
+        return GuardianLogWriteResult.AcceptedByPipeline;
+      });
 
       using var scope = new AssertionScope();
       changed.Should().BeTrue("the change must happen after the initial qualification snapshot");
@@ -106,6 +115,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
       applied.Should().BeEmpty("a previously admitted snapshot cannot authorize a later action");
       events.Should().NotContain(EventNameRegistry.ExternalPlanChange);
       state.LastEmittedNotification.Should().BeNull("revoked qualification must not emit a correction notification");
+      guardFacts.Should().ContainSingle().Which.GetString().Should().Be("not-attempted");
     }
     finally
     {
@@ -132,7 +142,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
       var runner = new GuardianIterationRunner(
         new IdleTracker(clock), new BrightnessService(), new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => GuardConfigReadResult.FromConfig(config),
-        (_, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
+        (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
         _ => { }, false, new HeartbeatSchedule(clock),
         readIdleSeconds: () => changed && becameIdle ? (uint)(config.PowerSaverThresholdSec + 1) : 0,
         readBatteryInfo: _ => changed && !becameIdle ? (1, false) : (90, true),
@@ -184,7 +194,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
       var runner = new GuardianIterationRunner(
         new IdleTracker(clock), new BrightnessService(), new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => latest,
-        (_, _, _, eventName) => { events.Add(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
+        (_, _, _, eventName, _, _) => { events.Add(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
         _ => { }, false, new HeartbeatSchedule(clock),
         readIdleSeconds: () => 0,
         readBatteryInfo: _ =>
@@ -236,7 +246,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
       var runner = new GuardianIterationRunner(
         new IdleTracker(clock), new BrightnessService(), new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => GuardConfigReadResult.FromConfig(config),
-        (_, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
+        (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
         _ => { }, false, new HeartbeatSchedule(clock),
         readIdleSeconds: () => 0, readBatteryInfo: _ => (90, true),
         readCurrentPlan: () => new(true, new PowerSchemeInfo(config.BalancedPlanGuid, null), PowerPlanFailureKind.None, ""),

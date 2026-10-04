@@ -43,11 +43,12 @@ public enum GuardDecisionReason
 public sealed record GuardDecision(
   Guid? TargetPlanGuid,
   GuardDecisionSource Source,
-  GuardDecisionReason Reason);
+  GuardDecisionReason Reason,
+  int? MatchedRuleIndex = null);
 
 /// <summary>
 /// 前台准入结论（只含前台限制规则本身，不含空闲/电源/人工期限）：
 /// 由 <see cref="PolicyEngine.EvaluateAdmission"/> 唯一产出，
 /// <see cref="PolicyEngine.Evaluate"/> 内部复用同一规则；轻路径与完整轮次共用，不复制名单逻辑。
 /// </summary>
-public readonly record struct ForegroundAdmission(bool Admitted, GuardDecisionReason Reason);
+public readonly record struct ForegroundAdmission(bool Admitted, GuardDecisionReason Reason, int? MatchedRuleIndex = null);

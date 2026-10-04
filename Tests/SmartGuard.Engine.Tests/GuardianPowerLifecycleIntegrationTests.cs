@@ -246,7 +246,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
       new BrightnessService(),
       _publisher,
       () => GuardConfigReadResult.FromConfig(_config),
-      (config, level, message, eventName) =>
+      (config, level, message, eventName, properties, observedAt) =>
       {
         Events.Add(new(eventName, _time.GetUtcNow(), message));
         return GuardianLogWriteResult.AcceptedByPipeline;

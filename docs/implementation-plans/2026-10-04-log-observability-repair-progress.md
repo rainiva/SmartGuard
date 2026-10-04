@@ -20,7 +20,7 @@
 | T1 保存日志真实性 | 实现与目标回归通过 | 目标 38/38；架构 54/54；Configuration 全项目 420/420；真实 UI 留待 T9 |
 | T2 真实写入与非阻塞 | 实现与回归通过，展示接入 T3 | Configuration 431/431；Engine 293/293；日志架构 54/54；三轮隔离锁竞争比较 |
 | T3 日志健康 | 实现与目标验证通过 | Engine 40/40；Configuration 42/42；Tray 全项目 87/87；Settings 56/56；日志架构 55/55 |
-| T4 规则观测 | 待执行 | — |
+| T4 规则观测 | 实现与目标/全项目回归通过 | 目标 116/116；Engine 全项目 308/308；日志架构 57/57；三轮 128 项轻路径比较 |
 | T5 停工恢复与心跳 | 读取依赖已实现，其余待执行 | 详细读取与指纹目标 28/28；为 T4 提前落实此依赖 |
 | T6 附加文件与回退可见 | 待执行 | — |
 | T7 诊断容错 | 待执行 | — |
@@ -57,9 +57,19 @@
 - GREEN（均 exit 0）：`t3-engine-target.trx` 40/0/0；`t3-configuration-target.trx` 42/0/0；`t3-tray-green.trx` 31/0/0，Tray 全项目 `t3-tray-regression.trx` 87/0/0；`t3-settings-target.trx` 56/0/0（含 WPF STA 生命周期、分页和导航）；`t3-architecture-green.trx` 55/0/0。TRX 计数将与完成前全量 summary 独立核对。
 - 旧 Tray 精确文案测试因缺失健康字段新增未知提示而失败（`t3-tray-green-attempt.trx` 13/18/0），更新旧格式预期；专门守护字段测试只增加健康夹具，仍验证原守护语义，未放宽来源/原因断言。新健康测试独立覆盖缺失/未知、过期/超前时间、计数与时间变化不重复应用。
 - 全层日志失败而状态可写的隔离测试可读取 failed；状态 IO 再失败局部收敛，不结束 Engine。健康单独更新不推进守护 timestamp；稳定代码的样本时间/持续计数不每 5 秒写入，60 秒 freshness 或既有守护变化才带最新计数。
+- 自审：无新文件、Timer、IPC、展示面板或日志推断状态路径；健康值不可变、累计分区原子发布，当前拥塞可解除而历史损失保留。Settings 状态独占原后台 flight/取消所有权，状态-only 请求忙时不排队；UI apply 不读取状态文件。WPF 线程边界核对[微软线程模型](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/threading-model)。真实托盘、DPI、UIA 与 Soak 仍为 NOT RUN，T9 统一验收。
 
 ## T5 读取依赖（提前于 T4）
 
 - T4 需要规则 generation，故提前实现 T5 的唯一详细加载结果与缓存指纹；其余停工/恢复/心跳仍按后续阶段执行。避免临时在每次轻路径计算指纹或保留旧 GuardConfig。
 - `t5-load-red.trx` 0/2/0、`t5-load-architecture-red.trx` 0/1/0，exit 1，是缺失契约的断言 RED；不冒充实际访问故障复现。GREEN `t5-load-green.trx` 28/0/0、`t5-load-architecture-green.trx` 5/0/0，exit 0。测试确认缺失、解析、无效根节点与目录拒绝类别、无旧配置、缓存只读一次、同数量换名单变化、主题/路径大小写不变。目录拒绝用于隔离访问失败，不声称已完成真实 ACL 验收。
-- 自审：无新文件、Timer、IPC、展示面板或日志推断状态路径；健康值不可变、累计分区原子发布，当前拥塞可解除而历史损失保留。Settings 状态独占原后台 flight/取消所有权，状态-only 请求忙时不排队；UI apply 不读取状态文件。WPF 线程边界核对[微软线程模型](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/threading-model)。真实托盘、DPI、UIA 与 Soak 仍为 NOT RUN，T9 统一验收。
+
+## T4 证据与自审
+
+- `t4-behavior-red.trx` 0/2/0、exit 1：旧回调上复现计划已正确却只有 IdleDetected，无命中/执行记录；索引缺失是契约 RED。`t4-architecture-red.trx` 0/1/0 确认事件未登记。
+- `t4-retry-red.trx` 11/1/0、exit 1：实际复现稳定未命中每轮清除 pending 执行，导致重试改写观测时间；按“仅新准入事实失效旧执行”修复。同 basename 的 A→B 仍立即淘汰旧待发执行结论。
+- `t4-target-final.trx` 116/0/0、`t4-engine-regression.trx` 308/0/0、`t4-architecture-green.trx` 57/0/0，均 exit 0。覆盖独立接受/拒绝、规则/gate 失效、1000 轮稳态、级别过滤、A→B/退出无额外完整轮次、真实 JSONL 保留原 timestamp，以及最终撤销不记录切换成功。
+- 中间 `t4-target-green.trx` 115/1/0 是 timestamp 夹具没有先登记真实规则 generation；补齐与正式流程相同的 context 后通过。签名迁移中的编译错误不计功能 RED。Runner 和正式 Tests 全部迁移同一个六参数回调，不留兼容路径。
+- 性能：新隔离 `rule-benchmark/` 对起点 archive 与修改版各三轮、每轮 1000 次稳定轻路径，名单 128 项；包含修改版既有周期 drain，假前台/假时钟，无 PowerCfg/WMI 或真实动作。JSON 分别在 `rule-performance-before/results-d6d03281a0a74ee4bc409e77ee9cc7b0.json`、`rule-performance-after/results-7d86a80307d645949f51f5def0116501.json`。CPU/分配/私有内存/线程与调用数均保留；不以亚毫秒样本代替真实桌面或 Soak。
+- 自审：匹配算法单源，索引来自原 FindIndex；完整决策携带该索引，不再匹配。唯一 Loop 排出点在 Wait 前，不依赖完整 Runner 才发现 A→B；无新 wake/Task/历史队列。事件固定字段+GUID+短文件名保持 4KiB 内，时间不参加稳定相等；旧待发结果在规则和门禁变化后不能跨代重试。
+- 三轮基线 P95 为 0.0380/0.0327/0.0428ms，修改版为 0.0449/0.0386/0.0400ms；最大值分别 0.1939 / 0.2900ms。每轮进程 CPU 均 31.25ms（粗粒度），完整轮次均 1、身份查询均 1001（含预热）、稳态事件均 0、线程均 8。修改版每 1000 次分配增加约 80KB，来自固定大小观测值；私有内存按轮仍增长，短采样没有证明 GC 后长期平台，留给 Soak。不能把相近的 P95 数值表述为性能提升。
