@@ -43,6 +43,22 @@ internal sealed class SettingsDiagnosticExportCoordinator
       return;
 
     button.Click += async (_, _) => await ExportViaDialog(window);
+    _session.StateChanged += () =>
+    {
+      if (!_session.IsAlive) return;
+      var busy = _session.IsRunning;
+      foreach (var name in new[] { "btnExportDiagnostic", "btnLogDiagnostic" })
+        if (window.FindName(name) is Button exportButton) exportButton.IsEnabled = !busy;
+      foreach (var name in new[] { "btnCancelDiagnostic", "btnLogCancelDiagnostic", "lblDiagnosticProgress", "lblLogDiagnosticProgress" })
+        if (window.FindName(name) is UIElement element) element.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+    };
+    foreach (var name in new[] { "btnCancelDiagnostic", "btnLogCancelDiagnostic" })
+      if (window.FindName(name) is Button cancel) cancel.Click += (_, _) => _session.Cancel();
+    if (window.FindName("navList") is ListBox navigation)
+      navigation.SelectionChanged += (_, _) =>
+      {
+        if (navigation.SelectedIndex != 5) _session.Cancel(DiagnosticExportOrigin.About);
+      };
   }
 
   internal Task ExportViaDialog(Window window)

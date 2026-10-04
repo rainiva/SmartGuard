@@ -185,4 +185,11 @@ public sealed partial class GuardianLoop
   private void OnForegroundEvent() => _cycleCoordinator.MarkForegroundSignal();
 
   private bool ConsumePowerWake() => Interlocked.Exchange(ref _powerWakePending, 0) != 0;
+  private void WaitForWake(TimeSpan delay, CancellationToken cancellationToken)
+  {
+    if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
+    if (!_wakeSignal.Wait(delay, cancellationToken)) return;
+    // Wake causes remain in their own bounded flags when a burst is coalesced.
+    while (_wakeSignal.Wait(0, cancellationToken)) { }
+  }
 }

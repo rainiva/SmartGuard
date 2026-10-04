@@ -25,9 +25,48 @@
 | T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
 | T7 诊断容错 | 实现与阶段回归通过 | Configuration 455/455；补充诊断回归 34/34；架构 30/30 |
 | T8 导出异步所有权 | 实现与目标回归通过 | 相关 WPF/取消/导航/可访问性 30 项；架构 10 项通过 |
-| T9 集成与验收 | 待执行 | — |
+| T9 集成与验收 | 本轮源码与证据收口，验收未闭环 | 13 场景、最后 .NET 1889/0/0、2h 隔离 Soak 通过；最近全量入口 UAC 取消，Tray BLOCKED/Installer NOT RUN；必要桌面与冷启动目标仍未关闭 |
 
-真实桌面、规则轻路径/导出性能、Soak、回滚与全量门禁尚未执行，不能据此认定修复完成。
+M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、部分可见桌面与真实计时 2h 隔离运行证据如下。2026-10-05 收口时，必要桌面、休眠及冷启动性能目标未全部关闭，M4 尚未达成。没有安装或发布新版。
+
+## T9 集成与验收记录（本轮实施收口，验收未闭环）
+
+### 全量门禁及本轮补修
+
+- 第一轮沙箱内 Pester 访问隔离注册表失败，不计产品 RED；正常权限重跑出现 4 项真实门禁失败（1882 项中 1878 passed / 4 failed）：两个既有主文件行数上限、主日志缓存追加及物理两端分页。Tray/Installer 在 .NET 失败后未运行。记录为 `run-tests-20261004T135414289Z-043b26515e1d4333a1e5f26973e1c78a.summary.json`，不覆盖失败证据。
+- 行数问题仅把原配置读取方法移动到同一 GuardianLoop 的 Configuration partial、等待方法移动到已有 Foreground partial；忙碌 UI 连线归既有 SettingsDiagnosticExportCoordinator。没有放宽门禁、新增 Owner 或改变守护行为；`t9-size-green` 4/0/0。
+- 读取回归根因：缺失 fallback 时不应进入合并历史；相同/倒退时间戳的显示排序不能决定物理游标；空边界页不能清除反方向游标。新增物理边界、旧时间戳追加与新建 fallback 的实际 RED 后修复。`t9-history-final` 65/0/0、`t9-controller-boundary-green` 37/0/0，exit 0。
+- 复审再发现 HasNewer 使用显示末项，文件已到物理 EOF 仍报 true。`t9-newer-end-red.trx` 0/1/0 为预期断言失败；`t9-reader-boundary-green.trx` 全项目 66/0/0、exit 0。初次 logger 参数未引号保护造成命令解析错误，不计行为 RED。共享扫描器与 Controller 仍为原 Owner，契约同步 LOG-INV-PHYSICAL-PAGING。
+- 首次全量 GREEN `run-tests-20261004T141246683Z-69fd5d59de67451a883cd26ece89fe60.summary.json`：Pester 156/0/0，.NET 1885/0/0，Tray Integration 2/0/0，Installer Integration 9/0/0，exit 0。该运行早于最后 HasNewer 补修，最后代码的全量结果另记，不把它当最终版本证据。
+- HasNewer 补修后重跑（早于后续合并历史补修）`run-tests-20261004T145152257Z-f183da2315c94f70a9e20e9ffc6060eb.summary.json`：Pester 156/0/0、.NET 1886/0/0，含 Architecture 338、LogView 66、Settings 595。托盘集成提升被用户取消，结果契约 Failed/exit 1/Total 0，标 BLOCKED，不是零失败通过；安装器因前置层失败为 NOT RUN。总入口 exit 1。没有再请求或自动接受 UAC；此前集成通过保留为前一版证据，不能将两轮拼成最后版本“全绿”。
+- 继续复审加入真实同秒合并历史：`t9-merged-equal-time-red.trx` 0/1/0，800 条只取到 97；合并 latest/连续 older 改按各源物理后缀选择。补修过程中 `t9-merged-overlap-red.trx` 0/1/0 确认重复副本不能提前推进另一来源（400 个唯一事件只取到 217）；只确认实际选中的物理范围后，`t9-reader-complete-green.trx` 全项目 68/0/0、exit 0，覆盖普通合并连续性、同秒主/回退、部分主写重复批不漏唯一记录、每页去重。去重没有扩展成全历史 ID 缓存。
+- 合并修复后的完整 .NET 层第一次独立运行既有 `Invoke-SmartGuardDotNetTestSuite -Tier full`，exit 0；TRX 前缀 `10a9dc34bf85449db012341299f68b9d`，8 项目合计 1888/0/0。随后补充 `t9-merged-reverse-regression.trx`（1/0/0、exit 0），确认合并同秒历史到达首端后仍可回到末端，800 条无重复；该新增测试首次通过，仅记回归，不冒称 RED。
+- 最后测试集合完整 .NET 层再次独立运行，exit 0；TRX 前缀 `13bce6896fb84a3d9fb22cf991a95295`，8 项目合计 1889/0/0：Engine 327、Configuration 457、Cli 1、Architecture 338、Packaging 15、Tray 87、LogView 69、Settings 595。逐一核对 TRX total/executed/passed/failed/error/timeout/aborted/inconclusive/notExecuted。两轮均不触发已取消的 UAC，只证明 .NET 层，不包含 Pester 或真实托盘/安装器集成。
+- 受影响性能/生命周期回归：`t9-settings-performance` 62/0/0、`t9-engine-performance` 3/0/0，exit 0。完整测试均按业务链运行，新增行数拆分不改变架构门禁阈值。
+
+### 13 场景、导出性能与回滚读取
+
+- 当前源码探针 `current-audit/run-current/evidence.json` 13 个修复后断言通过（exit 0）；`run-desktop/evidence.json` 额外保存正规 formatter 输出用于可见桌面。与 T0 原 evidence 独立：未命中初始、已符合计划仍命中记录、A→B、退出、身份未知、配置停工、恢复、三层失败、背压计数、满高队列无同步等待、坏配置仍导出、默认 API 内容、保存失败无假成功。全部系统动作注入，OS actions=0；不能声称已完成真实 PowerCfg 操作。
+- `export-performance/{before,current}/result.json` 来自同一探针、实际起点 archive 与新版程序集，分别三轮，各轮主日志和 startup 各 104,860,119 字节。旧版导出 28,726/26,907/27,767ms；新版 4,072/3,720/4,232ms。新版主 JSONL 518,318 字节、文本 493,619 字节，startup 259,974 字节；旧版 startup 全量进入 ZIP。主日志仍扫描完整历史，输出有界不代表读量有界；附加日志读取预算由 T7 的实际 ReadBytes 测试另证。三个样本只报告范围，不能当可靠 P95。
+- 该实验进程全程分配旧版每轮约 91.6GB、新版约 3.8GB；导出后私有内存旧版约 890MB、新版约 259–263MB。这是分配总量/阶段进程值，不是保留集合大小，也不是所有运行环境的峰值承诺；没有把耗时改善归因于异步化。
+- `compatibility/old-reader-new-status/result.json`：真实旧程序集读取新版 15 条事件、忽略新增健康字段，配置两条规则可保存再读；`new-reader-old-status/result.json`：真实新版读取旧程序集序列化的 status/config 与一条中文/emoji 传统日志。均 exit 0、OS actions=0，无配置格式迁移。
+- 兼容探针首次误用不持久化配置的 Soak 根，之后切换输入源码却 `--no-restore` 导致测试宿主 deps 不含 Settings；两者均为夹具/构建失败，不冒充产品缺陷。明确输入根并分别 restore 新旧依赖图后通过，原失败不覆盖。
+
+### 可见桌面及待关闭项
+
+- 使用本轮本地 Release 输出与独立 `--root`，经 computer-use 实际操作设置窗口；未运行安装/升级、未修改真实策略。About 在日志页从未初始化时成功导出 `run-desktop/about-before-logs.zip`，实际 ZIP 含 config/status/main；四类附加日志的缺失状态均入 manifest，界面给出提交后成功提示。
+- 实际日志表格可读命中 #1/#2、退出、配置失效/恢复、“已符合目标，无需切换”；使用真实结构化事件，未把人工夹具事件当系统动作证据。日志状态缺健康字段明确未知。导出对话框 Esc 取消后 busy/取消控件收敛，按钮恢复；窗口正常关闭。
+- `current-audit/run-health-ui-long` 通过原 StatusPublisher 发布人工 failed→healthy，主日志始终 7,005 字节且最后写入 23:03:01 不变；23:03:50 的真实桌面显示“日志可能缺失”，23:09:28 提示已消失。该证据只证明无新日志时健康展示更新，不冒充真实磁盘失败；三层失败由 T2/T3 故障测试另证。Tab 进入查询框与控件 UIA 名称已观察，完整诊断键盘路径、DPI/高对比度仍未验收。
+- 两组实际 100MiB 输入（长行、更多短行）均可导出；导航点击发生在提交完成后，该两次尝试不能据此认定运行中导航取消通过。对话框取消是真实桌面 PASS，自动化的可控延迟/取消测试单独通过。
+- 补充 `export-performance/desktop-cancel-large/round-0`：主日志 1,073,742,102 字节、startup 104,857,686 字节，扩大主输入以延长真实 IO 观察窗口。23:30–23:34 三次均先观察到保存对话框已关闭、诊断按钮禁用与“正在导出”，再分别点击取消、导航至常规、Alt+F4 关闭窗口。取消出现“导出已取消”并恢复按钮；导航页面立即切换，回到 About 按钮可用且无晚到成功提示；关闭后窗口/进程退出，重新打开没有残留忙状态。三项目标 `cancel-io.zip`、`navigation-io.zip`、`close-io.zip` 均不存在，根中仅保留原配置与两个输入日志，无临时文件。该记录是可见桌面真实 IO 取消/导航/关闭 PASS，不以大小变化后的夹具替换原 100MiB 性能样本；全程未启动 Engine 或执行系统计划动作。
+- `current-audit/run-save-ui` 补充真实文件占用故障：90 秒只读共享锁允许读取旧配置、禁止原子替换；23:38:58 点击暂停，界面显示“暂停设置失败”，只追加 ConfigMutationFailed/“变更未保存”，SHA-256 保持 `9E1267EE243D7AB620B301B9E07249B735C635258BCE77A79C46F423500210A7`，重新打开仍为原暂停值。锁正常释放后 23:41:09 成功保存并记录“已保存”；23:41:27 恢复夹具原值，哈希回到上述原值。没有运行 Engine，成功日志不声称核心已采用；未修改真实策略或计划任务。该路径 PASS，不等同真实 ACL/全盘故障验收。
+- 100/150/200% DPI、高对比度、完整诊断键盘路径及真实休眠唤醒仍 NOT RUN，不以源码/STA 替代。
+- 既有窄窗口下表格固定列使“事件”位于可视区外，最大化后可读；原版 XAML 同样使用 120/190/180/240 最小列宽。本轮新增诊断按钮在初始窗口可见；该既有表格适配问题记录为范围外 P2，没有顺手重设计。
+- `soak/run-120min-final/result.json`：实际持续 7,200.021 秒，进程 exit 0、stopped=true；从 2026-10-04 22:05 至 2026-10-05 00:05 跨本地午夜。65,704 个周期、241 次完整评估、24 次注入主写故障时段，2 次模拟计划动作、真实 OS actions=0；稳定前台、两程序切换、周期主写失败/回退/恢复、配置不可用/恢复均注入。累计 Enqueued/Written=65,858，Primary=59,203、Fallback=6,655、Lost=0；PrimaryFailedBatches=72，所有丢弃=0、ConsumerFailed/StopFailed=false。这是确认写入总数，不表示预算轮转后仍保存所有历史记录。
+- `samples.jsonl` 为起点及每 5 分钟的 24 个样本（最后为 115 分钟）；120 分钟由最终停止结果确认。每次 flush 后队列均 0/0、维护 Succeeded/Completed=true；10 分钟后私有内存 19.34–20.09MiB，最初/末尾五个稳定样本均值 19.72/19.55MiB，句柄 265–302、线程 8–13，无连续上升趋势。最近 3,000 个周期的样本 P95 0.0535–0.0627ms、最大 34.6293ms；这些是注入周期成本，不替代实际 Engine 系统探测性能。
+- 全部样本的 startup 活动+归档 ≤4 个，每文件 ≤1MiB、总量 ≤4MiB；最终 startup 活动 78,886 字节，两归档 1,048,472/768,946 字节，跨日维护已观察。主档归档始终 ≤3 份；既有主写轮转语义允许单批越过阈值，样本出现 1,049,140 字节归档，本轮未宣称主档严格 ≤1MiB。最终保留日志全部可解析 JSONL。7 天过期边界由 T6 受控时间测试另证。
+- 前两次夹具运行分别因沙箱原子替换被拒与假 apply 触发而中断，失败证据保留；后者改为注入目标返回值，完整两小时才记 PASS。真实休眠唤醒 NOT RUN，所有本轮隔离设置窗口与夹具进程已结束，不以隔离 Soak 替代真实系统生命周期。
+
 
 ## T8 证据与自审
 

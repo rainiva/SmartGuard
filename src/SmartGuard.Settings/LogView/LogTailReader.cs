@@ -110,7 +110,7 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
 
   private LogEventPage ReadLatest(LogReadRequest request, CancellationToken cancellationToken)
   {
-    if (!string.IsNullOrWhiteSpace(_startupFallbackPath))
+    if (HasSupplementalHistory)
       return ReadMergedHistory(request with { Direction = LogReadDirection.Latest }, cancellationToken);
     // Delay hooks live in ReadFromOffset/ReadRecentTail so one Latest flight
     // matches the lifetime-test expectation of ~1-2 physical reads, not an
@@ -130,7 +130,7 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
       out var stoppedEarly,
       cursorSourceExclusiveUpperBound: null);
 
-    if (stoppedEarly)
+    if (stoppedEarly || mainCollected.Count == 0)
       return LogEventPage.Empty;
 
     var merged = mainCollected;
@@ -145,7 +145,7 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
 
   private LogEventPage ReadOlder(LogReadRequest request, CancellationToken cancellationToken)
   {
-    if (!string.IsNullOrWhiteSpace(_startupFallbackPath))
+    if (HasSupplementalHistory)
       return ReadMergedHistory(request with { Direction = LogReadDirection.Older }, cancellationToken);
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
@@ -166,20 +166,20 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
       out var stoppedEarly,
       request.Cursor.Source);
 
-    if (stoppedEarly)
+    if (stoppedEarly || collected.Count == 0)
       return LogEventPage.Empty;
 
     collected.Sort((a, b) => CompareEventsChronologically(a.Event, b.Event));
     if (collected.Count > targetCount)
       collected = collected.TakeLast(targetCount).ToList();
 
-    var hasOlder = hasMoreMain || HasEventsBefore(collected.FirstOrDefault(), cancellationToken);
+    var hasOlder = hasMoreMain || HasEventsBefore(collected.MinBy(item => item.Line.ByteOffset), cancellationToken);
     return BuildPage(collected, hasOlder, false);
   }
 
   private LogEventPage ReadNewer(LogReadRequest request, CancellationToken cancellationToken)
   {
-    if (!string.IsNullOrWhiteSpace(_startupFallbackPath))
+    if (HasSupplementalHistory)
       return ReadMergedHistory(request with { Direction = LogReadDirection.Newer }, cancellationToken);
     if (cancellationToken.IsCancellationRequested)
       return LogEventPage.Empty;
@@ -257,8 +257,12 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
     if (ordered.Count == 0)
       return LogEventPage.Empty;
 
-    var hasNewer = HasNewerAfter(ordered[^1], source);
-    return BuildPage(ordered, false, hasNewer);
+    var page = BuildPage(ordered, false, false);
+    // The continuation flag must use the same physical boundary as its cursor;
+    // display order can differ after a clock change or delayed delivery.
+    var boundary = page.NewerCursor!;
+    var physicalLast = ordered.First(item => item.Line.Source == boundary.Source && item.Line.ByteOffset == boundary.ByteOffset);
+    return page with { HasNewer = HasNewerAfter(physicalLast, FindSource(boundary.Source)!) };
   }
 
   private void AppendNewerAcrossSources(
@@ -424,9 +428,14 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
     if (events.Count == 0)
       return LogEventPage.Empty;
 
+    // Paging advances physical files. Equal/out-of-order timestamps may change
+    // display order, but must never move a cursor into the middle of its page.
+    var sourceOrder = _catalog.MainHistoryOldestFirst.Select((source, index) => (source.Identity, index))
+      .ToDictionary(item => item.Identity, item => item.index);
     var cursorSourceEvents = (cursorEvents ?? events)
       .Where(e => FindSource(e.Line.Source)?.Kind != LogSourceKind.StartupFallback)
-      .OrderBy(e => e.Event, Comparer<LogEvent>.Create(CompareEventsChronologically))
+      .OrderBy(e => sourceOrder.GetValueOrDefault(e.Line.Source))
+      .ThenBy(e => e.Line.ByteOffset)
       .ToList();
 
     if (cursorSourceEvents.Count == 0)

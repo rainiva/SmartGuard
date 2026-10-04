@@ -191,39 +191,4 @@ public sealed partial class GuardianLoop
       LogEventOutcome.Handled);
   }
 
-  private void WaitForWake(TimeSpan delay, CancellationToken cancellationToken)
-  {
-    if (delay < TimeSpan.Zero)
-      delay = TimeSpan.Zero;
-    if (!_wakeSignal.Wait(delay, cancellationToken))
-      return;
-
-    // 合并突发唤醒；唤醒原因（电源 / 前台 / 周期截止）由各自标记持有，不会因排空丢失。
-    while (_wakeSignal.Wait(0, cancellationToken)) { }
-  }
-
-  private int ResolveWaitSeconds(TimeSpan? lifecycleReevaluateAfter)
-    => GuardianIterationTiming.ResolveWaitSeconds(
-      _configRepository,
-      _rootPath,
-      lifecycleReevaluateAfter);
-
-  private GuardConfig? LoadConfig() => _configRepository.TryLoad();
-
-  private void EnsureConfigExists()
-  {
-    try
-    {
-      // File.Exists hides denied access. Initialize only confirmed absence;
-      // existing unreadable data must be left for the controlled read boundary.
-      if (_configRepository.TryLoadDetailed().FailureKind != "missing") return;
-      if (!Directory.Exists(_rootPath)) Directory.CreateDirectory(_rootPath);
-      _configRepository.Save(GuardConfig.CreateDefault(_rootPath));
-    }
-    catch
-    {
-      // A failed initial commit leaves configuration unavailable. The existing
-      // cycle reports that reason through bounded logging and health/status.
-    }
-  }
 }

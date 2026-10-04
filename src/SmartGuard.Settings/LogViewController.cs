@@ -266,9 +266,15 @@ public sealed class LogViewController
                     CreateReadRequest(_newerCursor, direction),
                     cancellationToken);
 
-            UpdateFromPage(page);
             if (page.Events.Count == 0)
+            {
+                // Reaching one physical end must retain the last nonempty
+                // page's opposite cursor, so the user can jump back again.
+                if (direction == LogReadDirection.Older) _hasOlderHistory = false;
+                else _hasNewerHistory = false;
                 break;
+            }
+            UpdateFromPage(page);
 
             if (direction == LogReadDirection.Older)
                 _eventWindow.Prepend(page.Events);

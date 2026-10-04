@@ -186,23 +186,6 @@ public sealed class SettingsWindowController
       isAlive: () => !controller._disposed && window.FindName("navList") is ListBox { SelectedIndex: 5 });
     controller._diagnosticSession = diagnosticSession;
     diagnosticExportCoordinator.WireAboutPage(window);
-    diagnosticSession.StateChanged += () =>
-    {
-      if (controller._disposed) return;
-      var busy = diagnosticSession.IsRunning;
-      if (window.FindName("btnExportDiagnostic") is Button aboutExport) aboutExport.IsEnabled = !busy;
-      if (window.FindName("btnLogDiagnostic") is Button logExport) logExport.IsEnabled = !busy;
-      foreach (var name in new[] { "btnCancelDiagnostic", "btnLogCancelDiagnostic", "lblDiagnosticProgress", "lblLogDiagnosticProgress" })
-        if (window.FindName(name) is UIElement element) element.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-    };
-    foreach (var name in new[] { "btnCancelDiagnostic", "btnLogCancelDiagnostic" })
-      if (window.FindName(name) is Button cancel) cancel.Click += (_, _) => diagnosticSession.Cancel();
-    if (window.FindName("navList") is ListBox diagnosticNavigation)
-      diagnosticNavigation.SelectionChanged += (_, _) =>
-      {
-        if (diagnosticNavigation.SelectedIndex != 5) diagnosticSession.Cancel(DiagnosticExportOrigin.About);
-      };
-
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
 
