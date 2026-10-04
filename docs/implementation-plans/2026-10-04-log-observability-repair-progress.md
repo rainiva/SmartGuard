@@ -21,7 +21,7 @@
 | T2 真实写入与非阻塞 | 实现与回归通过，展示接入 T3 | Configuration 431/431；Engine 293/293；日志架构 54/54；三轮隔离锁竞争比较 |
 | T3 日志健康 | 实现与目标验证通过 | Engine 40/40；Configuration 42/42；Tray 全项目 87/87；Settings 56/56；日志架构 55/55 |
 | T4 规则观测 | 待执行 | — |
-| T5 停工恢复与心跳 | 待执行 | — |
+| T5 停工恢复与心跳 | 读取依赖已实现，其余待执行 | 详细读取与指纹目标 28/28；为 T4 提前落实此依赖 |
 | T6 附加文件与回退可见 | 待执行 | — |
 | T7 诊断容错 | 待执行 | — |
 | T8 导出异步所有权 | 待执行 | — |
@@ -57,4 +57,9 @@
 - GREEN（均 exit 0）：`t3-engine-target.trx` 40/0/0；`t3-configuration-target.trx` 42/0/0；`t3-tray-green.trx` 31/0/0，Tray 全项目 `t3-tray-regression.trx` 87/0/0；`t3-settings-target.trx` 56/0/0（含 WPF STA 生命周期、分页和导航）；`t3-architecture-green.trx` 55/0/0。TRX 计数将与完成前全量 summary 独立核对。
 - 旧 Tray 精确文案测试因缺失健康字段新增未知提示而失败（`t3-tray-green-attempt.trx` 13/18/0），更新旧格式预期；专门守护字段测试只增加健康夹具，仍验证原守护语义，未放宽来源/原因断言。新健康测试独立覆盖缺失/未知、过期/超前时间、计数与时间变化不重复应用。
 - 全层日志失败而状态可写的隔离测试可读取 failed；状态 IO 再失败局部收敛，不结束 Engine。健康单独更新不推进守护 timestamp；稳定代码的样本时间/持续计数不每 5 秒写入，60 秒 freshness 或既有守护变化才带最新计数。
+
+## T5 读取依赖（提前于 T4）
+
+- T4 需要规则 generation，故提前实现 T5 的唯一详细加载结果与缓存指纹；其余停工/恢复/心跳仍按后续阶段执行。避免临时在每次轻路径计算指纹或保留旧 GuardConfig。
+- `t5-load-red.trx` 0/2/0、`t5-load-architecture-red.trx` 0/1/0，exit 1，是缺失契约的断言 RED；不冒充实际访问故障复现。GREEN `t5-load-green.trx` 28/0/0、`t5-load-architecture-green.trx` 5/0/0，exit 0。测试确认缺失、解析、无效根节点与目录拒绝类别、无旧配置、缓存只读一次、同数量换名单变化、主题/路径大小写不变。目录拒绝用于隔离访问失败，不声称已完成真实 ACL 验收。
 - 自审：无新文件、Timer、IPC、展示面板或日志推断状态路径；健康值不可变、累计分区原子发布，当前拥塞可解除而历史损失保留。Settings 状态独占原后台 flight/取消所有权，状态-only 请求忙时不排队；UI apply 不读取状态文件。WPF 线程边界核对[微软线程模型](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/advanced/threading-model)。真实托盘、DPI、UIA 与 Soak 仍为 NOT RUN，T9 统一验收。

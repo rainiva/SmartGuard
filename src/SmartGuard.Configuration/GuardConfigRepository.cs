@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Encodings.Web;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SmartGuard.Configuration;
 
@@ -13,6 +15,7 @@ public sealed class GuardConfigRepository
     Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
   };
   private GuardConfig? _readCache;
+  private GuardConfigLoadResult? _detailedReadCache;
   private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
 
   public GuardConfigRepository(string configPath)
@@ -24,27 +27,20 @@ public sealed class GuardConfigRepository
 
   internal void ResetMetricsForTests() => DiskReadCountForTests = 0;
 
-  public GuardConfig? TryLoad()
+  public GuardConfig? TryLoad() => TryLoadDetailed().Config;
+
+  public GuardConfigLoadResult TryLoadDetailed()
   {
-    if (!File.Exists(_configPath))
-    {
-      InvalidateReadCache();
-      return null;
-    }
-
-    var writeTimeUtc = File.GetLastWriteTimeUtc(_configPath);
-    if (_readCache is not null && _readCacheWriteTimeUtc == writeTimeUtc)
-      return _readCache;
-
-    DiskReadCountForTests++;
     try
     {
-      var node = JsonNode.Parse(File.ReadAllText(_configPath));
-      if (node is null)
-      {
-        InvalidateReadCache();
-        return null;
-      }
+      var writeTimeUtc = File.GetLastWriteTimeUtc(_configPath);
+      if (_readCache is not null && _detailedReadCache is not null && _readCacheWriteTimeUtc == writeTimeUtc)
+        return _detailedReadCache;
+
+      // Open explicitly: File.Exists hides access failures as "missing".
+      DiskReadCountForTests++;
+      var node = JsonNode.Parse(File.ReadAllText(_configPath, Encoding.UTF8));
+      if (node is not JsonObject) return LoadFailed("invalid");
 
       _readCache = node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
       GuardConfig? result = _readCache;
@@ -58,13 +54,39 @@ public sealed class GuardConfigRepository
       }
       _readCache = result;
       _readCacheWriteTimeUtc = File.GetLastWriteTimeUtc(_configPath);
-      return result;
+      return _detailedReadCache = result is null
+        ? new(null, "invalid", null)
+        : new(result, null, ComputeRuleFingerprint(result));
     }
-    catch
+    catch (FileNotFoundException) { return LoadFailed("missing"); }
+    catch (DirectoryNotFoundException) { return LoadFailed("missing"); }
+    catch (UnauthorizedAccessException) { return LoadFailed("access"); }
+    catch (JsonException) { return LoadFailed("parse"); }
+    catch (IOException) { return LoadFailed("io"); }
+    catch { return LoadFailed("unknown"); }
+  }
+
+  private GuardConfigLoadResult LoadFailed(string kind)
+  {
+    InvalidateReadCache();
+    return new(null, kind, null);
+  }
+
+  private static string ComputeRuleFingerprint(GuardConfig config)
+  {
+    // Only on an actual reload, never on the foreground light path. Stream each
+    // canonical entry so no second list or old authorizing configuration is kept.
+    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    hash.AppendData([config.ForegroundRestrictionEnabled ? (byte)1 : (byte)0]);
+    foreach (var raw in config.ForegroundProgramPaths ?? [])
     {
-      InvalidateReadCache();
-      return null;
+      var value = GuardConfigValidator.TryNormalizeProgramPath(raw, out var normalized)
+        ? normalized.ToUpperInvariant() : raw ?? string.Empty;
+      var bytes = Encoding.UTF8.GetBytes(value);
+      hash.AppendData(BitConverter.GetBytes(bytes.Length));
+      hash.AppendData(bytes);
     }
+    return Convert.ToHexString(hash.GetHashAndReset());
   }
 
   public GuardConfig LoadOrDefault(string root)
@@ -250,6 +272,7 @@ public sealed class GuardConfigRepository
   private void InvalidateReadCache()
   {
     _readCache = null;
+    _detailedReadCache = null;
     _readCacheWriteTimeUtc = DateTime.MinValue;
   }
 

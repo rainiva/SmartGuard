@@ -6,6 +6,16 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Detailed_configuration_load_and_rule_fingerprint_have_one_repository_owner()
+  {
+    var method = typeof(GuardConfigRepository).GetMethod("TryLoadDetailed", Type.EmptyTypes);
+    method.Should().NotBeNull();
+    method!.ReturnType.FullName.Should().Be("SmartGuard.Configuration.GuardConfigLoadResult");
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/GuardConfigRepository.cs")
+      .Should().Contain("TryLoadDetailed().Config");
+  }
+
+  [Fact]
   public void Shared_status_has_one_typed_optional_logging_health_contract()
   {
     var field = typeof(SmartGuard.Contracts.StatusPayload).GetProperty("logHealth");
