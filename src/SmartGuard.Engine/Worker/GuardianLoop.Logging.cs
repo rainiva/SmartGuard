@@ -7,6 +7,25 @@ namespace SmartGuard.Engine.Worker;
 
 public sealed partial class GuardianLoop
 {
+  private readonly record struct LogSettingsSnapshot(
+    LogLevel MinimumLevel, string? MainPath, LogRetentionPolicy? MainRetention, string StartupPath);
+  private readonly object _logSettingsGate = new();
+  private LogSettingsSnapshot _lastLogSettings;
+
+  private LogSettingsSnapshot CaptureLogSettings(GuardConfig? config)
+  {
+    if (config is not null)
+    {
+      // Prepare outside the short publication lock; this is path/value projection
+      // only. The snapshot cannot carry an old policy or manual deadline.
+      var next = new LogSettingsSnapshot(LogLevelFilter.ParseMinimum(config.LogMinimumLevel),
+        SmartGuardPaths.ResolveLogFile(config, _rootPath), LogRetentionPolicy.FromGuardConfig(config), _fallbackLogPath);
+      lock (_logSettingsGate) _lastLogSettings = next;
+      return next;
+    }
+    lock (_logSettingsGate) return _lastLogSettings;
+  }
+
   private GuardianLogWriteResult WriteLog(
     GuardConfig? config,
     LogLevel level,
@@ -16,11 +35,18 @@ public sealed partial class GuardianLoop
     IReadOnlyDictionary<string, JsonElement>? properties = null,
     DateTimeOffset? observedAtUtc = null)
   {
-    if (!LogLevelFilter.ShouldWrite(level, LogLevelFilter.ParseMinimum(config?.LogMinimumLevel ?? "Warn")))
+    var settings = CaptureLogSettings(config);
+    if (!LogLevelFilter.ShouldWrite(level, settings.MinimumLevel))
       return GuardianLogWriteResult.SuppressedByLevel;
-    var fp = message.Trim().ToLowerInvariant();
-    if (!_deduplication.TryAccept(fp, message, out var dedupMessage))
-      return GuardianLogWriteResult.Rejected;
+    var dedupMessage = message;
+    // These transitions already have semantic acknowledgement in the tracker.
+    // Same-count rule replacement and different GUID facts may share text;
+    // message-only aggregation must not suppress a real state change.
+    if (eventName is not EventNameRegistry.ConfigReloaded and not EventNameRegistry.ForegroundAdmissionChanged and not EventNameRegistry.GuardStateChanged)
+    {
+      var fp = message.Trim().ToLowerInvariant();
+      if (!_deduplication.TryAccept(fp, message, out dedupMessage)) return GuardianLogWriteResult.Rejected;
+    }
 
     var logEvent = EngineLogEvents.Create(
       level,
@@ -38,13 +64,15 @@ public sealed partial class GuardianLoop
   private void DrainGuardObservations()
   {
     var read = GuardConfigReadResult.TryFromRepository(_configRepository);
-    _guardObservations.ObserveContext(read, GuardObservationGate.For(read, DateTimeOffset.Now));
+    _guardObservations.ObserveContext(read, GuardObservationGate.For(read, _observationTime.GetLocalNow()));
+    _guardObservations.DrainConfiguration(read, _observationTime.GetUtcNow(),
+      (c, l, m, e, p, at) => WriteLog(c, l, m, e, properties: p, observedAtUtc: at));
     _guardObservations.Drain(read.Config,
       (c, l, m, e, p, at) => WriteLog(c, l, m, e, properties: p, observedAtUtc: at));
   }
 
   private void WriteLifecycleTransitions(
-    GuardConfig config,
+    GuardConfig? config,
     IReadOnlyList<PowerLifecycleSignal> transitions)
   {
     foreach (var signal in transitions)
@@ -89,7 +117,9 @@ public sealed partial class GuardianLoop
   private LogBatchWriteResult WriteConsumerBatch(IReadOnlyList<LogEvent> events)
   {
     var before = _consumerRecovery.State;
-    var result = _consumerRecovery.ExecuteWithRecovery(WriteBatchToDisk, events, _fallbackLogPath);
+    var settings = CaptureLogSettings(LoadConfig());
+    var result = _consumerRecovery.ExecuteWithRecovery(batch => WriteBatchToDisk(batch, settings), events, settings.StartupPath,
+      primaryAvailable: settings.MainPath is not null && settings.MainRetention is not null);
     var after = _consumerRecovery.State;
     if ((before == RecoveryState.Healthy) != (after == RecoveryState.Healthy))
     {
@@ -129,14 +159,12 @@ public sealed partial class GuardianLoop
     }
   }
 
-  private bool WriteBatchToDisk(IReadOnlyList<LogEvent> events)
+  private static bool WriteBatchToDisk(IReadOnlyList<LogEvent> events, LogSettingsSnapshot settings)
   {
     try
     {
-      var config = LoadConfig();
-      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-      var retention = LogRetentionPolicy.FromGuardConfig(config);
-      return LogStructuredSink.TryWriteBatch(logPath, events, retention);
+      return settings.MainPath is not null && settings.MainRetention is not null
+        && LogStructuredSink.TryWriteBatch(settings.MainPath, events, settings.MainRetention);
     }
     catch
     {

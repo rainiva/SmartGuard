@@ -21,7 +21,7 @@
 | T2 真实写入与非阻塞 | 实现与回归通过，展示接入 T3 | Configuration 431/431；Engine 293/293；日志架构 54/54；三轮隔离锁竞争比较 |
 | T3 日志健康 | 实现与目标验证通过 | Engine 40/40；Configuration 42/42；Tray 全项目 87/87；Settings 56/56；日志架构 55/55 |
 | T4 规则观测 | 实现与目标/全项目回归通过 | 目标 116/116；Engine 全项目 308/308；日志架构 57/57；三轮 128 项轻路径比较 |
-| T5 停工恢复与心跳 | 读取依赖已实现，其余待执行 | 详细读取与指纹目标 28/28；为 T4 提前落实此依赖 |
+| T5 停工恢复与心跳 | 实现与全项目回归通过 | Engine 327/327；Configuration 435/435；日志架构 60/60；读取依赖提前于 T4 |
 | T6 附加文件与回退可见 | 待执行 | — |
 | T7 诊断容错 | 待执行 | — |
 | T8 导出异步所有权 | 待执行 | — |
@@ -73,3 +73,11 @@
 - 性能：新隔离 `rule-benchmark/` 对起点 archive 与修改版各三轮、每轮 1000 次稳定轻路径，名单 128 项；包含修改版既有周期 drain，假前台/假时钟，无 PowerCfg/WMI 或真实动作。JSON 分别在 `rule-performance-before/results-d6d03281a0a74ee4bc409e77ee9cc7b0.json`、`rule-performance-after/results-7d86a80307d645949f51f5def0116501.json`。CPU/分配/私有内存/线程与调用数均保留；不以亚毫秒样本代替真实桌面或 Soak。
 - 自审：匹配算法单源，索引来自原 FindIndex；完整决策携带该索引，不再匹配。唯一 Loop 排出点在 Wait 前，不依赖完整 Runner 才发现 A→B；无新 wake/Task/历史队列。事件固定字段+GUID+短文件名保持 4KiB 内，时间不参加稳定相等；旧待发结果在规则和门禁变化后不能跨代重试。
 - 三轮基线 P95 为 0.0380/0.0327/0.0428ms，修改版为 0.0449/0.0386/0.0400ms；最大值分别 0.1939 / 0.2900ms。每轮进程 CPU 均 31.25ms（粗粒度），完整轮次均 1、身份查询均 1001（含预热）、稳态事件均 0、线程均 8。修改版每 1000 次分配增加约 80KB，来自固定大小观测值；私有内存按轮仍增长，短采样没有证明 GC 后长期平台，留给 Soak。不能把相近的 P95 数值表述为性能提升。
+
+## T5 证据与自审
+
+- `t5-behavior-red.trx` 0/5/0、exit 1，实际确认首次坏配置被默认主日志当成功、旧级别丢失、无规则采用摘要、解析类别缺失，以及暂停仍称计划正常。`t5-snapshot-architecture-red.trx` 0/1/0 是缺失有限快照的契约 RED；编译期间错误计数名称修正不计行为 RED。
+- `t5-light-failure-red.trx` 0/1/0、exit 1：轻路径发现配置失效后无日志；现只提交 failureKind/未知计划事实，不新增系统查询。`t5-initialization-red.trx` 0/1/0、`t5-initialization-boundary-red.trx` 0/2/0 复现目录占位被当作缺失写入及根路径阻塞使循环提前退出；改为仅 confirmed missing 初始化，失败进入 unavailable；确认缺失时仍能首次生成配置。
+- 中间 `t5-core-green.trx` 19/2/0 发现采用摘要的相同数量文案被通用文本去重抑制；这些已有语义确认的三个状态事件改由 Tracker 独占去重，不经过文本聚合。timestamp 测试改按明确事件取行，仍精确核对原 timestamp；不把新增 ConfigReloaded 当作失败。`t5-engine-regression.trx` 323/2/0 是两个旧结构化夹具没有有效配置；为其建立真实已提交配置，保留原结构化字段/handled/观测时间断言，首次无效回退另由新测试证明。
+- GREEN（均 exit 0）：`t5-target-green.trx` 65/0/0；`t5-reasons-green.trx` 15/0/0；`t5-load-io-green.trx` 3/0/0；最终 `t5-engine-complete.trx` 327/0/0、`t5-configuration-regression.trx` 435/0/0、`t5-architecture-final.trx` 60/0/0。受控独占文件锁确认 IO 类别不复用缓存；真实 ACL、真实首次启动留给桌面验收。
+- 自审：快照四个字段、值类型、短锁且无旧 GuardConfig；主不可用直接回退，主失败尝试计数不增加。有效规则读取按缓存指纹识别同数量更换，主题不刷摘要，恢复只一次；所有事件仍走唯一 WriteLog/EnqueueLog。原因回归覆盖身份未知/空名单/非法/未命中/暂停/人工有效及到期/生命周期阻止/最终失败/探测失败；心跳不推策略、不额外探测，失败/未知不声称成功，拒绝不推进既有心跳窗口。完整观测与配置摘要最多各既有周期尝试一次，不建立历史或重试任务。

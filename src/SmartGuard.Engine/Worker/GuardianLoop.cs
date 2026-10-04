@@ -31,6 +31,7 @@ public sealed partial class GuardianLoop
   private readonly LogPipelineOptions _logOptions = new();
   private readonly LogBackpressureController _backpressure = new();
   private readonly GuardianCycleCoordinator _cycleCoordinator;
+  private readonly TimeProvider _observationTime;
   private bool _powerCfgBrightnessSupported;
 
   public GuardianLoop(
@@ -53,9 +54,11 @@ public sealed partial class GuardianLoop
     TimeProvider? timeProvider = null)
   {
     _rootPath = rootPath;
+    _observationTime = timeProvider ?? TimeProvider.System;
     _configPath = configPath;
     _initMarkerPath = initMarkerPath;
     _fallbackLogPath = fallbackLogPath;
+    _lastLogSettings = new(LogLevel.Warn, null, null, _fallbackLogPath);
     _publisher = new StatusPublisher(statusPath, timeProvider);
     _configRepository = new GuardConfigRepository(configPath);
     _consumerRecovery = new LogConsumerRecovery(new LogRecoveryStateMachine(timeProvider: timeProvider));
@@ -101,8 +104,7 @@ public sealed partial class GuardianLoop
     {
       EnsureConfigExists();
       var config = LoadConfig();
-      var logPath = SmartGuardPaths.ResolveLogFile(config, _rootPath);
-      WriteLog(config, LogLevel.Info, $"SmartGuard Engine 启动。日志：{logPath}", EventNameRegistry.AppStarted);
+      WriteLog(config, LogLevel.Info, "SmartGuard Engine 启动", EventNameRegistry.AppStarted);
 
       using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
       var powerFailureReported = !powerListener.IsEnabled;
@@ -200,12 +202,22 @@ public sealed partial class GuardianLoop
       _rootPath,
       lifecycleReevaluateAfter);
 
-  private GuardConfig LoadConfig() => _configRepository.LoadOrDefault(_rootPath);
+  private GuardConfig? LoadConfig() => _configRepository.TryLoad();
 
   private void EnsureConfigExists()
   {
-    if (!Directory.Exists(_rootPath)) Directory.CreateDirectory(_rootPath);
-    if (File.Exists(_configPath)) return;
-    _configRepository.Save(GuardConfig.CreateDefault(_rootPath));
+    try
+    {
+      // File.Exists hides denied access. Initialize only confirmed absence;
+      // existing unreadable data must be left for the controlled read boundary.
+      if (_configRepository.TryLoadDetailed().FailureKind != "missing") return;
+      if (!Directory.Exists(_rootPath)) Directory.CreateDirectory(_rootPath);
+      _configRepository.Save(GuardConfig.CreateDefault(_rootPath));
+    }
+    catch
+    {
+      // A failed initial commit leaves configuration unavailable. The existing
+      // cycle reports that reason through bounded logging and health/status.
+    }
   }
 }

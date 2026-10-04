@@ -194,7 +194,11 @@ public sealed class GuardRuleLoggingTests : IDisposable
     typeof(GuardianLoop).GetMethod("DrainGuardObservations", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(loop, null);
     var pipeline = (LogPipeline)typeof(GuardianLoop).GetField("_logPipeline", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(loop)!;
     (await pipeline.FlushAsync()).Should().BeTrue();
-    var line = File.ReadLines(SmartGuardPaths.ResolveLogFile(config, _root)).Single();
+    var line = File.ReadLines(SmartGuardPaths.ResolveLogFile(config, _root)).Single(line =>
+    {
+      LogJsonlFormatter.TryParseLine(line, out var item).Should().BeTrue();
+      return item!.EventName == EventNameRegistry.ForegroundAdmissionChanged;
+    });
     using var parsed = JsonDocument.Parse(line);
     parsed.RootElement.GetProperty("timestamp").GetDateTimeOffset().Should().Be(at);
     parsed.RootElement.GetProperty("properties").GetProperty("observedAtUtc").GetDateTimeOffset().Should().Be(at);

@@ -168,7 +168,8 @@ public sealed partial class GuardianLoop
       try
       {
         var cfg = LoadConfig();
-        _exceptionStormHandler.TrackAndLogException(ex, cfg);
+        if (cfg is not null) _exceptionStormHandler.TrackAndLogException(ex, cfg);
+        else WriteLog(null, LogLevel.Error, "守护周期异常；配置不可用，详细诊断不可用", EventNameRegistry.IterationError);
       }
       catch
       {

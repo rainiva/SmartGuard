@@ -14,15 +14,19 @@ namespace SmartGuard.Engine.Worker;
 internal sealed class GuardObservationTracker
 {
   private sealed record Admission(bool Admitted, GuardDecisionReason Reason, int? Index, string? Name);
-  private sealed record Execution(string Source, string Reason, Guid? Target, Guid? Actual, string Action);
+  private sealed record Execution(string Source, string Reason, Guid? Target, Guid? Actual, string Action, string? FailureKind);
   private Admission? _pendingAdmission, _acceptedAdmission;
   private Execution? _pendingExecution, _acceptedExecution;
   private DateTimeOffset _admissionAt, _executionAt;
   private bool _admissionDirty, _executionDirty;
   private string? _fingerprint, _gate, _minimumLevel;
+  private string? _reportedRuleFingerprint, _pendingRuleFingerprint;
+  private bool _hasReportedRules, _hasPendingRules, _configurationUnavailable;
+  private DateTimeOffset _rulesAt;
 
   public void ObserveContext(GuardConfigReadResult read, string gate)
   {
+    if (!read.IsValid) { _configurationUnavailable = true; _hasPendingRules = false; }
     var level = read.Config?.LogMinimumLevel;
     if (_minimumLevel != level)
     {
@@ -65,11 +69,31 @@ internal sealed class GuardObservationTracker
 
   public void ClearAdmission() { _pendingAdmission = null; _admissionDirty = false; }
 
-  public void ObserveExecution(string source, string reason, Guid? target, Guid? actual, string action, DateTimeOffset observedAtUtc)
+  public void ObserveExecution(string source, string reason, Guid? target, Guid? actual, string action, DateTimeOffset observedAtUtc,
+    string? failureKind = null)
   {
-    var next = new Execution(source, reason, target, actual, action);
+    var next = new Execution(source, reason, target, actual, action, failureKind);
     if (next != _pendingExecution) { _pendingExecution = next; _executionAt = observedAtUtc; }
     _executionDirty = next != _acceptedExecution;
+  }
+
+  public void DrainConfiguration(GuardConfigReadResult read, DateTimeOffset at,
+    Func<GuardConfig?, LogLevel, string, string, IReadOnlyDictionary<string, JsonElement>?, DateTimeOffset?, GuardianLogWriteResult> write)
+  {
+    if (!read.IsValid || read.Config is not { } config)
+    { _configurationUnavailable = true; _hasPendingRules = false; return; }
+    if (_hasReportedRules && _reportedRuleFingerprint == read.RuleFingerprint && !_configurationUnavailable) return;
+    if (!_hasPendingRules || _pendingRuleFingerprint != read.RuleFingerprint)
+    { _hasPendingRules = true; _pendingRuleFingerprint = read.RuleFingerprint; _rulesAt = at; }
+    var message = (_configurationUnavailable ? "配置读取恢复；" : string.Empty)
+      + $"Engine 已采用程序规则：限制{(config.ForegroundRestrictionEnabled ? "开启" : "关闭")}，名单 {config.ForegroundProgramPaths?.Count ?? 0} 项";
+    if (Acknowledged(write(config, LogLevel.Info, message, EventNameRegistry.ConfigReloaded, null, _rulesAt)))
+    {
+      _hasReportedRules = true;
+      _reportedRuleFingerprint = read.RuleFingerprint;
+      _hasPendingRules = false;
+      _configurationUnavailable = false;
+    }
   }
 
   public void Drain(GuardConfig? config,
@@ -102,6 +126,7 @@ internal sealed class GuardObservationTracker
       props["guardSource"] = JsonSerializer.SerializeToElement(execution.Source);
       props["guardReason"] = JsonSerializer.SerializeToElement(execution.Reason);
       props["actionResult"] = JsonSerializer.SerializeToElement(execution.Action);
+      if (execution.FailureKind is not null) props["failureKind"] = JsonSerializer.SerializeToElement(execution.FailureKind);
       if (execution.Target is Guid target) props["targetPlanGuid"] = JsonSerializer.SerializeToElement(target);
       if (execution.Actual is Guid actual) props["actualPlanGuid"] = JsonSerializer.SerializeToElement(actual);
       var result = write(config,
@@ -127,7 +152,7 @@ internal sealed class GuardObservationTracker
   {
     var state = value.Reason switch
     {
-      GuardStatusCodes.Reasons.ConfigUnavailable => "配置不可用；自动守护暂停干预",
+      GuardStatusCodes.Reasons.ConfigUnavailable => "配置读取失败：" + FailureLabel(value.FailureKind) + "；自动守护暂停干预",
       GuardStatusCodes.Reasons.ProbeFailed => "计划探测失败；本轮不执行切换",
       GuardStatusCodes.Reasons.Paused => "守护已暂停；保留当前计划",
       GuardStatusCodes.Reasons.ManualActive => "人工接管有效",
@@ -147,4 +172,10 @@ internal sealed class GuardObservationTracker
       _ => state + "；本轮未执行切换",
     };
   }
+
+  private static string FailureLabel(string? kind) => kind switch
+  {
+    "missing" => "文件缺失", "parse" => "解析错误", "invalid" => "配置结构无效",
+    "access" => "访问被拒绝", "io" => "读取 IO 失败", _ => "原因未知",
+  };
 }

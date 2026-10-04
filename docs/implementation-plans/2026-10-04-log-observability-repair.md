@@ -506,6 +506,8 @@ dotnet test Tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj --filte
 
 ### T5：补停工恢复原因并纠正心跳文案（F2）
 
+实施状态：详细读取、固定错误类别、规则采用/恢复摘要、有限日志快照、首次初始化失败收敛及最终事实心跳已落地。Engine 全项目 327/327、Configuration 435/435、日志架构 60/60 通过；真实 ACL/首次启动、全套集成和 Soak 尚未验收。详见[实施记录](2026-10-04-log-observability-repair-progress.md)。
+
 **接口：** GuardConfigRepository.TryLoadDetailed 为读取结果唯一真源；Runner 消费受控错误类别；GuardianLogMessages 消费最终原因/目标/实际事实，不另推策略。
 
 - [ ] RED：缺文件/非法 JSON/访问拒绝/IO 失败均不授权动作；首次失效 Warn 一次，重复相同失效不刷屏；恢复 Info 一次。

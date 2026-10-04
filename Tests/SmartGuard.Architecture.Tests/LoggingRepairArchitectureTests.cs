@@ -6,6 +6,18 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Unavailable_configuration_retains_only_a_finite_logging_snapshot()
+  {
+    var snapshot = typeof(SmartGuard.Engine.Worker.GuardianLoop).GetNestedType("LogSettingsSnapshot", System.Reflection.BindingFlags.NonPublic);
+    snapshot.Should().NotBeNull();
+    snapshot!.IsValueType.Should().BeTrue();
+    snapshot!.GetProperties().Select(p => p.Name).Should().BeEquivalentTo("MinimumLevel", "MainPath", "MainRetention", "StartupPath");
+    snapshot.GetProperties().Should().NotContain(p => p.PropertyType == typeof(GuardConfig));
+    SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs").Should().NotContain("LoadOrDefault");
+    SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.Logging.cs").Should().Contain("primaryAvailable:");
+  }
+
+  [Fact]
   public void Rule_observation_events_are_registered_and_owned_by_the_main_loop()
   {
     EventNameRegistry.IsRegistered("ForegroundAdmissionChanged").Should().BeTrue();

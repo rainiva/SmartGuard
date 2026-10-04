@@ -72,6 +72,7 @@ public class StructuredEngineLoggingTests
         BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(loop)!;
       var observedAt = new DateTimeOffset(2026, 8, 22, 14, 0, 0, TimeSpan.Zero);
       var config = GuardConfig.CreateDefault(root);
+      new GuardConfigRepository(SmartGuardPaths.ConfigFile(root)).Save(config);
 
       pipeline.Start();
       writeTransitions.Invoke(loop, [
@@ -100,6 +101,7 @@ public class StructuredEngineLoggingTests
     var root = Path.Combine(Path.GetTempPath(), "sg-power-log-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(root);
     var configPath = Path.Combine(root, "SmartGuard.config.json");
+    new GuardConfigRepository(configPath).Save(GuardConfig.CreateDefault(root));
     var fallbackPath = Path.Combine(root, "SmartGuard.startup.log");
 
     try

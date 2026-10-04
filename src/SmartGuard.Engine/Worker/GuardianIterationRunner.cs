@@ -90,7 +90,7 @@ internal sealed partial class GuardianIterationRunner(
       writeLog(
         configOpt!,
         LogLevel.Warn,
-        $"电源计划探测失败，保留上次计划状态：{planProbe.FailureKind} {planProbe.Diagnostic}",
+        $"电源计划探测失败，停止本轮切换：{planProbe.FailureKind}",
         EventNameRegistry.PowerPlanProbeFailed, null, null);
       ObserveUnavailable(configRead, current, GuardStatusCodes.Reasons.ProbeFailed, time.GetUtcNow());
       // 探测失败同样必须发布状态：否则 UI 停留在上一轮原因，无法解释守护暂停纠偏。
@@ -216,7 +216,7 @@ internal sealed partial class GuardianIterationRunner(
         writeLog(
           config,
           LogLevel.Warn,
-          $"电源计划切换失败：{applied.FailureKind} {applied.Diagnostic}",
+          $"电源计划切换未验证成功：{applied.FailureKind}",
           EventNameRegistry.PowerPlanApplyFailed, ActionProperties(expected, current, "failed"), null);
       }
       else
@@ -256,6 +256,7 @@ internal sealed partial class GuardianIterationRunner(
     if (current is Guid observed && (!externalChangeDetected || planSwitched))
       state.LastKnownGuid = observed;
 
+    var (_, heartbeatReason) = ResolveGuardStatusCodes(decision, PolicyMutationAllowed());
     if (!planApplyFailed && config.HeartbeatIntervalMin > 0 &&
         heartbeatSchedule.IsDue(
           TimeSpan.FromMinutes(config.HeartbeatIntervalMin),
@@ -263,7 +264,8 @@ internal sealed partial class GuardianIterationRunner(
     {
       var planName = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       var writeResult = writeLog(config, LogLevel.Heart,
-        GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright),
+        GuardianLogMessages.FormatHeartbeat(label, planName, idle, batteryPercent, isOnAc, config.Paused, bright,
+          heartbeatReason, expected, current),
         EventNameRegistry.HeartbeatTick, null, null);
       if (writeResult.IsAccepted())
         heartbeatSchedule.MarkAccepted();

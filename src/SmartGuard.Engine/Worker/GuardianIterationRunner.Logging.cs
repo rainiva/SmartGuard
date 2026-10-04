@@ -12,7 +12,8 @@ internal sealed partial class GuardianIterationRunner
   {
     _observations.ObserveContext(read, GuardObservationGate.For(read, at));
     _observations.ClearAdmission();
-    _observations.ObserveExecution(GuardStatusCodes.Sources.None, reason, null, actual, "not-attempted", at);
+    _observations.ObserveExecution(GuardStatusCodes.Sources.None, reason, null, actual, "not-attempted", at,
+      reason == GuardStatusCodes.Reasons.ConfigUnavailable ? read.FailureKind ?? "unknown" : null);
   }
 
   private void ObserveFinal(GuardConfigReadResult read, ForegroundObservation foreground,

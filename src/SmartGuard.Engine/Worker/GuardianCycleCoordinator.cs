@@ -1,4 +1,5 @@
 using SmartGuard.Configuration;
+using SmartGuard.Contracts;
 using SmartGuard.Engine.Domain;
 using SmartGuard.Engine.Infrastructure;
 
@@ -194,7 +195,13 @@ internal sealed class GuardianCycleCoordinator
     var configRead = _loadConfig();
     _observations?.ObserveContext(configRead, GuardObservationGate.For(configRead, _time.GetLocalNow()));
     if (!configRead.IsValid || configRead.Config is not { } config)
+    {
+      // A light read can discover loss of configuration before the next full
+      // deadline. Record that fact without borrowing old plan observations.
+      _observations?.ObserveExecution(GuardStatusCodes.Sources.None, GuardStatusCodes.Reasons.ConfigUnavailable,
+        null, null, "not-attempted", _time.GetUtcNow(), configRead.FailureKind ?? "unknown");
       return;
+    }
 
     var nowLocal = _time.GetLocalNow().LocalDateTime;
     if (config.Paused || config.IsManualHighPerformanceActive(nowLocal))

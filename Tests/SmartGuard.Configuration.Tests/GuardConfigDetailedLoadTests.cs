@@ -59,4 +59,17 @@ public sealed class GuardConfigDetailedLoadTests : IDisposable
   }
 
   public void Dispose() { try { Directory.Delete(_root, true); } catch { } }
+
+  [Fact]
+  public void Locked_config_is_an_io_failure_and_does_not_reuse_a_valid_read()
+  {
+    var repo = new GuardConfigRepository(ConfigPath);
+    repo.Save(GuardConfig.CreateDefault(_root));
+    repo.TryLoad().Should().NotBeNull();
+    File.SetLastWriteTimeUtc(ConfigPath, DateTime.UtcNow.AddMinutes(1));
+    using var held = new FileStream(ConfigPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    var result = Read(repo);
+    Field<string>(result, "FailureKind").Should().Be("io");
+    Field<GuardConfig>(result, "Config").Should().BeNull();
+  }
 }
