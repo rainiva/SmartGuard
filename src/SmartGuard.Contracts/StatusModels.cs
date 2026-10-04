@@ -33,6 +33,8 @@ public sealed class StatusPayload
   /// null = 不适用或未知（如限制关闭、配置不可用或旧状态缺字段）。
   /// </summary>
   public bool? foregroundEventsAvailable { get; set; }
+  /// <summary>可选日志健康；旧状态缺字段时未知，不能由日志尾部猜测。</summary>
+  public LogHealthStatus? logHealth { get; set; }
 }
 
 public sealed class NotificationEvent

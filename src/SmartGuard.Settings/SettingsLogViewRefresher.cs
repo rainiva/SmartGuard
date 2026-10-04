@@ -21,12 +21,13 @@ internal static class SettingsLogViewRefresher
     if (forceRedraw)
       forceRefreshCountForTests++;
 
-    var idleRead = LogViewIdleReader.TryRead(root);
+    var idleRead = refreshResult.StatusObservation ?? new LogViewIdleReadResult(null, false);
     if (idleRead.Seconds is not null)
       logIdleSeconds = idleRead.Seconds;
     logStatusMayBeStale = idleRead.StatusMayBeStale;
 
-    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, logIdleSeconds, logStatusMayBeStale);
+    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, logIdleSeconds, logStatusMayBeStale,
+      logHealth: idleRead.LogHealth);
 
     if (!forceRedraw
         && !refreshResult.ContentChanged

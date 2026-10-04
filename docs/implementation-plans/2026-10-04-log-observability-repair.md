@@ -324,6 +324,8 @@ dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.
 
 ### T1：先消除保存失败后的假成功（F3）
 
+实施记录：本地提交 `51825f77`，保存/缓存/设置目标及回归通过；RED 的具体类型和真实 UI 未验收边界见[实施记录](2026-10-04-log-observability-repair-progress.md)。以下清单保留原验收约束，不把隔离接缝缺失误标为已观察到的系统任务故障。
+
 **接口：** 输入既有 Save/SetPaused；输出成功后 ConfigMutationLogged，失败后 ConfigMutationFailed。保存异常仍向上层原样传播，日志异常不得覆盖它。
 
 **文件：** `src/SmartGuard.Configuration/ConfigMutationService.cs`、`SettingsSaveCoordinator.cs`、`GuardConfigRepository.cs`、`EventNameRegistry.cs`、`LogEventChannels.cs`；对应三个 Configuration.Tests 测试文件；架构门禁与契约同步。
@@ -364,6 +366,8 @@ dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.
 **阶段交付：** 保存失败无成功记录；成功保存与动作实际生效用语分开；无新配置写入入口。
 
 ### T2：合并修复真实写入结果与非阻塞拥塞（F4/F5）
+
+实施记录：本地提交 `d4e74ab7`，Configuration 431、Engine 293、日志架构 54 项回归通过。三轮预热锁竞争业务 P95 为 0.057–0.887ms；未预热首轮 P95 30ms 超过拟定 20ms，证据保留，性能总体关闭仍待 T9。新增交错 RED 查出水位/丢失发布竞态并修复，详见[实施记录](2026-10-04-log-observability-repair-progress.md)。
 
 **接口：** 消费侧返回 §4.3 的 LogBatchWriteResult；业务侧仅 TryEnqueue，失败返回拒绝并计数。恢复状态与计数均可注入时间/故障，不运行真实守护。
 
@@ -451,6 +455,8 @@ dotnet test Tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj --filte
 **阶段交付：** 拥塞与磁盘故障不造成日常业务侧同步 IO；计数可信；回退成功与主写恢复不混淆。不得先提交删除回退但没有计数/健康证据的中间版本。
 
 ### T3：把日志故障送到现有状态与展示链（F4）
+
+实施记录：状态独立时间、异常分区投影、两端短提示及既有单 flight 后台采样已通过目标验证；真实桌面与整个计划尚未验收。缺失健康字段的旧状态现在明确显示未知；守护展示测试提供独立健康夹具，避免混淆两种新鲜度。完整 RED/GREEN 数字见[实施记录](2026-10-04-log-observability-repair-progress.md)。
 
 **接口：** StatusPayload 增加可选 LogHealthStatus；Engine 主循环投影；共享 reader 原样读取。状态来源唯一，UI 不根据日志尾部猜健康。
 

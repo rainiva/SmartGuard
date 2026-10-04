@@ -220,5 +220,7 @@ public class TrayGuardStatusDisplayTests
       paused = false,
       guardSource = source,
       guardReason = reason,
+      // These tests isolate guard freshness; logging has its own fresh sample.
+      logHealth = new LogHealthStatus(LogHealthCodes.Healthy, DateTimeOffset.UtcNow, 1, 0, 0, 0, 0, 0),
     };
 }

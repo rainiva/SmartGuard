@@ -283,7 +283,7 @@ internal sealed partial class SettingsLogPageHost
       var current = source.CaptureSnapshot();
       if (string.Equals(current.Fingerprint, snapshot.Fingerprint, StringComparison.Ordinal))
       {
-        RefreshPagedIdleStatus();
+        _refreshPipeline.ScheduleStatusRefresh();
         return;
       }
 
@@ -384,11 +384,6 @@ internal sealed partial class SettingsLogPageHost
     if (_lblLogStatus is null || _logController is null)
       return;
 
-    var idleRead = LogViewIdleReader.TryRead(_root);
-    if (idleRead.Seconds is int seconds)
-      _logIdleSeconds = seconds;
-    _logStatusMayBeStale = idleRead.StatusMayBeStale;
-
     var snapshot = new LogViewSnapshot(
       events.Select(LogViewEventFilter.GetDisplayLine).ToArray(),
       exactTotalCount,
@@ -404,7 +399,8 @@ internal sealed partial class SettingsLogPageHost
       snapshot,
       DateTime.Now,
       _logIdleSeconds,
-      _logStatusMayBeStale);
+      _logStatusMayBeStale,
+      logHealth: _logHealthStatus);
     if (_pagedHasActiveFilters && exactTotalCount == 0)
       status = $"{status} | 无匹配结果";
 

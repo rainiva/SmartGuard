@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using SmartGuard.Contracts;
 
 namespace SmartGuard.Configuration;
 
@@ -28,12 +29,16 @@ public sealed class LogPipeline
   private long _droppedByBackpressure;
   private int _consumerFailed;
   private int _stopFailed;
+  private readonly TimeProvider _time;
+  private bool _congested;
+  private long _rejectionSerial, _sampledRejections;
   private System.Timers.Timer? _healthTimer;
 
-  public LogPipeline(Func<IReadOnlyList<LogEvent>, LogBatchWriteResult> writeBatch, LogPipelineOptions? options = null)
+  public LogPipeline(Func<IReadOnlyList<LogEvent>, LogBatchWriteResult> writeBatch, LogPipelineOptions? options = null, TimeProvider? timeProvider = null)
   {
     _writeBatch = writeBatch ?? throw new ArgumentNullException(nameof(writeBatch));
     _options = options ?? new LogPipelineOptions();
+    _time = timeProvider ?? TimeProvider.System;
     _normalQueue = Channel.CreateBounded<LogEvent>(CreateBoundedOptions(_options.NormalQueueCapacity));
     _highQueue = Channel.CreateBounded<LogEvent>(CreateBoundedOptions(_options.HighQueueCapacity));
   }
@@ -64,8 +69,35 @@ public sealed class LogPipeline
 
   public void RecordBackpressureDrop()
   {
-    Interlocked.Increment(ref _droppedByBackpressure);
-    CountDrop(LogPriority.Normal);
+    lock (_gate)
+    {
+      Interlocked.Increment(ref _droppedByBackpressure);
+      CountDrop(LogPriority.Normal);
+    }
+  }
+
+  /// <summary>内存采样；只有完整采样在无新拒绝且两队列排空时解除当前拥塞。</summary>
+  public LogHealthStatus SampleLogHealth(bool completeSample = true)
+  {
+    lock (_gate)
+    {
+      var sample = Volatile.Read(ref _consumption);
+      if (completeSample)
+      {
+        if (_sampledRejections == _rejectionSerial && State == LogPipelineState.Running
+          && NormalQueueDepth == 0 && HighQueueDepth == 0)
+          _congested = false;
+        _sampledRejections = _rejectionSerial;
+      }
+      var code = Volatile.Read(ref _consumerFailed) != 0 || Volatile.Read(ref _stopFailed) != 0 || sample.LastLost
+        ? LogHealthCodes.Failed
+        : State != LogPipelineState.Running || sample.Primary + sample.Fallback == 0
+          ? LogHealthCodes.Unknown
+          : _congested || sample.LastFallback ? LogHealthCodes.Degraded : LogHealthCodes.Healthy;
+      return new(code, _time.GetUtcNow(), sample.Primary, sample.Fallback, sample.Lost,
+        Interlocked.Read(ref _droppedNormal), Interlocked.Read(ref _droppedHigh),
+        Interlocked.Read(ref _droppedByBackpressure));
+    }
   }
 
   public void Start()
@@ -366,6 +398,8 @@ public sealed class LogPipeline
 
   private void CountDrop(LogPriority priority)
   {
+    _congested = true;
+    _rejectionSerial++;
     if (priority == LogPriority.High) Interlocked.Increment(ref _droppedHigh);
     else Interlocked.Increment(ref _droppedNormal);
   }

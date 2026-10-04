@@ -14,6 +14,8 @@ internal sealed class SettingsLogRefreshPipeline
   private readonly Action<LogViewRefreshResult, bool> _applyRefreshResult;
   private readonly Action _applyScrollIfEnabled;
   private readonly Action<bool>? _setTopLoadingIndicator;
+  private readonly Func<LogViewIdleReadResult>? _readStatusObservation;
+  private readonly Action<LogViewIdleReadResult>? _applyStatusObservation;
   private readonly object _refreshLifetimeLock = new();
 
   private int _refreshGeneration;
@@ -49,7 +51,9 @@ internal sealed class SettingsLogRefreshPipeline
     Action<Exception> showFailure,
     Action<LogViewRefreshResult, bool> applyRefreshResult,
     Action applyScrollIfEnabled,
-    Action<bool>? setTopLoadingIndicator = null)
+    Action<bool>? setTopLoadingIndicator = null,
+    Func<LogViewIdleReadResult>? readStatusObservation = null,
+    Action<LogViewIdleReadResult>? applyStatusObservation = null)
   {
     _window = window;
     _isDisposed = isDisposed;
@@ -60,6 +64,8 @@ internal sealed class SettingsLogRefreshPipeline
     _applyRefreshResult = applyRefreshResult;
     _applyScrollIfEnabled = applyScrollIfEnabled;
     _setTopLoadingIndicator = setTopLoadingIndicator;
+    _readStatusObservation = readStatusObservation;
+    _applyStatusObservation = applyStatusObservation;
   }
 
   internal bool IsRefreshInFlight =>
@@ -107,6 +113,16 @@ internal sealed class SettingsLogRefreshPipeline
 
   internal void Schedule(bool forceRefresh, bool forceRedraw)
     => Schedule(forceRefresh ? LogViewRefreshKind.Latest : LogViewRefreshKind.Newer, forceRedraw, forceRefresh);
+
+  internal void ScheduleStatusRefresh()
+  {
+    // Reuse the same one-flight ownership and cancellation as paged refresh.
+    // An existing flight already reads status; never queue a status-only task.
+    if (_isDisposed() || !_isLogPageActive() || _refreshInFlight
+      || Volatile.Read(ref _activeRefreshCount) > 0 || _readStatusObservation is null)
+      return;
+    StartPagedFlight(new PagedFlight(null, null, StatusOnly: true));
+  }
 
   internal void Schedule(LogViewRefreshKind kind, bool forceRedraw = false, bool forceRefresh = false)
   {
@@ -232,7 +248,7 @@ internal sealed class SettingsLogRefreshPipeline
 
       cancellationToken.ThrowIfCancellationRequested();
       MarkStage("read-done");
-      return new RefreshFlightResult(result, filterGeneration);
+      return new RefreshFlightResult(result with { StatusObservation = _readStatusObservation?.Invoke() }, filterGeneration);
     });
 
     lock (_refreshLifetimeLock)
@@ -270,9 +286,17 @@ internal sealed class SettingsLogRefreshPipeline
       {
         MarkStage("paged-reading");
         cancellationToken.ThrowIfCancellationRequested();
+        var observation = _readStatusObservation?.Invoke();
+        if (observation is not null && !_window.Dispatcher.HasShutdownStarted)
+          await _window.Dispatcher.InvokeAsync(() =>
+          {
+            if (!_isDisposed() && _isLogPageActive() && generation == Volatile.Read(ref _activeFlightGeneration))
+              _applyStatusObservation?.Invoke(observation);
+          }, DispatcherPriority.Send);
+        if (flight.StatusOnly) return;
         var progress = new OrderedProgress<LogPaginationApplyModel>(
           model => QueuePagedApply(model, generation));
-        await flight.Execute(flight.Intent, progress, cancellationToken).ConfigureAwait(false);
+        await flight.Execute!(flight.Intent!, progress, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
       },
       cancellationToken);
@@ -517,8 +541,9 @@ internal sealed class SettingsLogRefreshPipeline
   private sealed record RefreshFlightResult(LogViewRefreshResult Result, int FilterGeneration);
 
   private sealed record PagedFlight(
-    LogPaginationIntent Intent,
-    Func<LogPaginationIntent, IProgress<LogPaginationApplyModel>, CancellationToken, Task> Execute);
+    LogPaginationIntent? Intent,
+    Func<LogPaginationIntent, IProgress<LogPaginationApplyModel>, CancellationToken, Task>? Execute,
+    bool StatusOnly = false);
 
   private sealed class OrderedProgress<T>(Action<T> report) : IProgress<T>
   {

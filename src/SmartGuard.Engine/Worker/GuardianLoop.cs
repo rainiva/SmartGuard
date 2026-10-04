@@ -55,7 +55,7 @@ public sealed partial class GuardianLoop
     _configPath = configPath;
     _initMarkerPath = initMarkerPath;
     _fallbackLogPath = fallbackLogPath;
-    _publisher = new StatusPublisher(statusPath);
+    _publisher = new StatusPublisher(statusPath, timeProvider);
     _configRepository = new GuardConfigRepository(configPath);
     _consumerRecovery = new LogConsumerRecovery(new LogRecoveryStateMachine(timeProvider: timeProvider));
     _powerCfgBrightnessSupported = powerCfgBrightnessSupported;
@@ -84,7 +84,7 @@ public sealed partial class GuardianLoop
     _foregroundReader = ForegroundReaderFactoryOverrideForTests?.Invoke() ?? new ForegroundProgramReader();
     _logPipeline = new LogPipeline(
       WriteConsumerBatch,
-      _logOptions);
+      _logOptions, timeProvider);
   }
 
   public void Run(CancellationToken cancellationToken = default)
@@ -126,6 +126,7 @@ public sealed partial class GuardianLoop
 
         var intervalSeconds = ResolveWaitSeconds(directive.ReevaluateAfter);
         await RunGuardedCycleAsync(directive, intervalSeconds, cancellationToken);
+        TryPublishLogHealth();
 
         WaitForWake(
           directive.RunIteration
@@ -146,6 +147,7 @@ public sealed partial class GuardianLoop
       if (!await _logPipeline.StopAsync())
         CrashRingBuffer.Instance.Add(LogJsonlFormatter.FormatLine(EngineLogEvents.Create(
           LogLevel.Error, EventNameRegistry.IterationError, "日志关闭未确认完成，可能有记录未写入")));
+      TryPublishLogHealth();
     }
   }
 

@@ -4,6 +4,24 @@ namespace SmartGuard.Settings.Tests;
 
 public class LogViewStatusTextBuilderTests
 {
+    [Theory]
+    [InlineData("degraded", "日志降级")]
+    [InlineData("failed", "日志可能缺失")]
+    [InlineData("unregistered", "日志状态未知")]
+    public void Build_uses_shared_health_code_and_separate_freshness(string code, string expected)
+    {
+        var now = DateTime.Now;
+        var snapshot = new LogViewSnapshot([], 0, false, "main.log", false, "", null, LogViewTimeRange.All);
+        var method = typeof(LogViewStatusTextBuilder).GetMethod("Build")!;
+        method.GetParameters().Should().HaveCount(6);
+        var health = new SmartGuard.Contracts.LogHealthStatus(code, new DateTimeOffset(now), 1, 0, 0, 0, 0, 0);
+        ((string)method.Invoke(null, [snapshot, now, null, false, null, health])!).Should().Contain(expected);
+        var stale = health with { ObservedAtUtc = new DateTimeOffset(now).AddMinutes(-4) };
+        ((string)method.Invoke(null, [snapshot, now, null, false, null, stale])!).Should().Contain("日志状态未知");
+        var future = health with { ObservedAtUtc = new DateTimeOffset(now).AddMinutes(4) };
+        ((string)method.Invoke(null, [snapshot, now, null, false, null, future])!).Should().Contain("日志状态未知");
+    }
+
     [Fact]
     public void Build_uses_one_loaded_count_when_display_is_truncated()
     {

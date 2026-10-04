@@ -15,6 +15,56 @@ public class SettingsLogNavResponsivenessTests
     private const string LoadingStatusText = "正在加载日志…";
 
     [Fact]
+    public void Logging_health_is_read_off_dispatcher_and_updates_without_new_log_lines()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var root = CreateInstallRoot();
+            SettingsWindowController? controller = null;
+            var uiReads = 0;
+            var allReads = 0;
+            try
+            {
+                controller = CreateController(root);
+                var window = GetWindow(controller!);
+                LogViewIdleReader.ApiReadOverrideForTests = () =>
+                {
+                    Interlocked.Increment(ref allReads);
+                    if (window.Dispatcher.CheckAccess()) Interlocked.Increment(ref uiReads);
+                    return 0;
+                };
+                void WriteHealth(string code) => File.WriteAllText(SmartGuardPaths.StatusFile(root),
+                    System.Text.Json.JsonSerializer.Serialize(new SmartGuard.Contracts.StatusPayload
+                    {
+                        timestamp = DateTimeOffset.UtcNow.ToString("O"),
+                        logHealth = new SmartGuard.Contracts.LogHealthStatus(code, DateTimeOffset.UtcNow, 1, 0, 0, 0, 0, 0),
+                    }), new System.Text.UTF8Encoding(false));
+                WriteHealth("failed");
+                WpfStaTestHost.ShowAndWait(window);
+                controller!.NavigateTo("logs");
+                WaitUntilLogContent(controller, window);
+                WaitUntilLogRefreshIdle(controller, window);
+                allReads.Should().BeGreaterThan(0);
+                uiReads.Should().Be(0, "状态读取必须属于既有后台刷新任务");
+                var status = (TextBlock)window.FindName("lblLogStatus");
+                status.Text.Should().Contain("日志可能缺失");
+                WriteHealth("healthy");
+                var host = typeof(SettingsWindowController).GetField("_logPageHost", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller)!;
+                host.GetType().GetMethod("DetectPagedLogChanges", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(host, null);
+                WpfStaTestHost.WaitUntil(() => !status.Text.Contains("日志可能缺失"), TimeSpan.FromSeconds(5),
+                    "健康变化在无新日志时经既有刷新节拍可见");
+                uiReads.Should().Be(0);
+            }
+            finally
+            {
+                LogViewIdleReader.ApiReadOverrideForTests = null;
+                CloseControllerWindow(controller);
+                TryDelete(root);
+            }
+        });
+    }
+
+    [Fact]
     public void NavigateTo_logs_with_large_fixture_returns_before_disk_read_completes()
     {
         WpfStaTestHost.Run(() =>

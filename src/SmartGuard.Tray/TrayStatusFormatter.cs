@@ -11,6 +11,7 @@ public static class TrayStatusFormatter
     var text = $"计划: {status.currentPlan} | {status.batteryPercent}% {power} | 亮度{status.brightness}%";
     if (status.paused) text += " | 已暂停";
     text += FormatGuardClauseWithSeparator(status, " | ", nowUtc);
+    text += FormatLogHealthClause(status, nowUtc);
     return text;
   }
 
@@ -21,8 +22,18 @@ public static class TrayStatusFormatter
     var text = $"计划：{status.currentPlan} | {status.batteryPercent}% {power}";
     if (status.paused) text += " | 已暂停";
     text += FormatGuardClauseWithSeparator(status, " | ", nowUtc);
+    text += FormatLogHealthClause(status, nowUtc);
     return text;
   }
+
+  private static string FormatLogHealthClause(StatusPayload status, DateTimeOffset? nowUtc)
+    => LogHealthCodes.TrustedCode(status.logHealth, nowUtc ?? DateTimeOffset.UtcNow) switch
+    {
+      LogHealthCodes.Healthy => string.Empty,
+      LogHealthCodes.Degraded => " | 日志降级",
+      LogHealthCodes.Failed => " | 日志可能缺失",
+      _ => " | 日志状态未知",
+    };
 
   /// <summary>
   /// 守护子句（含分隔符）：只在状态新鲜（<see cref="GuardStatusFreshness"/>，与 Settings 同一上界）

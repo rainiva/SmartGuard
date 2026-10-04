@@ -18,6 +18,8 @@ public sealed class StatusPublisher
   private readonly TimeProvider _timeProvider;
   private readonly TimeSpan _maxStaleness;
   private StatusPayload? _lastPayload;
+  private StatusPayload? _latestGuardPayload;
+  private LogHealthStatus? _currentLogHealth;
   private long? _lastWriteTimestamp;
 
   public StatusPublisher(
@@ -35,6 +37,25 @@ public sealed class StatusPublisher
   public void Publish(StatusPayload payload)
   {
     ArgumentNullException.ThrowIfNull(payload);
+    _currentLogHealth = payload.logHealth ?? _currentLogHealth;
+    var snapshot = Clone(payload);
+    snapshot.logHealth = _currentLogHealth;
+    _latestGuardPayload = snapshot;
+    PublishCore(snapshot);
+  }
+
+  /// <summary>轻路径只更新健康自身时间，保留最后真实守护观测，不伪造守护新鲜度。</summary>
+  public void PublishLogHealth(LogHealthStatus health)
+  {
+    _currentLogHealth = health;
+    if (_latestGuardPayload is null) return;
+    var snapshot = Clone(_latestGuardPayload);
+    snapshot.logHealth = health;
+    PublishCore(snapshot);
+  }
+
+  private void PublishCore(StatusPayload payload)
+  {
     var now = _timeProvider.GetTimestamp();
     var meaningfulChange = _lastPayload is null
       || !StatusPayloadEquals(_lastPayload, payload)
@@ -46,7 +67,7 @@ public sealed class StatusPublisher
       return;
 
     WritePayload(payload);
-    _lastPayload = payload;
+    _lastPayload = Clone(payload);
     _lastWriteTimestamp = now;
   }
 
@@ -103,6 +124,31 @@ public sealed class StatusPublisher
       && a.guardSource == b.guardSource
       && a.guardReason == b.guardReason
       && a.foregroundEventsAvailable == b.foregroundEventsAvailable
+      && !HealthMeaningfullyChanged(a.logHealth, b.logHealth)
       && a.notificationEvent?.id == b.notificationEvent?.id;
   }
+
+  private static bool HealthMeaningfullyChanged(LogHealthStatus? previous, LogHealthStatus? current)
+    => previous?.Code != current?.Code
+      || (previous?.LostLines == 0 && current?.LostLines > 0)
+      || (previous?.DroppedNormal == 0 && current?.DroppedNormal > 0)
+      || (previous?.DroppedHigh == 0 && current?.DroppedHigh > 0);
+
+  private static StatusPayload Clone(StatusPayload payload) => new()
+  {
+    timestamp = payload.timestamp, currentPlan = payload.currentPlan,
+    currentPlanGUID = payload.currentPlanGUID, expectedPlan = payload.expectedPlan,
+    idleSeconds = payload.idleSeconds, isOnAC = payload.isOnAC,
+    batteryPercent = payload.batteryPercent, brightness = payload.brightness,
+    paused = payload.paused, enginePid = payload.enginePid,
+    lastExternalChange = payload.lastExternalChange, operationId = payload.operationId,
+    guardSource = payload.guardSource, guardReason = payload.guardReason,
+    foregroundEventsAvailable = payload.foregroundEventsAvailable, logHealth = payload.logHealth,
+    notificationEvent = payload.notificationEvent is null ? null : new NotificationEvent
+    {
+      id = payload.notificationEvent.id, kind = payload.notificationEvent.kind,
+      title = payload.notificationEvent.title, body = payload.notificationEvent.body,
+      at = payload.notificationEvent.at,
+    },
+  };
 }

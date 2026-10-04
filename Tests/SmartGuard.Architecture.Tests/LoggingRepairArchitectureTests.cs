@@ -6,6 +6,19 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Shared_status_has_one_typed_optional_logging_health_contract()
+  {
+    var field = typeof(SmartGuard.Contracts.StatusPayload).GetProperty("logHealth");
+    field.Should().NotBeNull();
+    field!.PropertyType.FullName.Should().Be("SmartGuard.Contracts.LogHealthStatus");
+    typeof(LogPipeline).GetMethod("SampleLogHealth").Should().NotBeNull();
+    SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogViewRefresher.cs")
+      .Should().NotContain("LogViewIdleReader.TryRead(", "UI apply 只能消费后台观测结果");
+    SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.Refresh.cs")
+      .Should().NotContain("LogViewIdleReader.TryRead(");
+  }
+
+  [Fact]
   public void Pipeline_write_result_and_flush_confirmation_are_typed_and_registered()
   {
     var result = typeof(LogPipeline).Assembly.GetType("SmartGuard.Configuration.LogBatchWriteResult");

@@ -3,6 +3,8 @@
 **CFG-INV-LOG-AFTER-COMMIT（2026-10-04）：** 暂停与设置保存仍分别经 `ConfigMutationService` / `SettingsSaveCoordinator` 汇入 `GuardConfigRepository.Save`。暂停变更使用配置副本；提交成功后才经 `AppendInfoLog` 发 `ConfigMutationLogged`，该事件只表示已保存，不能表示 Engine 已采用。提交失败使读取缓存失效，经同一 Repository 的 `AppendMutationFailureLog` 尽力发已登记 `ConfigMutationFailed`（Policy、Warn、固定 `failureKind=save-failed`），原异常上抛。日志的准备/路径/落盘/回退全部尽力隔离，不能逆转提交结果。前台规则开关或规范化名单内容变化成功保存后只记数量/开关摘要，无普通日志完整程序路径；无变化不重复记录。AutoStart 同步保持既有 Owner 和语义，提交后失败明确反馈“配置已保存，但开机自启同步失败”，不得记录配置未提交或回滚。门禁：`LoggingRepairArchitectureTests` 与保存/缓存行为测试。
 
 **状态：** 生效  
+**LOG-INV-STATUS-HEALTH（2026-10-04）：** `LogPipeline.SampleLogHealth` 在内存中投影已确认分区、最近失败与当前拥塞，不清零历史；`LogHealthStatus` / `LogHealthCodes` 归 Contracts，所有 JSON 属性显式 camelCase。Engine 主循环经既有 `StatusPublisher.PublishLogHealth` 发布，不新增 Timer/文件/写者；健康单独更新保留最后真实守护 timestamp。代码变化及首次丢失/拒绝触发，稳定代码的计数/采样时间随既有状态变化或 60s freshness 发布。日志和状态故障局部收敛，不结束守护循环。Tray 克隆保留不可变健康值，健康代码或独立新鲜度变化才更新短提示；Settings 健康/空闲状态读取归 `SettingsLogRefreshPipeline` 既有单 flight 后台任务，无新日志时复用相同 flight 所有权做状态采样，忙碌时不额外排队，不新增定时器。缺失/未知/非法计数或不可信时间展示未知，健康提示不修改守护来源/原因。门禁：`LoggingRepairArchitectureTests`、`LoggingHealthPublishingTests`、`LogPipelineStatusTests` 与两端展示/后台刷新行为测试。
+
 **关联：** [AGENTS.md](../AGENTS.md) §8、§11；Pester `Phase 8`；`SmartGuard.Architecture.Tests`
 
 本文档是 SmartGuard **配置、路径、状态、生命周期** 的唯一架构权威。新增字段、入口或共享类型必须先更新本文档并补充门禁测试（TDD RED）。

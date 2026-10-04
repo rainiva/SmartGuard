@@ -1,3 +1,4 @@
 namespace SmartGuard.Settings;
 
-public sealed record LogViewIdleReadResult(int? Seconds, bool StatusMayBeStale);
+public sealed record LogViewIdleReadResult(int? Seconds, bool StatusMayBeStale,
+    SmartGuard.Contracts.LogHealthStatus? LogHealth = null);

@@ -12,6 +12,43 @@ public class LoggingFallbackCollection { }
 public class GuardianLoggingFailureTests
 {
   [Fact]
+  public void All_log_sinks_failed_remains_visible_in_status_and_status_failure_is_local()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "sg-health-failure-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var oldEmergency = LogFallbackChain.EmergencyLogFileOverrideForTests;
+    try
+    {
+      var blocked = Path.Combine(root, "blocked");
+      Directory.CreateDirectory(blocked);
+      LogFallbackChain.EmergencyLogFileOverrideForTests = blocked;
+      var config = GuardConfig.CreateDefault(root);
+      config.LogFile = blocked;
+      new GuardConfigRepository(SmartGuardPaths.ConfigFile(root)).Save(config);
+      var statusPath = SmartGuardPaths.StatusFile(root);
+      var loop = new GuardianLoop(root, SmartGuardPaths.ConfigFile(root), statusPath,
+        SmartGuardPaths.InitMarkerFile(root), blocked, false);
+      var publish = typeof(GuardianLoop).GetMethod("TryPublishLogHealth", BindingFlags.Instance | BindingFlags.NonPublic);
+      publish.Should().NotBeNull("health publishing failure cannot stop the guard loop");
+      var pipeline = (LogPipeline)typeof(GuardianLoop).GetField("_logPipeline", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(loop)!;
+      pipeline.TryEnqueue(LogPriority.High, EngineLogEvents.Create(LogLevel.Error, EventNameRegistry.IterationError, "isolated"));
+      pipeline.FlushOnce().Should().BeFalse();
+      var publisher = (StatusPublisher)typeof(GuardianLoop).GetField("_publisher", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(loop)!;
+      publisher.Publish(new SmartGuard.Contracts.StatusPayload { timestamp = DateTimeOffset.UtcNow.ToString("O") });
+      publish!.Invoke(loop, null);
+      StatusJsonReader.TryRead(statusPath)!.logHealth!.Code.Should().Be("failed");
+      File.Delete(statusPath);
+      Directory.CreateDirectory(statusPath);
+      // Force a meaningful health change and verify the state sink remains local.
+      publisher.PublishLogHealth(new SmartGuard.Contracts.LogHealthStatus("failed", DateTimeOffset.UtcNow, 0, 0, 1, 0, 0, 0));
+      pipeline.RecordBackpressureDrop();
+      Action report = () => publish.Invoke(loop, null);
+      report.Should().NotThrow();
+    }
+    finally { LogFallbackChain.EmergencyLogFileOverrideForTests = oldEmergency; Directory.Delete(root, true); }
+  }
+
+  [Fact]
   public void Primary_degradation_and_restoration_emit_one_transition_each()
   {
     var root = Path.Combine(Path.GetTempPath(), "sg-log-transition-" + Guid.NewGuid().ToString("N"));

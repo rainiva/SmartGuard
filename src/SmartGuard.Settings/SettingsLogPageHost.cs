@@ -26,6 +26,7 @@ internal sealed partial class SettingsLogPageHost
   private IReadOnlyList<string> _lastDisplayedLines = Array.Empty<string>();
   private int? _logIdleSeconds;
   private bool _logStatusMayBeStale;
+  private SmartGuard.Contracts.LogHealthStatus? _logHealthStatus;
   private bool _pagedHasActiveFilters;
   private TextBlock? _lblLogStatus;
   private Border? _logTopLoadingIndicator;
@@ -95,7 +96,15 @@ internal sealed partial class SettingsLogPageHost
       },
       ApplyRefreshResult,
       () => _logViewport.ApplyFollowLatestIfEnabled(fromRefreshPipeline: true),
-      SetTopLoadingIndicator);
+      SetTopLoadingIndicator,
+      () => LogViewIdleReader.TryRead(_root),
+      observation =>
+      {
+        if (observation.Seconds is int seconds) _logIdleSeconds = seconds;
+        _logStatusMayBeStale = observation.StatusMayBeStale;
+        _logHealthStatus = observation.LogHealth;
+        RefreshPagedIdleStatus();
+      });
   }
 
   private LogViewController? GetRefreshableController() =>

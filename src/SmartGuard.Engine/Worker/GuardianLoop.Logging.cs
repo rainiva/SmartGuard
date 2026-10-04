@@ -104,6 +104,19 @@ public sealed partial class GuardianLoop
     return result;
   }
 
+  private void TryPublishLogHealth()
+  {
+    try { _publisher.PublishLogHealth(_logPipeline.SampleLogHealth()); }
+    catch
+    {
+      // State IO has the same local-failure boundary as ordinary status
+      // publication. It cannot turn logging degradation into guard shutdown.
+      if (_logPipeline.State == LogPipelineState.Running)
+        EnqueueLog(LogLevel.Error, EngineLogEvents.Create(LogLevel.Error,
+          EventNameRegistry.IterationError, "日志健康状态发布失败"));
+    }
+  }
+
   private bool WriteBatchToDisk(IReadOnlyList<LogEvent> events)
   {
     try
