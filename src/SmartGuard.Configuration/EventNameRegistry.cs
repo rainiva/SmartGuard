@@ -28,6 +28,7 @@ public static class EventNameRegistry
   public const string LogBackpressureApplied = nameof(LogBackpressureApplied);
   public const string LogDeduplicationEmitted = nameof(LogDeduplicationEmitted);
   public const string ConfigMutationLogged = nameof(ConfigMutationLogged);
+  public const string ConfigMutationFailed = nameof(ConfigMutationFailed);
   public const string PipelineHealthSampled = nameof(PipelineHealthSampled);
   public const string InstallProgressLogged = nameof(InstallProgressLogged);
   public const string PowerSuspendObserved = nameof(PowerSuspendObserved);
@@ -56,6 +57,7 @@ public static class EventNameRegistry
     Register(LogBackpressureApplied);
     Register(LogDeduplicationEmitted);
     Register(ConfigMutationLogged);
+    Register(ConfigMutationFailed);
     Register(PipelineHealthSampled);
     Register(InstallProgressLogged);
     Register(PowerSuspendObserved);

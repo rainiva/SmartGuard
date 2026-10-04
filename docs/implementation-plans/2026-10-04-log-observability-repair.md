@@ -8,7 +8,7 @@
 
 **技术栈：** C#、.NET 8 Windows、WPF/WinForms、System.Threading.Channels、System.Text.Json、xUnit/FluentAssertions、Pester；不增加第三方依赖。
 
-**状态：** 待执行；2026-10-04 已完成 grill-me 自主决策审查与专业计划审查，记录见 §11。该结论不表示生产修复或行为验收通过。编制日期：2026-10-04，Asia/Shanghai。
+**状态：** 实施中；2026-10-04 已完成 grill-me 自主决策审查与专业计划审查，记录见 §11；新鲜实施证据见[实施记录](2026-10-04-log-observability-repair-progress.md)。阶段测试不表示整套修复或桌面验收完成。编制日期：2026-10-04，Asia/Shanghai。
 
 ## 1. 全局约束与证据基线
 
@@ -306,11 +306,11 @@ Task DiagnosticBundleExporter.ExportAsync(
 
 ### T0：执行前基线与门禁准备（不修改生产代码）
 
-- [ ] 核验当前 Git/工作区；保护本轮审计工具和其他未跟踪资料，记录实际起点 commit。
-- [ ] 重读上述 Owner、目标测试与架构契约；`.codegraph` 存在时先用 CodeGraph 定位，再窄搜。
-- [ ] 为本次执行新建 `.work/logging-repair/<run-id>/`，保存 command、exitCode、时间、TRX/summary、环境说明；不要覆盖审计时的证据。
-- [ ] 运行审计工具确认根因仍存在，随后将期望行为测试放到正规 Tests 项目；不能只修改审计工具输出以宣称修复。
-- [ ] 运行相关基线测试。若已有产品失败，先区分与本计划相关性；环境失败单独登记，不绕过生产原子写入。
+- [x] 核验当前 Git/工作区；保护本轮审计工具和其他未跟踪资料，记录实际起点 commit。
+- [x] 重读上述 Owner、目标测试与架构契约；`.codegraph` 存在时先用 CodeGraph 定位，再窄搜。
+- [x] 为本次执行新建 `.work/logging-repair/<run-id>/`，保存 command、exitCode、时间、TRX/summary、环境说明；不要覆盖审计时的证据。
+- [x] 运行审计工具确认根因仍存在，随后将期望行为测试放到正规 Tests 项目；不能只修改审计工具输出以宣称修复。
+- [x] 运行相关基线测试。若已有产品失败，先区分与本计划相关性；环境失败单独登记，不绕过生产原子写入。
 
 ```powershell
 git status --short

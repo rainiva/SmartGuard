@@ -17,7 +17,8 @@ public static class LogEventChannels
       EventNameRegistry.BrightnessAdjusted => LogChannelRegistry.Brightness,
       EventNameRegistry.IdleDetected => LogChannelRegistry.Policy,
       EventNameRegistry.ConfigReloaded
-        or EventNameRegistry.ConfigMutationLogged => LogChannelRegistry.Policy,
+        or EventNameRegistry.ConfigMutationLogged
+        or EventNameRegistry.ConfigMutationFailed => LogChannelRegistry.Policy,
       EventNameRegistry.IterationError
         or EventNameRegistry.RecoveryDegraded
         or EventNameRegistry.RecoveryRestored

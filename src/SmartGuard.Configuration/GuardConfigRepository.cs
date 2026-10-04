@@ -114,25 +114,50 @@ public sealed class GuardConfigRepository
   }
 
   public void AppendInfoLog(string message, string root, string? fallbackLogPath = null)
+    => AppendMutationLog(message, root, fallbackLogPath, LogSeverity.Info, EventNameRegistry.ConfigMutationLogged);
+
+  /// <summary>Best-effort failure evidence; never masks the original save exception.</summary>
+  public void AppendMutationFailureLog(string root, string? fallbackLogPath = null)
+    => AppendMutationLog("配置未提交，变更未保存", root, fallbackLogPath,
+      LogSeverity.Warn, EventNameRegistry.ConfigMutationFailed);
+
+  private void AppendMutationLog(string message, string root, string? fallbackLogPath,
+    LogSeverity severity, string eventName)
   {
-    var config = LoadOrDefault(root);
-    var logPath = SmartGuardPaths.ResolveLogFile(config, root);
-    if (string.IsNullOrWhiteSpace(logPath))
-      logPath = fallbackLogPath ?? SmartGuardPaths.DefaultLogFile(root);
-    var logEvent = LogStructuredSink.CreateComponentEvent(
-      LogSeverity.Info,
-      LogComponentRegistry.Configuration,
-      LogChannelRegistry.Policy,
-      EventNameRegistry.ConfigMutationLogged,
-      message);
-    var retention = LogRetentionPolicy.FromGuardConfig(config);
-    if (!LogStructuredSink.TryWriteBatch(logPath, new[] { logEvent }, retention))
+    // Construct safe evidence before configuration/path preparation, so those
+    // failures can still use the existing fallback chain without recursive IO.
+    LogEvent? logEvent = null;
+    try
     {
-      LogFallbackChain.WriteEvent(
+      logEvent = LogStructuredSink.CreateComponentEvent(
+        severity,
+        LogComponentRegistry.Configuration,
+        LogChannelRegistry.Policy,
+        eventName,
+        message);
+      if (eventName == EventNameRegistry.ConfigMutationFailed)
+        logEvent = logEvent with { Properties = new Dictionary<string, JsonElement>
+        {
+          ["failureKind"] = JsonSerializer.SerializeToElement("save-failed"),
+        } };
+      var config = LoadOrDefault(root);
+      var logPath = SmartGuardPaths.ResolveLogFile(config, root);
+      var retention = LogRetentionPolicy.FromGuardConfig(config);
+      if (LogStructuredSink.TryWriteBatch(logPath, new[] { logEvent }, retention))
+        return;
+    }
+    catch
+    {
+      // Logging preparation is also optional; it cannot reverse a commit.
+    }
+    try
+    {
+      if (logEvent is not null) LogFallbackChain.WriteEvent(
         () => false,
         fallbackLogPath ?? SmartGuardPaths.StartupLogFile(root),
         logEvent);
     }
+    catch { /* The original persistence result remains authoritative. */ }
   }
 
   private JsonObject LoadOrCreateNode()
@@ -213,8 +238,13 @@ public sealed class GuardConfigRepository
   {
     var dir = Path.GetDirectoryName(_configPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    GuardConfigAtomicFileWriter.WriteAllText(_configPath, content);
-    InvalidateReadCache();
+    try { GuardConfigAtomicFileWriter.WriteAllText(_configPath, content); }
+    finally
+    {
+      // Callers may have edited a previously returned cached object. Even a
+      // failed publication must force the next read back to the last valid file.
+      InvalidateReadCache();
+    }
   }
 
   private void InvalidateReadCache()
