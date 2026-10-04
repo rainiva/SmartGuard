@@ -26,9 +26,7 @@ public class LoggingWorkbenchArchitectureTests
       .Select(path => Path.GetRelativePath(SourceScanHelper.RepoRoot, path))
       .ToList();
 
-    historyReaders.Should().ContainSingle(
-      "configured log history must stay on LogTailReader; found: "
-      + string.Join(", ", historyReaders));
+    AssertSinglePartialOwner(historyReaders, "src/SmartGuard.Settings/LogView", "LogTailReader", "SmartGuard.Settings.LogView");
   }
 
   [Fact]
@@ -115,9 +113,7 @@ public class LoggingWorkbenchArchitectureTests
       .Select(path => Path.GetRelativePath(SourceScanHelper.RepoRoot, path))
       .ToList();
 
-    exporters.Should().ContainSingle(
-      "diagnostic export must stay on DiagnosticBundleExporter; found: "
-      + string.Join(", ", exporters));
+    AssertSinglePartialOwner(exporters, "src/SmartGuard.Configuration", "DiagnosticBundleExporter", "SmartGuard.Configuration");
   }
 
   [Fact]
@@ -236,6 +232,22 @@ public class LoggingWorkbenchArchitectureTests
   {
     return SourceScanHelper.EnumerateCsFilesUnder("src/SmartGuard.Settings")
       .Where(IsLogModuleSourceFile);
+  }
+
+  private static void AssertSinglePartialOwner(IEnumerable<string> paths, string directory, string name, string ownerNamespace)
+  {
+    var files = paths.Select(path => path.Replace('\\', '/')).ToArray();
+    files.Should().Contain(directory + "/" + name + ".cs");
+    // A partial declaration splits one owner into bounded source files. Reject
+    // declarations outside that owner's directory or namespace, not the split.
+    foreach (var file in files)
+    {
+      Path.GetDirectoryName(file)!.Replace('\\', '/').Should().Be(directory);
+      Path.GetFileName(file).Should().MatchRegex("^" + name + @"(?:\.[A-Za-z]+)?\.cs$");
+      var source = SourceScanHelper.ReadSource(file);
+      source.Should().Contain("partial class " + name);
+      source.Should().Contain("namespace " + ownerNamespace + ";");
+    }
   }
 
   private static bool IsLogModuleSourceFile(string path)

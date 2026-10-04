@@ -659,6 +659,8 @@ dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.
 
 ### T8：两个诊断入口异步化并明确取消所有权（F6）
 
+T7 实施记录：坏配置/状态独立省略，递归脱敏、主源中途失败降级、512KiB 双格式与 260KiB/256KiB 附加尾读已实现；取消/创建竞态/锁定目标保留旧 ZIP，提交后报告 complete。Configuration 455/455、补充诊断 34/34、架构 30/30 通过；详细 RED 与成本边界见[实施记录](2026-10-04-log-observability-repair-progress.md)。
+
 **接口：** 两个 UI coordinator 改为 `Task` 返回的异步入口。窗口持有一个 SettingsDiagnosticExportSession；日志页和 Settings 入口共享该实例。Session 只管理一项诊断导出、CTS 与关闭状态，不拥有文件解析、压缩或脱敏。
 
 SettingsLogPageHost 新增纯值 getter `internal (string LogPath, string StartupPath) GetDiagnosticPaths()`，返回既有已解析字段；尚无有效日志路径时使用 SmartGuardPaths 的默认诊断路径，不启动日志页、不读配置、不据此授权。about coordinator 消费 `Func<(string LogPath, string StartupPath)> getDiagnosticPaths`，替换当前会初始化页面的源 getter。日志页入口仍捕获原筛选/关联/窗口快照，传给后台独立 reader 的既有查询实现。

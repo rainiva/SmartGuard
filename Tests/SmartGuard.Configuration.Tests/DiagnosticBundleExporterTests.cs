@@ -10,6 +10,176 @@ namespace SmartGuard.Configuration.Tests;
 
 public class DiagnosticBundleExporterTests
 {
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public async Task Publication_failure_preserves_target_without_complete(bool locked)
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      var target = Path.Combine(root, "bundle.zip");
+      FileStream? held = null;
+      var stages = new List<string>();
+      var progress = new InlineProgress(p =>
+      {
+        stages.Add(p.Stage);
+        if (p.Stage != "manifest") return;
+        File.WriteAllText(target, "ORIGINAL");
+        if (locked) held = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.None);
+      });
+      try
+      {
+        var request = BuildRequest(root, target, new FakeLogEventSource(CreateSampleEvents()), DiagnosticBundleScope.FullAvailableHistory, overwriteExisting: locked);
+        var run = () => DiagnosticBundleExporter.ExportAsync(request, progress);
+        await run.Should().ThrowAsync<Exception>();
+      }
+      finally { held?.Dispose(); }
+      File.ReadAllText(target).Should().Be("ORIGINAL");
+      stages.Should().NotContain("complete");
+      Directory.GetFiles(root, "*.tmp-*.zip").Should().BeEmpty();
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
+  public async Task Optional_jsonl_is_recursively_redacted_and_manifest_hash_matches_actual_bytes()
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      var item = CreateEvent("safe", DateTimeOffset.UtcNow) with
+      { Properties = new Dictionary<string, JsonElement> { ["data"] = JsonSerializer.SerializeToElement(new[] { new { secret = "nested-fallback-secret" } }) } };
+      File.WriteAllText(SmartGuardPaths.StartupLogFile(root), LogJsonlFormatter.FormatLine(item) + "\n{ damaged secret }\n", new UTF8Encoding(false));
+      var request = BuildRequest(root, Path.Combine(root, "bundle.zip"), new FakeLogEventSource([]), DiagnosticBundleScope.FullAvailableHistory, includeStartupLog: true);
+      await DiagnosticBundleExporter.ExportAsync(request);
+      using var zip = ZipFile.OpenRead(request.DestinationZipPath);
+      var text = ReadEntryText(zip, "logs/SmartGuard.startup.log");
+      text.Should().NotContain("nested-fallback-secret").And.NotContain("damaged secret");
+      using var manifest = JsonDocument.Parse(ReadEntryText(zip, "manifest.json"));
+      var file = manifest.RootElement.GetProperty("files").EnumerateArray().Single(f => f.GetProperty("path").GetString() == "logs/SmartGuard.startup.log");
+      file.GetProperty("includedBytes").GetInt32().Should().Be(Encoding.UTF8.GetByteCount(text));
+      file.GetProperty("sha256").GetString().Should().Be(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant());
+      file.GetProperty("omittedReason").GetString().Should().Be("redaction-failed");
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
+  public async Task Main_read_failure_preserves_partial_evidence_and_other_files()
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      var request = BuildRequest(root, Path.Combine(root, "bundle.zip"), new FakeLogEventSource(CreateSampleEvents(), failAfter: 1), DiagnosticBundleScope.FullAvailableHistory);
+      await DiagnosticBundleExporter.ExportAsync(request);
+      using var zip = ZipFile.OpenRead(request.DestinationZipPath);
+      ReadEntryText(zip, "logs/SmartGuard.jsonl").Should().Contain("line-one");
+      zip.GetEntry("status/SmartGuard.status.json").Should().NotBeNull();
+      using var manifest = JsonDocument.Parse(ReadEntryText(zip, "manifest.json"));
+      var main = manifest.RootElement.GetProperty("files").EnumerateArray().Single(f => f.GetProperty("path").GetString() == "logs/SmartGuard.jsonl");
+      main.GetProperty("readStatus").GetString().Should().Be("unreadable");
+      main.GetProperty("truncated").GetBoolean().Should().BeTrue();
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
+  public async Task Invalid_config_does_not_abort_redacted_diagnostic_export()
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      File.WriteAllText(SmartGuardPaths.ConfigFile(root), "{ damaged-secret-fixture }");
+      var request = BuildRequest(root, Path.Combine(root, "bundle.zip"), new FakeLogEventSource(CreateSampleEvents()), DiagnosticBundleScope.FullAvailableHistory);
+      await DiagnosticBundleExporter.ExportAsync(request);
+      using var zip = ZipFile.OpenRead(request.DestinationZipPath);
+      zip.GetEntry("config/SmartGuard.config.json").Should().BeNull();
+      using var manifest = JsonDocument.Parse(ReadEntryText(zip, "manifest.json"));
+      var config = manifest.RootElement.GetProperty("files").EnumerateArray().Single(file => file.GetProperty("path").GetString() == "config/SmartGuard.config.json");
+      config.GetProperty("readStatus").GetString().Should().Be("redaction-failed");
+      zip.GetEntry("logs/SmartGuard.jsonl").Should().NotBeNull();
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
+  public async Task Recent_window_and_oversized_supplement_are_strictly_bounded()
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      var startup = SmartGuardPaths.StartupLogFile(root);
+      using (var file = new FileStream(startup, FileMode.Create))
+      {
+        file.SetLength(100 * 1024 * 1024); file.Seek(-32, SeekOrigin.End);
+        file.Write(Encoding.UTF8.GetBytes("\ncomplete-tail --token=secret\n"));
+      }
+      var events = Enumerable.Range(0, 1000).Select(i => CreateEvent(new string('界', 1024), DateTimeOffset.UtcNow)).ToArray();
+      var request = BuildRequest(root, Path.Combine(root, "bundle.zip"), new FakeLogEventSource(events), DiagnosticBundleScope.RecentWindow,
+        recentWindowEvents: events, includeStartupLog: true);
+      await DiagnosticBundleExporter.ExportAsync(request);
+      using var zip = ZipFile.OpenRead(request.DestinationZipPath);
+      zip.GetEntry("logs/SmartGuard.jsonl")!.Length.Should().BeLessThanOrEqualTo(512 * 1024);
+      zip.GetEntry("logs/SmartGuard.log")!.Length.Should().BeLessThanOrEqualTo(512 * 1024);
+      zip.GetEntry("logs/SmartGuard.startup.log")!.Length.Should().BeLessThanOrEqualTo(256 * 1024);
+      ReadEntryText(zip, "logs/SmartGuard.startup.log").Should().Contain("complete-tail").And.NotContain("=secret");
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
+  public async Task Cancellation_at_manifest_preserves_target_and_never_reports_complete()
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      var target = Path.Combine(root, "bundle.zip"); File.WriteAllText(target, "ORIGINAL");
+      using var cancellation = new CancellationTokenSource();
+      var stages = new List<string>();
+      var progress = new InlineProgress(item => { stages.Add(item.Stage); if (item.Stage == "manifest") cancellation.Cancel(); });
+      var request = BuildRequest(root, target, new FakeLogEventSource(CreateSampleEvents()), DiagnosticBundleScope.FullAvailableHistory, overwriteExisting: true);
+      var action = () => DiagnosticBundleExporter.ExportAsync(request, progress, cancellation.Token);
+      await action.Should().ThrowAsync<OperationCanceledException>();
+      File.ReadAllText(target).Should().Be("ORIGINAL"); stages.Should().NotContain("complete");
+      Directory.GetFiles(root, "*.tmp-*.zip").Should().BeEmpty();
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
+  public async Task Status_nested_arrays_and_event_exception_are_redacted()
+  {
+    var root = CreateTempDir();
+    try
+    {
+      WriteMinimalInstallTree(root);
+      File.WriteAllText(SmartGuardPaths.StatusFile(root), """{"data":[{"secret":"nested-secret","path":"C:\\Users\\private.user\\a"}]}""");
+      var redact = () => DiagnosticRedactor.RedactJson(File.ReadAllText(SmartGuardPaths.StatusFile(root)));
+      redact.Should().NotThrow();
+      var item = CreateEvent("normal", DateTimeOffset.UtcNow) with
+      {
+        Exception = new LogExceptionInfo("System.Exception", @"C:\Users\private.user\a --token=exception-secret", null, null),
+        Properties = new Dictionary<string, JsonElement> { ["nested"] = JsonSerializer.SerializeToElement(new[] { new { password = "array-secret", path = @"C:\Users\private.user\a" } }) }
+      };
+      var request = BuildRequest(root, Path.Combine(root, "bundle.zip"), new FakeLogEventSource([item]), DiagnosticBundleScope.FullAvailableHistory);
+      await DiagnosticBundleExporter.ExportAsync(request);
+      using var zip = ZipFile.OpenRead(request.DestinationZipPath);
+      var contents = ReadEntryText(zip, "logs/SmartGuard.jsonl") + ReadEntryText(zip, "status/SmartGuard.status.json");
+      contents.Should().NotContain("nested-secret").And.NotContain("array-secret").And.NotContain("exception-secret").And.NotContain("private.user");
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  private sealed class InlineProgress(Action<DiagnosticBundleProgress> report) : IProgress<DiagnosticBundleProgress>
+  { public void Report(DiagnosticBundleProgress value) => report(value); }
+
   [Fact]
   public void SanitizeConfigJson_removes_retired_secret_fields()
   {
@@ -491,17 +661,20 @@ public class DiagnosticBundleExporterTests
     private readonly LogSourceCatalog? _catalog;
     private readonly int _cancelAfter;
     private readonly CancellationToken _cancellationToken;
+    private readonly int _failAfter;
 
     internal FakeLogEventSource(
       IReadOnlyList<LogEvent> events,
       LogSourceCatalog? catalog = null,
       int cancelAfter = int.MaxValue,
-      CancellationToken cancellationToken = default)
+      CancellationToken cancellationToken = default,
+      int failAfter = int.MaxValue)
     {
       _events = events;
       _catalog = catalog;
       _cancelAfter = cancelAfter;
       _cancellationToken = cancellationToken;
+      _failAfter = failAfter;
     }
 
     public Task<LogEventPage> ReadLatestAsync(LogReadRequest request, CancellationToken cancellationToken)
@@ -524,6 +697,7 @@ public class DiagnosticBundleExporterTests
           throw new OperationCanceledException(cancellationToken);
 
         yielded++;
+        if (yielded > _failAfter) throw new IOException("fixture read failure");
         if (yielded > _cancelAfter)
           throw new OperationCanceledException(cancellationToken);
 

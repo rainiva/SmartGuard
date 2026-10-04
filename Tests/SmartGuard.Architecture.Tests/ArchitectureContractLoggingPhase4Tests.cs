@@ -98,7 +98,8 @@ public class ArchitectureContractLoggingPhase4Tests
   public void DiagnosticBundleExporter_has_jsonl_entry()
   {
     var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/DiagnosticBundleExporter.cs");
-    source.Should().Contain("AddJsonlLogEntry");
+    source.Should().Contain("LogJsonlFormatter.FormatLine");
+    source.Should().Contain("WriteTextEntry(archive, path, content");
     source.Should().Contain("SmartGuard.jsonl");
   }
 

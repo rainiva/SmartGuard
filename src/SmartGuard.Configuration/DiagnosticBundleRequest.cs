@@ -31,4 +31,6 @@ public sealed record DiagnosticBundleRequest
   public bool IncludeEmergencyLog { get; init; }
 
   public bool IncludeCrashLog { get; init; }
+
+  public bool IncludeCrashRingLog { get; init; }
 }

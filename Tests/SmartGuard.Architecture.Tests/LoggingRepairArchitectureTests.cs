@@ -6,6 +6,15 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Diagnostic_evidence_uses_bounded_tail_reader_and_atomic_publication()
+  {
+    typeof(DiagnosticBundleRequest).GetProperty("IncludeCrashRingLog").Should().NotBeNull();
+    typeof(SmartGuardLogWriter).Assembly.GetType("SmartGuard.Configuration.DiagnosticLogTailReader").Should().NotBeNull();
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/DiagnosticBundleExporter.cs")
+      .Should().NotContain("File.Delete(request.DestinationZipPath)").And.NotContain("EstimatePayloadBytes");
+  }
+
+  [Fact]
   public void Supplemental_budget_and_emergency_append_share_the_canonical_writer()
   {
     typeof(SmartGuardLogWriter).GetMethod("TryAppendSupplementalLines").Should().NotBeNull();

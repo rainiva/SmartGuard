@@ -39,19 +39,31 @@ public static partial class DiagnosticRedactor
   {
     var node = JsonNode.Parse(configJson);
     if (node is not JsonObject obj)
-      return RedactText(configJson);
+      throw new JsonException("Diagnostic configuration requires an object root.");
 
     RetiredSecretFieldRegistry.RemoveFrom(obj);
     RedactSavedLogFilters(obj);
-    RedactJsonObjectSecrets(obj);
-    return RedactText(obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    RedactJsonNode(obj, 0);
+    return obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
   }
+
+  public static string RedactJson(string json)
+    => RedactJsonNode(JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { MaxDepth = 64 }), 0)!
+      .ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
   public static LogEvent RedactEvent(LogEvent logEvent)
   {
     var message = RedactText(logEvent.Message);
     var properties = RedactProperties(logEvent.Properties);
-    return logEvent with { Message = message, Properties = properties };
+    return logEvent with { Message = message, Properties = properties, Exception = RedactException(logEvent.Exception, 0) };
+  }
+
+  private static LogExceptionInfo? RedactException(LogExceptionInfo? exception, int depth)
+  {
+    if (exception is null) return null;
+    if (depth >= 64) throw new JsonException("Diagnostic exception depth exceeded.");
+    return exception with { Type = RedactText(exception.Type), Message = RedactText(exception.Message),
+      StackTrace = exception.StackTrace is null ? null : RedactText(exception.StackTrace), Inner = RedactException(exception.Inner, depth + 1) };
   }
 
   internal static string SanitizeConfigJson(string configJson) => RedactConfigJson(configJson);
@@ -71,37 +83,35 @@ public static partial class DiagnosticRedactor
         continue;
       }
 
-      if (value.ValueKind == JsonValueKind.String)
-      {
-        var text = RedactText(value.GetString() ?? string.Empty);
-        redacted[key] = JsonSerializer.SerializeToElement(text);
-        continue;
-      }
-
-      redacted[key] = value.Clone();
+      var node = JsonNode.Parse(value.GetRawText(), documentOptions: new JsonDocumentOptions { MaxDepth = 64 });
+      redacted[key] = JsonSerializer.SerializeToElement(RedactJsonNode(node, 0));
     }
 
     return redacted;
   }
 
-  private static void RedactJsonObjectSecrets(JsonObject obj)
+  private static JsonNode? RedactJsonNode(JsonNode? node, int depth)
   {
-    foreach (var property in obj.ToList())
+    if (depth > 64) throw new JsonException("Diagnostic JSON depth exceeded.");
+    if (node is JsonObject obj)
     {
-      if (property.Value is null)
-        continue;
-
-      if (SensitivePropertyNames.Contains(property.Key))
+      foreach (var property in obj.ToList())
       {
-        obj[property.Key] = RedactedSecretValue;
-        continue;
+        var replacement = SensitivePropertyNames.Contains(property.Key) ? JsonValue.Create(RedactedSecretValue)
+          : RedactJsonNode(property.Value, depth + 1);
+        if (!ReferenceEquals(replacement, property.Value)) obj[property.Key] = replacement;
       }
-
-      if (property.Value is JsonObject childObject)
-        RedactJsonObjectSecrets(childObject);
-      else if (property.Value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var text))
-        obj[property.Key] = RedactText(text);
     }
+    else if (node is JsonArray array)
+      for (var i = 0; i < array.Count; i++)
+      {
+        // Objects/arrays are mutated under their existing parent. Reassigning
+        // the same child to JsonArray violates its single-parent ownership.
+        var original = array[i]; var replacement = RedactJsonNode(original, depth + 1);
+        if (!ReferenceEquals(original, replacement)) array[i] = replacement;
+      }
+    else if (node is JsonValue value && value.TryGetValue<string>(out var text)) return JsonValue.Create(RedactText(text));
+    return node;
   }
 
   private static void RedactSavedLogFilters(JsonObject configNode)

@@ -23,13 +23,23 @@
 | T4 规则观测 | 实现与目标/全项目回归通过 | 目标 116/116；Engine 全项目 308/308；日志架构 57/57；三轮 128 项轻路径比较 |
 | T5 停工恢复与心跳 | 实现与全项目回归通过 | Engine 327/327；Configuration 435/435；日志架构 60/60；读取依赖提前于 T4 |
 | T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
-| T7 诊断容错 | 待执行 | — |
+| T7 诊断容错 | 实现与阶段回归通过 | Configuration 455/455；补充诊断回归 34/34；架构 30/30 |
 | T8 导出异步所有权 | 待执行 | — |
 | T9 集成与验收 | 待执行 | — |
 
 真实桌面、规则轻路径/导出性能、Soak、回滚与全量门禁尚未执行，不能据此认定修复完成。
 
 ## T0 / T1 证据
+
+## T7 证据与自审
+
+- `t7-behavior-red.trx` 四项真实行为失败：坏配置中止导出、RecentWindow JSONL 达 3,283,999 字节、嵌套属性/异常/状态漏脱敏、提交前取消仍可覆盖旧目标。架构 RED 是缺少 ring 标志的契约断言，不是行为复现。
+- 新实现第一次 `t7-core-green.trx` 16/1/0；`t7-nested-parent-red.trx` 证实 JsonArray 重复赋值现有子节点触发 parent 所有权异常，修正为只替换新节点，最终核心 22/0/0。
+- `t7-read-red` 0/1/0：主源读到一项后抛 IO 会中止全包；修复后保留已读项并继续其他资料，manifest 标明 unreadable/truncated。Configuration 全项目 `t7-configuration-final` 455/0/0，exit 0。
+- `t7-tail-budget-regression.trx` 4/0/0；100MiB 输入实际读取不超过 260KiB，中文/emoji 完整、无半行；活动和三归档共用预算。它们是实现后的回归，未冒称 RED。
+- 补充提交竞态/锁定目标/实际 hash/附加 JSONL 脱敏回归 `t7-final-regression` 34/0/0，exit 0。读量不包括后续独立维护的最大 1MiB 遗留修复，两段成本分别有界。
+- 架构原检查将 partial 文件数当 Owner 数，且绑定私有 AddJsonlLogEntry 方法名；保留唯一目录、命名空间、规范主文件、partial 声明和正式 formatter/ZIP 写入边界，最终 `t7-architecture-green` 30/0/0，exit 0。没有新增第二套 exporter/reader。
+- 自动化不覆盖真实 ACL、磁盘故障、真实 UI 或长时间运行，这些证据留在 T9。
 
 - T0 命令为原计划 T0 的两个 `dotnet test` 过滤器，添加 `--no-restore`、TRX logger 与上述独立结果目录；退出码均 0：`t0-configuration-baseline.trx`（45 passed / 0 failed / 0 skipped）、`t0-engine-baseline.trx`（27 / 0 / 0）。既有编译警告 CS1717/CS8604/xUnit1031 未由本轮引入，不把输出称为无警告。
 - 审计工具沙箱构建失败无错误诊断，既有二进制运行被沙箱拒绝隔离 status 的 File.Replace；重新正常构建当前源码（0 warning / 0 error，exit 0）并在沙箱外运行同一隔离探针，exit 0。新证据为 `run-3d2e76927e0b4fb4a9170023cd4659dc/evidence.json`，13 个场景。该工具不操作真实电源计划或任务。
