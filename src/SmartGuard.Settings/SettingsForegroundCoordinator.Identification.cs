@@ -75,8 +75,9 @@ internal sealed partial class SettingsForegroundCoordinator
       _mismatchedSelection = selected?.ExecutablePath;
       if (selected is not null)
       {
-        selected.VerificationText = captured.OldAvailable ? "本次窗口未匹配 · 可添加实际组件" : "原路径不可用 · 可重新识别修正";
-        SetVerificationHint($"当前窗口是 {Path.GetFileName(normalized)}，所选条目是 {Path.GetFileName(selected.ExecutablePath)}");
+        selected.VerificationText = captured.OldAvailable ? "本次外层窗口未匹配" : "原路径不可用 · 可重新识别修正";
+        var hostHint = IsWpsHost(actual) ? "（WPS 整合窗口可能共用此程序）" : "";
+        SetVerificationHint($"当前外层窗口是 {Path.GetFileName(normalized)}{hostHint}，所选条目是 {Path.GetFileName(selected.ExecutablePath)}");
       }
       var replacePath = selected is not null && !captured.OldAvailable ? selected.ExecutablePath : null;
       if (!_confirmWindow(actual, replacePath) || _disposed) return;
@@ -98,7 +99,9 @@ internal sealed partial class SettingsForegroundCoordinator
       if (added is not null)
       {
         added.VerificationText = "已确认前台匹配（本次设置）";
-        SetVerificationHint($"已确认 {Path.GetFileName(normalized)} 的窗口程序；其他组件请分别打开并添加");
+        SetVerificationHint(IsWpsHost(actual)
+          ? "已确认窗口所属程序 wps.exe；整合窗口中的 PDF、表格和演示可能共用此程序，尚未分别验证组件"
+          : $"已确认 {Path.GetFileName(normalized)} 的窗口程序；其他组件请分别打开并添加");
       }
     }
     catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -157,13 +160,19 @@ internal sealed partial class SettingsForegroundCoordinator
   private bool ConfirmWindow(SettingsProgramCandidate actual, string? replacePath)
   {
     var message = $"程序：{actual.Name}\nEXE：{Path.GetFileName(actual.ExecutablePath)}\n位置：{actual.ExecutablePath}\n\n";
+    if (IsWpsHost(actual))
+      message += "识别到的是 WPS 外层窗口。整合窗口中的 PDF、表格、演示可能共用 wps.exe，本次不能分别确认内部组件。若需要分开验证，可尝试 WPS 的独立窗口或多组件模式后重试。\n\n";
     if (replacePath is not null)
       message += $"原路径已不存在或无法访问：\n{replacePath}\n\n确认用当前窗口程序替换这一项？其他组件保持原样。";
     else
     {
       if (_mismatchedSelection is not null) message += $"所选条目：{_mismatchedSelection}\n两者不一致，将保留原条目。\n\n";
-      message += "确认将这个具体程序添加到名单？软件的其他组件需要分别添加。";
+      message += "确认将这个窗口所属程序添加到名单？";
     }
-    return AppDialog.ShowConfirm(_window, replacePath is null ? "添加实际窗口程序" : "修正程序路径", message, AppDialogSeverity.Information);
+    return AppDialog.ShowConfirm(_window, replacePath is null ? "添加窗口所属程序" : "修正程序路径", message, AppDialogSeverity.Information);
   }
+
+  private static bool IsWpsHost(SettingsProgramCandidate candidate)
+    => candidate.Name.StartsWith("WPS", StringComparison.OrdinalIgnoreCase)
+      && Path.GetFileName(candidate.ExecutablePath).Equals("wps.exe", StringComparison.OrdinalIgnoreCase);
 }

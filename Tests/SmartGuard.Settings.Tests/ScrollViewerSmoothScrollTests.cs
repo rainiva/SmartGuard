@@ -10,6 +10,70 @@ namespace SmartGuard.Settings.Tests;
 [Trait("Category", "WpfUi")]
 public class ScrollViewerSmoothScrollTests
 {
+    [Theory]
+    [InlineData(-120, false, true)]
+    [InlineData(120, true, true)]
+    [InlineData(-120, true, false)]
+    [InlineData(120, false, false)]
+    public void Nested_program_list_routes_wheel_to_the_list_or_the_page_at_its_boundary(int delta, bool startAtEnd, bool listCanScroll)
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var host = new Window { Width = 420, Height = 320, ShowInTaskbar = false };
+            try
+            {
+                var list = new ListBox { Height = 110 };
+                ScrollViewer.SetCanContentScroll(list, false);
+                for (var index = 0; index < 40; index++) list.Items.Add($"Program {index}.exe");
+                var stack = new StackPanel();
+                stack.Children.Add(list);
+                stack.Children.Add(new Border { Height = 600 });
+                var outer = new ScrollViewer { Content = stack, Height = 260 };
+                host.Content = outer;
+                WpfStaTestHost.ShowAndWait(host);
+                var inner = Descendant<ScrollViewer>(list)!;
+                inner.Should().NotBeNull();
+                inner.ScrollableHeight.Should().BeGreaterThan(0);
+                if (startAtEnd) inner.ScrollToEnd();
+                inner.UpdateLayout();
+                var before = inner.VerticalOffset;
+                if (!listCanScroll && delta > 0)
+                {
+                    outer.ScrollToEnd();
+                    outer.UpdateLayout();
+                }
+                ScrollViewerSmoothScroll.Attach(outer);
+                var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
+                { RoutedEvent = UIElement.PreviewMouseWheelEvent };
+                inner.RaiseEvent(wheel);
+                if (!listCanScroll)
+                {
+                    wheel.Handled.Should().BeTrue("at the list boundary the page should consume the gesture");
+                    ScrollViewerSmoothScroll.GetVerticalVelocityForTesting(outer).Should().NotBe(0);
+                    return;
+                }
+                wheel.Handled.Should().BeFalse("the outer tunnel handler must allow the list to consume this direction");
+                wheel.RoutedEvent = UIElement.MouseWheelEvent;
+                inner.RaiseEvent(wheel);
+                inner.UpdateLayout();
+                Math.Abs(inner.VerticalOffset - before).Should().BeGreaterThan(0);
+                ScrollViewerSmoothScroll.GetVerticalVelocityForTesting(outer).Should().Be(0);
+            }
+            finally { ScrollViewerSmoothScroll.ResetForTesting(); host.Close(); }
+        });
+    }
+
+    private static T? Descendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, index);
+            if (child is T match) return match;
+            if (Descendant<T>(child) is T nested) return nested;
+        }
+        return null;
+    }
+
     [Fact]
     public void Wheel_impulse_starts_inertial_scroll_that_continues_after_input_stops()
     {

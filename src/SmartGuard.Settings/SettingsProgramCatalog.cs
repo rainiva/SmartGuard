@@ -53,7 +53,9 @@ internal static class SettingsProgramCatalog
       {
         name = executable.ToLowerInvariant() switch
         {
-          "wps.exe" => "WPS 文字",
+          // Integrated WPS windows also host PDF/sheet/presentation content.
+          // The outer owner's executable alone cannot identify document type.
+          "wps.exe" => "WPS Office",
           "et.exe" => "WPS 表格",
           "wpp.exe" => "WPS 演示",
           "wpspdf.exe" => "WPS PDF",

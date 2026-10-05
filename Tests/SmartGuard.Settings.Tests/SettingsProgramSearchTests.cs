@@ -78,7 +78,7 @@ public class SettingsProgramSearchTests
     ]);
     candidates.Should().HaveCount(4);
     SettingsProgramCatalog.Search(candidates, "WPS").Select(x => x.Name)
-      .Should().BeEquivalentTo("WPS 文字", "WPS 表格", "WPS 演示", "WPS PDF");
+      .Should().BeEquivalentTo("WPS Office", "WPS 表格", "WPS 演示", "WPS PDF");
     SettingsProgramCatalog.Search(candidates, "表格").Single().ExecutablePath.Should().EndWith(@"office6\et.exe");
   }
 

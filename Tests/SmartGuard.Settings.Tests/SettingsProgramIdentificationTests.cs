@@ -11,6 +11,24 @@ public class SettingsProgramIdentificationTests
   private const string Document = @"C:\Apps\document.exe";
 
   [Fact]
+  public void Wps_host_mismatch_explains_outer_window_without_verifying_the_pdf_component()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var list = new ListBox();
+      var hint = new TextBlock();
+      using var coordinator = Create(list, () => new("WPS Office", @"C:\Apps\wps.exe"),
+        (_, _) => false, () => throw new Exception("must not save"), hint: hint);
+      coordinator.ApplyConfigToUi(new GuardConfig { ForegroundProgramPaths = [@"C:\Apps\wpspdf.exe"] });
+      list.SelectedIndex = 0;
+      Complete(Begin(coordinator, true));
+      hint.Text.Should().Contain("外层窗口").And.Contain("整合窗口").And.Contain("wpspdf.exe");
+      ((SettingsProgramCandidate)list.Items[0]).VerificationText.Should().NotContain("实际组件").And.NotContain("已确认");
+      coordinator.ProgramPaths.Should().Equal(@"C:\Apps\wpspdf.exe");
+    });
+  }
+
+  [Fact]
   public void Cancelling_a_path_repair_preserves_the_original_list_and_does_not_save()
   {
     WpfStaTestHost.Run(() =>
@@ -226,11 +244,11 @@ public class SettingsProgramIdentificationTests
 
   private static SettingsForegroundCoordinator Create(ListBox list, Func<SettingsProgramCandidate?> read,
     Func<SettingsProgramCandidate, string?, bool> confirm, Action save, Func<string, bool>? exists = null,
-    Func<CancellationToken, Task>? wait = null, Action<string>? feedback = null)
+    Func<CancellationToken, Task>? wait = null, Action<string>? feedback = null, TextBlock? hint = null)
   {
     return new SettingsForegroundCoordinator(Path.GetTempPath(), new CheckBox(), list,
       new Button(), new Button(), new TextBlock(), new TextBlock(), (message, _) => feedback?.Invoke(message), save,
-      readWindow: read, confirmWindow: confirm, programExists: exists ?? (_ => true),
+      verificationHint: hint, readWindow: read, confirmWindow: confirm, programExists: exists ?? (_ => true),
       waitForWindow: wait ?? (_ => Task.CompletedTask));
   }
 
