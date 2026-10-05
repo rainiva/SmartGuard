@@ -377,8 +377,8 @@ public class ForegroundGuardIntegrationTests
     var signals = 0;
     IntPtr registeredHandle = IntPtr.Zero;
     var captured = default(WinEventDelegate);
-    var hooked = new TaskCompletionSource<bool>();
-    var unhooked = new TaskCompletionSource<IntPtr>();
+    var hooked = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var unhooked = new TaskCompletionSource<IntPtr>(TaskCreationOptions.RunContinuationsAsynchronously);
     var hookThreadId = 0;
     var unhookThreadId = 0;
 
@@ -389,7 +389,6 @@ public class ForegroundGuardIntegrationTests
         captured = callback;
         hookThreadId = Environment.CurrentManagedThreadId;
         registeredHandle = new IntPtr(0xABCD);
-        hooked.TrySetResult(true);
         return registeredHandle;
       },
       unhook: handle =>
@@ -399,6 +398,9 @@ public class ForegroundGuardIntegrationTests
       },
       pumpUntilStop: stop =>
       {
+        // 健康状态在注册委托返回后发布；消息泵入口才是可断言的就绪边界。
+        // 异步续体避免测试在监听线程内联执行 Stop 并等待自身退出。
+        hooked.TrySetResult(true);
         stop.WaitOne();
         return true;
       });
