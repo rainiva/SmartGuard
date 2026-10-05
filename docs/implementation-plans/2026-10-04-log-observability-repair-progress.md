@@ -14,6 +14,8 @@
 
 ## 进度
 
+2026-10-05 追加真实桌面验收：先完成完整入口 1889 项版本回归，其后复现暂停期间重复 ExternalPlanChange 与“下轮纠偏”假承诺，按 TDD 补修。影响矩阵：正确性/可解释性受影响，修改既有 Runner 的外部变化观测日志与通知文案；不改变策略评估、暂停、执行基线、动作、通知投递/冷却、配置格式或 Owner。每完整轮次 O(1)，只增加一个可空 GUID 的观测去重状态，无 IO、集合、队列或新探测。补修后完整四层门禁及新版真实暂停恢复均通过，详细证据如下；真实休眠验收与冷启动性能目标仍独立登记。
+
 | 阶段 | 状态 | 证据/结论 |
 |---|---|---|
 | T0 基线 | 已通过 | Configuration 45/45；Engine 27/27；当前源码隔离探针 13 场景复现原缺口 |
@@ -25,9 +27,20 @@
 | T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
 | T7 诊断容错 | 实现与阶段回归通过 | Configuration 455/455；补充诊断回归 34/34；架构 30/30 |
 | T8 导出异步所有权 | 实现与目标回归通过 | 相关 WPF/取消/导航/可访问性 30 项；架构 10 项通过 |
-| T9 集成与验收 | 本轮源码与证据收口，验收未闭环 | 13 场景、最后 .NET 1889/0/0、2h 隔离 Soak 通过；最近全量入口 UAC 取消，Tray BLOCKED/Installer NOT RUN；必要桌面与冷启动目标仍未关闭 |
+| T9 集成与验收 | 完整四层门禁及主要桌面路径通过，验收未闭环 | 最新完整入口 Pester 156、.NET 1896、Tray 2、Installer 9，均零失败/跳过、exit 0；追加新版真实暂停恢复、诊断键盘及 DPI/对比度检查；真实休眠与冷启动目标仍未关闭，旧 2h 隔离 Soak 单列 |
 
-M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、部分可见桌面与真实计时 2h 隔离运行证据如下。2026-10-05 收口时，必要桌面、休眠及冷启动性能目标未全部关闭，M4 尚未达成。没有安装或发布新版。
+M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可见桌面与真实计时 2h 隔离运行证据如下。2026-10-05 追加验收后，真实休眠及冷启动性能目标尚未关闭，M4 尚未达成。集成测试仅临时安装，未更新正式安装或发布。
+
+## 2026-10-05 优先验收追加记录
+
+- 最新完整入口：`run-tests-20261005T000335459Z-20e03c4fb80246508a176b79ab2167c2.summary.json`，08:09:58 北京时间结束，命令及 summary exit 0。Pester 156/0/0；.NET 1896/0/0（Engine 334、Configuration 457、Cli 1、Architecture 338、Packaging 15、Tray 87、LogView 69、Settings 595）；Tray Integration 2/0/0；Installer Integration 9/0/0。四层均实际运行，没有取消、跳过或 NOT RUN。此前 `run-tests-20261004T233714892Z-06b1ea4a36c54e739cd55c80ff0d14d5.summary.json` 的 1889 项通过仅是补修前证据。
+- 新证据目录：`.work/logging-repair/20261005-acceptance/`。`paused-external-red-complete.trx` 三项实际断言失败（0/3/0、exit 1），覆盖日志假承诺、通知假承诺及重复观测；`paused-external-green.trx` 3/0/0，最终 `paused-external-boundaries.trx` 7/0/0，均 exit 0。四项额外边界首次通过，只称回归。未改执行基线，也不新增通知机制。
+- 新版真实 Engine PID 14684、Settings PID 40360，使用 published bin 与新隔离根 `live-root-3`，无注入动作。08:11:33 从设置页开启暂停并实际保存；08:11:49 观测外部高性能计划，随后到 08:12:50 仍 paused/high performance，外部事件累计一次，暂停后没有 PowerPlanSwitched。08:13:03 从 UI 关闭暂停；08:13:08 实际切到平衡并记录 verified；08:13:15 记录 already-satisfied。配置保存、准入、动作和时间均可由实际 JSONL/status 对照，不能将命中等同动作。
+- 补修前真实桌面也验证 Settings #1 / Explorer #2 命中、退出命中与 PowerCfg 实际计划转换；暂停误导证据保存在 `live-root-2`，不覆盖。第一次使用 Chrome 切出时 Computer Use 因无法确认 URL 停止，该段不算完整未命中桌面验收；后续桌面检查使用设置与系统设置窗口。
+- 诊断键盘：Ctrl+F 聚焦日志查询，输入“暂停”得到三条结果，Tab 按刷新→筛选→日志导出→诊断包移动，Space 激活，文件对话框输入目标后 Enter 保存。`keyboard-diagnostic.zip` 为 2969 字节，scope=CurrentQuery，JSONL 三条记录；逐项 SHA-256 与 manifest 一致。未把按钮 Enter 激活认作通过。
+- DPI/对比度：实际 Windows 缩放由 200% 改为 100%，检查日志/诊断入口和取消，再恢复 200%；应用仍运行时启用 Windows“水生”对比度主题，在 100%/200% 检查诊断对话框及取消，最后恢复“无”。应用主体继续浅色配色，不宣称完整系统对比度适配；屏幕阅读器、完整高对比度键盘矩阵及减少动画路径为 NOT RUN。小窗口事件列需横向滚动仍是已记录的既有问题。
+- 前两轮 owned 会话均 exit 0，`live-session.result.json` / `live-session-2.result.json` 的 Restored=true、Error 为空，原高性能计划、20% 亮度、正式配置 SHA-256 与 Guardian/Tray 任务基线完全一致；新会话退出恢复另行核对。种子通过原 GuardConfigRepository 建立独立配置，并预置 init marker，明确排除首次安装计划初始化；强制结束自有进程不算优雅 AppStopping 验收。
+- 专业复审：固定大小确认状态仅作用于日志，写入接受和过滤才推进；拒绝继续原周期重试，外部判定解除清除确认。策略、执行基线、通知冷却与唯一写入入口保持原责任，契约与测试一致。现有完整门禁与实测已覆盖补修，不引入日志平台或框架。真实休眠唤醒尚未执行；使用既有 `Invoke-PowerLifecycleAcceptance.ps1` 收集 Windows 事件、Engine 生命周期及前后 PipelineHealthSampled，不以模拟 Soak 或状态健康代替。
 
 ## T9 集成与验收记录（本轮实施收口，验收未闭环）
 

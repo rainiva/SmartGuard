@@ -12,6 +12,9 @@ internal sealed class GuardianLoopIterationState
   public Guid? LastKnownGuid;
   public string LastStatusLabel = string.Empty;
   public bool ScriptJustSwitched;
+  // Observation acknowledgement is separate from the execution baseline:
+  // pause/failure may retain that baseline while the same external plan persists.
+  public Guid? LastLoggedExternalPlanGuid;
 
   /// <summary>
   /// 上一轮守护动作资格（自动决策是否 admitted）。有界运行状态，不是通用缓存：
@@ -182,8 +185,14 @@ internal sealed partial class GuardianIterationRunner(
     if (externalChangeDetected)
     {
       externalPlanNameForNotify = ResolvePlanName(current, config, planCatalog, activePlanInfo);
-      writeLog(config, LogLevel.Warn, $"EXTERNAL: 计划被外部改为 {externalPlanNameForNotify} ({current}) | 下轮纠偏", EventNameRegistry.ExternalPlanChange, null, null);
+      if (state.LastLoggedExternalPlanGuid != current)
+      {
+        var result = writeLog(config, LogLevel.Warn, $"EXTERNAL: 观测到计划由外部改为 {externalPlanNameForNotify} ({current})", EventNameRegistry.ExternalPlanChange, null, null);
+        if (result.IsAccepted() || result == GuardianLogWriteResult.SuppressedByLevel)
+          state.LastLoggedExternalPlanGuid = current;
+      }
     }
+    else state.LastLoggedExternalPlanGuid = null;
     state.ScriptJustSwitched = false;
 
     var label = PolicyEngine.GetStatusLabel(idle, config);
@@ -516,6 +525,6 @@ internal sealed partial class GuardianIterationRunner(
     {
       kind = NotificationKinds.ExternalChange,
       title = "检测到外部计划变更",
-      body = $"计划被外部改为 [{planName}]，守护将在下轮轮询时纠偏"
+      body = $"观测到计划由外部改为 [{planName}]；执行结果请查看守护状态"
     };
 }

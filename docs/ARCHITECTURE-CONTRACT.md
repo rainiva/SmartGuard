@@ -1,5 +1,7 @@
 # SmartGuard 架构契约 — 单真源与单入口
 
+**LOG-INV-EXTERNAL-OBSERVATION（2026-10-05）：** GuardianIterationRunner 的 ExternalPlanChange 与外部变更通知只描述已观测事实，不预告纠偏；后续动作以 GuardStateChanged/PowerPlanSwitched 的实际结果为准。既有 iteration state 只增加一个可空 GUID，确认接受或用户级别过滤后去重同一连续外部计划；拒绝/背压不确认，新的 GUID 或外部判定解除后可重新记录。该字段仅抑制日志，不改变 LastKnownGuid、决策、暂停、动作或通知投递/冷却，不新增历史集合、探测、IO 或 Owner。门禁：ExternalPlanObservationLoggingTests。
+
 **LOG-INV-PHYSICAL-PAGING（2026-10-04）：** LogTailReader 的主日志游标及 HasNewer 按 catalog 中的物理来源顺序/行偏移推进，显示仍按事件时间；相同或倒退的时间戳不能跳过物理行或把文件末尾误报为尚有更新。只有实际附加历史存在时进入合并读取；新创建的 fallback 可加入当前 reader，但保持已有主源身份。合并 newer 每源仅取物理前缀，latest/连续 older 每源仅取物理后缀，再按时间展示；不以旧 wall clock 排除新追加记录或同秒历史行。另一来源上已返回的重复 eventId 不能确认本来源中间行已消费；只推进实际选中的物理范围。去重限定于当前页及既有有界显示窗口，不新增全历史 eventId 集合；只保存两份当前边界与源偏移。LogViewController 在空边界页仅收敛该方向标志，保留另一方向的游标，不能因此丢失返回物理另一端的能力。门禁：StartupFallbackHistoryTests、LogViewControllerTests。
 
 **LOG-INV-DIAGNOSTIC-FLIGHT（2026-10-04）：** SettingsWindowController 拥有一项 SettingsDiagnosticExportSession，About 与 Logs coordinator 共享；独立 host 测试才自有 session，并在 Dispose 取消。session 从保存对话框前占有 busy，取消后直到工作结束才释放，Cancel(expectedOrigin) 只影响匹配来源，关闭取消所有来源但不在 Dispatcher 等待；其他窗口独立。GetDiagnosticPaths 只返回已解析值/规范默认路径，不初始化页面或读配置。两个 coordinator 返回 Task，仅点击边界 async void；UI 只捕获路径/版本/筛选/关联/有限窗口，后台新建同一 LogTailReader 的独立实例、catalog 并 await 既有 exporter，不共用刷新可变读者。About 默认附带四类日志。导航离开来源页取消自身；销毁/非活动页面忽略晚到结果，busy 状态控件只在活窗口更新，无新 Timer 或任务队列。取消不能承诺中断正在执行的 OS 同步调用，最终目标提交语义遵循 LOG-INV-DIAGNOSTIC-EXPORT。门禁：SettingsDiagnosticExportCoordinatorTests、SettingsDiagnosticExportLifetimeTests、LoggingRepairArchitectureTests。
