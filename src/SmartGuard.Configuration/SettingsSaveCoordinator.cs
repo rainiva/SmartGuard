@@ -22,8 +22,9 @@ public static class SettingsSaveCoordinator
     var oldPaths = GuardConfigValidator.NormalizeProgramPaths(previous.ForegroundProgramPaths);
     var newPaths = GuardConfigValidator.NormalizeProgramPaths(newConfig.ForegroundProgramPaths);
     if (previous.ForegroundRestrictionEnabled != newConfig.ForegroundRestrictionEnabled
+      || previous.ForegroundObservationSec != newConfig.ForegroundObservationSec
       || !oldPaths.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(newPaths))
-      repository.AppendInfoLog($"程序规则已保存：限制{(newConfig.ForegroundRestrictionEnabled ? "开启" : "关闭")}；名单 {newPaths.Count} 项",
+      repository.AppendInfoLog($"程序规则已保存：{(newConfig.ForegroundRestrictionEnabled ? "仅在名单程序位于前台时自动调整" : "按使用情况自动调整，不限制程序")}。名单 {newPaths.Count} 项，退出观察时间 {newConfig.ForegroundObservationSec} 秒。",
         root, SmartGuardPaths.StartupLogFile(root));
 
     if (AutoStartService.NeedsUpdate(newConfig.AutoStartEnabled, previous.AutoStartEnabled))

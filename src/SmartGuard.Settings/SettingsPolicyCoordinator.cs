@@ -87,7 +87,8 @@ internal sealed class SettingsPolicyCoordinator
       Require<TextBlock>(window, "txtForegroundGuardStatus"),
       Require<TextBlock>(window, "lblForegroundListHint"),
       (message, isError) => toastService.Show(message, isError),
-      () => _debouncedSaver.QueueSave());
+      () => _debouncedSaver.QueueSave(),
+      observationDuration: Require<NumberBox>(window, "numForegroundObservation"));
     _programSearch = new SettingsProgramSearchCoordinator(
       Require<TextBox>(window, "txtForegroundProgramSearch"),
       Require<ListBox>(window, "lstForegroundSearchResults"),
@@ -195,7 +196,8 @@ internal sealed class SettingsPolicyCoordinator
       notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
       autoStartEnabled: _tglAutoStart.IsChecked == true,
       foregroundRestrictionEnabled: _foreground.RestrictionEnabled,
-      foregroundProgramPaths: _foreground.ProgramPaths);
+      foregroundProgramPaths: _foreground.ProgramPaths,
+      foregroundObservationSec: _foreground.ObservationSeconds);
   }
 
   internal void CommitSavedConfig(GuardConfig config) => _originalConfig = config;

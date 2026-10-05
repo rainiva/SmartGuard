@@ -78,6 +78,7 @@ public sealed class GuardConfigRepository
     // canonical entry so no second list or old authorizing configuration is kept.
     using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
     hash.AppendData([config.ForegroundRestrictionEnabled ? (byte)1 : (byte)0]);
+    hash.AppendData(BitConverter.GetBytes(config.ForegroundObservationSec));
     foreach (var raw in config.ForegroundProgramPaths ?? [])
     {
       var value = GuardConfigValidator.TryNormalizeProgramPath(raw, out var normalized)
@@ -222,6 +223,7 @@ public sealed class GuardConfigRepository
     node["ThemeFollowSystem"] = config.ThemeFollowSystem;
     node["ThemeIsDark"] = config.ThemeIsDark;
     node["ForegroundRestrictionEnabled"] = config.ForegroundRestrictionEnabled;
+    node["ForegroundObservationSec"] = config.ForegroundObservationSec;
     node["ForegroundProgramPaths"] = config.ForegroundProgramPaths is { } programPaths
       ? JsonSerializer.SerializeToNode(programPaths, GuardConfig.JsonOptions) ?? new JsonArray()
       : new JsonArray();

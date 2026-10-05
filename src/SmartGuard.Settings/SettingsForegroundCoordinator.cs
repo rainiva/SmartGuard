@@ -19,6 +19,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
   private const string AddDialogFilter = "可执行程序 (*.exe)|*.exe";
 
   private readonly CheckBox _tglRestriction;
+  private readonly NumberBox? _observationDuration;
   private readonly ListBox _lstPrograms;
   private readonly Button _btnAdd;
   private readonly Button _btnRemove;
@@ -49,9 +50,11 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     Func<string?>? pickProgramFile = null,
     Func<StatusPayload?>? readStatus = null,
     TimeSpan? refreshInterval = null,
-    Func<DateTimeOffset>? utcNow = null)
+    Func<DateTimeOffset>? utcNow = null,
+    NumberBox? observationDuration = null)
   {
     _tglRestriction = tglRestriction;
+    _observationDuration = observationDuration;
     _lstPrograms = lstPrograms;
     _btnAdd = btnAdd;
     _btnRemove = btnRemove;
@@ -71,6 +74,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
   }
 
   internal bool RestrictionEnabled => _tglRestriction.IsChecked == true;
+  internal int ObservationSeconds => _observationDuration?.Value ?? 180;
 
   internal IReadOnlyList<string> ProgramPaths
     => _lstPrograms.Items.OfType<object>().Select(item => item?.ToString() ?? string.Empty).ToList();
@@ -79,6 +83,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
   internal void ApplyConfigToUi(GuardConfig config)
   {
     _tglRestriction.IsChecked = config.ForegroundRestrictionEnabled;
+    if (_observationDuration is not null) _observationDuration.Value = config.ForegroundObservationSec;
     _lstPrograms.Items.Clear();
     foreach (var path in config.ForegroundProgramPaths)
       _lstPrograms.Items.Add(new SettingsProgramCandidate(System.IO.Path.GetFileNameWithoutExtension(path), path));
@@ -96,6 +101,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _wired = true;
     _tglRestriction.Checked += (_, _) => _queueSave();
     _tglRestriction.Unchecked += (_, _) => _queueSave();
+    if (_observationDuration is not null) _observationDuration.ValueChanged += OnObservationDurationChanged;
     _btnAdd.Click += (_, _) => AddProgram();
     _btnRemove.Click += (_, _) => RemoveSelected();
     _lstPrograms.SelectionChanged += (_, _) => UpdateRemoveEnabled();
@@ -145,7 +151,13 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _disposed = true;
     _statusTimer.Stop();
     _statusTimer.Tick -= OnStatusTick;
+    if (_observationDuration is not null) _observationDuration.ValueChanged -= OnObservationDurationChanged;
     // 文件读取不可中断；其晚到结果由 _disposed 丢弃，不更新已关闭窗口。
+  }
+
+  private void OnObservationDurationChanged(object sender, RoutedPropertyChangedEventArgs<int> e)
+  {
+    if (!_disposed) _queueSave();
   }
 
   internal void AddProgram()

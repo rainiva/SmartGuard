@@ -9,6 +9,20 @@ namespace SmartGuard.Architecture.Tests;
 /// </summary>
 public class GuardStatusCodesArchitectureTests
 {
+  [Fact]
+  public void Foreground_observation_has_one_runtime_owner_and_a_registered_contract()
+  {
+    var contract = File.ReadAllText(Path.Combine(SourceScanHelper.RepoRoot, "docs", "ARCHITECTURE-CONTRACT.md"));
+    contract.Should().Contain("ForegroundObservationSec");
+    contract.Should().Contain("foreground-observation");
+    var runner = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs");
+    var cycle = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianCycleCoordinator.cs");
+    runner.Should().Contain("UpdateForegroundObservation");
+    cycle.Should().Contain("UpdateForegroundObservation");
+    var loop = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    loop.Should().Contain("timeProvider: _observationTime", "light and full paths share one monotonic observation clock");
+  }
+
   private static readonly string[] DisplayOnlyTexts =
   {
     "添加程序后生效",

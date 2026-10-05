@@ -2,6 +2,33 @@ namespace SmartGuard.Configuration.Tests;
 
 public class GuardForegroundRestrictionConfigTests
 {
+  [Fact]
+  public void Foreground_observation_defaults_to_180_seconds_and_custom_duration_round_trips()
+  {
+    using var defaults = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(GuardConfig.CreateDefault("C:\\Guard")));
+    defaults.RootElement.GetProperty("ForegroundObservationSec").GetInt32().Should().Be(180);
+    var dir = NewTempDir();
+    Directory.CreateDirectory(dir);
+    try
+    {
+      var repository = new GuardConfigRepository(NewConfigPath(dir));
+      repository.Save(GuardConfig.LoadFromJson("{\"ForegroundObservationSec\":240}"));
+      using var saved = System.Text.Json.JsonDocument.Parse(File.ReadAllText(NewConfigPath(dir)));
+      saved.RootElement.GetProperty("ForegroundObservationSec").GetInt32().Should().Be(240);
+    }
+    finally { Directory.Delete(dir, true); }
+  }
+
+  [Theory]
+  [InlineData(0)]
+  [InlineData(-1)]
+  [InlineData(3601)]
+  public void Invalid_observation_duration_is_rejected(int seconds)
+  {
+    var config = GuardConfig.LoadFromJson("{\"ForegroundObservationSec\":" + seconds + "}");
+    GuardConfigValidator.Validate(config).Should().Contain(x => x.Contains("观察"));
+  }
+
   private static string NewTempDir()
     => Path.Combine(Path.GetTempPath(), "sg-foreground-" + Guid.NewGuid().ToString("N"));
 

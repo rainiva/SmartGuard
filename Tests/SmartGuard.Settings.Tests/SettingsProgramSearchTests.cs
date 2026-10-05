@@ -8,6 +8,22 @@ namespace SmartGuard.Settings.Tests;
 public class SettingsProgramSearchTests
 {
   [Fact]
+  public void Wps_components_are_separate_clear_candidates_and_launcher_is_not_a_document_program()
+  {
+    var candidates = SettingsProgramCatalog.Normalize([
+      new SettingsProgramCandidate("WPS Office", @"D:\Apps\WPS\ksolaunch.exe"),
+      new SettingsProgramCandidate("WPS Office", @"D:\Apps\WPS\office6\wps.exe"),
+      new SettingsProgramCandidate("WPS Spreadsheets", @"D:\Apps\WPS\office6\et.exe"),
+      new SettingsProgramCandidate("WPS Presentation", @"D:\Apps\WPS\office6\wpp.exe"),
+      new SettingsProgramCandidate("WPS PDF", @"D:\Apps\WPS\office6\wpspdf.exe"),
+    ]);
+    candidates.Should().HaveCount(4);
+    SettingsProgramCatalog.Search(candidates, "WPS").Select(x => x.Name)
+      .Should().BeEquivalentTo("WPS 文字", "WPS 表格", "WPS 演示", "WPS PDF");
+    SettingsProgramCatalog.Search(candidates, "表格").Single().ExecutablePath.Should().EndWith(@"office6\et.exe");
+  }
+
+  [Fact]
   public void Exact_program_name_ranks_first_and_uninstall_shortcuts_are_not_candidates()
   {
     var candidates = SettingsProgramCatalog.Normalize([

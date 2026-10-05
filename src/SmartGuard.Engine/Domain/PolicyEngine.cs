@@ -10,6 +10,7 @@ public static class PolicyEngine
   /// → 用户暂停 → 前台限制准入（空名单 / 身份不可识别 / 未命中 / 名单非法 → 不干预，
   /// 名单非法禁止静默无限制）→ 既有空闲/电量/插电策略链。
   /// 目标计划为 null 明确表示不干预；路径规范化与校验共用 <see cref="GuardConfigValidator"/> 单源。
+  /// <paramref name="foregroundObservationActive"/> 仅细化已拒绝的未命中原因，绝不能授予自动动作资格。
   /// </summary>
   public static GuardDecision Evaluate(
     int idleSeconds,
@@ -17,7 +18,8 @@ public static class PolicyEngine
     int batteryPercent,
     ForegroundObservation foreground,
     GuardConfig config,
-    DateTime nowLocal)
+    DateTime nowLocal,
+    bool foregroundObservationActive = false)
   {
     if (config.IsManualHighPerformanceActive(nowLocal))
       return new GuardDecision(config.ActivePlanGuid, GuardDecisionSource.Manual, GuardDecisionReason.ManualActive);
@@ -31,7 +33,9 @@ public static class PolicyEngine
     {
       var admission = EvaluateAdmission(foreground, config);
       if (!admission.Admitted)
-        return new GuardDecision(null, GuardDecisionSource.None, admission.Reason);
+        return new GuardDecision(null, GuardDecisionSource.None,
+          foregroundObservationActive && admission.Reason == GuardDecisionReason.WaitingForListedProgram
+            ? GuardDecisionReason.ForegroundObservation : admission.Reason);
       matchedRuleIndex = admission.MatchedRuleIndex;
     }
 

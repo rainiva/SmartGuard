@@ -182,8 +182,8 @@ public sealed class GuardInterruptionLoggingTests : IDisposable
     else
     {
       heartbeats.Should().ContainSingle();
-      if (action == "already-satisfied") heartbeats[0].Message.Should().Contain("符合目标");
-      else heartbeats[0].Message.Should().NotContain("符合目标");
+      if (action == "already-satisfied") heartbeats[0].Message.Should().Contain("符合设置");
+      else heartbeats[0].Message.Should().NotContain("符合设置");
     }
   }
 
@@ -214,7 +214,7 @@ public sealed class GuardInterruptionLoggingTests : IDisposable
     { events.Add(EngineLogEvents.Create(level, name, message, properties: properties)); return GuardianLogWriteResult.AcceptedByPipeline; });
     events.Should().ContainSingle().Which.Severity.Should().Be(LogSeverity.Warn);
     events[0].Properties.Should().NotContainKey("actualPlanGuid").And.NotContainKey("targetPlanGuid");
-    events[0].Message.Should().Contain("IO 失败");
+    events[0].Message.Should().Contain("读取文件失败");
     full.Should().Be(1);
     queries.Should().Be(0);
   }

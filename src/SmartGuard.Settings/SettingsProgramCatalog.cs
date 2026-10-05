@@ -9,7 +9,8 @@ using SmartGuard.Configuration;
 namespace SmartGuard.Settings;
 
 /// <summary>
-/// 设置专属候选发现：只读本机开始菜单快捷方式和有窗口的进程，不启动或解析启动参数。
+/// 设置专属候选发现：优先有窗口的进程，再读本机开始菜单；已确认WPS的目录仅检查四个文档组件。
+/// 不启动程序、不解析启动参数、不将候选发现作为名单授权。
 /// 每窗口单次调用，合作取消/两秒预算、2048个对象、512个候选；平台单次调用不可强制中断。
 /// 发现不完全时可继续浏览文件，不能以候选目录替代 Engine 的真实前台识别。
 /// </summary>
@@ -29,6 +30,20 @@ internal static class SettingsProgramCatalog
       // Start menus include maintenance shortcuts; do not suggest an uninstaller as an app.
       if (name.StartsWith("卸载", StringComparison.Ordinal)
         || Path.GetFileName(path).StartsWith("unins", StringComparison.OrdinalIgnoreCase)) continue;
+      var executable = Path.GetFileName(path);
+      // The start-menu launcher does not own document windows; listing it creates an unusable rule.
+      if (executable.Equals("ksolaunch.exe", StringComparison.OrdinalIgnoreCase)) continue;
+      if (name.StartsWith("WPS", StringComparison.OrdinalIgnoreCase))
+      {
+        name = executable.ToLowerInvariant() switch
+        {
+          "wps.exe" => "WPS 文字",
+          "et.exe" => "WPS 表格",
+          "wpp.exe" => "WPS 演示",
+          "wpspdf.exe" => "WPS PDF",
+          _ => name,
+        };
+      }
       if (!unique.ContainsKey(path)) unique.Add(path, item with { Name = name[..Math.Min(name.Length, 256)], ExecutablePath = path });
       if (unique.Count == MaxCandidates) break;
     }
@@ -86,6 +101,44 @@ internal static class SettingsProgramCatalog
       candidates.Add(new SettingsProgramCandidate(name, normalized, ReadIcon(normalized)));
     }
 
+    // Window owners take priority: shortcut discovery can consume the entire bounded budget.
+    var processes = Process.GetProcesses();
+    var componentFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    try
+    {
+      foreach (var process in processes)
+      {
+        if (!WithinBudget()) break;
+        inspected++;
+        try
+        {
+          if (process.MainWindowHandle == IntPtr.Zero) continue;
+          var path = process.MainModule?.FileName;
+          if (path is null) continue;
+          var name = FileVersionInfo.GetVersionInfo(path).FileDescription;
+          Add(string.IsNullOrWhiteSpace(name) ? process.ProcessName : name, path);
+          if (name?.StartsWith("WPS", StringComparison.OrdinalIgnoreCase) != true) continue;
+          var folder = Path.GetDirectoryName(path);
+          if (folder is null || folder.StartsWith(@"\\", StringComparison.Ordinal) || !componentFolders.Add(folder)) continue;
+          // Inspect only the four document components next to a verified WPS window owner.
+          // Discovery adds suggestions, never config entries or broad directory matching.
+          foreach (var component in new[] { "wps.exe", "et.exe", "wpp.exe", "wpspdf.exe" })
+          {
+            if (!WithinBudget()) break;
+            inspected++;
+            var componentPath = Path.Combine(folder, component);
+            if (!File.Exists(componentPath)) continue;
+            var description = FileVersionInfo.GetVersionInfo(componentPath).FileDescription;
+            if (description?.StartsWith("WPS", StringComparison.OrdinalIgnoreCase) == true) Add(description, componentPath);
+          }
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException
+          or IOException or UnauthorizedAccessException or NotSupportedException) { }
+      }
+    }
+    finally { foreach (var process in processes) process.Dispose(); }
+    if (!WithinBudget()) return Normalize(candidates);
+
     object? shell = null;
     try
     {
@@ -114,27 +167,6 @@ internal static class SettingsProgramCatalog
     catch (COMException) { /* Shell automation may be disabled; running programs remain discoverable. */ }
     finally { if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell); }
 
-    if (!WithinBudget()) return Normalize(candidates);
-    var processes = Process.GetProcesses();
-    try
-    {
-      foreach (var process in processes)
-      {
-        if (!WithinBudget()) break;
-        inspected++;
-        try
-        {
-          if (process.MainWindowHandle == IntPtr.Zero) continue;
-          var path = process.MainModule?.FileName;
-          if (path is null) continue;
-          var name = FileVersionInfo.GetVersionInfo(path).FileDescription;
-          Add(string.IsNullOrWhiteSpace(name) ? process.ProcessName : name, path);
-        }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException
-          or IOException or UnauthorizedAccessException or NotSupportedException) { }
-      }
-    }
-    finally { foreach (var process in processes) process.Dispose(); }
     return Normalize(candidates);
   }
 

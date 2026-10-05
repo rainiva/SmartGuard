@@ -40,6 +40,7 @@ public sealed class GuardConfig
 
   public LogViewPreferences LogViewPreferences { get; set; } = new();
   public bool ForegroundRestrictionEnabled { get; set; }
+  public int ForegroundObservationSec { get; set; } = 180;
   public List<string> ForegroundProgramPaths { get; set; } = new();
 
   public bool IsManualHighPerformanceActive(DateTime now)

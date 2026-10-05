@@ -69,7 +69,7 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
     if (results.Count > 0) _results.BringIntoView();
     if (_catalog is null) return;
     _hint.Text = string.IsNullOrWhiteSpace(_query.Text) ? "输入程序名称，例如微信；也可以搜索 exe 文件名"
-      : results.Count == 0 ? "未找到可识别程序，请尝试浏览文件"
+      : results.Count == 0 ? "未找到程序。请先打开实际文档窗口后重新打开设置，或浏览选择 exe 文件"
       : "选择一个结果添加；同名程序可通过位置区分";
   }
 

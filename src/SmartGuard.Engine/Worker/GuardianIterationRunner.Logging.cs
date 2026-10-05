@@ -17,13 +17,14 @@ internal sealed partial class GuardianIterationRunner
   }
 
   private void ObserveFinal(GuardConfigReadResult read, ForegroundObservation foreground,
-    GuardDecision decision, string source, string reason, Guid? actual, string action, DateTimeOffset at)
+    GuardDecision decision, GuardianLoopIterationState state, string source, string reason, Guid? actual, string action, DateTimeOffset at)
   {
     _observations.ObserveContext(read, GuardObservationGate.For(read, at));
     if (read.Config?.ForegroundRestrictionEnabled == true
         && decision.Reason is not GuardDecisionReason.ManualActive and not GuardDecisionReason.Paused)
       _observations.ObserveAdmission(new(decision.Source == GuardDecisionSource.Automatic, decision.Reason, decision.MatchedRuleIndex),
-        foreground.ExecutablePath, at);
+        foreground.ExecutablePath, at, state.ForegroundObservationPhase,
+        read.Config.ForegroundObservationSec, state.LastListedProgram);
     _observations.ObserveExecution(source, reason, decision.TargetPlanGuid, actual, action, at);
   }
 

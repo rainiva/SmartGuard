@@ -14,6 +14,55 @@ public sealed class GuardRuleLoggingTests : IDisposable
   public GuardRuleLoggingTests() => Directory.CreateDirectory(_root);
 
   [Fact]
+  public async Task Leaving_a_listed_program_observes_once_without_actions_and_return_resumes()
+  {
+    var config = GuardConfig.CreateDefault(_root);
+    config.ForegroundRestrictionEnabled = true;
+    config.ForegroundProgramPaths = [@"C:\Private\wps.exe", @"C:\Private\et.exe"];
+    config.HeartbeatIntervalMin = 0;
+    var clock = new ManualTimeProvider();
+    var foreground = config.ForegroundProgramPaths[0];
+    var events = new List<Observed>();
+    var tracker = new GuardObservationTracker();
+    var applies = 0;
+    var state = new GuardianLoopIterationState { PlanCatalog = new Dictionary<Guid, string>() };
+    var runner = new GuardianIterationRunner(new IdleTracker(), new BrightnessService(),
+      new StatusPublisher(Path.Combine(_root, "status.json")), () => GuardConfigReadResult.FromConfig(config),
+      (_, level, message, name, properties, at) =>
+      {
+        events.Add(new(name, level, message, properties ?? new Dictionary<string, JsonElement>(), at ?? clock.GetUtcNow()));
+        return GuardianLogWriteResult.AcceptedByPipeline;
+      }, _ => { }, false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
+      readBatteryInfo: _ => (90, true),
+      readCurrentPlan: () => new(true, new PowerSchemeInfo(config.ActivePlanGuid, null), PowerPlanFailureKind.None, ""),
+      applyPlan: (target, _) => { applies++; return Task.FromResult(new PowerPlanApplyResult(true, target, target, PowerPlanFailureKind.None, "")); },
+      timeProvider: clock, readForeground: () => ForegroundObservation.Identified(foreground), readBrightness: () => -1,
+      observationTracker: tracker);
+    async Task Observe()
+    {
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      tracker.Drain(config, Capture(events));
+    }
+    await Observe();
+    foreground = @"C:\Other\app.exe";
+    await Observe();
+    events.Should().Contain(x => x.Message.Contains("观察") && x.Message.Contains("180"));
+    clock.Advance(TimeSpan.FromSeconds(120));
+    foreground = @"C:\Other\another.exe";
+    await Observe();
+    events.Count(x => x.Message.Contains("进入观察")).Should().Be(1);
+    clock.Advance(TimeSpan.FromSeconds(60));
+    await Observe();
+    events.Should().Contain(x => x.Message.Contains("观察时间已结束"));
+    await Observe();
+    events.Count(x => x.Message.Contains("观察时间已结束")).Should().Be(1);
+    foreground = config.ForegroundProgramPaths[1];
+    await Observe();
+    events.Should().Contain(x => x.Message.Contains("恢复自动检测"));
+    applies.Should().Be(0);
+  }
+
+  [Fact]
   public async Task Listed_program_already_at_target_records_admission_without_applying_or_probing_again()
   {
     var config = GuardConfig.CreateDefault(_root);
@@ -172,7 +221,7 @@ public sealed class GuardRuleLoggingTests : IDisposable
     coordinator.MarkForegroundSignal();
     await coordinator.RunCycleAsync(directive, 60, CancellationToken.None);
     tracker.Drain(config, Capture(events));
-    events.Last().Message.Should().Contain("退出命中");
+    events.Last().Message.Should().Contain("进入观察窗口期（180秒）");
     state.LastForegroundAdmitted.Should().BeFalse();
     full.Should().Be(1);
     queries.Should().Be(2);

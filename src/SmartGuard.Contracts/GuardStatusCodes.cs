@@ -29,6 +29,7 @@ public static class GuardStatusCodes
     public const string ForegroundListEmpty = "foreground-list-empty";
     public const string ForegroundIdentityUnknown = "foreground-identity-unknown";
     public const string WaitingForListedProgram = "waiting-for-listed-program";
+    public const string ForegroundObservation = "foreground-observation";
     public const string ForegroundProgramPathsInvalid = "foreground-program-paths-invalid";
     public const string ConfigUnavailable = "config-unavailable";
     public const string BlockedByLifecycle = "blocked-by-lifecycle";
@@ -46,6 +47,7 @@ public static class GuardStatusCodes
       or Reasons.ForegroundListEmpty
       or Reasons.ForegroundIdentityUnknown
       or Reasons.WaitingForListedProgram
+      or Reasons.ForegroundObservation
       or Reasons.ForegroundProgramPathsInvalid
       or Reasons.ConfigUnavailable
       or Reasons.BlockedByLifecycle

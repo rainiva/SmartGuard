@@ -26,6 +26,7 @@ public static class GuardDecisionCodes
     GuardDecisionReason.ForegroundListEmpty => GuardStatusCodes.Reasons.ForegroundListEmpty,
     GuardDecisionReason.ForegroundIdentityUnknown => GuardStatusCodes.Reasons.ForegroundIdentityUnknown,
     GuardDecisionReason.WaitingForListedProgram => GuardStatusCodes.Reasons.WaitingForListedProgram,
+    GuardDecisionReason.ForegroundObservation => GuardStatusCodes.Reasons.ForegroundObservation,
     GuardDecisionReason.ForegroundProgramPathsInvalid => GuardStatusCodes.Reasons.ForegroundProgramPathsInvalid,
     _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "未登记的决策原因"),
   };

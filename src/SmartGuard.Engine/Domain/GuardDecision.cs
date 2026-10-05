@@ -34,6 +34,8 @@ public enum GuardDecisionReason
 
   /// <summary>名单存在非法条目、配置不可信，不干预（禁止静默无限制）。</summary>
   ForegroundProgramPathsInvalid,
+  /// <summary>离开名单程序后的观察期，不执行自动调整。</summary>
+  ForegroundObservation,
 }
 
 /// <summary>

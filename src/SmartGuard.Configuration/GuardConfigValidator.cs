@@ -23,6 +23,8 @@ public static class GuardConfigValidator
       errors.Add("亮度恢复延迟不能为负");
     if (config.HeartbeatIntervalMin < 0)
       errors.Add("心跳间隔不能为负");
+    if (config.ForegroundObservationSec is < 1 or > 3600)
+      errors.Add("退出观察时间须在 1~3600 秒");
     ValidateForegroundProgramPaths(config.ForegroundProgramPaths, errors);
     return errors.Distinct().ToList();
   }

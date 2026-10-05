@@ -59,7 +59,7 @@ public static class LogStructuredSink
       LogComponentRegistry.Configuration,
       LogChannelRegistry.Diagnostics,
       EventNameRegistry.PipelineHealthSampled,
-      "LogPipeline health sample",
+      $"日志记录情况：累计已写入{snapshot.WrittenLinesTotal}条，当前等待写入{snapshot.NormalQueueDepth + snapshot.HighQueueDepth}条，未能保存{snapshot.LostLines}条。普通日志省略{snapshot.DroppedNormal}条，重要日志省略{snapshot.DroppedHigh}条，写入拥堵时未接收{snapshot.DroppedByBackpressure}条。",
       processId: Environment.ProcessId,
       properties: properties);
   }

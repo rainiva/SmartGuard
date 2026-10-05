@@ -102,7 +102,9 @@ internal sealed class GuardianCycleCoordinator
     var now = _time.GetTimestamp();
     var foregroundPending = Interlocked.Exchange(ref _foregroundPending, 0) == 1;
 
-    if (powerWake || now >= _nextPeriodicDeadline || IsFullEvaluationDue(now))
+    if (powerWake || now >= _nextPeriodicDeadline || IsFullEvaluationDue(now)
+        || _state.ForegroundObservationRemaining(_time) is { } observationRemaining && observationRemaining <= TimeSpan.Zero
+          && ElapsedSince(_lastFullEvaluation, now) >= _fullEvaluationFloor.Ticks)
     {
       await RunFullEvaluationAsync(directive, intervalSeconds, cancellationToken);
       return;
@@ -135,6 +137,14 @@ internal sealed class GuardianCycleCoordinator
   {
     var now = _time.GetTimestamp();
     var delayTicks = _time.GetElapsedTime(now, _nextPeriodicDeadline).Ticks;
+    if (_state.ForegroundObservationRemaining(_time) is { } observationRemaining)
+    {
+      // Very short user windows must not bypass the full-work budget or spin
+      // on a past deadline while that budget is still cooling down.
+      var observationDelay = Math.Max(observationRemaining.Ticks,
+        _fullEvaluationFloor.Ticks - ElapsedSince(_lastFullEvaluation, now));
+      delayTicks = Math.Min(delayTicks, Math.Max(0, observationDelay));
+    }
 
     if (HasPendingForegroundSignal)
     {
@@ -158,6 +168,7 @@ internal sealed class GuardianCycleCoordinator
   /// </summary>
   public void NoteCycleFailure(int intervalSeconds)
   {
+    _state.ResetForegroundObservation();
     _nextPeriodicDeadline = NextPeriodicDeadline(_time.GetTimestamp(), intervalSeconds);
     _fullEvaluationPending = false;
     _recheckAfterGateLift = false;
@@ -196,6 +207,7 @@ internal sealed class GuardianCycleCoordinator
     _observations?.ObserveContext(configRead, GuardObservationGate.For(configRead, _time.GetLocalNow()));
     if (!configRead.IsValid || configRead.Config is not { } config)
     {
+      _state.ResetForegroundObservation();
       // A light read can discover loss of configuration before the next full
       // deadline. Record that fact without borrowing old plan observations.
       _observations?.ObserveExecution(GuardStatusCodes.Sources.None, GuardStatusCodes.Reasons.ConfigUnavailable,
@@ -206,12 +218,16 @@ internal sealed class GuardianCycleCoordinator
     var nowLocal = _time.GetLocalNow().LocalDateTime;
     if (config.Paused || config.IsManualHighPerformanceActive(nowLocal))
     {
+      _state.ResetForegroundObservation();
       _recheckAfterGateLift = true;
       return;
     }
 
     if (!config.ForegroundRestrictionEnabled)
+    {
+      _state.ResetForegroundObservation();
       return;
+    }
 
     // 先让规则真源判断无需身份的拒绝条件，空/非法名单不能产生无用进程查询。
     var admission = PolicyEngine.EvaluateAdmission(ForegroundObservation.Unknown, config);
@@ -219,13 +235,19 @@ internal sealed class GuardianCycleCoordinator
       or GuardDecisionReason.ForegroundProgramPathsInvalid)
     {
       _recheckAfterGateLift = true;
+      _state.ResetForegroundObservation();
       _observations?.ObserveAdmission(admission, null, _time.GetUtcNow());
       return;
     }
 
     var foreground = _readForeground?.Invoke() ?? ForegroundObservation.Unknown;
     admission = PolicyEngine.EvaluateAdmission(foreground, config);
-    _observations?.ObserveAdmission(admission, foreground.ExecutablePath, _time.GetUtcNow());
+    _state.UpdateForegroundObservation(configRead, admission, foreground, _time);
+    // Decoration cannot grant admission; PolicyEngine still owns every action decision.
+    var observedAdmission = _state.IsForegroundObserving && admission.Reason == GuardDecisionReason.WaitingForListedProgram
+      ? admission with { Reason = GuardDecisionReason.ForegroundObservation } : admission;
+    _observations?.ObserveAdmission(observedAdmission, foreground.ExecutablePath, _time.GetUtcNow(),
+      _state.ForegroundObservationPhase, config.ForegroundObservationSec, _state.LastListedProgram);
 
     var previouslyAdmitted = _state.LastForegroundAdmitted ?? false;
     if (previouslyAdmitted == admission.Admitted)

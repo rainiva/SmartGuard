@@ -16,7 +16,9 @@ public sealed class ExternalPlanObservationLoggingTests : IDisposable
   {
     var (_, events, _, _) = await RunPausedObservationAsync();
     events.Where(e => e.EventName == EventNameRegistry.ExternalPlanChange)
-      .Should().OnlyContain(e => !e.Message.Contains("纠偏", StringComparison.Ordinal));
+      .Should().OnlyContain(e => !e.Message.Contains("纠偏", StringComparison.Ordinal)
+        && !e.Message.Contains("EXTERNAL", StringComparison.Ordinal)
+        && e.Properties.ContainsKey("actualPlanGuid"));
   }
 
   [Fact]

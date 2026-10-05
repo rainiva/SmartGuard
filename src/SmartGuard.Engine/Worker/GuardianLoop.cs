@@ -80,6 +80,8 @@ public sealed partial class GuardianLoop
       ObservePowerSource,
       _powerCfgBrightnessSupported,
       _heartbeatSchedule,
+      // Shared observation state must never mix timestamps from different providers.
+      timeProvider: _observationTime,
       readForeground: ReadForegroundForRunner,
       readForegroundEventsHealth: ReadForegroundEventsHealthForRunner,
       canMutatePolicy: () => _powerLifecycle.IsPolicyMutationAllowed,

@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace SmartGuard.Engine.Worker;
 
-internal sealed class GuardianLoopIterationState
+internal sealed partial class GuardianLoopIterationState
 {
   public IReadOnlyDictionary<Guid, string>? PlanCatalog;
   public Guid? LastKnownGuid;
@@ -67,7 +67,10 @@ internal sealed partial class GuardianIterationRunner(
     var planCatalog = state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad();
     state.PlanCatalog = planCatalog;
     if (context.ResetIdleEpoch)
+    {
       idleTracker.ResetAfterResume();
+      state.ResetForegroundObservation();
+    }
     var idle = (int)idleTracker.Sample(readIdleSeconds ?? IdleDetector.GetIdleSeconds);
     var (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(context.ForcePowerRefresh);
     observePowerSource(isOnAc);
@@ -77,6 +80,7 @@ internal sealed partial class GuardianIterationRunner(
 
     if (!configAvailable)
     {
+      state.ResetForegroundObservation();
       // 配置不可用（缺失/破损/访问异常）：禁止新动作，也不从默认值重建人工期限；
       // 继续观察当前计划并发布观测负载，观察到的计划吸收为基线（非守护期间不产生积压纠偏）。
       AbsorbPlanAsBaseline(state, current);
@@ -90,6 +94,7 @@ internal sealed partial class GuardianIterationRunner(
 
     if (!planProbe.Succeeded)
     {
+      state.ResetForegroundObservation();
       writeLog(
         configOpt!,
         LogLevel.Warn,
@@ -113,7 +118,8 @@ internal sealed partial class GuardianIterationRunner(
 
     var nowLocal = time.GetLocalNow().LocalDateTime;
     var foreground = ReadForegroundForDecision(config);
-    var decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config, nowLocal);
+    state.UpdateForegroundObservation(configRead, PolicyEngine.EvaluateAdmission(foreground, config), foreground, time);
+    var decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config, nowLocal, state.IsForegroundObserving);
     var expected = decision.TargetPlanGuid;
 
     var bright = (readBrightness ?? brightness.GetBrightness)();
@@ -130,6 +136,7 @@ internal sealed partial class GuardianIterationRunner(
       var latest = loadConfig();
       if (!latest.IsValid || latest.Config is null)
       {
+        state.ResetForegroundObservation();
         AbsorbPlanAsBaseline(state, current);
         state.LastForegroundAdmitted = false;
         ObserveUnavailable(latest, current, GuardStatusCodes.Reasons.ConfigUnavailable, time.GetUtcNow());
@@ -140,8 +147,9 @@ internal sealed partial class GuardianIterationRunner(
       config = latest.Config;
       configRead = latest;
       foreground = ReadForegroundForDecision(config);
+      state.UpdateForegroundObservation(configRead, PolicyEngine.EvaluateAdmission(foreground, config), foreground, time);
       decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config,
-        time.GetLocalNow().LocalDateTime);
+        time.GetLocalNow().LocalDateTime, state.IsForegroundObserving);
       expected = decision.TargetPlanGuid;
       actionRecheckDenied = decision.Source is GuardDecisionSource.None;
     }
@@ -151,6 +159,7 @@ internal sealed partial class GuardianIterationRunner(
       && decision.Reason is GuardDecisionReason.ForegroundListEmpty
         or GuardDecisionReason.ForegroundIdentityUnknown
         or GuardDecisionReason.WaitingForListedProgram
+        or GuardDecisionReason.ForegroundObservation
         or GuardDecisionReason.ForegroundProgramPathsInvalid;
 
     if (guardingHeld)
@@ -187,7 +196,8 @@ internal sealed partial class GuardianIterationRunner(
       externalPlanNameForNotify = ResolvePlanName(current, config, planCatalog, activePlanInfo);
       if (state.LastLoggedExternalPlanGuid != current)
       {
-        var result = writeLog(config, LogLevel.Warn, $"EXTERNAL: 观测到计划由外部改为 {externalPlanNameForNotify} ({current})", EventNameRegistry.ExternalPlanChange, null, null);
+        var result = writeLog(config, LogLevel.Warn, $"检测到其他操作将电源计划改为“{externalPlanNameForNotify}”。", EventNameRegistry.ExternalPlanChange,
+          new Dictionary<string, JsonElement> { ["actualPlanGuid"] = JsonSerializer.SerializeToElement(current) }, null);
         if (result.IsAccepted() || result == GuardianLogWriteResult.SuppressedByLevel)
           state.LastLoggedExternalPlanGuid = current;
       }
@@ -242,13 +252,13 @@ internal sealed partial class GuardianIterationRunner(
         switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
         if (bright >= 0)
         {
-          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) + 亮度锁定: {result.Before}% -> {result.After}% | {switchedPlanName} | 电量{batteryPercent}% {pwr}", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
+          writeLog(config, LogLevel.Info, $"电源计划已切换为“{switchedPlanName}”，并已确认生效。屏幕亮度：{result.Before}% → {result.After}%。当前{label}，电量{batteryPercent}%，{pwr}。", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
           if (result.After != result.Before)
-            writeLog(config, LogLevel.Warn, $"亮度写回未完全匹配，已重试 {config.BrightnessRetryCount} 次", EventNameRegistry.IterationError, null, null);
+            writeLog(config, LogLevel.Warn, $"未能完全恢复原来的屏幕亮度，已尝试 {config.BrightnessRetryCount} 次。", EventNameRegistry.IterationError, null, null);
         }
         else
         {
-          writeLog(config, LogLevel.Info, $"状态: {label} | 计划切换(切前同步) | {switchedPlanName} | 亮度WMI不支持", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
+          writeLog(config, LogLevel.Info, $"电源计划已切换为“{switchedPlanName}”，并已确认生效。无法读取屏幕亮度。", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
         }
         state.LastStatusLabel = label;
       }
@@ -308,7 +318,7 @@ internal sealed partial class GuardianIterationRunner(
       now);
 
     var (guardSource, guardReason) = ResolveGuardStatusCodes(decision, PolicyMutationAllowed());
-    ObserveFinal(configRead, foreground, decision, guardSource, guardReason, current,
+    ObserveFinal(configRead, foreground, decision, state, guardSource, guardReason, current,
       planSwitched ? "verified" : planApplyFailed ? "failed" :
       PolicyMutationAllowed() && expected is not null && current == expected ? "already-satisfied" : "not-attempted", time.GetUtcNow());
 

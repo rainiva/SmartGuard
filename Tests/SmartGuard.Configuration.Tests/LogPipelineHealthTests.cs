@@ -5,6 +5,14 @@ namespace SmartGuard.Configuration.Tests;
 public class LogPipelineHealthTests
 {
   [Fact]
+  public void Health_message_explains_record_counts_in_plain_chinese_and_preserves_diagnostics()
+  {
+    var snapshot = new LogHealthSnapshot(10, 0, 0, 8, 0, 2, 0, 1, 1, null, null);
+    var item = new LogPipelineHealth().CreateHealthEvent(snapshot);
+    item.Message.Should().Contain("日志记录情况").And.Contain("已写入8条").And.Contain("等待写入2条");
+    item.Properties["writtenLinesTotal"].GetInt64().Should().Be(8);
+  }
+  [Fact]
   public void Unmeasured_latency_is_null_and_health_reports_the_write_partition()
   {
     var pipeline = new LogPipeline(batch => new LogBatchWriteResult(0, batch.Count, 0, true));

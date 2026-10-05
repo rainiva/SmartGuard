@@ -65,6 +65,7 @@ public static class TrayStatusFormatter
       (_, GuardStatusCodes.Reasons.ForegroundListEmpty) => "添加程序后生效",
       (_, GuardStatusCodes.Reasons.ForegroundIdentityUnknown) => "暂时无法识别前台程序",
       (_, GuardStatusCodes.Reasons.WaitingForListedProgram) => "等待指定程序",
+      (_, GuardStatusCodes.Reasons.ForegroundObservation) => "退出观察中",
       (_, GuardStatusCodes.Reasons.ForegroundProgramPathsInvalid) => "名单配置异常",
       (_, GuardStatusCodes.Reasons.ConfigUnavailable) => "配置不可用",
       (_, GuardStatusCodes.Reasons.ProbeFailed) => "状态探测失败",

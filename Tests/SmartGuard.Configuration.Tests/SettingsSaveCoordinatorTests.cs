@@ -4,6 +4,26 @@ namespace SmartGuard.Configuration.Tests;
 public class SettingsSaveCoordinatorTests
 {
   [Fact]
+  public void Changing_only_observation_duration_logs_saved_settings_once()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    try
+    {
+      var repository = new GuardConfigRepository(SmartGuardPaths.ConfigFile(dir));
+      var previous = GuardConfig.CreateDefault(dir);
+      var updated = GuardConfig.LoadFromJson(System.Text.Json.JsonSerializer.Serialize(previous));
+      updated.ForegroundObservationSec = 240;
+      SettingsSaveCoordinator.Save(updated, previous, dir, repository);
+      File.Exists(updated.LogFile).Should().BeTrue();
+      File.ReadAllText(updated.LogFile).Should().Contain("240 秒").And.NotContain("已生效");
+      SettingsSaveCoordinator.Save(updated, updated, dir, repository);
+      File.ReadAllLines(updated.LogFile).Should().ContainSingle();
+    }
+    finally { Directory.Delete(dir, true); }
+  }
+
+  [Fact]
   public void Logging_path_preparation_failure_cannot_undo_a_saved_configuration()
   {
     var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));

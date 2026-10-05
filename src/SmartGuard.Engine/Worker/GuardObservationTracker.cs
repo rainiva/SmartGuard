@@ -13,7 +13,8 @@ namespace SmartGuard.Engine.Worker;
 /// </summary>
 internal sealed class GuardObservationTracker
 {
-  private sealed record Admission(bool Admitted, GuardDecisionReason Reason, int? Index, string? Name);
+  private sealed record Admission(bool Admitted, GuardDecisionReason Reason, int? Index, string? Name,
+    string? ObservationPhase, int? ObservationSeconds);
   private sealed record Execution(string Source, string Reason, Guid? Target, Guid? Actual, string Action, string? FailureKind);
   private Admission? _pendingAdmission, _acceptedAdmission;
   private Execution? _pendingExecution, _acceptedExecution;
@@ -51,10 +52,15 @@ internal sealed class GuardObservationTracker
     }
   }
 
-  public void ObserveAdmission(ForegroundAdmission admission, string? programFileName, DateTimeOffset observedAtUtc)
+  public void ObserveAdmission(ForegroundAdmission admission, string? programFileName, DateTimeOffset observedAtUtc,
+    string? observationPhase = null, int? observationSeconds = null, string? lastListedProgram = null)
   {
-    var name = admission.MatchedRuleIndex is null ? null : ShortName(programFileName);
-    var next = new Admission(admission.Admitted, admission.Reason, admission.MatchedRuleIndex, name);
+    if (admission.Reason is not (GuardDecisionReason.ForegroundMatched or GuardDecisionReason.WaitingForListedProgram
+      or GuardDecisionReason.ForegroundObservation)) observationPhase = null;
+    var name = admission.MatchedRuleIndex is null
+      ? observationPhase is null ? null : ShortName(lastListedProgram) : ShortName(programFileName);
+    var next = new Admission(admission.Admitted, admission.Reason, admission.MatchedRuleIndex, name,
+      observationPhase, observationPhase is null ? null : observationSeconds);
     if (next != _pendingAdmission)
     {
       _pendingAdmission = next;
@@ -86,7 +92,7 @@ internal sealed class GuardObservationTracker
     if (!_hasPendingRules || _pendingRuleFingerprint != read.RuleFingerprint)
     { _hasPendingRules = true; _pendingRuleFingerprint = read.RuleFingerprint; _rulesAt = at; }
     var message = (_configurationUnavailable ? "配置读取恢复；" : string.Empty)
-      + $"Engine 已采用程序规则：限制{(config.ForegroundRestrictionEnabled ? "开启" : "关闭")}，名单 {config.ForegroundProgramPaths?.Count ?? 0} 项";
+      + $"程序规则已生效：{(config.ForegroundRestrictionEnabled ? "仅在名单程序位于前台时自动调整" : "按使用情况自动调整，不限制程序")}。名单 {config.ForegroundProgramPaths?.Count ?? 0} 项，退出观察时间 {config.ForegroundObservationSec} 秒。";
     if (Acknowledged(write(config, LogLevel.Info, message, EventNameRegistry.ConfigReloaded, null, _rulesAt)))
     {
       _hasReportedRules = true;
@@ -107,15 +113,23 @@ internal sealed class GuardObservationTracker
       props["guardReason"] = JsonSerializer.SerializeToElement(GuardDecisionCodes.ToReasonCode(admission.Reason));
       if (admission.Index is int index) props["matchedRuleIndex"] = JsonSerializer.SerializeToElement(index);
       if (admission.Name is not null) props["programFileName"] = JsonSerializer.SerializeToElement(admission.Name);
-      var message = admission.Index is int matched
-        ? $"前台命中名单项 #{matched + 1}：{admission.Name}；已满足名单条件"
+      if (admission.ObservationPhase is not null) props["observationState"] = JsonSerializer.SerializeToElement(admission.ObservationPhase);
+      if (admission.ObservationSeconds is int seconds) props["observationSeconds"] = JsonSerializer.SerializeToElement(seconds);
+      var message = admission.ObservationPhase switch
+      {
+        "observing" => $"{FriendlyProgram(admission.Name)}已切换至后台，进入观察窗口期（{admission.ObservationSeconds}秒）。期间不自动调整电源计划。",
+        "returned" => $"已返回{FriendlyProgram(admission.Name)}，恢复自动检测。",
+        "expired" => "观察时间已结束，当前未使用名单中的程序。保留当前电源计划，不再自动调整。",
+        _ => admission.Index is int matched
+        ? $"正在使用{FriendlyProgram(admission.Name)}，已匹配第{matched + 1}条程序规则。将按使用情况自动调整电源计划。"
         : admission.Reason switch
         {
-          GuardDecisionReason.ForegroundIdentityUnknown => "前台身份无法识别；名单条件未确认",
-          GuardDecisionReason.ForegroundListEmpty => "前台名单为空；名单条件未满足",
-          GuardDecisionReason.ForegroundProgramPathsInvalid => "前台名单无效；名单条件未确认",
-          _ => "前台已退出命中；名单条件未满足",
-        };
+          GuardDecisionReason.ForegroundIdentityUnknown => "暂时无法识别当前程序，保留当前电源计划，等待下次检测。",
+          GuardDecisionReason.ForegroundListEmpty => "程序名单为空，请先添加程序。当前不会自动调整电源计划。",
+          GuardDecisionReason.ForegroundProgramPathsInvalid => "程序名单配置有误，请检查程序路径。当前不会自动调整电源计划。",
+          _ => "当前未使用名单中的程序，保留当前电源计划，不自动调整。",
+        },
+      };
       var result = write(config, admission.Reason == GuardDecisionReason.ForegroundIdentityUnknown ? LogLevel.Warn : LogLevel.Info,
         message, EventNameRegistry.ForegroundAdmissionChanged, props, _admissionAt);
       if (Acknowledged(result)) { _acceptedAdmission = admission; _admissionDirty = false; }
@@ -152,30 +166,37 @@ internal sealed class GuardObservationTracker
   {
     var state = value.Reason switch
     {
-      GuardStatusCodes.Reasons.ConfigUnavailable => "配置读取失败：" + FailureLabel(value.FailureKind) + "；自动守护暂停干预",
-      GuardStatusCodes.Reasons.ProbeFailed => "计划探测失败；本轮不执行切换",
+      GuardStatusCodes.Reasons.ConfigUnavailable => "无法读取设置：" + FailureLabel(value.FailureKind) + "；暂不自动调整电源计划",
+      GuardStatusCodes.Reasons.ProbeFailed => "无法读取当前电源计划；本次不切换",
       GuardStatusCodes.Reasons.Paused => "守护已暂停；保留当前计划",
-      GuardStatusCodes.Reasons.ManualActive => "人工接管有效",
-      GuardStatusCodes.Reasons.ForegroundIdentityUnknown => "前台身份未知；自动守护停止干预",
-      GuardStatusCodes.Reasons.ForegroundListEmpty => "前台名单为空；自动守护停止干预",
-      GuardStatusCodes.Reasons.ForegroundProgramPathsInvalid => "前台名单无效；自动守护停止干预",
-      GuardStatusCodes.Reasons.WaitingForListedProgram => "前台未命中；自动守护停止干预，保留当前计划",
-      GuardStatusCodes.Reasons.BlockedByLifecycle => "电源生命周期阻止本轮策略变更",
+      GuardStatusCodes.Reasons.ManualActive => "正在使用手动选择的高性能计划",
+      GuardStatusCodes.Reasons.ForegroundIdentityUnknown => "暂时无法识别当前程序；保留当前计划",
+      GuardStatusCodes.Reasons.ForegroundListEmpty => "尚未添加名单程序；保留当前计划",
+      GuardStatusCodes.Reasons.ForegroundProgramPathsInvalid => "程序名单配置有误；保留当前计划",
+      GuardStatusCodes.Reasons.WaitingForListedProgram => "当前未使用名单中的程序；保留当前计划",
+      GuardStatusCodes.Reasons.ForegroundObservation => "正在观察程序切换；保留当前电源计划",
+      GuardStatusCodes.Reasons.BlockedByLifecycle => "电脑正在休眠或恢复；暂不自动调整电源计划",
       _ => "自动守护",
     };
     return value.Action switch
     {
-      "already-satisfied" => state + "；当前已符合目标，无需切换",
-      "verified" => state + "；已切换，最终观测验证成功",
-      "failed" => state + "；切换未验证成功",
-      "unknown" => state + "；执行结果未知",
-      _ => state + "；本轮未执行切换",
+      "already-satisfied" => state + "；当前计划符合设置，无需切换。",
+      "verified" => state + "；电源计划已切换，并已确认生效。",
+      "failed" => state + "；未能确认电源计划切换成功。",
+      "unknown" => state + "；暂时无法确认操作结果。",
+      _ => state + "；本次没有切换电源计划。",
     };
   }
 
   private static string FailureLabel(string? kind) => kind switch
   {
     "missing" => "文件缺失", "parse" => "解析错误", "invalid" => "配置结构无效",
-    "access" => "访问被拒绝", "io" => "读取 IO 失败", _ => "原因未知",
+    "access" => "没有读取权限", "io" => "读取文件失败", _ => "原因未知",
+  };
+
+  private static string FriendlyProgram(string? name) => name switch
+  {
+    "wps.exe" => "WPS 文字", "et.exe" => "WPS 表格", "wpp.exe" => "WPS 演示", "wpspdf.exe" => "WPS PDF",
+    _ => name ?? "名单程序",
   };
 }

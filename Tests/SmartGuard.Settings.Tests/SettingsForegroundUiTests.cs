@@ -20,6 +20,27 @@ public class SettingsForegroundUiTests
   private const string NotepadPath = @"C:\Windows\System32\notepad.exe";
 
   [Fact]
+  public void Observation_duration_is_editable_and_survives_the_existing_save_chain()
+  {
+    RunOnSta(() =>
+    {
+      using var scope = ForegroundScope.Create(config => config.ForegroundObservationSec = 240);
+      scope.OpenWindow();
+      var duration = Find<NumberBox>(scope.Window!, "numForegroundObservation");
+      duration.Should().NotBeNull();
+      duration!.Value.Should().Be(240);
+      duration.Minimum.Should().Be(1);
+      duration.Maximum.Should().Be(3600);
+      duration.Value = 300;
+      var config = scope.Controller!.ReadConfigFromUi();
+      config.ForegroundObservationSec.Should().Be(300);
+      scope.Repository.Save(config);
+      scope.Repository.TryLoad()!.ForegroundObservationSec.Should().Be(300);
+      System.Windows.Automation.AutomationProperties.GetName(duration).Should().Contain("观察");
+    });
+  }
+
+  [Fact]
   public void Foreground_toggle_flows_into_read_config_from_ui()
   {
     RunOnSta(() =>
