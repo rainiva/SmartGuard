@@ -11,7 +11,7 @@ namespace SmartGuard.Settings;
 /// <summary>
 /// 设置专属候选发现：优先有窗口的进程，再读本机开始菜单；已确认WPS的目录仅检查四个文档组件。
 /// 不启动程序、不解析启动参数、不将候选发现作为名单授权。
-/// 每窗口单次调用，合作取消/两秒预算、2048个对象、512个候选；平台单次调用不可强制中断。
+/// 每窗口最多一个在途调用，合作取消/两秒预算、2048个对象、512个候选；平台单次调用不可强制中断。
 /// 发现不完全时可继续浏览文件，不能以候选目录替代 Engine 的真实前台识别。
 /// </summary>
 internal static class SettingsProgramCatalog
@@ -19,6 +19,22 @@ internal static class SettingsProgramCatalog
   internal const int MaxCandidates = 512;
   internal const int MaxResults = 20;
   private const int MaxInspected = 2048;
+
+  internal static SettingsProgramCandidate? ReadForegroundCandidate()
+  {
+    var observation = new SmartGuard.Engine.Infrastructure.ForegroundProgramReader().Read();
+    if (!observation.IdentificationSucceeded || observation.ExecutablePath is not string path
+      || path.StartsWith(@"\\", StringComparison.Ordinal)
+      || string.Equals(path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) return null;
+    var name = Path.GetFileNameWithoutExtension(path);
+    try
+    {
+      var description = FileVersionInfo.GetVersionInfo(path).FileDescription;
+      if (!string.IsNullOrWhiteSpace(description)) name = description;
+    }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception) { }
+    return Normalize([new SettingsProgramCandidate(name, path, ReadIcon(path), ProgramCandidateSource.RunningWindow)]).FirstOrDefault();
+  }
 
   internal static IReadOnlyList<SettingsProgramCandidate> Normalize(IEnumerable<SettingsProgramCandidate> candidates)
   {
@@ -44,7 +60,9 @@ internal static class SettingsProgramCatalog
           _ => name,
         };
       }
-      if (!unique.ContainsKey(path)) unique.Add(path, item with { Name = name[..Math.Min(name.Length, 256)], ExecutablePath = path });
+      if (!unique.TryGetValue(path, out var previous) ||
+        (item.Source == ProgramCandidateSource.RunningWindow && previous.Source != ProgramCandidateSource.RunningWindow))
+        unique[path] = new SettingsProgramCandidate(name[..Math.Min(name.Length, 256)], path, item.Icon, item.Source);
       if (unique.Count == MaxCandidates) break;
     }
     return unique.Values.ToArray();
@@ -87,18 +105,27 @@ internal static class SettingsProgramCatalog
   {
     var elapsed = Stopwatch.StartNew();
     var candidates = new List<SettingsProgramCandidate>();
-    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     var inspected = 0;
     bool WithinBudget()
     {
       cancellation.ThrowIfCancellationRequested();
       return elapsed.Elapsed < TimeSpan.FromSeconds(2) && inspected < MaxInspected && candidates.Count < MaxCandidates;
     }
-    void Add(string name, string? path)
+    void Add(string name, string? path, ProgramCandidateSource source)
     {
       if (!GuardConfigValidator.TryNormalizeProgramPath(path, out var normalized)
-        || normalized.StartsWith(@"\\", StringComparison.Ordinal) || !seen.Add(normalized) || !File.Exists(normalized)) return;
-      candidates.Add(new SettingsProgramCandidate(name, normalized, ReadIcon(normalized)));
+        || normalized.StartsWith(@"\\", StringComparison.Ordinal)) return;
+      if (seen.TryGetValue(normalized, out var index))
+      {
+        // WPS sibling suggestions may precede that component's own process in enumeration order.
+        if (source == ProgramCandidateSource.RunningWindow)
+          candidates[index] = new SettingsProgramCandidate(candidates[index].Name, normalized, candidates[index].Icon, source);
+        return;
+      }
+      if (!File.Exists(normalized)) return;
+      seen.Add(normalized, candidates.Count);
+      candidates.Add(new SettingsProgramCandidate(name, normalized, ReadIcon(normalized), source));
     }
 
     // Window owners take priority: shortcut discovery can consume the entire bounded budget.
@@ -116,7 +143,7 @@ internal static class SettingsProgramCatalog
           var path = process.MainModule?.FileName;
           if (path is null) continue;
           var name = FileVersionInfo.GetVersionInfo(path).FileDescription;
-          Add(string.IsNullOrWhiteSpace(name) ? process.ProcessName : name, path);
+          Add(string.IsNullOrWhiteSpace(name) ? process.ProcessName : name, path, ProgramCandidateSource.RunningWindow);
           if (name?.StartsWith("WPS", StringComparison.OrdinalIgnoreCase) != true) continue;
           var folder = Path.GetDirectoryName(path);
           if (folder is null || folder.StartsWith(@"\\", StringComparison.Ordinal) || !componentFolders.Add(folder)) continue;
@@ -129,7 +156,7 @@ internal static class SettingsProgramCatalog
             var componentPath = Path.Combine(folder, component);
             if (!File.Exists(componentPath)) continue;
             var description = FileVersionInfo.GetVersionInfo(componentPath).FileDescription;
-            if (description?.StartsWith("WPS", StringComparison.OrdinalIgnoreCase) == true) Add(description, componentPath);
+            if (description?.StartsWith("WPS", StringComparison.OrdinalIgnoreCase) == true) Add(description, componentPath, ProgramCandidateSource.RelatedComponent);
           }
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException
@@ -157,7 +184,7 @@ internal static class SettingsProgramCatalog
             link = ((dynamic)shell).CreateShortcut(linkPath);
             string target = ((dynamic)link).TargetPath;
             // Do not Resolve: link tracking may search disks/network or prompt for missing targets.
-            Add(Path.GetFileNameWithoutExtension(linkPath), target);
+            Add(Path.GetFileNameWithoutExtension(linkPath), target, ProgramCandidateSource.Shortcut);
           }
           catch (Exception error) when (error is COMException or IOException or UnauthorizedAccessException) { }
           finally { if (link is not null && Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link); }

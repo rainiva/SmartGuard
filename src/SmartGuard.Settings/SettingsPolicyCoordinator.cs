@@ -88,12 +88,17 @@ internal sealed class SettingsPolicyCoordinator
       Require<TextBlock>(window, "lblForegroundListHint"),
       (message, isError) => toastService.Show(message, isError),
       () => _debouncedSaver.QueueSave(),
-      observationDuration: Require<NumberBox>(window, "numForegroundObservation"));
+      observationDuration: Require<NumberBox>(window, "numForegroundObservation"),
+      identifyProgram: Require<Button>(window, "btnIdentifyForegroundProgram"),
+      verifyProgram: Require<Button>(window, "btnVerifyForegroundProgram"),
+      verificationHint: Require<TextBlock>(window, "txtForegroundVerificationHint"),
+      window: window);
     _programSearch = new SettingsProgramSearchCoordinator(
       Require<TextBox>(window, "txtForegroundProgramSearch"),
       Require<ListBox>(window, "lstForegroundSearchResults"),
       Require<TextBlock>(window, "txtForegroundSearchHint"),
-      candidate => _foreground.AddProgramPath(candidate.ExecutablePath, candidate.Name, candidate.Icon));
+      candidate => _foreground.AddProgramPath(candidate.ExecutablePath, candidate.Name, candidate.Icon, candidate.Source),
+      refresh: Require<Button>(window, "btnRefreshForegroundPrograms"), onRefresh: _foreground.RequestPathCheck);
     _pauseHandler = new SettingsPauseHandler(
       root,
       repository,

@@ -4,7 +4,7 @@ using System.Windows.Input;
 
 namespace SmartGuard.Settings;
 
-/// <summary>拥有单窗口搜索、一次在途发现及键盘选择；关闭后取消并丢弃晚到结果。</summary>
+/// <summary>拥有单窗口搜索、显式刷新、一次在途发现及键盘选择；关闭后取消并丢弃晚到结果。</summary>
 internal sealed class SettingsProgramSearchCoordinator : IDisposable
 {
   private readonly TextBox _query;
@@ -16,16 +16,22 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
   private IReadOnlyList<SettingsProgramCandidate>? _catalog;
   private bool _loading;
   private bool _disposed;
+  private readonly Button? _refresh;
+  private readonly Action? _onRefresh;
 
   internal SettingsProgramSearchCoordinator(TextBox query, ListBox results, TextBlock hint,
     Action<SettingsProgramCandidate> add,
-    Func<CancellationToken, Task<IReadOnlyList<SettingsProgramCandidate>>>? load = null)
+    Func<CancellationToken, Task<IReadOnlyList<SettingsProgramCandidate>>>? load = null,
+    Button? refresh = null, Action? onRefresh = null)
   {
     _query = query;
     _results = results;
     _hint = hint;
     _add = add;
     _load = load ?? SettingsProgramCatalog.LoadAsync;
+    _refresh = refresh;
+    _onRefresh = onRefresh;
+    if (_refresh is not null) _refresh.Click += OnRefresh;
     _query.TextChanged += OnQueryChanged;
     _query.GotKeyboardFocus += OnFocus;
     _query.PreviewKeyDown += OnKeyDown;
@@ -34,6 +40,18 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
   }
 
   private void OnFocus(object sender, KeyboardFocusChangedEventArgs e) => EnsureLoaded();
+  private void OnRefresh(object sender, RoutedEventArgs e) => Refresh();
+
+  internal void Refresh()
+  {
+    // A blocked platform call cannot be interrupted: never create a second discovery worker.
+    if (_disposed || _loading) return;
+    _onRefresh?.Invoke();
+    _catalog = null;
+    _results.ItemsSource = null;
+    _results.Visibility = Visibility.Collapsed;
+    EnsureLoaded();
+  }
   private void OnQueryChanged(object sender, TextChangedEventArgs e)
   {
     EnsureLoaded();
@@ -44,6 +62,7 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
   {
     if (_disposed || _loading || _catalog is not null) return;
     _loading = true;
+    if (_refresh is not null) _refresh.IsEnabled = false;
     _hint.Text = "正在读取本机程序…";
     try
     {
@@ -57,7 +76,11 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
     {
       if (!_disposed) _hint.Text = "暂时无法读取程序，请使用浏览文件，或重新聚焦搜索框重试";
     }
-    finally { _loading = false; }
+    finally
+    {
+      _loading = false;
+      if (!_disposed && _refresh is not null) _refresh.IsEnabled = true;
+    }
   }
 
   private void UpdateResults()
@@ -69,8 +92,8 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
     if (results.Count > 0) _results.BringIntoView();
     if (_catalog is null) return;
     _hint.Text = string.IsNullOrWhiteSpace(_query.Text) ? "输入程序名称，例如微信；也可以搜索 exe 文件名"
-      : results.Count == 0 ? "未找到程序。请先打开实际文档窗口后重新打开设置，或浏览选择 exe 文件"
-      : "选择一个结果添加；同名程序可通过位置区分";
+      : results.Count == 0 ? "未找到程序。请打开实际窗口后刷新，或使用从窗口识别"
+      : "选择具体组件添加；快捷方式入口可能不是实际窗口程序";
   }
 
   private void OnClick(object sender, MouseButtonEventArgs e)
@@ -111,5 +134,6 @@ internal sealed class SettingsProgramSearchCoordinator : IDisposable
     _query.PreviewKeyDown -= OnKeyDown;
     _results.PreviewKeyDown -= OnKeyDown;
     _results.MouseLeftButtonUp -= OnClick;
+    if (_refresh is not null) _refresh.Click -= OnRefresh;
   }
 }

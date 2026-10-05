@@ -8,6 +8,65 @@ namespace SmartGuard.Settings.Tests;
 public class SettingsProgramSearchTests
 {
   [Fact]
+  public void Search_can_refresh_after_a_program_is_opened_without_reopening_settings()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var query = new TextBox();
+      var results = new ListBox();
+      var loads = 0;
+      using var search = new SettingsProgramSearchCoordinator(query, results, new TextBlock(), _ => { },
+        _ => Task.FromResult<IReadOnlyList<SettingsProgramCandidate>>(++loads == 1 ? [] : [new("文档", @"C:\Apps\document.exe")]));
+      query.Text = "文档";
+      results.Items.Count.Should().Be(0);
+      search.Refresh();
+      results.Items.Count.Should().Be(1);
+      loads.Should().Be(2);
+    });
+  }
+
+  [Fact]
+  public void Candidates_explain_their_discovery_source_without_claiming_a_guard_match()
+  {
+    var candidate = new SettingsProgramCandidate("文档", @"C:\Apps\launcher.exe");
+    candidate.SourceText.Should().Be("浏览文件或已有名单 · 尚未验证");
+    new SettingsProgramCandidate(candidate.Name, candidate.ExecutablePath, source: ProgramCandidateSource.Shortcut)
+      .SourceText.Should().Contain("快捷方式");
+    new SettingsProgramCandidate(candidate.Name, candidate.ExecutablePath, source: ProgramCandidateSource.RunningWindow)
+      .SourceText.Should().Be("运行中的窗口程序");
+    var normalized = SettingsProgramCatalog.Normalize([
+      new(candidate.Name, candidate.ExecutablePath, source: ProgramCandidateSource.RelatedComponent),
+      new(candidate.Name, candidate.ExecutablePath, source: ProgramCandidateSource.RunningWindow)]);
+    normalized.Single().Source.Should().Be(ProgramCandidateSource.RunningWindow);
+  }
+
+  [Fact]
+  public void Refresh_is_single_flight_preserves_the_latest_query_and_cannot_run_after_disposal()
+  {
+    WpfStaTestHost.Run(() =>
+    {
+      var query = new TextBox();
+      var results = new ListBox();
+      var refresh = new Button();
+      var pending = new TaskCompletionSource<IReadOnlyList<SettingsProgramCandidate>>();
+      var loads = 0;
+      using var search = new SettingsProgramSearchCoordinator(query, results, new TextBlock(), _ => { },
+        _ => { loads++; return pending.Task; }, refresh);
+      query.Text = "文档";
+      refresh.IsEnabled.Should().BeFalse();
+      search.Refresh();
+      query.Text = "表格";
+      loads.Should().Be(1);
+      pending.SetResult([new("表格", @"C:\Apps\sheet.exe")]);
+      WpfStaTestHost.WaitUntil(() => results.Items.Count == 1, TimeSpan.FromSeconds(2), "latest query after refresh");
+      refresh.IsEnabled.Should().BeTrue();
+      search.Dispose();
+      search.Refresh();
+      loads.Should().Be(1);
+    });
+  }
+
+  [Fact]
   public void Wps_components_are_separate_clear_candidates_and_launcher_is_not_a_document_program()
   {
     var candidates = SettingsProgramCatalog.Normalize([

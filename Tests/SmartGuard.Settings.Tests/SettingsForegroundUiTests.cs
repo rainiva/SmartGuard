@@ -20,6 +20,22 @@ public class SettingsForegroundUiTests
   private const string NotepadPath = @"C:\Windows\System32\notepad.exe";
 
   [Fact]
+  public void Window_identification_refresh_and_verification_are_available_with_accessible_names()
+  {
+    RunOnSta(() =>
+    {
+      using var scope = ForegroundScope.Create(_ => { });
+      scope.OpenWindow();
+      foreach (var name in new[] { "btnIdentifyForegroundProgram", "btnVerifyForegroundProgram", "btnRefreshForegroundPrograms" })
+      {
+        var button = Find<Button>(scope.Window!, name);
+        button.Should().NotBeNull("all approved addition and validation paths need real settings controls");
+        System.Windows.Automation.AutomationProperties.GetName(button!).Should().NotBeNullOrWhiteSpace();
+      }
+    });
+  }
+
+  [Fact]
   public void Observation_duration_is_editable_and_survives_the_existing_save_chain()
   {
     RunOnSta(() =>

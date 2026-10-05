@@ -34,6 +34,8 @@ public class SettingsProgramDiscoveryTests
       var candidates = await SettingsProgramCatalog.LoadAsync(CancellationToken.None, [root]);
       var matched = SettingsProgramCatalog.Search(candidates, "微信测试候选").Single();
       matched.ExecutablePath.Should().BeEquivalentTo(target, "Windows path identity is case insensitive");
+      matched.Source.Should().Be(ProgramCandidateSource.Shortcut);
+      matched.VerificationText.Should().Be("尚未验证", "discovering a launch entry is not a foreground match");
       matched.Icon.Should().NotBeNull();
       matched.Icon!.IsFrozen.Should().BeTrue("cross-thread icons must have no UI ownership");
       elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5), "a small local shortcut fixture must finish promptly");

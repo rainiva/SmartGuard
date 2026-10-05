@@ -815,6 +815,19 @@
           <StackPanel Grid.Column="1">
             <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
             <TextBlock Text="{Binding ExecutablePath}" Foreground="{DynamicResource TextSecondary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding SourceText}" Foreground="{DynamicResource TextSecondary}" FontSize="12" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Grid>
+      </DataTemplate>
+
+      <DataTemplate x:Key="ProgramListTemplate">
+        <Grid Margin="4,6" ToolTip="{Binding ExecutablePath}" AutomationProperties.Name="{Binding Name}" AutomationProperties.HelpText="{Binding VerificationText}">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Image Source="{Binding Icon}" Width="24" Height="24" VerticalAlignment="Center"/>
+          <StackPanel Grid.Column="1">
+            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding ExecutablePath}" Foreground="{DynamicResource TextSecondary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding VerificationText}" Foreground="{DynamicResource TextSecondary}" FontSize="12" TextWrapping="Wrap"/>
           </StackPanel>
         </Grid>
       </DataTemplate>
@@ -1152,9 +1165,13 @@
                 <Border Style="{StaticResource SettingsItemRow}" x:Name="rowForegroundPrograms">
                   <StackPanel>
                     <TextBlock Text="指定程序" Style="{StaticResource SettingsItemTitle}"/>
-                    <TextBox x:Name="txtForegroundProgramSearch" MaxLength="128" Margin="0,8,0,0"
-                             AutomationProperties.Name="搜索程序，例如微信"
-                             AutomationProperties.HelpText="输入名称，使用方向键选择结果，按回车添加；Esc清空搜索"/>
+                    <DockPanel Margin="0,8,0,0">
+                      <Button x:Name="btnRefreshForegroundPrograms" DockPanel.Dock="Right" Content="刷新" Margin="8,0,0,0"
+                              Style="{StaticResource SecondaryButton}" AutomationProperties.Name="刷新程序搜索结果"/>
+                      <TextBox x:Name="txtForegroundProgramSearch" MaxLength="128"
+                               AutomationProperties.Name="搜索程序，例如微信"
+                               AutomationProperties.HelpText="输入名称，使用方向键选择结果，按回车添加；Esc清空搜索"/>
+                    </DockPanel>
                     <TextBlock x:Name="txtForegroundSearchHint" Text="搜索程序，例如微信" Margin="0,6,0,0"
                                Style="{StaticResource SettingsItemHint}" AutomationProperties.LiveSetting="Polite"/>
                     <ListBox x:Name="lstForegroundSearchResults" MaxHeight="190" Margin="0,6,0,0" Visibility="Collapsed"
@@ -1174,23 +1191,31 @@
                              Margin="0,8,0,0"
                              BorderBrush="{DynamicResource CardBorderBrush}"
                              BorderThickness="0" Background="{DynamicResource CardBackground}"
-                             ItemTemplate="{StaticResource ProgramCandidateTemplate}"
+                             ItemTemplate="{StaticResource ProgramListTemplate}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              AutomationProperties.Name="前台程序名单"
-                             AutomationProperties.HelpText="选择条目后可删除">
+                             AutomationProperties.HelpText="选择条目后可验证或删除；多个组件需要分别添加">
                     </ListBox>
-                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <WrapPanel Margin="0,12,0,0">
+                      <Button x:Name="btnIdentifyForegroundProgram" Content="从窗口识别…" Style="{StaticResource SecondaryButton}"
+                              Margin="0,0,8,6" AutomationProperties.Name="从实际窗口识别添加程序"
+                              AutomationProperties.HelpText="点击后有5秒切换到目标窗口，识别结果需确认后添加"/>
+                      <Button x:Name="btnVerifyForegroundProgram" Content="验证所选…" Style="{StaticResource SecondaryButton}"
+                              Margin="0,0,8,6" IsEnabled="False" AutomationProperties.Name="验证所选程序是否匹配实际窗口"/>
                       <Button x:Name="btnAddForegroundProgram"
                               Content="浏览文件…"
-                              Style="{StaticResource SecondaryButton}"
+                              Style="{StaticResource SecondaryButton}" Margin="0,0,0,6"
                               AutomationProperties.Name="添加前台程序"/>
                       <Button x:Name="btnRemoveForegroundProgram"
                               Content="删除"
                               Style="{StaticResource SecondaryButton}"
-                              Margin="8,0,0,0"
+                              Margin="8,0,0,6"
                               IsEnabled="False"
                               AutomationProperties.Name="删除所选前台程序"/>
-                    </StackPanel>
+                    </WrapPanel>
+                    <TextBlock x:Name="txtForegroundVerificationHint" Text="不同组件请分别添加；验证结果仅在本次设置中有效"
+                               Style="{StaticResource SettingsItemHint}" AutomationProperties.Name="程序识别与验证提示"
+                               AutomationProperties.LiveSetting="Polite"/>
                   </StackPanel>
                 </Border>
               </StackPanel>

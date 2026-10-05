@@ -14,7 +14,7 @@ namespace SmartGuard.Settings;
 /// （添加前拒绝超限，其他校验失败沿用保存链提示），不直接写配置仓库；
 /// 状态区只读 status.json 共享读取链，不维护第二套路径规则、状态解析或健康存储。
 /// </summary>
-internal sealed class SettingsForegroundCoordinator : IDisposable
+internal sealed partial class SettingsForegroundCoordinator : IDisposable
 {
   private const string AddDialogFilter = "可执行程序 (*.exe)|*.exe";
 
@@ -34,6 +34,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
   private readonly Func<DateTimeOffset> _utcNow;
   private readonly DispatcherTimer _statusTimer;
   private bool _refreshInFlight;
+  private bool _pathCheckRequested;
   private bool _disposed;
   private StatusPayload? _displayedStatus;
 
@@ -51,7 +52,15 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     Func<StatusPayload?>? readStatus = null,
     TimeSpan? refreshInterval = null,
     Func<DateTimeOffset>? utcNow = null,
-    NumberBox? observationDuration = null)
+    NumberBox? observationDuration = null,
+    Button? identifyProgram = null,
+    Button? verifyProgram = null,
+    TextBlock? verificationHint = null,
+    Window? window = null,
+    Func<SettingsProgramCandidate?>? readWindow = null,
+    Func<SettingsProgramCandidate, string?, bool>? confirmWindow = null,
+    Func<string, bool>? programExists = null,
+    Func<CancellationToken, Task>? waitForWindow = null)
   {
     _tglRestriction = tglRestriction;
     _observationDuration = observationDuration;
@@ -66,6 +75,14 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _pickProgramFile = pickProgramFile ?? PickProgramFileWithDialog;
     _readStatus = readStatus ?? (() => StatusJsonReader.TryRead(_statusPath));
     _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+    _identifyProgram = identifyProgram;
+    _verifyProgram = verifyProgram;
+    _verificationHint = verificationHint;
+    _window = window;
+    _readWindow = readWindow ?? SettingsProgramCatalog.ReadForegroundCandidate;
+    _confirmWindow = confirmWindow ?? ConfirmWindow;
+    _programExists = programExists ?? System.IO.File.Exists;
+    _waitForWindow = waitForWindow ?? (token => Task.Delay(TimeSpan.FromSeconds(5), token));
     _statusTimer = new DispatcherTimer(DispatcherPriority.Background, txtGuardStatus.Dispatcher)
     {
       Interval = refreshInterval ?? TimeSpan.FromSeconds(5),
@@ -87,6 +104,7 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _lstPrograms.Items.Clear();
     foreach (var path in config.ForegroundProgramPaths)
       _lstPrograms.Items.Add(new SettingsProgramCandidate(System.IO.Path.GetFileNameWithoutExtension(path), path));
+    RequestPathCheck();
     UpdateListHint();
     UpdateRemoveEnabled();
   }
@@ -105,6 +123,8 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _btnAdd.Click += (_, _) => AddProgram();
     _btnRemove.Click += (_, _) => RemoveSelected();
     _lstPrograms.SelectionChanged += (_, _) => UpdateRemoveEnabled();
+    if (_identifyProgram is not null) _identifyProgram.Click += OnIdentifyProgram;
+    if (_verifyProgram is not null) _verifyProgram.Click += OnVerifyProgram;
     UpdateRemoveEnabled();
     _statusTimer.Start();
   }
@@ -119,18 +139,30 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     if (_refreshInFlight)
       return;
     _refreshInFlight = true;
+    var checkPaths = _verificationHint is not null && _pathCheckRequested;
+    var programs = checkPaths ? _lstPrograms.Items.OfType<SettingsProgramCandidate>().ToArray() : [];
+    if (checkPaths) _pathCheckRequested = false;
     try
     {
-      var status = await Task.Run(_readStatus);
+      var result = await Task.Run(() => (Status: _readStatus(), Programs: CheckProgramAvailability(programs)));
       if (_disposed)
         return;
-      ApplyGuardStatus(status, null);
+      ApplyGuardStatus(result.Status, null);
+      foreach (var (program, available) in result.Programs)
+      {
+        if (!ContainsProgram(program)) continue;
+        if (!available) program.VerificationText = "路径不存在或无法访问 · 请重新识别";
+        else if (program.VerificationText == "路径不存在或无法访问 · 请重新识别") program.VerificationText = "尚未验证";
+      }
     }
     catch
     {
       // 读取不可用仍明确显示未知；下一周期可恢复，不静默停止刷新。
       if (!_disposed)
+      {
+        if (checkPaths) _pathCheckRequested = true;
         ApplyGuardStatus(null, null);
+      }
     }
     finally
     {
@@ -148,9 +180,14 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
 
   public void Dispose()
   {
+    if (_disposed) return;
     _disposed = true;
     _statusTimer.Stop();
     _statusTimer.Tick -= OnStatusTick;
+    _identificationCancellation.Cancel();
+    _identificationCancellation.Dispose();
+    if (_identifyProgram is not null) _identifyProgram.Click -= OnIdentifyProgram;
+    if (_verifyProgram is not null) _verifyProgram.Click -= OnVerifyProgram;
     if (_observationDuration is not null) _observationDuration.ValueChanged -= OnObservationDurationChanged;
     // 文件读取不可中断；其晚到结果由 _disposed 丢弃，不更新已关闭窗口。
   }
@@ -170,7 +207,8 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
   }
 
   /// <summary>文件选择和名称搜索共用同一名单入口，显示名永远不作为配置身份。</summary>
-  internal void AddProgramPath(string picked, string? displayName = null, System.Windows.Media.ImageSource? icon = null)
+  internal void AddProgramPath(string picked, string? displayName = null, System.Windows.Media.ImageSource? icon = null,
+    ProgramCandidateSource source = ProgramCandidateSource.ExistingOrFile)
   {
     if (!GuardConfigValidator.TryNormalizeProgramPath(picked, out var normalized))
     {
@@ -191,7 +229,8 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
       _showFeedback($"程序名单最多 {GuardConfigValidator.MaxForegroundProgramPaths} 项，请先删除不需要的程序", true);
       return;
     }
-    _lstPrograms.Items.Add(new SettingsProgramCandidate(displayName ?? System.IO.Path.GetFileNameWithoutExtension(normalized), normalized, icon));
+    _lstPrograms.Items.Add(new SettingsProgramCandidate(displayName ?? System.IO.Path.GetFileNameWithoutExtension(normalized), normalized, icon, source));
+    RequestPathCheck();
     UpdateListHint();
     _queueSave();
   }
@@ -206,7 +245,12 @@ internal sealed class SettingsForegroundCoordinator : IDisposable
     _queueSave();
   }
 
-  private void UpdateRemoveEnabled() => _btnRemove.IsEnabled = _lstPrograms.SelectedItem is not null;
+  private void UpdateRemoveEnabled()
+  {
+    _btnRemove.IsEnabled = _lstPrograms.SelectedItem is not null;
+    if (_verifyProgram is not null) _verifyProgram.IsEnabled = !_identificationInFlight && _lstPrograms.SelectedItem is not null;
+    if (_identifyProgram is not null) _identifyProgram.IsEnabled = !_identificationInFlight;
+  }
 
   private void UpdateListHint()
     => _lblListHint.Visibility = _lstPrograms.Items.Count == 0
