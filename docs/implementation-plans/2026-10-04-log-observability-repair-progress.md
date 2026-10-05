@@ -27,9 +27,9 @@
 | T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
 | T7 诊断容错 | 实现与阶段回归通过 | Configuration 455/455；补充诊断回归 34/34；架构 30/30 |
 | T8 导出异步所有权 | 实现与目标回归通过 | 相关 WPF/取消/导航/可访问性 30 项；架构 10 项通过 |
-| T9 集成与验收 | 完整四层门禁及主要桌面路径通过，验收未闭环 | 最新完整入口 Pester 156、.NET 1896、Tray 2、Installer 9，均零失败/跳过、exit 0；追加新版真实暂停恢复、诊断键盘及 DPI/对比度检查；真实休眠与冷启动目标仍未关闭，旧 2h 隔离 Soak 单列 |
+| T9 集成与验收 | 完整四层门禁及主要桌面/真实休眠通过，性能验收未闭环 | 最新完整入口 Pester 156、.NET 1896、Tray 2、Installer 9，均零失败/跳过、exit 0；新版真实暂停恢复、诊断键盘及 DPI/对比度检查已记录；HibernateResume 六项通过，冷启动 P95 目标仍未关闭，旧 2h 隔离 Soak 单列 |
 
-M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可见桌面与真实计时 2h 隔离运行证据如下。2026-10-05 追加验收后，真实休眠及冷启动性能目标尚未关闭，M4 尚未达成。集成测试仅临时安装，未更新正式安装或发布。
+M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可见桌面、真实休眠与真实计时 2h 隔离运行证据如下。2026-10-05 追加验收后，真实休眠已通过，冷启动性能目标尚未关闭，M4 尚未达成；未执行的扩展可访问性路径仍单列。集成测试仅临时安装，未更新正式安装或发布。
 
 ## 2026-10-05 优先验收追加记录
 
@@ -39,8 +39,10 @@ M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可
 - 补修前真实桌面也验证 Settings #1 / Explorer #2 命中、退出命中与 PowerCfg 实际计划转换；暂停误导证据保存在 `live-root-2`，不覆盖。第一次使用 Chrome 切出时 Computer Use 因无法确认 URL 停止，该段不算完整未命中桌面验收；后续桌面检查使用设置与系统设置窗口。
 - 诊断键盘：Ctrl+F 聚焦日志查询，输入“暂停”得到三条结果，Tab 按刷新→筛选→日志导出→诊断包移动，Space 激活，文件对话框输入目标后 Enter 保存。`keyboard-diagnostic.zip` 为 2969 字节，scope=CurrentQuery，JSONL 三条记录；逐项 SHA-256 与 manifest 一致。未把按钮 Enter 激活认作通过。
 - DPI/对比度：实际 Windows 缩放由 200% 改为 100%，检查日志/诊断入口和取消，再恢复 200%；应用仍运行时启用 Windows“水生”对比度主题，在 100%/200% 检查诊断对话框及取消，最后恢复“无”。应用主体继续浅色配色，不宣称完整系统对比度适配；屏幕阅读器、完整高对比度键盘矩阵及减少动画路径为 NOT RUN。小窗口事件列需横向滚动仍是已记录的既有问题。
-- 前两轮 owned 会话均 exit 0，`live-session.result.json` / `live-session-2.result.json` 的 Restored=true、Error 为空，原高性能计划、20% 亮度、正式配置 SHA-256 与 Guardian/Tray 任务基线完全一致；新会话退出恢复另行核对。种子通过原 GuardConfigRepository 建立独立配置，并预置 init marker，明确排除首次安装计划初始化；强制结束自有进程不算优雅 AppStopping 验收。
-- 专业复审：固定大小确认状态仅作用于日志，写入接受和过滤才推进；拒绝继续原周期重试，外部判定解除清除确认。策略、执行基线、通知冷却与唯一写入入口保持原责任，契约与测试一致。现有完整门禁与实测已覆盖补修，不引入日志平台或框架。真实休眠唤醒尚未执行；使用既有 `Invoke-PowerLifecycleAcceptance.ps1` 收集 Windows 事件、Engine 生命周期及前后 PipelineHealthSampled，不以模拟 Soak 或状态健康代替。
+- 三轮 owned 会话均 exit 0，`live-session.result.json` / `live-session-2.result.json` / `live-session-3.result.json` 的 Restored=true、Error 为空，原高性能计划、20% 亮度、正式配置 SHA-256 与 Guardian/Tray 任务基线完全一致；第三轮于 08:22:35 北京时间完成恢复。种子通过原 GuardConfigRepository 建立独立配置，并预置 init marker，明确排除首次安装计划初始化；强制结束自有进程不算优雅 AppStopping 验收。
+- 专业复审：固定大小确认状态仅作用于日志，写入接受和过滤才推进；拒绝继续原周期重试，外部判定解除清除确认。策略、执行基线、通知冷却与唯一写入入口保持原责任，契约与测试一致。现有完整门禁与实测已覆盖补修，不引入日志平台或框架。真实休眠使用既有 `Invoke-PowerLifecycleAcceptance.ps1` 核对 Windows 事件、Engine 生命周期及前后 PipelineHealthSampled，不以模拟 Soak 或状态健康代替。
+- 真实休眠闭环：用户手动休眠并唤醒、解锁后确认“已唤醒”。`hibernate.result.json` / `hibernate.transcript.txt` 保留 canonical 验收结果，场景 HibernateResume 于 08:16:14 开始、08:22:19 结束，result=Passed，命令 exit 0；六项检查（生命周期事件、Windows 挂起/恢复、挂起期间无计划写入、实际休眠状态、状态 freshness、pipeline 健康增量）全部 Passed。脚本核对 Kernel-Power 42 的 TargetState/EffectiveState 均为 5，而非把屏幕关闭或普通待机认作休眠。
+- 同一 Engine PID 14684 在 08:18:29.3427671 观测挂起、08:19:55.0017678 观测恢复；挂起区间没有 PowerPlanSwitched。健康样本 08:15:50 与 08:22:06 的 droppedNormal/droppedHigh/failedBatches/lostLines 均为 0，consumerFailed/stopFailed 均 false；累计 primaryWrittenLines 从 38 到 64，证明恢复后消费继续。该结论只覆盖本次真实休眠，不泛化为所有设备、S0 合盖或长期运行。冷启动 P95 30.0008ms / 20ms 预算差距仍待后续处理。
 
 ## T9 集成与验收记录（本轮实施收口，验收未闭环）
 
