@@ -14,6 +14,8 @@
 
 ## 进度
 
+2026-10-05 冷调用调查（补修前）：12 个独立新进程探针复现 direct 28.9924–31.044ms、reflection 29.574–30.5031ms，单独 formatter 25.2671–25.9238ms；仅提前执行 formatter 的对照首调用为 3.4807–3.7156ms，主要成本定位为固定 JSONL 格式的首次反射序列化，而非磁盘互斥等待。计划修改原 LogJsonlFormatter 的字段输出，保留 schema/顺序/UTC 文本/可选字段省略/中文转义及异常与 JsonElement 属性；不预热掩盖冷样本、不改 20ms/100ms 预算。影响矩阵：Performance/Resource/Compatibility/Observability 受影响，Owner 仍为 Configuration 的 LogJsonlFormatter；工作量随单事件输出字节 O(n)，方法内缓冲与输出同阶，生命周期局部，无新队列、线程、缓存、IO 或后台任务。Critical Module Check：保持唯一格式化入口、普通业务日志不等待文件 IO、JSONL 可由原 reader 解析、环形及落盘预算仍由既有 Owner 约束。先完成实际冷预算 RED 与架构 RED，再最小实现及格式/读取/诊断/故障链完整回归；未涉及配置、策略、安装或 UI，真实计划不需要重跑。
+
 2026-10-05 追加真实桌面验收：先完成完整入口 1889 项版本回归，其后复现暂停期间重复 ExternalPlanChange 与“下轮纠偏”假承诺，按 TDD 补修。影响矩阵：正确性/可解释性受影响，修改既有 Runner 的外部变化观测日志与通知文案；不改变策略评估、暂停、执行基线、动作、通知投递/冷却、配置格式或 Owner。每完整轮次 O(1)，只增加一个可空 GUID 的观测去重状态，无 IO、集合、队列或新探测。补修后完整四层门禁及新版真实暂停恢复均通过，详细证据如下；真实休眠验收与冷启动性能目标仍独立登记。
 
 | 阶段 | 状态 | 证据/结论 |
@@ -27,13 +29,26 @@
 | T6 附加文件与回退可见 | 实现与阶段回归通过 | Configuration 446、Engine 327、最终 LogView 62、日志架构 61、Settings 13 通过 |
 | T7 诊断容错 | 实现与阶段回归通过 | Configuration 455/455；补充诊断回归 34/34；架构 30/30 |
 | T8 导出异步所有权 | 实现与目标回归通过 | 相关 WPF/取消/导航/可访问性 30 项；架构 10 项通过 |
-| T9 集成与验收 | 完整四层门禁及主要桌面/真实休眠通过，性能验收未闭环 | 最新完整入口 Pester 156、.NET 1896、Tray 2、Installer 9，均零失败/跳过、exit 0；新版真实暂停恢复、诊断键盘及 DPI/对比度检查已记录；HibernateResume 六项通过，冷启动 P95 目标仍未关闭，旧 2h 隔离 Soak 单列 |
+| T9 集成与验收 | 冷预算及最新四层门禁通过，扩展桌面项未闭环 | 冷调用六轮 P95 7.3819–10.4885ms 达标；最终 Pester 156、.NET 1900、Tray 2、Installer 9，均零失败/跳过，完整入口 exit 0。此前取消/失败、真实桌面/休眠及旧 2h 隔离 Soak 分开保留 |
 
-M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可见桌面、真实休眠与真实计时 2h 隔离运行证据如下。2026-10-05 追加验收后，真实休眠已通过，冷启动性能目标尚未关闭，M4 尚未达成；未执行的扩展可访问性路径仍单列。集成测试仅临时安装，未更新正式安装或发布。
+M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可见桌面、真实休眠与真实计时 2h 隔离运行证据如下。2026-10-05 追加补修后，本机冷日志预算及最新完整四层门禁均通过；M4 尚未达成，150% DPI 与扩展可访问性未执行项继续单列。集成测试仅临时安装，未更新正式安装或发布。
 
 ## 2026-10-05 优先验收追加记录
 
-- 最新完整入口：`run-tests-20261005T000335459Z-20e03c4fb80246508a176b79ab2167c2.summary.json`，08:09:58 北京时间结束，命令及 summary exit 0。Pester 156/0/0；.NET 1896/0/0（Engine 334、Configuration 457、Cli 1、Architecture 338、Packaging 15、Tray 87、LogView 69、Settings 595）；Tray Integration 2/0/0；Installer Integration 9/0/0。四层均实际运行，没有取消、跳过或 NOT RUN。此前 `run-tests-20261004T233714892Z-06b1ea4a36c54e739cd55c80ff0d14d5.summary.json` 的 1889 项通过仅是补修前证据。
+### 冷调用预算补修（冷预算及完整四层门禁通过）
+
+- 新证据目录 `.work/logging-repair/20261005-cold-probe/`，基线提交 `c8cf3f4a`。每次独立启动 Release .NET 8 进程，Engine 不运行，2000 项满高优先级队列、主日志命名互斥由专用线程持有，每轮十条新消息，不预热被测入口。原始顺序样本保留；使用 nearest-rank P95，十条时 P95 与最大值相同，包含第一条冷调用，不把这些小样本泛化为整机启动 P95。
+- 基线 direct 首调用/P95 为 31.0440、28.9924、30.2424ms；reflection 为 30.0427、30.5031、29.5740ms，说明超标不只是反射调用测试入口本身。单独 formatter 为 25.9238、25.9048、25.2671ms；仅提前 formatter 的隔离对照首调用 3.4807、3.7156、3.5398ms，仅用于定位，不能当冷门禁通过。补修前 `budget-red/result.json` 保留 30.2600ms 的实际预算失败，命令 exit 1；队列拒绝计数及主/回退文件均未写入，失败是耗时超预算。
+- 架构 `cold-architecture-red.trx` 0/1/0、exit 1，确认固定格式仍调用运行时序列化；补修后 `cold-architecture-green.trx` 1/0/0、exit 0。`format-compatibility-before.trx` 7/0/0 首次通过，固定真实旧输出的字节兼容，不冒称 RED。共享 Formatter 使用 Utf8JsonWriter 显式输出原字段，移除 object 字典/反射元数据路径；原 reader、格式版本、环形队列、日志投递及文件写入 Owner 不变。
+- 深度回归发现 writer 抛 InvalidOperationException 而原 serializer 抛 JsonException，`format-depth-red.trx` 0/1/0、exit 1；保留深度 64 及原失败类别后 `format-boundaries-green.trx` 9/0/0、exit 0。包含固定字节、中文/控制字符、可选字段、嵌套异常与 JsonElement、超深失败后正常事件可读、128 个并发事件不串写。方法内 writer/缓冲独立，无共享可变序列化状态；超深不输出坏行或截断成功。未新增持久字段、缓存、线程或 IO。
+- 最后深度兼容代码的六个 fresh-process `final-direct-{1..6}/result.json` 首调用/P95/Max 分别 7.3819、7.6644、10.4885、8.2928、9.0071、7.7116ms，均 P95≤20ms、Max≤100ms、exit 0。每轮十次 Rejected、DroppedHigh=10、HighQueueDepth=2000、Written/Lost=0，mainExists/fallbackExists 均 false；不改变拒绝计数、不以预热或排除冷值达标。早一版 `green-direct-*` 六轮另存，不能代替最终代码性能证据。
+- 平台依据：[微软反射与源生成说明](https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation)说明首次运行时元数据创建；本次没有增加源生成模型，而是按[Utf8JsonWriter 官方用法](https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/use-utf8jsonwriter)直接输出已有固定 schema。归因来自独立进程对照，不声称所有冷成本均是元数据，也不声称 CPU/私有内存或全 Engine 启动耗时已改善。
+- 专业复审：保持 unsafe relaxed encoder 与原字典键语义，不把 JsonElement 属性改成字符串；UTC 仍使用原 O 文本，不能换成省略小数的 writer 日期格式；可选字段继续省略，JSON 最大深度及失败类别保持兼容；缓冲只随单事件字节增长，没有新预热或后台责任。性能、完整四层门禁与此前桌面版本证据分开；四层通过来自下述同一次最终运行。
+- 全量第一轮 `run-tests-20261005T003237060Z-1bf21d54ba154641b56e088ad6448a97.summary.json` 为 Pester 156/0/0、.NET 1899/1/0，Tray/Installer 因上游失败 NOT RUN，exit 1；失败是旧 Phase4 门禁要求源码出现 JsonSerializer.Serialize，不是实际 JSON 内容失败。将门禁加强为真实独立 JSON 对象解析、无文本前缀/换行、eventId/message 保真后，`cold-architecture-contract-green.trx` 2/0/0、exit 0。最终完整入口 `run-tests-20261005T003723745Z-4a3cb1515ac446aeb2006d2351f99d65.summary.json` 于北京时间 08:42:35 结束，命令及 summary exit 1；.NET TRX 前缀 `19ced4039db147058bf74c1757ac4091`，八项目 1900/0/0（Engine 334、Configuration 460、Cli 1、Architecture 339、Packaging 15、Tray 87、LogView 69、Settings 595），Pester 156/0/0。Tray 提升返回“操作被用户取消”，结果契约 Failed/exit 1/Total 0，标 BLOCKED，不能将零失败计数当通过；Installer 因前置层未通过为 NOT RUN。没有重复触发已取消的 UAC；补修暂未提交，四层门禁尚未闭环。
+
+- 用户继续授权集成验证后的沙箱运行 `run-tests-20261005T004910117Z-eae17512090249f5b8e42e12a5761b53.summary.json` 因 Pester TestRegistry 权限限制失败，后续层 NOT RUN，不计产品 RED。正常权限完整运行 `run-tests-20261005T004932368Z-ef0de390ab7245d2a3eaa9c90d9a1426.summary.json` 为 Pester 156/0/0、.NET 1899/1/0、Tray/Installer NOT RUN、exit 1；真实失败是前台监听测试在注册委托返回前发出就绪信号，健康标记实际在返回后发布，断言读到 false。仅修正测试夹具：消息泵入口发出就绪信号，两个 TaskCompletionSource 使用 RunContinuationsAsynchronously，避免续体在监听线程内联 Stop 等待自身；生产监听器、健康断言、回调及卸载线程断言均未改变。同类扫描未发现第二处 hooked 就绪信号；`listener-readiness-green.trx` 前台相关 31/0/0、exit 0。平台语义核对[微软 TaskCreationOptions 文档](https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.taskcreationoptions)。
+- 最终完整入口 `run-tests-20261005T005415982Z-1e7399c528d84842b17fd8a560997ab7.summary.json` 于北京时间 09:09:23 结束，命令与 summary 均 exit 0、Result=Passed：Pester 156/0/0、.NET 1900/0/0、Tray Integration 2/0/0、Installer Integration 9/0/0；.NET TRX 前缀 `4451e9fcf4604c0d9b87ac0079528569`，八项目数量与上述 1900 项版本一致。托盘运行中只读核对窗口标题为“选择 管理员: Windows PowerShell”，控制台选择暂停造成长时间无输出；解除选择后两项通过，转录及生命周期正常结束，安装器随后九项通过。没有终止集成子进程或绕过提升。此前失败/取消证据原样保留，不拼接历史局部通过。
+- 冷预算补修前完整入口：`run-tests-20261005T000335459Z-20e03c4fb80246508a176b79ab2167c2.summary.json`，08:09:58 北京时间结束，命令及 summary exit 0。Pester 156/0/0；.NET 1896/0/0（Engine 334、Configuration 457、Cli 1、Architecture 338、Packaging 15、Tray 87、LogView 69、Settings 595）；Tray Integration 2/0/0；Installer Integration 9/0/0。四层均实际运行，没有取消、跳过或 NOT RUN。此前 `run-tests-20261004T233714892Z-06b1ea4a36c54e739cd55c80ff0d14d5.summary.json` 的 1889 项通过仅是更早证据。
 - 新证据目录：`.work/logging-repair/20261005-acceptance/`。`paused-external-red-complete.trx` 三项实际断言失败（0/3/0、exit 1），覆盖日志假承诺、通知假承诺及重复观测；`paused-external-green.trx` 3/0/0，最终 `paused-external-boundaries.trx` 7/0/0，均 exit 0。四项额外边界首次通过，只称回归。未改执行基线，也不新增通知机制。
 - 新版真实 Engine PID 14684、Settings PID 40360，使用 published bin 与新隔离根 `live-root-3`，无注入动作。08:11:33 从设置页开启暂停并实际保存；08:11:49 观测外部高性能计划，随后到 08:12:50 仍 paused/high performance，外部事件累计一次，暂停后没有 PowerPlanSwitched。08:13:03 从 UI 关闭暂停；08:13:08 实际切到平衡并记录 verified；08:13:15 记录 already-satisfied。配置保存、准入、动作和时间均可由实际 JSONL/status 对照，不能将命中等同动作。
 - 补修前真实桌面也验证 Settings #1 / Explorer #2 命中、退出命中与 PowerCfg 实际计划转换；暂停误导证据保存在 `live-root-2`，不覆盖。第一次使用 Chrome 切出时 Computer Use 因无法确认 URL 停止，该段不算完整未命中桌面验收；后续桌面检查使用设置与系统设置窗口。
@@ -42,7 +57,7 @@ M1–M3 的实现及回归已落地；T9 的自动化、性能、兼容性、可
 - 三轮 owned 会话均 exit 0，`live-session.result.json` / `live-session-2.result.json` / `live-session-3.result.json` 的 Restored=true、Error 为空，原高性能计划、20% 亮度、正式配置 SHA-256 与 Guardian/Tray 任务基线完全一致；第三轮于 08:22:35 北京时间完成恢复。种子通过原 GuardConfigRepository 建立独立配置，并预置 init marker，明确排除首次安装计划初始化；强制结束自有进程不算优雅 AppStopping 验收。
 - 专业复审：固定大小确认状态仅作用于日志，写入接受和过滤才推进；拒绝继续原周期重试，外部判定解除清除确认。策略、执行基线、通知冷却与唯一写入入口保持原责任，契约与测试一致。现有完整门禁与实测已覆盖补修，不引入日志平台或框架。真实休眠使用既有 `Invoke-PowerLifecycleAcceptance.ps1` 核对 Windows 事件、Engine 生命周期及前后 PipelineHealthSampled，不以模拟 Soak 或状态健康代替。
 - 真实休眠闭环：用户手动休眠并唤醒、解锁后确认“已唤醒”。`hibernate.result.json` / `hibernate.transcript.txt` 保留 canonical 验收结果，场景 HibernateResume 于 08:16:14 开始、08:22:19 结束，result=Passed，命令 exit 0；六项检查（生命周期事件、Windows 挂起/恢复、挂起期间无计划写入、实际休眠状态、状态 freshness、pipeline 健康增量）全部 Passed。脚本核对 Kernel-Power 42 的 TargetState/EffectiveState 均为 5，而非把屏幕关闭或普通待机认作休眠。
-- 同一 Engine PID 14684 在 08:18:29.3427671 观测挂起、08:19:55.0017678 观测恢复；挂起区间没有 PowerPlanSwitched。健康样本 08:15:50 与 08:22:06 的 droppedNormal/droppedHigh/failedBatches/lostLines 均为 0，consumerFailed/stopFailed 均 false；累计 primaryWrittenLines 从 38 到 64，证明恢复后消费继续。该结论只覆盖本次真实休眠，不泛化为所有设备、S0 合盖或长期运行。冷启动 P95 30.0008ms / 20ms 预算差距仍待后续处理。
+- 同一 Engine PID 14684 在 08:18:29.3427671 观测挂起、08:19:55.0017678 观测恢复；挂起区间没有 PowerPlanSwitched。健康样本 08:15:50 与 08:22:06 的 droppedNormal/droppedHigh/failedBatches/lostLines 均为 0，consumerFailed/stopFailed 均 false；累计 primaryWrittenLines 从 38 到 64，证明恢复后消费继续。该结论只覆盖本次真实休眠，不泛化为所有设备、S0 合盖或长期运行。当时尚存的冷日志调用 P95 预算差距，后续补修结果见本节开头的冷调用记录。
 
 ## T9 集成与验收记录（本轮实施收口，验收未闭环）
 

@@ -6,6 +6,13 @@ namespace SmartGuard.Architecture.Tests;
 public class LoggingRepairArchitectureTests
 {
   [Fact]
+  public void Business_log_formatting_does_not_discover_serialization_metadata_at_runtime()
+  {
+    SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogJsonlFormatter.cs")
+      .Should().NotContain("JsonSerializer.Serialize", "first high-priority admission must not pay reflection metadata discovery");
+  }
+
+  [Fact]
   public void Diagnostic_ui_has_one_window_session_and_no_synchronous_wait()
   {
     File.Exists(Path.Combine(SourceScanHelper.RepoRoot, "src/SmartGuard.Settings/SettingsDiagnosticExportSession.cs")).Should().BeTrue();

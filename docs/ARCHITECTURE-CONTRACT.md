@@ -1,5 +1,7 @@
 # SmartGuard 架构契约 — 单真源与单入口
 
+**LOG-INV-COLD-FORMATTING（2026-10-05）：** LogJsonlFormatter 仍是 JSONL 格式唯一 Owner；固定字段使用 Utf8JsonWriter，不在首次业务日志创建反射序列化元数据，也不靠预热掩盖冷预算。保持 schemaVersion、字段顺序、UTC round-trip 时间、可选字段省略、中文/控制字符转义、异常链和 JsonElement 属性兼容；最大 JSON 深度 64，方法内缓冲随事件字节增长且不跨调用持有，不新增共享 writer/池/线程/IO。环形、单条和落盘预算仍归既有 Owner。门禁：LoggingRepairArchitectureTests、LogJsonlFormatterTests；性能另用无预热独立新进程、2000 项满高队列与持有主日志互斥，P95≤20ms、Max≤100ms。
+
 **LOG-INV-EXTERNAL-OBSERVATION（2026-10-05）：** GuardianIterationRunner 的 ExternalPlanChange 与外部变更通知只描述已观测事实，不预告纠偏；后续动作以 GuardStateChanged/PowerPlanSwitched 的实际结果为准。既有 iteration state 只增加一个可空 GUID，确认接受或用户级别过滤后去重同一连续外部计划；拒绝/背压不确认，新的 GUID 或外部判定解除后可重新记录。该字段仅抑制日志，不改变 LastKnownGuid、决策、暂停、动作或通知投递/冷却，不新增历史集合、探测、IO 或 Owner。门禁：ExternalPlanObservationLoggingTests。
 
 **LOG-INV-PHYSICAL-PAGING（2026-10-04）：** LogTailReader 的主日志游标及 HasNewer 按 catalog 中的物理来源顺序/行偏移推进，显示仍按事件时间；相同或倒退的时间戳不能跳过物理行或把文件末尾误报为尚有更新。只有实际附加历史存在时进入合并读取；新创建的 fallback 可加入当前 reader，但保持已有主源身份。合并 newer 每源仅取物理前缀，latest/连续 older 每源仅取物理后缀，再按时间展示；不以旧 wall clock 排除新追加记录或同秒历史行。另一来源上已返回的重复 eventId 不能确认本来源中间行已消费；只推进实际选中的物理范围。去重限定于当前页及既有有界显示窗口，不新增全历史 eventId 集合；只保存两份当前边界与源偏移。LogViewController 在空边界页仅收敛该方向标志，保留另一方向的游标，不能因此丢失返回物理另一端的能力。门禁：StartupFallbackHistoryTests、LogViewControllerTests。

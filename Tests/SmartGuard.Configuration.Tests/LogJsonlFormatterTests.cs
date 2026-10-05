@@ -7,6 +7,48 @@ namespace SmartGuard.Configuration.Tests;
 public class LogJsonlFormatterTests
 {
   [Fact]
+  public void FormatLine_keeps_the_existing_depth_failure_contract()
+  {
+    using var document = JsonDocument.Parse(new string('[', 63) + "0" + new string(']', 63));
+    var item = LogEventFactory.Create(LogSeverity.Warn, "Engine", "Power", "IterationError", "depth")
+      with { Properties = new Dictionary<string, JsonElement> { ["value"] = document.RootElement.Clone() } };
+
+    Action format = () => LogJsonlFormatter.FormatLine(item);
+    format.Should().Throw<JsonException>();
+    LogJsonlFormatter.TryParseLine(LogJsonlFormatter.FormatLine(item with { Properties = LogEvent.EmptyProperties }), out _)
+      .Should().BeTrue("a failed event must not leave shared writer state behind");
+  }
+
+  [Fact]
+  public void Concurrent_formatting_does_not_mix_event_contents()
+  {
+    Parallel.For(0, 128, i =>
+    {
+      var item = LogEventFactory.Create(LogSeverity.Warn, "Engine", "Power", "IterationError", "message-" + i);
+      LogJsonlFormatter.TryParseLine(LogJsonlFormatter.FormatLine(item), out var parsed).Should().BeTrue();
+      parsed!.EventId.Should().Be(item.EventId);
+      parsed.Message.Should().Be(item.Message);
+    });
+  }
+
+  [Fact]
+  public void FormatLine_preserves_fixed_schema_escaping_optional_fields_and_nested_properties()
+  {
+    using var property = JsonDocument.Parse("{\"中文\":[null,true,12.5,{\"x\":\"<>&\\n\"}]}");
+    var logEvent = new LogEvent(1, "event-1", DateTimeOffset.Parse("2026-10-05T08:00:00+08:00"),
+      LogSeverity.Warn, "Engine", "Power", "IterationError", "中文 <>& \"\\\n",
+      new LogExceptionInfo("Outer", "外层", null, new LogExceptionInfo("Inner", "内层", "line\n2", null)),
+      "op", "trace", "span", "action", 12, 34,
+      new Dictionary<string, JsonElement> { ["detail"] = property.RootElement.Clone() });
+
+    var line = LogJsonlFormatter.FormatLine(logEvent);
+
+    line.Should().Be("{\"schemaVersion\":1,\"eventId\":\"event-1\",\"timestamp\":\"2026-10-05T00:00:00.0000000+00:00\",\"severity\":\"Warn\",\"component\":\"Engine\",\"channel\":\"Power\",\"message\":\"中文 <>& \\\"\\\\\\n\",\"eventName\":\"IterationError\",\"exception\":{\"type\":\"Outer\",\"message\":\"外层\",\"inner\":{\"type\":\"Inner\",\"message\":\"内层\",\"stackTrace\":\"line\\n2\"}},\"operationId\":\"op\",\"traceId\":\"trace\",\"spanId\":\"span\",\"userActionId\":\"action\",\"processId\":12,\"threadId\":34,\"properties\":{\"detail\":{\"中文\":[null,true,12.5,{\"x\":\"<>&\\n\"}]}}}");
+    LogJsonlFormatter.TryParseLine(line, out var parsed).Should().BeTrue();
+    parsed!.Exception!.Inner!.StackTrace.Should().Be("line\n2");
+  }
+
+  [Fact]
   public void FormatLine_produces_valid_json()
   {
     var logEvent = LogEventFactory.Create(

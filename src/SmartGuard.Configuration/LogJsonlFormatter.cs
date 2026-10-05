@@ -1,22 +1,35 @@
+using System.Buffers;
 using System.Globalization;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 
 namespace SmartGuard.Configuration;
 
 public static class LogJsonlFormatter
 {
-  private static readonly JsonSerializerOptions JsonOptions = new()
+  private static readonly JsonWriterOptions WriterOptions = new()
   {
-    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    MaxDepth = 64,
   };
 
   public static string FormatLine(LogEvent logEvent)
-    => JsonSerializer.Serialize(ToPayload(logEvent), JsonOptions);
+  {
+    // High-priority admission also formats the crash ring on the caller.
+    // The fixed schema must not discover reflection metadata on its first event.
+    var buffer = new ArrayBufferWriter<byte>(1024);
+    using var writer = new Utf8JsonWriter(buffer, WriterOptions);
+    try { WritePayload(writer, logEvent); }
+    catch (InvalidOperationException ex) when (writer.CurrentDepth >= WriterOptions.MaxDepth)
+    {
+      // JsonSerializer previously exposed depth overflow as JsonException.
+      // Keep that public failure category while the low-level writer is local.
+      throw new JsonException("Log event exceeds the maximum JSON depth of 64.", ex);
+    }
+    writer.Flush();
+    return Encoding.UTF8.GetString(buffer.WrittenSpan);
+  }
 
   public static bool TryParseLine(string logLine, out LogEvent? logEvent)
     => TryParseEvent(logLine, out logEvent);
@@ -103,53 +116,63 @@ public static class LogJsonlFormatter
     return true;
   }
 
-  private static object ToPayload(LogEvent logEvent)
+  private static void WritePayload(Utf8JsonWriter writer, LogEvent logEvent)
   {
-    var payload = new Dictionary<string, object?>
-    {
-      ["schemaVersion"] = logEvent.SchemaVersion,
-      ["eventId"] = logEvent.EventId,
-      ["timestamp"] = logEvent.Timestamp.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-      ["severity"] = logEvent.Severity.ToString(),
-      ["component"] = logEvent.Component,
-      ["channel"] = logEvent.Channel,
-      ["message"] = logEvent.Message,
-    };
+    writer.WriteStartObject();
+    writer.WriteNumber("schemaVersion", logEvent.SchemaVersion);
+    writer.WriteString("eventId", logEvent.EventId);
+    // Keep the existing round-trip text, including seven fractional digits.
+    writer.WriteString("timestamp", logEvent.Timestamp.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+    writer.WriteString("severity", logEvent.Severity.ToString());
+    writer.WriteString("component", logEvent.Component);
+    writer.WriteString("channel", logEvent.Channel);
+    writer.WriteString("message", logEvent.Message);
 
     if (logEvent.EventName is not null)
-      payload["eventName"] = logEvent.EventName;
+      writer.WriteString("eventName", logEvent.EventName);
     if (logEvent.Exception is not null)
-      payload["exception"] = ToExceptionPayload(logEvent.Exception);
+    {
+      writer.WritePropertyName("exception");
+      WriteExceptionPayload(writer, logEvent.Exception);
+    }
     if (logEvent.OperationId is not null)
-      payload["operationId"] = logEvent.OperationId;
+      writer.WriteString("operationId", logEvent.OperationId);
     if (logEvent.TraceId is not null)
-      payload["traceId"] = logEvent.TraceId;
+      writer.WriteString("traceId", logEvent.TraceId);
     if (logEvent.SpanId is not null)
-      payload["spanId"] = logEvent.SpanId;
+      writer.WriteString("spanId", logEvent.SpanId);
     if (logEvent.UserActionId is not null)
-      payload["userActionId"] = logEvent.UserActionId;
+      writer.WriteString("userActionId", logEvent.UserActionId);
     if (logEvent.ProcessId is not null)
-      payload["processId"] = logEvent.ProcessId;
+      writer.WriteNumber("processId", logEvent.ProcessId.Value);
     if (logEvent.ThreadId is not null)
-      payload["threadId"] = logEvent.ThreadId;
+      writer.WriteNumber("threadId", logEvent.ThreadId.Value);
     if (logEvent.Properties.Count > 0)
-      payload["properties"] = logEvent.Properties;
-
-    return payload;
+    {
+      writer.WriteStartObject("properties");
+      foreach (var property in logEvent.Properties)
+      {
+        writer.WritePropertyName(property.Key);
+        property.Value.WriteTo(writer);
+      }
+      writer.WriteEndObject();
+    }
+    writer.WriteEndObject();
   }
 
-  private static Dictionary<string, object?> ToExceptionPayload(LogExceptionInfo exception)
+  private static void WriteExceptionPayload(Utf8JsonWriter writer, LogExceptionInfo exception)
   {
-    var payload = new Dictionary<string, object?>
-    {
-      ["type"] = exception.Type,
-      ["message"] = exception.Message,
-    };
+    writer.WriteStartObject();
+    writer.WriteString("type", exception.Type);
+    writer.WriteString("message", exception.Message);
     if (exception.StackTrace is not null)
-      payload["stackTrace"] = exception.StackTrace;
+      writer.WriteString("stackTrace", exception.StackTrace);
     if (exception.Inner is not null)
-      payload["inner"] = ToExceptionPayload(exception.Inner);
-    return payload;
+    {
+      writer.WritePropertyName("inner");
+      WriteExceptionPayload(writer, exception.Inner);
+    }
+    writer.WriteEndObject();
   }
 
   private static LogExceptionInfo? ReadException(JsonElement root)

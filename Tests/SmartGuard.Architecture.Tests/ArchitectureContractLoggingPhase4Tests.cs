@@ -1,4 +1,6 @@
 using FluentAssertions;
+using SmartGuard.Configuration;
+using System.Text.Json;
 
 namespace SmartGuard.Architecture.Tests;
 
@@ -176,9 +178,14 @@ public class ArchitectureContractLoggingPhase4Tests
   [Fact]
   public void Phase4_jsonl_formatter_emits_pure_json_without_text_prefix()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/LogJsonlFormatter.cs");
-    source.Should().Contain("JsonSerializer.Serialize");
-    source.Should().NotContain("| {");
+    // The contract is pure JSON, independent of reflection or a fixed writer.
+    var item = LogEventFactory.Create(LogSeverity.Warn, "Engine", "Power", "IterationError", "事件 | 内容");
+    var line = LogJsonlFormatter.FormatLine(item);
+    line.Should().StartWith("{").And.EndWith("}").And.NotContain("\n");
+    using var document = JsonDocument.Parse(line);
+    document.RootElement.ValueKind.Should().Be(JsonValueKind.Object);
+    document.RootElement.GetProperty("eventId").GetString().Should().Be(item.EventId);
+    document.RootElement.GetProperty("message").GetString().Should().Be(item.Message);
   }
 
   [Fact]
