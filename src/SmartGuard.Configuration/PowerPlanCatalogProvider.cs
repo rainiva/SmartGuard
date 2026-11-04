@@ -59,6 +59,12 @@ public static class PowerPlanCatalogProvider
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
     => LoadWithRetryAsync(cancellationToken: cancellationToken);
 
+  // The guardian only needs display names. Its caller supplies one total
+  // deadline rather than entering the Settings catalog retry workflow.
+  internal static Task<IReadOnlyDictionary<Guid, string>> TryLoadOnceAsync(CancellationToken cancellationToken,
+    Action<PowerCfgCommandResult>? observe = null)
+    => TryLoadAsync(cancellationToken, observe);
+
   public static async Task<IReadOnlyDictionary<Guid, string>> LoadWithRetryAsync(
     int maxAttempts = 3,
     CancellationToken cancellationToken = default)
@@ -163,7 +169,7 @@ public static class PowerPlanCatalogProvider
   }
 
   private static async Task<IReadOnlyDictionary<Guid, string>> TryLoadAsync(
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
   {
     if (_sessionCache is not null)
       return _sessionCache;
@@ -172,7 +178,7 @@ public static class PowerPlanCatalogProvider
     {
       var catalog = LoadImplementationForTests is { } loader
         ? await Task.Run(loader, cancellationToken).ConfigureAwait(false)
-        : await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+        : await LoadCoreAsync(cancellationToken, observe).ConfigureAwait(false);
 
       cancellationToken.ThrowIfCancellationRequested();
       if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
@@ -190,24 +196,25 @@ public static class PowerPlanCatalogProvider
   }
 
   private static async Task<IReadOnlyDictionary<Guid, string>> LoadCoreAsync(
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
   {
     var listResult = await PowerCfgProcessRunner.RunPowerCfgAsync(
         "/list",
         cancellationToken,
         TimeSpan.FromSeconds(15))
       .ConfigureAwait(false);
+    observe?.Invoke(listResult);
     cancellationToken.ThrowIfCancellationRequested();
     if (!listResult.Succeeded)
       return new Dictionary<Guid, string>();
 
     var catalog = PowerPlanCatalogParser.ParseList(listResult.StandardOutput);
-    await EnrichWithHiddenSchemesAsync(catalog, cancellationToken).ConfigureAwait(false);
+    await EnrichWithHiddenSchemesAsync(catalog, cancellationToken, observe).ConfigureAwait(false);
 
     if (HasMissingKnownSchemes(catalog))
     {
       await Task.Delay(250, cancellationToken).ConfigureAwait(false);
-      await EnrichWithHiddenSchemesAsync(catalog, cancellationToken).ConfigureAwait(false);
+      await EnrichWithHiddenSchemesAsync(catalog, cancellationToken, observe).ConfigureAwait(false);
     }
 
     return catalog;
@@ -215,7 +222,7 @@ public static class PowerPlanCatalogProvider
 
   private static async Task EnrichWithHiddenSchemesAsync(
     IDictionary<Guid, string> catalog,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
   {
     foreach (var guid in KnownSchemeGuids)
     {
@@ -223,7 +230,7 @@ public static class PowerPlanCatalogProvider
       if (catalog.ContainsKey(guid))
         continue;
 
-      var name = await TryQueryPlanNameAsync(guid, cancellationToken).ConfigureAwait(false);
+      var name = await TryQueryPlanNameAsync(guid, cancellationToken, observe).ConfigureAwait(false);
       if (!string.IsNullOrWhiteSpace(name))
         catalog[guid] = name!;
     }
@@ -253,7 +260,7 @@ public static class PowerPlanCatalogProvider
 
   private static async Task<string?> TryQueryPlanNameAsync(
     Guid guid,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
   {
     try
     {
@@ -262,6 +269,7 @@ public static class PowerPlanCatalogProvider
           cancellationToken,
           TimeSpan.FromSeconds(15))
         .ConfigureAwait(false);
+      observe?.Invoke(result);
       cancellationToken.ThrowIfCancellationRequested();
       if (!result.Succeeded ||
           !PowerPlanCatalogParser.TryParseQueryHeader(result.StandardOutput, out var parsedGuid, out var name))

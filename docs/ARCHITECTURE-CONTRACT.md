@@ -1,6 +1,8 @@
 # SmartGuard 架构契约 — 单真源与单入口
 
-**PWR-BRIGHTNESS-ENUMERATION（2026-11-04）：** 亮度唯一 Owner `BrightnessService` 的读写查询共用 250ms 半同步 WMI 枚举时限；读取失败返回 -1，写入失败保持尽力语义，释放结果集合与取得的 WMI 对象。保留既有亮度写入调用，不新增后台任务、线程或重试队列；不把枚举 Timeout 宣称为 Connect、方法执行或所有 COM 调用的硬截止。可选亮度不可用不得因默认无限枚举长期阻塞自动切换条件、配置采用和前台状态更新。门禁：`BrightnessQueryArchitectureTests`、`BrightnessServiceTests`；现场证据与影响分析：[排查记录](implementation-plans/2026-11-04-bounded-brightness.md)。
+**PWR-NATIVE-PROBE-ISOLATION（2026-11-04）：** `BrightnessService`/`BatteryInfoProvider` 仍为业务入口，所有 WMI 物理调用迁入 Engine 自身固定 `--wmi-probe` 子命令，先于根目录/配置/日志/单实例初始化分派。父端 `WmiProbeProcess` 单飞、零排队、请求2秒/防御上限2.5秒、按操作冷却30秒；清理未确认后关闭后续启动；子命令在WMI前开启独立3秒退出守卫，避免父进程死亡后无限存活。底层复用 `PowerCfgProcessRunner.RunProcessAsync`，每路输出最多65536字符，超限失败，覆盖退出与管道的截止，预取消不启动，有界终止并报告确认状态；两路reader由读任务显式释放，晚到读任务仍持有释放责任。无整个轮次 Task.Run 后超时遗弃、无晚到结果恢复旧授权；已进入驱动的动作不能承诺撤销。电池保持原生优先，不被亮度不支持的冷却覆盖。稳定等待最多2秒，亮度恢复总预算3秒、最多5次、每次延迟0–1000ms；未读回亮度保持未知。AC/DC每次写前重验生命周期，目录总预算2秒且清理不明立即取消全部剩余补全。`NativeProbeFailed`/`NativeProbeRecovered` 经既有有界日志管线记录操作/分类/耗时预算/退出/清理/按操作按区间抑制/恢复；固定子协议错误码保留，不输出原始路径。仅完成语义解析才能宣布恢复，旧计划失败告警同步按分钟合并。该约束替代先前仅250ms枚举的临时防线；子命令内仍保留枚举时限和对象释放。本地文件 IO/低延迟 Win32 调用不属于硬实时保证。门禁：`GuardianProbeIsolationArchitectureTests`、进程/WMI/守护日志行为测试；[加固计划与证据](implementation-plans/2026-11-04-guardian-isolation.md)。
+
+**探测取消与最终事实补充：** 上述3秒为恢复工作预算；取消后只给原执行至多500ms清理证明余量，迟到业务结果作废，确认清理后不能误关健康WMI能力。恢复未收敛仍保留实际读回，日志/心跳/status/通知使用同一最终亮度，未知在托盘显示“亮度未知/尚未确认”。计划读取/目录以语义解析后的整体结果决定恢复；`plan-apply`恢复仅表示`setactive`命令执行链恢复（`recoveryScope=command-execution`），不宣称计划已切换，后者仍取最终GUID验证。
 
 **窗口验证边界补充（2026-10-05）：** 当前共享采集确认的是前台外层窗口所属EXE；WPS整合窗口可由wps.exe承载wpspdf.exe等组件的子窗口，因此不能把宿主识别等同于内部文档组件验证。候选wps.exe显示为WPS Office，设置交互解释宿主限制；精确路径准入语义未变。未来内部组件支持必须同步扩展唯一采集入口和Engine/Settings共同语义，不能仅调整设置验证结果。名单/搜索列表的嵌套滚轮由ScrollViewerSmoothScroll按方向让原生内层优先处理，边界交给外层；不新增监听或列表扫描。证据与未完成项：[排查记录](implementation-plans/2026-10-05-nested-wheel-and-wps-host.md)。
 

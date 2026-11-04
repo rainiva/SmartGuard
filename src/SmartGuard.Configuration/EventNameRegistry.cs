@@ -40,6 +40,8 @@ public static class EventNameRegistry
   public const string ForegroundListenerDegraded = nameof(ForegroundListenerDegraded);
   public const string ForegroundAdmissionChanged = nameof(ForegroundAdmissionChanged);
   public const string GuardStateChanged = nameof(GuardStateChanged);
+  public const string NativeProbeFailed = nameof(NativeProbeFailed);
+  public const string NativeProbeRecovered = nameof(NativeProbeRecovered);
 
   static EventNameRegistry()
   {
@@ -71,6 +73,8 @@ public static class EventNameRegistry
     Register(ForegroundListenerDegraded);
     Register(ForegroundAdmissionChanged);
     Register(GuardStateChanged);
+    Register(NativeProbeFailed);
+    Register(NativeProbeRecovered);
   }
 
   public static void Register(string name)

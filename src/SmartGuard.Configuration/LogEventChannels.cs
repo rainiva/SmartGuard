@@ -22,6 +22,8 @@ public static class LogEventChannels
         or EventNameRegistry.ConfigMutationLogged
         or EventNameRegistry.ConfigMutationFailed => LogChannelRegistry.Policy,
       EventNameRegistry.IterationError
+        or EventNameRegistry.NativeProbeFailed
+        or EventNameRegistry.NativeProbeRecovered
         or EventNameRegistry.RecoveryDegraded
         or EventNameRegistry.RecoveryRestored
         or EventNameRegistry.PowerLifecycleRecoveryForced

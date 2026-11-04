@@ -3,6 +3,7 @@ using SmartGuard.Configuration.Cli;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Cli;
 using SmartGuard.Engine.Worker;
+using SmartGuard.Engine.Infrastructure;
 
 namespace SmartGuard.Engine;
 
@@ -10,6 +11,8 @@ public static class Program
 {
   public static int Main(string[] args)
   {
+    // Children bypass configuration, logs and the guardian single-instance lock.
+    if (WmiProbeCommand.TryRun(args, out var probeExitCode)) return probeExitCode;
     var parsed = CommandLineParser.Parse(args);
     var root = InstallRootResolver.Resolve(parsed.Root, args);
     GlobalExceptionHandlers.Register("Engine", root);

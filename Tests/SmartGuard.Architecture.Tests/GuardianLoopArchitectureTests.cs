@@ -26,7 +26,10 @@ public class GuardianLoopArchitectureTests
     loop.Should().Contain("GuardianFirstRunInitializer");
     loop.Should().Contain("GuardianExceptionStormHandler");
     loop.Should().NotContain("INIT: 开始首次初始化");
-    loop.Should().NotContain("同类异常");
+    // Assert exception-storm ownership rather than forbidding words that also
+    // legitimately describe unrelated native-probe recovery events.
+    loop.Should().NotContain("_exceptionCounts");
+    loop.Should().NotContain("_exceptionWindowStart");
 
     File.ReadAllLines(Path.Combine(
         SourceScanHelper.RepoRoot,

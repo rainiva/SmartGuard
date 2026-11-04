@@ -21,7 +21,11 @@ public class PowerPlanCatalogSingleSourceTests
   [Fact]
   public void Guardian_iteration_must_load_catalog_via_PowerPlanCatalogProvider()
   {
-    var source = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianIterationRunner.cs");
-    source.Should().Contain("PowerPlanCatalogProvider.TryLoad()");
+    var sources = SourceScanHelper.EnumerateCsFilesUnder("src/SmartGuard.Engine/Worker")
+      .Where(path => Path.GetFileName(path).StartsWith("GuardianIterationRunner", StringComparison.Ordinal))
+      .Select(path => File.ReadAllText(path, System.Text.Encoding.UTF8));
+    var source = string.Concat(sources);
+    source.Should().Contain("PowerPlanCatalogProvider.TryLoadOnceAsync(");
+    source.Should().NotContain("PowerPlanCatalogProvider.TryLoad()");
   }
 }

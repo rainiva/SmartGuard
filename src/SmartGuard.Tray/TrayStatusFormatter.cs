@@ -8,7 +8,8 @@ public static class TrayStatusFormatter
   {
     if (status is null) return "智能电源守护（等待核心服务）";
     var power = status.isOnAC ? "插电" : "电池";
-    var text = $"计划: {status.currentPlan} | {status.batteryPercent}% {power} | 亮度{status.brightness}%";
+    var brightness = status.brightness >= 0 ? $"亮度{status.brightness}%" : "亮度未知";
+    var text = $"计划: {status.currentPlan} | {status.batteryPercent}% {power} | {brightness}";
     if (status.paused) text += " | 已暂停";
     text += FormatGuardClauseWithSeparator(status, " | ", nowUtc);
     text += FormatLogHealthClause(status, nowUtc);

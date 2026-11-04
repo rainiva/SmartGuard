@@ -44,6 +44,9 @@ public static partial class PowerCfgExecutor
   internal static PowerPlanProbeResult ProbeCurrentPlan()
     => ParseProbeResult(PowerCfgProcessRunner.RunPowerCfg("/getactivescheme"));
 
+  internal static async Task<PowerPlanProbeResult> ProbeCurrentPlanAsync(CancellationToken cancellationToken)
+    => ParseProbeResult(await PowerCfgProcessRunner.RunPowerCfgAsync("/getactivescheme", cancellationToken));
+
   public static PowerSchemeInfo? GetCurrentPlanInfo() => ProbeCurrentPlan().Plan;
 
   public static Guid? GetCurrentPlanGuid() => ProbeCurrentPlan().ObservedGuid;
@@ -137,6 +140,28 @@ public static partial class PowerCfgExecutor
       $"/setacvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
     PowerCfgProcessRunner.RunPowerCfg(
       $"/setdcvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
+  }
+
+  internal static async Task SyncPlanBrightnessAsync(Guid planGuid, int brightness,
+    CancellationToken cancellationToken, Action<string, PowerCfgCommandResult>? observe = null,
+    Func<bool>? canMutate = null)
+  {
+    if (brightness < 0 || brightness > 100) return;
+    using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    budget.CancelAfter(TimeSpan.FromSeconds(2));
+    foreach (var mode in new[] { "ac", "dc" })
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      if (budget.IsCancellationRequested || canMutate?.Invoke() == false) return;
+      var result = await PowerCfgProcessRunner.RunPowerCfgAsync(
+        $"/set{mode}valueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}", budget.Token);
+      if (budget.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        result = result with { TimedOut = true, FailureKind = "timed-out" };
+      observe?.Invoke("plan-brightness-" + mode, result);
+      cancellationToken.ThrowIfCancellationRequested();
+      // Optional synchronization cannot spend another command budget after failure.
+      if (!result.Succeeded) return;
+    }
   }
 
   public static void DisableAdaptiveBrightness(Guid planGuid)

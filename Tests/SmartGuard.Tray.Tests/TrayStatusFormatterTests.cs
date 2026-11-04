@@ -5,6 +5,15 @@ namespace SmartGuard.Tray.Tests;
 public class TrayStatusFormatterTests
 {
   [Fact]
+  public void Unknown_brightness_is_not_presented_as_a_negative_percentage()
+  {
+    TrayStatusFormatter.FormatTooltip(new StatusPayload { brightness = -1 })
+      .Should().Contain("亮度未知").And.NotContain("-1%");
+    TrayNotificationHelper.FormatPlanChangeBalloon("平衡", -1)
+      .Should().Contain("亮度尚未确认").And.NotContain("-1%");
+  }
+
+  [Fact]
   public void FormatTooltip_includes_plan_battery_and_brightness()
   {
     var status = new StatusPayload

@@ -1,4 +1,3 @@
-using System.Management;
 using System.Runtime.InteropServices;
 
 namespace SmartGuard.Engine.Infrastructure;
@@ -26,11 +25,15 @@ public static class BatteryInfoProvider
   private static extern bool GetSystemPowerStatus(ref SystemPowerStatus status);
 
   public static (int Percent, bool IsOnAc) GetBatteryInfo(bool forceRefresh = false)
+    => GetBatteryInfo(forceRefresh, CancellationToken.None);
+
+  internal static (int Percent, bool IsOnAc) GetBatteryInfo(bool forceRefresh,
+    CancellationToken cancellationToken, WmiProbeProcess? probe = null)
   {
     if (!forceRefresh && _cache is { } cached && DateTime.UtcNow - _cacheAt < CacheTtl)
       return cached;
 
-    var result = ReadCore();
+    var result = ReadCore(cancellationToken, probe ?? WmiProbeProcess.Shared);
     _cache = result;
     _cacheAt = DateTime.UtcNow;
     return result;
@@ -48,14 +51,14 @@ public static class BatteryInfoProvider
     _cacheAt = DateTime.UtcNow;
   }
 
-  private static (int Percent, bool IsOnAc) ReadCore()
+  private static (int Percent, bool IsOnAc) ReadCore(CancellationToken cancellationToken, WmiProbeProcess probe)
   {
     if (ReadCoreOverrideForTests is { } readOverride)
       return readOverride();
 
     try
     {
-      return ResolveFromSources(TryGetNativeBatteryInfo, TryGetWmiBatteryInfo);
+      return ResolveFromSources(TryGetNativeBatteryInfo, () => probe.ReadBattery(cancellationToken));
     }
     catch
     {
@@ -110,30 +113,4 @@ public static class BatteryInfoProvider
     return (status.ACLineStatus, status.BatteryLifePercent, status.BatteryFlag);
   }
 
-  private static (int Percent, bool? IsOnAc)? TryGetWmiBatteryInfo()
-  {
-    using var searcher = new ManagementObjectSearcher(
-      "SELECT EstimatedChargeRemaining, BatteryStatus, DesignCapacity FROM Win32_Battery");
-    var batteries = searcher.Get().Cast<ManagementObject>().ToList();
-    if (batteries.Count == 0) return null;
-
-    var entries = new List<(int Percent, uint Weight)>();
-    bool? onAc = null;
-    foreach (var battery in batteries)
-    {
-      var percent = Convert.ToInt32(battery["EstimatedChargeRemaining"] ?? 0);
-      var design = Convert.ToUInt32(battery["DesignCapacity"] ?? 0);
-      if (design == 0) design = 1;
-      entries.Add((percent, design));
-
-      if (battery["BatteryStatus"] is { } rawStatus)
-      {
-        var hint = BatteryStatusInterpreter.InterpretWmiBatteryStatus(Convert.ToInt32(rawStatus));
-        if (hint is true) onAc = true;
-        else if (hint is false && onAc != true) onAc = false;
-      }
-    }
-
-    return (BatteryStatusInterpreter.AggregateEstimatedChargeRemaining(entries), onAc);
-  }
 }

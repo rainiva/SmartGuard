@@ -10,5 +10,6 @@ public static class TrayNotificationHelper
   }
 
   public static string FormatPlanChangeBalloon(string planName, int brightness)
-    => $"已切换至 {planName}（亮度 {brightness}%）";
+    => brightness >= 0 ? $"已切换至 {planName}（亮度 {brightness}%）"
+      : $"已切换至 {planName}（亮度尚未确认）";
 }

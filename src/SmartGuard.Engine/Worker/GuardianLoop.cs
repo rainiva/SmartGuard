@@ -12,7 +12,8 @@ public sealed partial class GuardianLoop
   private readonly string _initMarkerPath;
   private readonly string _fallbackLogPath;
   private readonly IdleTracker _idleTracker = new();
-  private readonly BrightnessService _brightness = new();
+  private readonly BrightnessService _brightness;
+  private readonly WmiProbeProcess _nativeProbe;
   private readonly LogDeduplicationFilter _deduplication = new(threshold: 5);
   private readonly SemaphoreSlim _wakeSignal = new(0, int.MaxValue);
   private readonly StatusPublisher _publisher;
@@ -67,6 +68,8 @@ public sealed partial class GuardianLoop
     _lastLogSettings = new(LogLevel.Warn, null, null, _fallbackLogPath);
     _publisher = new StatusPublisher(statusPath, timeProvider);
     _configRepository = new GuardConfigRepository(configPath);
+    _nativeProbe = new WmiProbeProcess(timeProvider: _observationTime, observe: ObserveNativeProbe);
+    _brightness = new BrightnessService(_nativeProbe);
     _consumerRecovery = new LogConsumerRecovery(new LogRecoveryStateMachine(timeProvider: timeProvider));
     _powerCfgBrightnessSupported = powerCfgBrightnessSupported;
     _firstRunInitializer = new GuardianFirstRunInitializer(_initMarkerPath, _brightness, (c, l, m) => WriteLog(c, l, m, EventNameRegistry.AppStarted));
@@ -85,7 +88,9 @@ public sealed partial class GuardianLoop
       readForeground: ReadForegroundForRunner,
       readForegroundEventsHealth: ReadForegroundEventsHealthForRunner,
       canMutatePolicy: () => _powerLifecycle.IsPolicyMutationAllowed,
-      observationTracker: _guardObservations);
+      observationTracker: _guardObservations,
+      nativeProbe: _nativeProbe,
+      observeNativeProbe: ObserveNativeProbe);
     _cycleCoordinator = new GuardianCycleCoordinator(
       () => GuardConfigReadResult.TryFromRepository(_configRepository),
       ReadForegroundForRunner,
@@ -163,21 +168,6 @@ public sealed partial class GuardianLoop
           LogLevel.Error, EventNameRegistry.IterationError, "日志关闭未确认完成，可能有记录未写入")));
       TryPublishLogHealth();
     }
-  }
-
-  private void HandlePowerEvent(PowerLifecycleSignal signal)
-  {
-    try
-    {
-      _powerLifecycle.Observe(signal);
-    }
-    catch
-    {
-      // State observation is memory-only; event-thread failures must not escape.
-    }
-
-    Interlocked.Exchange(ref _powerWakePending, 1);
-    _wakeSignal.Release();
   }
 
   private void ObservePowerSource(bool isOnAc)

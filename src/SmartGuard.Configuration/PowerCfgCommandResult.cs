@@ -7,7 +7,11 @@ public sealed record PowerCfgCommandResult(
   string StandardOutput,
   string StandardError)
 {
-  public bool Succeeded => Started && !TimedOut && ExitCode == 0;
+  public string FailureKind { get; init; } = "none";
+  public bool TerminationConfirmed { get; init; } = true;
+  public long ElapsedMilliseconds { get; init; } = 0;
+
+  public bool Succeeded => Started && !TimedOut && ExitCode == 0 && FailureKind == "none" && TerminationConfirmed;
 
   public string CombinedOutput => StandardOutput + StandardError;
 }

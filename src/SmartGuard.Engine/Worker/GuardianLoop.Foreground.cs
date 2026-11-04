@@ -185,6 +185,22 @@ public sealed partial class GuardianLoop
   private void OnForegroundEvent() => _cycleCoordinator.MarkForegroundSignal();
 
   private bool ConsumePowerWake() => Interlocked.Exchange(ref _powerWakePending, 0) != 0;
+
+  private void HandlePowerEvent(PowerLifecycleSignal signal)
+  {
+    try
+    {
+      _powerLifecycle.Observe(signal);
+    }
+    catch
+    {
+      // State observation is memory-only; event-thread failures must not escape.
+    }
+
+    Interlocked.Exchange(ref _powerWakePending, 1);
+    _wakeSignal.Release();
+  }
+
   private void WaitForWake(TimeSpan delay, CancellationToken cancellationToken)
   {
     if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;

@@ -48,7 +48,9 @@ internal sealed partial class GuardianIterationRunner(
   Func<bool?>? readForegroundEventsHealth = null,
   Func<int>? readBrightness = null,
   Func<bool>? canMutatePolicy = null,
-  GuardObservationTracker? observationTracker = null)
+  GuardObservationTracker? observationTracker = null,
+  WmiProbeProcess? nativeProbe = null,
+  Action<WmiProbeObservation>? observeNativeProbe = null)
 {
   private readonly GuardObservationTracker _observations = observationTracker ?? new();
   public async Task RunAsync(
@@ -56,6 +58,7 @@ internal sealed partial class GuardianIterationRunner(
     GuardianIterationContext context,
     CancellationToken cancellationToken)
   {
+    cancellationToken.ThrowIfCancellationRequested();
     OperationIdContext.GenerateNew();
     TraceIdContext.GenerateNew();
     var time = timeProvider ?? TimeProvider.System;
@@ -64,7 +67,7 @@ internal sealed partial class GuardianIterationRunner(
     var configRead = loadConfig();
     GuardConfig? configOpt = configRead.Config;
     var configAvailable = configRead.IsValid && configOpt is not null;
-    var planCatalog = state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad();
+    var planCatalog = state.PlanCatalog ?? await LoadPlanCatalogAsync(cancellationToken);
     state.PlanCatalog = planCatalog;
     if (context.ResetIdleEpoch)
     {
@@ -72,9 +75,9 @@ internal sealed partial class GuardianIterationRunner(
       state.ResetForegroundObservation();
     }
     var idle = (int)idleTracker.Sample(readIdleSeconds ?? IdleDetector.GetIdleSeconds);
-    var (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(context.ForcePowerRefresh);
+    var (batteryPercent, isOnAc) = ReadBattery(context.ForcePowerRefresh, cancellationToken);
     observePowerSource(isOnAc);
-    var planProbe = (readCurrentPlan ?? PowerCfgExecutor.ProbeCurrentPlan)();
+    var planProbe = await ReadCurrentPlanAsync(cancellationToken);
     var activePlanInfo = planProbe.Plan;
     var current = activePlanInfo?.Guid;
 
@@ -86,7 +89,7 @@ internal sealed partial class GuardianIterationRunner(
       AbsorbPlanAsBaseline(state, current);
       state.LastForegroundAdmitted = false;
       ObserveUnavailable(configRead, current, GuardStatusCodes.Reasons.ConfigUnavailable, time.GetUtcNow());
-      var brightnessDuringDegrade = (readBrightness ?? brightness.GetBrightness)();
+      var brightnessDuringDegrade = ReadBrightness(cancellationToken);
       publisher.Publish(CreateDegradedObservationPayload(
         state, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, brightnessDuringDegrade));
       return;
@@ -95,18 +98,16 @@ internal sealed partial class GuardianIterationRunner(
     if (!planProbe.Succeeded)
     {
       state.ResetForegroundObservation();
-      writeLog(
-        configOpt!,
-        LogLevel.Warn,
-        $"电源计划探测失败，停止本轮切换：{planProbe.FailureKind}",
-        EventNameRegistry.PowerPlanProbeFailed, null, null);
+      LogPlanProbeFailure(configOpt!, planProbe);
       ObserveUnavailable(configRead, current, GuardStatusCodes.Reasons.ProbeFailed, time.GetUtcNow());
       // 探测失败同样必须发布状态：否则 UI 停留在上一轮原因，无法解释守护暂停纠偏。
       publisher.Publish(CreateProbeFailedObservationPayload(
-        state, configOpt!, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, bright: (readBrightness ?? brightness.GetBrightness)()));
+        state, configOpt!, nowUtc, current, planCatalog, idle, isOnAc, batteryPercent, bright: ReadBrightness(cancellationToken)));
       return;
     }
 
+    _lastPlanProbeFailure = null;
+    _suppressedPlanProbeWarnings = 0;
     // 配置可用性已确认（configAvailable 为真），自此按有效配置执行全部决策与动作。
     var config = configOpt!;
 
@@ -122,7 +123,7 @@ internal sealed partial class GuardianIterationRunner(
     var decision = PolicyEngine.Evaluate(idle, isOnAc, batteryPercent, foreground, config, nowLocal, state.IsForegroundObserving);
     var expected = decision.TargetPlanGuid;
 
-    var bright = (readBrightness ?? brightness.GetBrightness)();
+    var bright = ReadBrightness(cancellationToken);
     var actionRecheckDenied = false;
     if (PolicyMutationAllowed() && decision.Source is not GuardDecisionSource.None
         && expected is not null && PolicyEngine.ShouldApplyPowerPlanSwitch(current, expected))
@@ -130,7 +131,7 @@ internal sealed partial class GuardianIterationRunner(
       // WMI 查询期间用户可能切走或撤销配置。所有切前副作用和纠偏通知只能消费
       // 最新配置、空闲/供电与当前前台的同一决策；这里不承诺与系统切换绝对原子化。
       // 强制供电查询也可能回退 WMI，因此必须在最终授权读取之前完成所有慢探测。
-      (batteryPercent, isOnAc) = (readBatteryInfo ?? BatteryInfoProvider.GetBatteryInfo)(true);
+      (batteryPercent, isOnAc) = ReadBattery(true, cancellationToken);
       observePowerSource(isOnAc);
       idle = (int)idleTracker.Sample(readIdleSeconds ?? IdleDetector.GetIdleSeconds);
       var latest = loadConfig();
@@ -222,6 +223,9 @@ internal sealed partial class GuardianIterationRunner(
       var result = await SwitchWithBrightnessLockAsync(expected.Value, bright, config, PolicyMutationAllowed, cancellationToken);
       switchBrightnessBefore = result.Before;
       switchBrightnessAfter = result.After;
+      // Once an action was attempted, every publication consumes the same final
+      // observation. A missing readback must not reuse the pre-switch brightness.
+      if (result.Apply is not null) bright = result.After;
       if (result.Apply is not PowerPlanApplyResult applied)
       {
         // 慢亮度同步期间暂停：尚未启动 setactive，保留观测状态等待恢复。
@@ -250,7 +254,7 @@ internal sealed partial class GuardianIterationRunner(
 
         var pwr = isOnAc ? "插电" : "电池";
         switchedPlanName = ResolvePlanName(expected, config, planCatalog, activePlanInfo);
-        if (bright >= 0)
+        if (result.Before >= 0 && result.After >= 0)
         {
           writeLog(config, LogLevel.Info, $"电源计划已切换为“{switchedPlanName}”，并已确认生效。屏幕亮度：{result.Before}% → {result.After}%。当前{label}，电量{batteryPercent}%，{pwr}。", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
           if (result.After != result.Before)
@@ -258,7 +262,7 @@ internal sealed partial class GuardianIterationRunner(
         }
         else
         {
-          writeLog(config, LogLevel.Info, $"电源计划已切换为“{switchedPlanName}”，并已确认生效。无法读取屏幕亮度。", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
+          writeLog(config, LogLevel.Info, $"电源计划已切换为“{switchedPlanName}”，并已确认生效。无法确认切换后的屏幕亮度。", EventNameRegistry.PowerPlanSwitched, ActionProperties(expected, current, "verified"), null);
         }
         state.LastStatusLabel = label;
       }
@@ -477,38 +481,47 @@ internal sealed partial class GuardianIterationRunner(
     Func<bool> canMutate,
     CancellationToken cancellationToken)
   {
+    cancellationToken.ThrowIfCancellationRequested();
     if (!canMutate()) return (null, brightnessBefore, brightnessBefore);
     if (powerCfgBrightnessSupported && brightnessBefore >= 0)
-      (syncPlanBrightness ?? PowerCfgExecutor.SyncPlanBrightness)(target, brightnessBefore);
+    {
+      if (syncPlanBrightness is not null) syncPlanBrightness(target, brightnessBefore);
+      else await PowerCfgExecutor.SyncPlanBrightnessAsync(target, brightnessBefore, cancellationToken,
+        (operation, result) => ReportProcessResult(operation, result, 2000), canMutate);
+    }
 
+    cancellationToken.ThrowIfCancellationRequested();
     if (!canMutate()) return (null, brightnessBefore, brightnessBefore);
 
     Func<Guid, CancellationToken, Task<PowerPlanApplyResult>> applyOperation =
       applyPlan ?? ((targetGuid, token) => PowerCfgExecutor.ApplyAndVerifyAsync(
         targetGuid,
-        PowerCfgExecutor.RunPowerCfgAsync,
+        RunObservedPowerCfgAsync,
         Task.Delay,
         token));
     var apply = await applyOperation(target, cancellationToken);
     if (!apply.Succeeded)
-      return (apply, brightnessBefore, brightnessBefore);
+      return (apply, brightnessBefore, -1);
 
-    await Task.Delay(config.BrightnessRestoreMs, cancellationToken);
+    // Older files can contain arbitrary delays. This optional hardware settling
+    // wait must not turn -1 into infinity or hold a policy round for days.
+    var settleMs = Math.Clamp(config.BrightnessRestoreMs, 0, 2000);
+    if (settleMs != config.BrightnessRestoreMs)
+      SafeObserveNativeProbe(new("brightness-restore", "invalid-parameter", 0, 2000, true, null, 0, false));
+    await Task.Delay(settleMs, cancellationToken);
 
-    var after = brightnessBefore;
+    var after = -1;
     if (brightnessBefore >= 0 && canMutate())
       after = await brightness.RestoreWithRetryAsync(
         brightnessBefore,
         config.BrightnessRetryCount,
         config.BrightnessRetryDelayMs,
-        cancellationToken);
+        cancellationToken, canMutate);
 
     // 亮度等待/恢复也是外部计划竞争窗口。发布成功前只追加一次有界探测，
     // 不追加 setactive 或盲目重试；该观测仍不承诺与外部变更原子化。
     cancellationToken.ThrowIfCancellationRequested();
-    var finalProbe = readCurrentPlan is not null
-      ? readCurrentPlan()
-      : PowerCfgExecutor.ParseProbeResult(await PowerCfgExecutor.RunPowerCfgAsync("/getactivescheme", cancellationToken));
+    var finalProbe = await ReadCurrentPlanAsync(cancellationToken);
     var verified = finalProbe.Succeeded && finalProbe.ObservedGuid == target;
     return (new PowerPlanApplyResult(
       verified, target, finalProbe.ObservedGuid,
@@ -519,7 +532,9 @@ internal sealed partial class GuardianIterationRunner(
 
   private static NotificationEvent CreatePlanSwitchNotification(string planName, int brightness, int brightnessBefore)
   {
-    var body = brightnessBefore >= 0 && brightnessBefore != brightness
+    var body = brightness < 0
+      ? $"已切换至 [{planName}]；切换后的亮度尚未确认"
+      : brightnessBefore >= 0 && brightnessBefore != brightness
       ? $"已切换至 [{planName}] 亮度 {brightnessBefore}% -> {brightness}%"
       : $"已切换至 [{planName}] (亮度 {brightness}%)";
     return new NotificationEvent

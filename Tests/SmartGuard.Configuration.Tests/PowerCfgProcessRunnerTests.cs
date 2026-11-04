@@ -6,6 +6,114 @@ namespace SmartGuard.Configuration.Tests;
 public class PowerCfgProcessRunnerTests
 {
     [Fact]
+    public async Task RunProcess_releases_redirected_pipe_handles_without_waiting_for_gc()
+    {
+        // Warm the runtime/process path before measuring. Suppressing collections makes
+        // this exercise deterministic ownership rather than eventual finalizer cleanup.
+        for (var i = 0; i < 4; i++)
+            (await PowerCfgProcessRunner.RunProcessAsync("cmd.exe", "/c echo warm", TimeSpan.FromSeconds(5))).Succeeded.Should().BeTrue();
+
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        GC.TryStartNoGCRegion(128 * 1024 * 1024).Should().BeTrue();
+        try
+        {
+            current.Refresh();
+            var before = current.HandleCount;
+            for (var i = 0; i < 32; i++)
+                (await PowerCfgProcessRunner.RunProcessAsync("cmd.exe", "/c echo measured", TimeSpan.FromSeconds(5))).Succeeded.Should().BeTrue();
+            current.Refresh();
+            // Runtime process-wait registrations can retain roughly one handle per
+            // invocation until GC. Allow that overhead, but not the 64 pipe handles.
+            (current.HandleCount - before).Should().BeLessThan(48,
+                "each completed command must release both redirected pipe handles without a collection");
+        }
+        finally
+        {
+            GC.EndNoGCRegion();
+        }
+    }
+
+    [Fact]
+    public async Task RunProcess_pre_cancel_does_not_start()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var result = await PowerCfgProcessRunner.RunProcessAsync("cmd.exe", "/c echo forbidden", TimeSpan.FromSeconds(2), cancellation.Token);
+        result.Started.Should().BeFalse();
+        result.FailureKind.Should().Be("cancelled");
+    }
+
+    [Theory]
+    [InlineData("Out")]
+    [InlineData("Error")]
+    public async Task RunProcess_limits_each_output_stream(string stream)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe",
+            $"-NoProfile -Command \"[Console]::{stream}.Write(('x' * 100000)); Start-Sleep -Seconds 10\"", TimeSpan.FromSeconds(5));
+        result.Succeeded.Should().BeFalse();
+        result.StandardOutput.Length.Should().BeLessThanOrEqualTo(65536);
+        result.StandardError.Length.Should().BeLessThanOrEqualTo(65536);
+        result.FailureKind.Should().Be("output-limit");
+        result.TerminationConfirmed.Should().BeTrue();
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(4));
+    }
+
+    [Fact]
+    public async Task RunProcess_cancellation_is_bounded_and_confirmed()
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(600));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await PowerCfgProcessRunner.RunProcessAsync("cmd.exe", "/c ping localhost -n 20 > nul", TimeSpan.FromSeconds(10), cancellation.Token);
+        result.FailureKind.Should().Be("cancelled");
+        result.TerminationConfirmed.Should().BeTrue();
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task RunProcess_deadline_covers_descendant_held_pipes_and_reports_uncertain_cleanup()
+    {
+        var pidPath = Path.Combine(Path.GetTempPath(), $"smartguard-process-test-{Guid.NewGuid():N}.pid");
+        try
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe",
+                $"-NoProfile -Command \"$p = Start-Process powershell.exe -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 20' -NoNewWindow -PassThru; [IO.File]::WriteAllText('{pidPath}', [string]$p.Id);\"",
+                TimeSpan.FromSeconds(2));
+            result.Succeeded.Should().BeFalse();
+            result.FailureKind.Should().Be("cleanup-unconfirmed");
+            result.TerminationConfirmed.Should().BeFalse();
+            watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3));
+        }
+        finally
+        {
+            // This child deliberately outlives its parent. The fixture, not the runner, owns
+            // its explicit PID and must remove it even when an assertion fails.
+            if (File.Exists(pidPath))
+            {
+                var pid = int.Parse(File.ReadAllText(pidPath, System.Text.Encoding.UTF8));
+                try
+                {
+                    using var child = System.Diagnostics.Process.GetProcessById(pid);
+                    child.Kill(entireProcessTree: true);
+                    child.WaitForExit(1000).Should().BeTrue();
+                }
+                catch (ArgumentException) { }
+                File.Delete(pidPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunProcess_rejects_finite_oversize_output()
+    {
+        var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe",
+            "-NoProfile -Command \"[Console]::Out.Write(('x' * 100000))\"", TimeSpan.FromSeconds(5));
+        result.Succeeded.Should().BeFalse();
+        result.FailureKind.Should().Be("output-limit");
+    }
+
+    [Fact]
     public void RunProcess_reports_timeout_and_kills_child_when_wait_exceeds_timeout()
     {
         var result = PowerCfgProcessRunner.RunProcess(
