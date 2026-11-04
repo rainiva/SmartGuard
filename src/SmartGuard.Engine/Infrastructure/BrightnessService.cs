@@ -6,14 +6,29 @@ namespace SmartGuard.Engine.Infrastructure;
 
 public sealed class BrightnessService
 {
+  // A monitor provider can stall for minutes with the infinite WMI default,
+  // preventing the guardian from adopting configuration or sampling foreground.
+  // This bounds enumeration, not namespace connection or every COM operation.
+  private static readonly TimeSpan WmiTimeout = TimeSpan.FromMilliseconds(250);
+
+  private static ManagementObjectSearcher CreateQuery(string query)
+    => new(@"root\WMI", query, new System.Management.EnumerationOptions
+    {
+      ReturnImmediately = true,
+      Timeout = WmiTimeout,
+      Rewindable = false,
+    });
+
   public int GetBrightness()
   {
     try
     {
-      using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
-      foreach (var obj in searcher.Get().Cast<ManagementObject>())
+      using var searcher = CreateQuery("SELECT CurrentBrightness FROM WmiMonitorBrightness");
+      using var results = searcher.Get();
+      foreach (ManagementObject obj in results)
       {
-        return Convert.ToInt32(obj["CurrentBrightness"]);
+        using (obj)
+          return Convert.ToInt32(obj["CurrentBrightness"]);
       }
     }
     catch
@@ -28,9 +43,14 @@ public sealed class BrightnessService
     if (level < 0 || level > 100) return;
     try
     {
-      using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-      var method = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
-      method?.InvokeMethod("WmiSetBrightness", new object[] { (byte)1, (byte)level });
+      using var searcher = CreateQuery("SELECT * FROM WmiMonitorBrightnessMethods");
+      using var results = searcher.Get();
+      foreach (ManagementObject method in results)
+      {
+        using (method)
+          method.InvokeMethod("WmiSetBrightness", new object[] { (byte)1, (byte)level });
+        break;
+      }
     }
     catch
     {
