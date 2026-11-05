@@ -23,3 +23,7 @@
 - 本次安装后新跑194项，失败0、跳过0：`installed-acceptance-policy-probes.trx`114、`installed-acceptance-reload-observation.trx`21、`installed-acceptance-config-reload.trx`34、`installed-acceptance-settings-rules.trx`25。均保存于上述本地证据目录。配置改动/热重载、300/900秒边界、低电量、撤销资格、异常和恢复用隔离夹具验证，未写实际用户阈值。
 - 对应候选上一轮全量门禁为2026-11-04的`run-tests-20261104T143509492Z-e612e5123e65459ab616dfd6811fb435.summary.json`：Pester156、.NET2015、Tray Integration2、Installer Integration9，全部通过、退出0。本次仅安装和文档记录，不将旧门禁称为本次重新全量运行。
 - NOT RUN：真实空闲满5/15分钟的物理计划切换、实际低电量供电变化、实际Word窗口、实际亮度恢复、WMI提供程序自行恢复、长期/休眠/内核挂死组合。本机亮度WMI仍不可用；本次证据证明降级、记录和守护继续推进，不能证明硬件提供程序已修好。
+
+## 后续系统组件修复
+
+上述“亮度WMI仍不可用”是本次安装验收时的历史结果。2026-11-05 08:22完成WMIProv组件运行状态修复后，底层查询恢复，原Engine自行记录恢复事件并读回亮度。详见[底层亮度查询修复记录](2026-11-05-brightness-wmiprov-repair.md)，不将后续恢复倒填为早先已通过。
