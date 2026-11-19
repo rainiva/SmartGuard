@@ -330,7 +330,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
   public void EnableHeartbeat() => _config.HeartbeatIntervalMin = 10;
 
   public void FailPlanProbe(string diagnostic)
-    => FailPlanProbe(PowerPlanFailureKind.CommandFailed, diagnostic);
+    => FailPlanProbe(PowerPlanFailureKind.ApiFailed, diagnostic);
 
   public void FailPlanProbe(PowerPlanFailureKind kind, string? diagnostic = null)
     => _forcedProbeFailure = new PowerPlanProbeResult(

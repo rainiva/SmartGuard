@@ -562,7 +562,7 @@ internal sealed class GuardDecisionHarness : IDisposable
         => _forcedProbeFailure = new PowerPlanProbeResult(
             false,
             null,
-            PowerPlanFailureKind.CommandFailed,
+            PowerPlanFailureKind.ApiFailed,
             diagnostic);
 
     public void Advance(TimeSpan value) => _time.Advance(value);

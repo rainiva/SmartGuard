@@ -160,7 +160,7 @@ public sealed class GuardInterruptionLoggingTests : IDisposable
       _ => { }, false, new HeartbeatSchedule(clock), readIdleSeconds: () => 0,
       readBatteryInfo: _ => (90, true), readCurrentPlan: () => new(scenario != "probe",
         scenario == "probe" ? null : new PowerSchemeInfo(scenario == "failed" ? config.BalancedPlanGuid : config.ActivePlanGuid, null),
-        scenario == "probe" ? PowerPlanFailureKind.ParseFailed : PowerPlanFailureKind.None, "private diagnostic omitted"),
+        scenario == "probe" ? PowerPlanFailureKind.ApiFailed : PowerPlanFailureKind.None, "private diagnostic omitted"),
       applyPlan: (target, _) => { applies++; return Task.FromResult(new PowerPlanApplyResult(false, target, config.BalancedPlanGuid, PowerPlanFailureKind.VerificationMismatch, "private diagnostic omitted")); },
       timeProvider: clock, readForeground: () =>
       {

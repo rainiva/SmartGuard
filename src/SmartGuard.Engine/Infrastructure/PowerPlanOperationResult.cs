@@ -3,10 +3,7 @@ namespace SmartGuard.Engine.Infrastructure;
 internal enum PowerPlanFailureKind
 {
   None,
-  ProcessStartFailed,
   TimedOut,
-  CommandFailed,
-  ParseFailed,
   VerificationMismatch,
   ApiFailed,
   CallPending,

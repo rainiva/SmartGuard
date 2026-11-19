@@ -402,7 +402,7 @@ public class GuardStatusPublishingTests : IDisposable
         readBatteryInfo: _ => (80, true),
         readCurrentPlan: () => FailPlanProbe
           ? new PowerPlanProbeResult(
-              false, null, PowerPlanFailureKind.CommandFailed, "test probe failure")
+              false, null, PowerPlanFailureKind.ApiFailed, "test probe failure")
           : new PowerPlanProbeResult(
               true,
               new PowerSchemeInfo(PowerPlanCatalogProvider.HighPerformancePlanGuid, null),

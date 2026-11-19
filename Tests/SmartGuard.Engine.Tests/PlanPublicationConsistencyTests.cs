@@ -46,7 +46,7 @@ public class PlanPublicationConsistencyTests
         {
           reads++;
           return applied && scenario == 2
-            ? new(false, null, PowerPlanFailureKind.CommandFailed, "final probe unavailable")
+            ? new(false, null, PowerPlanFailureKind.ApiFailed, "final probe unavailable")
             : new(true, new PowerSchemeInfo(applied ? scenario == 0 ? high : saver : balanced, null), PowerPlanFailureKind.None, "");
         },
         applyPlan: (target, _) =>
