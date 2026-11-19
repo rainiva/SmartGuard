@@ -13,16 +13,94 @@ internal interface IPowrProfNative
   uint WriteValueIndex(Guid scheme, Guid subgroup, Guid setting, PowerSource source, uint value);
 }
 
-/// <summary>Scaffold only; the real P/Invoke implementation arrives with its live tests.</summary>
+/// <summary>The only place that imports power scheme functions from PowrProf.dll (PWR-INV-SCHEME-API).</summary>
 internal sealed class PowrProfNative : IPowrProfNative
 {
   internal static readonly PowrProfNative Instance = new();
-  private const uint NotImplemented = 1;
+  private const uint ErrorNoMoreItems = 259;
+  private const uint AccessScheme = 16;
+  private const uint MaxSchemes = 256;
 
-  public uint GetActiveScheme(out Guid scheme) { scheme = Guid.Empty; return NotImplemented; }
-  public uint SetActiveScheme(Guid scheme) => NotImplemented;
-  public uint ReadFriendlyName(Guid scheme, out string name) { name = string.Empty; return NotImplemented; }
-  public uint EnumerateSchemes(out Guid[] schemes) { schemes = []; return NotImplemented; }
-  public uint ReadValueIndex(Guid scheme, Guid subgroup, Guid setting, PowerSource source, out uint value) { value = 0; return NotImplemented; }
-  public uint WriteValueIndex(Guid scheme, Guid subgroup, Guid setting, PowerSource source, uint value) => NotImplemented;
+  public uint GetActiveScheme(out Guid scheme)
+  {
+    scheme = Guid.Empty;
+    var rc = PowerGetActiveScheme(IntPtr.Zero, out var pointer);
+    if (rc != 0) return rc;
+    try
+    {
+      scheme = System.Runtime.InteropServices.Marshal.PtrToStructure<Guid>(pointer);
+      return 0;
+    }
+    finally
+    {
+      LocalFree(pointer);
+    }
+  }
+
+  public uint SetActiveScheme(Guid scheme) => PowerSetActiveScheme(IntPtr.Zero, ref scheme);
+
+  public uint ReadFriendlyName(Guid scheme, out string name)
+  {
+    name = string.Empty;
+    uint size = 0;
+    var rc = PowerReadFriendlyName(IntPtr.Zero, ref scheme, IntPtr.Zero, IntPtr.Zero, null, ref size);
+    if (rc != 0) return rc;
+    var buffer = new byte[size];
+    rc = PowerReadFriendlyName(IntPtr.Zero, ref scheme, IntPtr.Zero, IntPtr.Zero, buffer, ref size);
+    if (rc != 0) return rc;
+    name = System.Text.Encoding.Unicode.GetString(buffer, 0, (int)Math.Min(size, (uint)buffer.Length)).TrimEnd('\0');
+    return 0;
+  }
+
+  public uint EnumerateSchemes(out Guid[] schemes)
+  {
+    var found = new List<Guid>();
+    schemes = [];
+    for (uint index = 0; index < MaxSchemes; index++)
+    {
+      var buffer = new byte[16];
+      var size = (uint)buffer.Length;
+      var rc = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, AccessScheme, index, buffer, ref size);
+      if (rc == ErrorNoMoreItems) break;
+      if (rc != 0) return rc;
+      found.Add(new Guid(buffer));
+    }
+    schemes = found.ToArray();
+    return 0;
+  }
+
+  public uint ReadValueIndex(Guid scheme, Guid subgroup, Guid setting, PowerSource source, out uint value)
+    => source == PowerSource.Ac
+      ? PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, out value)
+      : PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, out value);
+
+  public uint WriteValueIndex(Guid scheme, Guid subgroup, Guid setting, PowerSource source, uint value)
+    => source == PowerSource.Ac
+      ? PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, value)
+      : PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, value);
+
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerGetActiveScheme(IntPtr userRootPowerKey, out IntPtr activePolicyGuid);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerSetActiveScheme(IntPtr userRootPowerKey, ref Guid schemeGuid);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerReadFriendlyName(IntPtr rootPowerKey, ref Guid schemeGuid, IntPtr subGroupGuid,
+    IntPtr powerSettingGuid, byte[]? buffer, ref uint bufferSize);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerEnumerate(IntPtr rootPowerKey, IntPtr schemeGuid, IntPtr subGroupGuid,
+    uint accessFlags, uint index, byte[] buffer, ref uint bufferSize);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerReadACValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subGroupGuid,
+    ref Guid powerSettingGuid, out uint acValueIndex);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerReadDCValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subGroupGuid,
+    ref Guid powerSettingGuid, out uint dcValueIndex);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerWriteACValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subGroupGuid,
+    ref Guid powerSettingGuid, uint acValueIndex);
+  [System.Runtime.InteropServices.DllImport("powrprof.dll")]
+  private static extern uint PowerWriteDCValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid, ref Guid subGroupGuid,
+    ref Guid powerSettingGuid, uint dcValueIndex);
+  [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+  private static extern IntPtr LocalFree(IntPtr memory);
 }
