@@ -164,3 +164,79 @@
 - 电源模式滑块覆盖方案（此前现场出现过 `961cc777…`）下 API 与 powercfg 的读数是否一致：验收对照。
 - `PowerRead*ValueIndex` 对不存在设置项的错误码文档未载明：以本机实测为准写入测试。
 - 测试迁移量大：通过“迁移前后用例清单对照”防止覆盖丢失。
+
+## 第一阶段实施与验证记录（2026-11-19）
+
+实施依据 [2026-11-19-power-scheme-api-phase1-plan.md](2026-11-19-power-scheme-api-phase1-plan.md)（外部审查修订版）。提交 `a4515946`…`86dff5e7`，证据目录 `.work/power-scheme-api-phase1/`。
+
+**基线（Task 0）：** Configuration 474、Engine 406、Architecture 344，全部通过；骨架引入后计数不变。
+
+**RED/GREEN：**
+
+| 任务 | RED | GREEN |
+|------|-----|-------|
+| 1 执行器 | 12 例中 10 失败（保护性 2 例通过） | 12 通过；Configuration 全量 486 |
+| 2 原生层 | 4 失败、1 跳过 | 16 通过、1 跳过 |
+| 3 探测/切换/分类 | 先编译失败（缺成员），补骨架后 17 例全部因返回值失败 | 20 通过；Engine 全量 420 |
+| 4 Runner | 9 失败（保护性 2 例通过） | Engine 全量 425 |
+| 5 目录 | Configuration 4 失败（保护性 1 例通过）、Engine 5 失败 | Configuration 495+1 跳过、Engine 426、Architecture 344 |
+| 6 首次初始化 | 3 失败（保护性 1 例通过） | Engine 430 |
+| 7 删除 powercfg 并加门禁 | 门禁 1 失败 | Engine 427（删除 3 个解析用例）、Architecture 346 |
+| 8 契约 | 1 失败 | Architecture 347 |
+
+Task 4 与 Task 6 的 RED 前后，机器状态快照一致：当前方案为高性能，平衡方案亮度 AC/DC 索引 `0x1e`。这说明 RED 落入旧实现时没有写入本机。
+
+**成本基线（Task 2，`task2-baseline.txt`）：**
+
+| 操作 | p50 | p95 | max |
+|------|-----|-----|-----|
+| `PowerGetActiveScheme`（500 次） | 0.12ms | 0.27ms | 5.25ms |
+| 列举并读名（50 次） | 1153ms | 1578ms | 1647ms |
+| `powercfg /getactivescheme`（对照） | 26.97ms | — | — |
+| `powercfg /list`（对照） | 819ms | — | — |
+
+列举并读名比评估时测得的 0.6–0.8 秒慢，但仍在 5 秒总预算内。
+
+**全量测试：** `Run-Tests.ps1` 退出码 0，summary `run-tests-20261119T120825866Z-eae5be48beb54d6287cbeb4b842679f0.summary.json`。
+
+| 层 | 通过 | 失败 | 跳过 | 说明 |
+|----|------|------|------|------|
+| Pester | 156 | 0 | 0 | |
+| .NET | 2060 | 0 | 1 | 总计 2061；跳过的是 `Writes_land_on_a_temporary_duplicate_scheme_only`，需用户执行 |
+| Tray Integration | 2 | 0 | 0 | |
+| Installer Integration | 9 | 0 | 0 | |
+
+- summary 的 .NET `SkippedCount` 字段为 0，与输出中的 1 个跳过不符。这是汇总脚本的已有问题，只记录。
+- 全量运行按惯例排除 `Category=Live`（既有 `LiveCatalogProbeTests` 不运行）。新增 `PowerSchemeServiceLiveTests` 未打该标签，在全量中以只读方式运行。
+- 全量前后机器状态快照一致（`task9-machine-state.txt`）。
+
+**安装：**
+
+- 安装包 `SmartGuard-Setup-1.6.4-x64.exe`，SHA256 `AF3CB821AB59EAD26B07D017A8E7AC6680881CAF97AAA6BB0FD77DBCB31AB2C4`。
+- 原安装已备份至 `original-install`。
+- 安装后核对：
+  - Engine DLL `8232DA49…` 与候选一致
+  - Configuration DLL `FC3E9245…` 与候选一致
+  - 配置 SHA256 `AB173E29…` 未变
+  - Engine 与 Tray 运行在交互会话（8）
+
+**真实路径验收（安装后连续运行约 45 分钟）：**
+
+| 项 | 结果 |
+|----|------|
+| WPS 文字前台 | PASS。21:03 从“平衡”切到“高性能”，`PowerPlanSwitched` 并已确认生效；切换由 `PowerSetActiveScheme` 完成，提升权限下返回成功。先前一次进入前台时已是高性能，无需切换 |
+| 后台 180 秒观察期与返回检测 | PASS。20:53:37 进入观察期，20:56:42 结束；多次往返均正确恢复自动检测 |
+| 系统设置手动切换 | PASS。Engine 读到“平衡”，与用户操作一致；非名单程序期间只作为基线吸收 |
+| 电源模式滑块 | PASS。叠加方案 `961cc777…`（最佳能效）生效时，Engine 状态 `currentPlanGUID=381b4222…`（平衡），与 `powercfg /getactivescheme` 一致 |
+| 睡眠/唤醒 | PASS。21:02:34 挂起、21:02:39 恢复，恢复后立即读到当前计划。唤醒瞬间有两条“暂时无法识别当前程序”，来自前台识别，属已有行为 |
+| 无 powercfg 子进程 | PASS。多次检查 `Win32_Process` 中 `powercfg.exe` 均为空 |
+| 无旧分类、无电源服务告警 | PASS。日志无 `ProcessStartFailed`，无 `NativeProbeFailed` |
+| `plan-catalog` | PASS。启动首轮约 1 秒内完成并解析出计划名称，无告警 |
+| 首次初始化真实路径 | BLOCKED。生产启动入口自 `7be38e78` 起缺失，用户决定第一阶段不恢复 |
+| Task 2 写入测试（临时方案） | NOT RUN。需用户执行 |
+| 亮度设置项不存在时的错误码 | 未核实。本机支持该设置项，只覆盖“支持”分支；码 2 判定沿用文档推断，其他码按探测失败保守处理 |
+
+**实施偏离：**
+
+- 计划中 `cond ? (5, …) : (0, …)` 形式的元组三元表达式无法隐式转换为 `(uint, …)`（CS0266），实施时改为 `5u`/`0u`。由逐任务编译门禁发现。
+- Task 7 替换 5 个测试文件中的旧枚举名时使用了 `sed -i`，不符合“精确补丁”规则。事后核对字节、编码与换行均未变化，每个文件仅改 1 行。
