@@ -2036,7 +2036,8 @@ git commit -m "fix(engine): read, switch and sync power plans through the scheme
             await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, budget: TimeSpan.FromMilliseconds(350));
         });
         elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "the chain is bounded by the total budget, not by the scheme count");
-        catalog.Count.Should().BeInRange(1, listed.Length - 1);
+        // Only the upper bound is asserted: how many 100 ms reads finish within the budget depends on the test pool.
+        catalog.Count.Should().BeLessThan(listed.Length);
         statuses.Should().Contain(status => status.FailureKind == "timed-out");
         native.Calls.Count(call => call == "enumerate").Should().Be(2);
     }
@@ -2786,7 +2787,7 @@ git commit -m "docs(engine): record power scheme api phase one verification" -m 
   - Task 4 与 Task 9 用前后两次机器状态快照佐证本机未被改动。
 - **并行隔离：**
   - 替身执行器经 `AsyncLocal` 只作用于当前测试的异步流，门与健康事实不跨测试共享。
-  - 评审时逐个核对了 Engine.Tests 中构造 Runner/Loop 的 14 个测试类。除正在迁移的 `GuardianProbeHardeningTests` 夹具外，Runner 均注入了 `readCurrentPlan` 与 `applyPlan`；传入 `powerCfgBrightnessSupported: true` 的两处都注入了 `syncPlanBrightness`，其余都传 `false`；`GuardianLoop` 测试都传 `false`。`StructuredEngineLoggingTests` 与 `GuardRuleLoggingTests` 会经真实执行器只读加载目录，它们与替身测试不再共享门或替身。
+  - 评审时逐个核对了 Engine.Tests 中构造 Runner/Loop 的 14 个测试类。除正在迁移的 `GuardianProbeHardeningTests` 夹具外，Runner 均注入了 `readCurrentPlan` 与 `applyPlan`；传入 `powerCfgBrightnessSupported: true` 的两处都注入了 `syncPlanBrightness`，其余都传 `false`。`GuardianLoop` 测试都传 `false`，并且只经反射调用 `EnsureConfigExists`、`WriteLog`、`WriteConsumerBatch`、`TryPublishLogHealth`、`DrainGuardObservations`，不运行守护轮次，因此不会触发真实的计划切换。`StructuredEngineLoggingTests` 与 `GuardRuleLoggingTests` 会经真实执行器只读加载目录，它们与替身测试不再共享门或替身。
   - 剩余的进程级共享量只有 `PowerCfgProcessRunner` 覆盖，暴露面与现有 `GuardianProbeHardeningTests` 相同。Task 5 之后 Engine 目录不再经 powercfg，该暴露消失。
 - **执行器正确性：** 修订版执行器的代码已在隔离控制台程序中原样编译运行（证据见 Task 1 Step 4），同时复现了原方案的两个缺陷。
 - **类型一致：** 以下名称在各任务中一致：
