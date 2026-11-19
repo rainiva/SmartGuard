@@ -24,6 +24,9 @@ public class GuardianLoopArchitectureTests
 
     var loop = SourceScanHelper.ReadGuardianLoopSource();
     loop.Should().Contain("GuardianFirstRunInitializer");
+    // The startup entry was silently dropped once (7be38e78); the runner must read the loop-owned capability.
+    loop.Should().Contain("RunStartupInitialization(config);");
+    loop.Should().Contain("() => _powerCfgBrightnessSupported");
     loop.Should().Contain("GuardianExceptionStormHandler");
     loop.Should().NotContain("INIT: 开始首次初始化");
     // Assert exception-storm ownership rather than forbidding words that also

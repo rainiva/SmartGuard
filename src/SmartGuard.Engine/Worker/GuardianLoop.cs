@@ -109,6 +109,11 @@ public sealed partial class GuardianLoop
   public void Run(CancellationToken cancellationToken = default)
     => RunAsync(cancellationToken).GetAwaiter().GetResult();
 
+  // Single startup entry: probes the brightness capability the runner reads and performs the
+  // one-time first-run alignment when the marker is absent.
+  internal void RunStartupInitialization(GuardConfig config)
+    => _firstRunInitializer.InitializeIfNeeded(config, ref _powerCfgBrightnessSupported);
+
   public async Task RunAsync(CancellationToken cancellationToken = default)
   {
     _logPipeline.Start();
@@ -118,6 +123,8 @@ public sealed partial class GuardianLoop
       EnsureConfigExists();
       var config = LoadConfig();
       WriteLog(config, LogLevel.Info, "SmartGuard Engine 启动", EventNameRegistry.AppStarted);
+      // Before the guardian loop and before power notifications: no concurrent round exists yet.
+      RunStartupInitialization(config);
 
       using var powerListener = PowerEventWakeListener.Create(HandlePowerEvent);
       var powerFailureReported = !powerListener.IsEnabled;

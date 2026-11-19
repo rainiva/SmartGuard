@@ -33,3 +33,14 @@
    - Runner：能力委托在两轮之间由支持变为不支持后，第二轮不再写亮度设置项（保护性用例，重构后即通过，如实记录）。
 3. **GREEN：** 初始化器改为“先探测、再判断标记”；`GuardianLoop` 增加入口并在 `RunAsync` 中调用。
 4. **验证：** Engine、Architecture 全量；`Run-Tests.ps1`；契约“初始化标记”行补充能力语义。真实全新安装路径需卸载后重装，默认标 `NOT RUN`，除非用户另行执行。
+
+## 4. 实施记录（2026-11-19）
+
+- **重构** `4a497195`：Runner 参数改为 `Func<bool>`，调用点共 19 处（`GuardianLoop` 1 处，测试 18 处）。Engine 427、Architecture 348，计数不变。
+- **RED**（`firstrun-red-engine.trx`、`firstrun-red-arch.trx`）：
+  - 初始化器 2 例失败：标记存在时仍须探测；标记存在且探测失败时保持模式。
+  - `GuardianLoop` 启动入口 1 例失败（`RunStartupInitialization` 不存在）。
+  - 架构门禁 1 例失败（`RunAsync` 未调用入口）。
+- **GREEN**：Engine 430、Architecture 348。
+- **偏离：** 第 3 步中 Runner 层“能力委托切换”的保护性用例未编写。要让 Runner 进入亮度同步，必须有亮度读数（≥0）；切换成功后，Runner 会用真实 `BrightnessService` 经 WMI 恢复屏幕亮度，会改动本机。改由架构门禁断言 `GuardianLoop` 向 Runner 传入 `() => _powerCfgBrightnessSupported`，并由启动入口用例断言该字段被探测结果更新。
+- **真实路径：** 已有安装（存在标记）每次启动只读探测一次，可在下次安装后的日志中确认无“INIT:”写入日志。全新安装路径 `NOT RUN`。

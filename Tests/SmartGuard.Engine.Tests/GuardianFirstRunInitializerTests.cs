@@ -67,11 +67,35 @@ public sealed class GuardianFirstRunInitializerTests
       .Should().Be(1, "alignment stops at the first failed write");
   }
 
+  [Fact]
+  public void Capability_is_probed_read_only_on_every_start_even_after_the_marker_exists()
+  {
+    var native = new FakePowrProfNative { ReadValue = (_, _, _) => (2, 0) };
+    var supported = true;
+    WithInitializer(native, (initializer, cfg) => initializer.InitializeIfNeeded(cfg, ref supported).Should().BeFalse(),
+      markerExists: true);
+    supported.Should().BeFalse("the capability is a machine fact, not a one-time result behind the marker");
+    native.Calls.Should().ContainSingle(call => call.StartsWith("read-value", StringComparison.Ordinal));
+    Writes(native).Should().BeEmpty("alignment writes happen only once, before the marker exists");
+  }
+
+  [Fact]
+  public void Capability_probe_failure_after_the_marker_keeps_the_current_mode()
+  {
+    var native = new FakePowrProfNative { ReadValue = (_, _, _) => (5, 0) };
+    var supported = true;
+    var run = WithInitializer(native, (initializer, cfg) => initializer.InitializeIfNeeded(cfg, ref supported).Should().BeFalse(),
+      markerExists: true);
+    supported.Should().BeTrue();
+    run.Logs.Should().Contain(log => log.Contains("探测失败"));
+    Writes(native).Should().BeEmpty();
+  }
+
   private sealed record InitializerRun(GuardConfig Config, bool MarkerWritten, IReadOnlyList<string> Logs);
 
   private delegate void InitializerAction(GuardianFirstRunInitializer initializer, GuardConfig config);
 
-  private static InitializerRun WithInitializer(FakePowrProfNative native, InitializerAction run)
+  private static InitializerRun WithInitializer(FakePowrProfNative native, InitializerAction run, bool markerExists = false)
   {
     var root = Path.Combine(Path.GetTempPath(), "SmartGuardFirstRun_" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(root);
@@ -79,6 +103,7 @@ public sealed class GuardianFirstRunInitializerTests
     {
       var config = GuardConfig.CreateDefault(root);
       var marker = Path.Combine(root, "init");
+      if (markerExists) File.WriteAllText(marker, "2026-11-19T00:00:00");
       var logs = new List<string>();
       var brightness = new BrightnessService(new WmiProbeProcess((_, _, _, _) =>
         Task.FromResult(new PowerCfgCommandResult(true, false, 0, "SGWMI1|brightness|40", ""))));

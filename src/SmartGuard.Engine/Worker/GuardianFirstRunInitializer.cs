@@ -20,11 +20,12 @@ internal sealed class GuardianFirstRunInitializer
     _writeLog = writeLog;
   }
 
+  // The brightness capability is a machine fact probed read-only on every start; only the one-time
+  // alignment writes sit behind the marker. Returns true when the first-run alignment completed now.
   internal bool InitializeIfNeeded(GuardConfig config, ref bool powerCfgBrightnessSupported)
   {
-    if (File.Exists(_initMarkerPath)) return false;
-
-    _writeLog(config, LogLevel.Info, "INIT: 开始首次初始化...");
+    var firstRun = !File.Exists(_initMarkerPath);
+    if (firstRun) _writeLog(config, LogLevel.Info, "INIT: 开始首次初始化...");
     var (capability, probe) = PowerCfgExecutor.ProbeBrightnessCapability(config.BalancedPlanGuid);
     if (capability == BrightnessCapability.ProbeFailed)
     {
@@ -35,6 +36,7 @@ internal sealed class GuardianFirstRunInitializer
     }
 
     powerCfgBrightnessSupported = capability == BrightnessCapability.Supported;
+    if (!firstRun) return false;
     if (powerCfgBrightnessSupported)
     {
       var plans = new[] { config.ActivePlanGuid, config.BalancedPlanGuid, config.PowerSaverPlanGuid };
