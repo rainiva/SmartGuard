@@ -486,9 +486,9 @@ function Read-SmartGuardTrxResult {
             $counterValues.error +
             $counterValues.timeout +
             $counterValues.aborted
-        $failedResult.SkippedCount =
-            $counterValues.inconclusive +
-            $counterValues.notExecuted
+        # xUnit reports a skipped test only as total > executed (Counters.notExecuted stays 0);
+        # inconclusive and notExecuted remain failure classes below.
+        $failedResult.SkippedCount = [Math]::Max(0, $counterValues.total - $counterValues.executed)
         $failedResult.TotalCount = $counterValues.total
         $failedResult.ExecutedCount = $counterValues.executed
         $failedResult.ErrorCount = $counterValues.error

@@ -1546,6 +1546,29 @@ print(json.dumps(result))" $icon $officialDir
             }
         }
 
+        It 'xUnit skipped tests are counted as skipped from total minus executed' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'scripts\Invoke-SmartGuardDotNetTests.ps1')
+            $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-trx-skip-' + [guid]::NewGuid().ToString('N'))
+            $trxPath = Join-Path $tempDirectory 'skip.trx'
+            [void](New-Item -ItemType Directory -Path $tempDirectory)
+            try {
+                # xUnit reports a skipped test only as total > executed; Counters.notExecuted stays 0.
+                $trx = '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary outcome="Completed">' +
+                    '<Counters total="3" executed="2" passed="2" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" notExecuted="0" />' +
+                    '</ResultSummary></TestRun>'
+                [System.IO.File]::WriteAllText($trxPath, $trx, [System.Text.UTF8Encoding]::new($false))
+                $result = Read-SmartGuardTrxResult -Path $trxPath -ExitCode 0
+                $result.Result | Should -Be 'Passed'
+                $result.PassedCount | Should -Be 2
+                $result.SkippedCount | Should -Be 1
+                $result.TotalCount | Should -Be 3
+            }
+            finally {
+                Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'Run-Tests.ps1 fails the parent gate when the dotnet suite is not passed' {
             $root = Split-Path -Parent $PSScriptRoot
             $runTests = Get-Content -LiteralPath (Join-Path $root 'Run-Tests.ps1') -Raw -Encoding UTF8
