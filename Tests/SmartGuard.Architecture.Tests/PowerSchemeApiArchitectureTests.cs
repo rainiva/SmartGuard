@@ -33,4 +33,12 @@ public class PowerSchemeApiArchitectureTests
         source.Should().NotContain(function + "(", $"{file} imports a power scheme function outside PowrProfNative");
     }
   }
+
+  [Fact]
+  public void Contract_registers_the_scheme_api_invariant_and_owner()
+  {
+    var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
+    contract.Should().Contain("PWR-INV-SCHEME-API").And.Contain("`PowerSchemeService`");
+    contract.Should().NotContain("`powercfg /setactive`", "lifecycle gating now names the API call");
+  }
 }

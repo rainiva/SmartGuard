@@ -33,7 +33,8 @@
 
 - 每进程一个 `SemaphoreSlim(1,1)`。调用方以截止时间等待获取；获取成功后在线程池执行原生调用，并以同一截止时间等待其完成。
 - 截止前完成：返回结果并释放。
-- 超过截止：本次返回 `timed-out`；信号量由在途调用的完成延续释放，直到原生调用真正返回。
+- 超过截止：本次返回 `timed-out`。信号量由工作项释放：在原生函数返回后、结果对调用方可见前释放，调用方从不释放；尚未进入原生层的工作项，在调用方超时、取消或写准入被撤销时跳过原生调用并释放。
+- 写操作（`SetActive`、`WriteValueIndex`）在进入原生层前复核生命周期准入，撤销时返回 `not-admitted`。
 - 在途期间新调用获取失败：返回 `call-pending`，不调用原生层。
 - 截止时间：`EnumerateSchemes` 5 秒（实测 0.6–0.8 秒），其余 2 秒。
 - 资源上限：每进程至多一个被阻塞的线程池线程；无队列、无 Timer。
@@ -53,7 +54,7 @@
 
 **健康事实（只读）**：`IsCallInFlight`、`InFlightSince`（单调时间戳）、`LastSucceededAt`（单调时间戳）。供后续活性保障设计使用，本次不消费。
 
-**测试替身**：internal 静态 `NativeOverrideForTests`（替身原生层接口），可控制返回码、阻塞与时序，取代现有按命令行字符串模拟 powercfg 的 `RunOverrideForTests` / `RunAsyncOverrideForTests`。
+**测试替身**：`PowerSchemeService.UseExecutorForTests`（`AsyncLocal`）为当前测试的异步流替换为持有替身原生层的独立执行器，可控制返回码、阻塞与时序，门与健康事实不跨测试共享；取代现有按命令行字符串模拟 powercfg 的 `RunOverrideForTests` / `RunAsyncOverrideForTests`。测试程序集以 `[ModuleInitializer]` 关闭 `RealWritesAllowed`，真实写入在调用方抛出。
 
 ### 2.2 现有入口（职责不变，底层改调 Owner）
 
@@ -62,8 +63,8 @@
 | `PowerCfgExecutor.ProbeCurrentPlan` / Runner 计划读取 / 最终观测 | `GetActive`；名称由 `ReadName` 补充 | 一 |
 | `PowerCfgExecutor.ApplyAndVerifyAsync` | `SetActive`，随后 `GetActive` 验证，保持 0/250/750ms 至多三次 | 一 |
 | `SyncPlanBrightnessAsync`（切换前写目标方案） | `WriteValueIndex` AC、DC 各一次；文档规定对活动方案的修改需 `SetActive` 生效，切换紧随其后，语义一致 | 一 |
-| `GuardianFirstRunInitializer` | 能力探测改为 `ReadValueIndex(Balanced, VideoNormalLevel, AC)` 返回 0 即支持（只读）；关闭自适应亮度与亮度对齐用 `WriteValueIndex` | 一 |
-| Guardian 计划名称（`LoadPlanCatalogAsync`） | 对已配置方案与三个内置方案逐个 `ReadName`，不列举，去掉 2 秒目录预算 | 一 |
+| `GuardianFirstRunInitializer` | 能力探测改为 `ReadValueIndex(Balanced, VideoNormalLevel, AC)`（只读）：成功为支持，Win32 码 2 为不支持，其他失败为探测失败（保持模式、不写完成标记、下次启动重试）；关闭自适应亮度与亮度对齐用 `WriteValueIndex`，任一写入失败不写标记、不报“已对齐”。生产启动入口自 `7be38e78` 起缺失，第一阶段不恢复 | 一 |
+| Guardian 计划名称（`LoadPlanCatalogAsync`） | 启动时经 `PowerPlanCatalogProvider.TryLoadOnceAsync` 列举一次全部方案并读名称（保留自定义计划名称显示），补读隐藏的内置方案；列举与读名共享 5 秒总预算（取代旧的 2 秒目录预算），耗尽时返回部分目录并报告 `timed-out`；隐藏方案只忽略 Win32 2；结果缓存于 Guardian 状态 | 一 |
 | `PowerPlanCatalogProvider`（Settings 目录） | `EnumerateSchemes` + `ReadName`，再补隐藏的内置方案名称；对外签名与重试语义不变 | 二 |
 | Tray `PowerPlanActivator` | `SetActive`（带截止，修复当前无超时 `WaitForExit`） | 二 |
 
@@ -71,7 +72,7 @@
 
 ## 3. 失败语义与可观测性
 
-**`PowerPlanFailureKind`**：删除 `ProcessStartFailed`、`CommandFailed`、`ParseFailed`；新增 `ApiFailed`（携带 Win32 错误码）、`CallPending`；保留 `TimedOut`、`VerificationMismatch`。
+**`PowerPlanFailureKind`**：删除 `ProcessStartFailed`、`CommandFailed`、`ParseFailed`；新增 `ApiFailed`（携带 Win32 错误码）、`CallPending`、`NotAdmitted`（生命周期撤销写准入，不告警、不算恢复）；保留 `TimedOut`、`VerificationMismatch`。
 
 **告警文案**改为中文标签，例如：`电源计划探测失败，停止本轮切换：电源服务调用失败（错误码 5）`、`……：上次电源服务调用仍未返回，本轮未发起`、`……：电源服务调用超时（2000ms）`。不再输出枚举名。
 
@@ -91,7 +92,7 @@
 
 ## 4. 契约与门禁
 
-- 真源表新增：**电源方案操作 → `PowerSchemeService`**（唯一入口）；禁止项：生产代码启动 `powercfg.exe`、在 `PowrProfNative` 之外 P/Invoke `powrprof.dll`、API 失败回退外部进程。
+- 真源表新增：**电源方案操作 → `PowerSchemeService`**（唯一入口）；禁止项：生产代码启动 `powercfg.exe`、在 `PowrProfNative` 之外导入**电源方案**函数（`PowerRegisterSuspendResumeNotification` 等睡眠/唤醒注册不在此列）、API 失败回退外部进程。
 - 新增不变量 `PWR-INV-SCHEME-API`：电源方案操作经同一进程内的单飞执行器；超时调用返回前阻止新调用；恢复以在途调用返回为准，不以时间推断；不回退外部进程。
 - `PowerPlanCatalogProvider` 仍为计划目录唯一真源（M-04、S-05 保持成立），底层改为 Owner。
 - 门禁分阶段：第一阶段 Engine 源码不得出现 `powercfg`，Settings/Tray 为登记例外；第二阶段删除例外，`src` 全部不得出现 `powercfg`。
@@ -111,7 +112,7 @@
 
 **执行器（替身原生层，事件屏障固定时序）**：截止前成功；超时返回 `timed-out`；在途期间新调用立即 `call-pending` 且原生层未被调用；在途返回后下一调用恢复；任意时刻至多一个在途调用。
 
-**结果映射**：非 0 返回码映射 `ApiFailed` 并保留错误码；`GetActive` 分配的内存经 `LocalFree` 释放（替身记录释放次数）；名称缓冲按大小查询后读取。
+**结果映射**：非 0 返回码映射 `ApiFailed` 并保留错误码；`LocalFree` 位于真实原生层，由代码审查与真实 API 集成测试覆盖（替身层无法观察非托管释放）；名称缓冲按大小查询后读取。
 
 **Runner 行为迁移**：现有基于 powercfg 命令行替身的测试（集中在 `GuardianProbeHardeningTests`、`PowerPlanOperationTests`、`GuardianPowerLifecycleIntegrationTests` 等）迁到替身原生层，断言改为新分类，行为覆盖不减；迁移前后各跑一次并对照用例清单。
 
