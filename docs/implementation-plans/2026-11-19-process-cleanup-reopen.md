@@ -52,6 +52,28 @@
 - **成本：** 闩锁关闭期间，每次 WMI 探测前调用一次 `TryConfirm`（常数成本，不枚举进程）；保留对象 ≤1 句柄、≤2 读取任务。确认路径的 P50/P95/最大值以第 2 版第 10 节第 5 项实测为准。
 - **真实路径：** 真实触发清理未确认需要一个故意持有管道的后代进程，只能在自动化夹具中复现，真机验收标 `NOT RUN`。安装后只验收正常路径不回退：亮度读数正常，切换后亮度恢复正常，无 WMI 告警。
 
+### 3v.7 实施计划约束（2026-11-19 外部审查）
+
+新实施计划必须满足以下约束。
+
+1. **基线：**
+   - 旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已标为被替代，不得执行或仅改标题复用。
+   - 新计划在第二阶段完成后编写，以当时代码为基线。第二阶段会删除 `PowerCfgProcessRunner` 的 powercfg 包装，使 `RunProcess*` 只剩 WMI 调用方。
+2. **日志增量扩展，不回退第一阶段：**
+   - `WmiProbeObservation` 现有 9 个参数保持原位，第 9 个为 `int? Win32Error`。新增的 `CleanupEvidence`、`PendingCleanupEvidence` 只能追加在其后。
+   - `GuardianLoop.CreateNativeProbeEvent` 保留现有电源 API 分支（`schemeApi` 文案）与 `win32Error` 属性，只在非电源 API 分支中增量加入清理证据文案与两个属性。
+   - `NativeProbeLoggingTests` 中 `Scheme_api_wait_failures_do_not_mention_child_processes`、`Scheme_api_error_reports_its_win32_code` 必须保持通过，作为回归门。
+3. **拒绝事实独立记录：**
+   - 现状：`WmiProbeProcess.Run` 在 `_closed` 时只对**本操作已有失败记录**输出合并摘要；没有失败记录的操作（如亮度失败关闭闩锁后的首次电池请求）被静默拒绝；摘要报告的也是旧执行的事实。
+   - 新计划为“本次未启动、上次子进程清理未确认”单独产生 `cleanup-pending` 观测：
+     - `cleanupEvidence=not-started`，`pendingCleanupEvidence` 为持有对象的当前证据；
+     - 每个操作名首次被拒立即记录，之后按现有 60 秒节奏合并；
+     - 该观测**不得写入或延长**该操作的 30 秒失败冷却状态（`FailureState.FailedAt`），重开后按原冷却规则继续。
+   - 对应测试：亮度失败关闭闩锁后，首次电池请求产生一条 `cleanup-pending`；重复请求在 60 秒内只合并计数；重开后电池请求不受该观测影响。
+4. **确认成本覆盖两条路径：**
+   - 第 2 版第 10 节第 5 项只测已退出父进程。新计划分别测量“已退出、仅检查读取状态”与“未退出、执行一次 `Process.Kill()`”两条路径，各连续 200 次，记录 P50/P95/最大值。
+   - 两条路径单次最大值都须低于 50ms，否则不得声称确认路径为常数低成本。
+
 ---
 
 ## 第 2 版设计（历史）

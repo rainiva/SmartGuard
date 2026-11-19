@@ -2,7 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**状态：** 第 2 版（已按外部审查修订），待用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md)，审查处理见其第 11 节。
+> **已被替代，不得执行（2026-11-19）。** 本计划按第 2 版设计编写，覆盖已退役的 Guardian powercfg 闩锁（Task 5 等）。其日志改动还会回退第一阶段成果：
+> - `WmiProbeObservation` 第 9 参数 `Win32Error` 被替换为字符串证据；
+> - `CreateNativeProbeEvent` 被整段替换，删除电源 API 分支与 `win32Error` 属性。
+>
+> 第三阶段以[设计第 3 版](2026-11-19-process-cleanup-reopen.md)为准，待第二阶段完成后基于当时代码另出实施计划。本文件仅作历史参考。
+
+**状态（历史）：** 第 2 版（已按外部审查修订）。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md)，审查处理见其第 11 节。
 
 **Goal:** 子进程清理未确认后，powercfg 与 WMI 探测的启动资格只在同一子进程被证实退出、且两路管道读到 EOF 后自动重开，不再因一次误判永久停工。
 
