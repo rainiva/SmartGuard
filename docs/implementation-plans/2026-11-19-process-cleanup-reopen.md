@@ -1,6 +1,60 @@
 # 子进程清理闩锁可证实重开 — 设计
 
-日期：2026-11-19　状态：设计第 2 版（已按外部审查修订）；**暂缓**——powercfg 部分由[电源 API 迁移](2026-11-19-power-scheme-api-migration.md)取代，迁移第三阶段将本设计收缩为仅覆盖 WMI 子进程后再实施
+日期：2026-11-19　状态：**设计第 3 版（范围收缩为仅 WMI 子进程，即电源 API 迁移第三阶段），待外部审查与用户批准后另出实施计划。** 第 2 版正文保留在“第 2 版设计（历史）”之后，凡与第 3 版冲突处以第 3 版为准。
+
+## 第 3 版：范围收缩到 WMI 子进程（2026-11-19）
+
+### 3v.1 迁移后的事实
+
+| 第 2 版中的对象 | 迁移后现状 | 第 3 版处理 |
+|-----------------|------------|-------------|
+| `GuardianIterationRunner._processExecutionClosed`（powercfg 闩锁，事故主因） | 第一阶段 `64d42228` 已删除；计划读取、切换、亮度同步、目录均经 `PowerSchemeService`，无子进程 | 移出范围 |
+| Guardian 目录加载的 powercfg 路径与预算改写 | 第一阶段 `e52d1e8f` 已改走电源 API | 移出范围 |
+| `PowerPlanFailureKind.ProcessCleanupPending` 及 `ParseProbeResult`/`MapFailureKind` 映射 | 解析器已删除（`e37ee958`） | 移出范围 |
+| `GuardianFirstRunInitializer` 同步 powercfg 调用 | 已改走电源 API（`b58c6147`、`8311b1e5`） | 移出范围 |
+| Settings 目录 powercfg 调用（第 2 版“范围外缺口”） | 第二阶段计划删除 | 移出范围，缺口随之消失 |
+| `PowerCfgProcessRunner.RunProcessCoreAsync` 的 `orphanedPipes` 预先快照（疑似误判子条件） | **仍存在**（`PowerCfgProcessRunner.cs:138`），WMI 探测经同一运行器 | **保留**：第 2 版 3.1–3.3 |
+| `WmiProbeProcess._closed` 永久闩锁 | **仍存在**；一次清理未确认后，本 Engine 生命周期内亮度读取、亮度写入、电池补充探测全部被拒，亮度读数恒为 -1，切换后的亮度恢复因此停止 | **保留**：第 2 版 3.4–3.5 的 WMI 部分 |
+
+### 3v.2 第 3 版目标
+
+1. WMI 子进程清理未确认后，`WmiProbeProcess` 仍不启动新的 WMI 子进程（保留“不确定子进程不累积兄弟进程”）。
+2. 持有该未证实子进程；仅当它被证实已退出、且两路管道读到 EOF 时重开，并以 `process-cleanup` 单独记录恢复。
+3. 运行器的清理判定改为第 2 版 3.1–3.3：以 EOF 为证据，在 250ms 收尾等待之后判定，删除 `orphanedPipes` 预先快照，收尾期间不取消读取。
+4. 日志区分本次执行（`cleanupEvidence`）与持有对象（`pendingCleanupEvidence`）。
+
+### 3v.3 保留、删减与改动
+
+- **保留：** 第 2 版 3.1（证明定义）、3.2（读取任务独立令牌、超限后丢弃读到 EOF）、3.3（判定与移交、`retainUnconfirmed`、`AfterTerminationRequestForTests` 钩子）、3.4（`UnconfirmedChild`，去掉只为 Guardian 服务的部分）、3.5 中 `WmiProbeProcess` 一段、第 4 节观测（拒绝文案改为“上次 WMI 子进程清理尚未确认……”）、第 5 节失败路径中与 WMI 相关的行、第 6 节成本中 WMI 一行。
+- **删减：**
+  - 3.5 中 `GuardianIterationRunner` 一段整体删除。
+  - 3.6 表只剩两行：`WmiProbeProcess`（保留，持有方 `_pending`），以及运行器的其他调用方。后者在第二阶段后应为空，以全仓 grep 核实，非空则登记为“立即释放”。
+  - 3.7 的映射删除。
+  - 全局保留对象上限由“≤2 个句柄、≤4 个读取任务”改为“≤1 个句柄、≤2 个读取任务”。
+- **改动：**
+  - `UnconfirmedChild.FromExecution`（WMI 执行器未在 2.5 秒兜底内返回）保留。
+  - `WmiProbeProcess` 的业务取消路径现有 500ms 证书宽限保留：宽限内拿到 `PendingCleanup` 则移交，否则 `FromExecution`。
+- **不变：** 预算（2 秒 + 500ms 兜底）、30 秒失败冷却、60 秒合并摘要、三项固定操作名、`_busy` 单飞、Owner 锁不跨进程操作。
+
+### 3v.4 不变量与契约
+
+- 登记 `PWR-INV-CLEANUP-REOPEN`，限定为 WMI 子进程：重开只依据同一子进程“已退出且两路管道读到 EOF”的证据，不以时间、读取取消或其他操作的成功推断；只有 `WmiProbeProcess` 可以保留未证实子进程，且至多一个。
+- 架构门禁：`WmiProbeProcess` 中不得出现裸布尔闩锁 `_closed`；`retainUnconfirmed: true` 只允许出现在 `WmiProbeProcess.cs`。
+
+### 3v.5 测试（RED 必须因行为缺口失败）
+
+第 2 版第 10 节中，第 1–5 项（Configuration，真实子进程）、第 9 项（`WmiProbeProcess`）、第 10 项（日志与门禁）保留；第 6–8 项（Guardian powercfg 映射、重开、亮度同步与目录改写）删除。
+
+另增一项 Engine 用例：WMI 闩锁关闭后，亮度读取被拒并返回 -1；证明完成后的下一次读取重新启动子进程，并恢复真实读数。这一项锁定本版要修的用户可见后果。
+
+### 3v.6 成本与验收
+
+- **成本：** 闩锁关闭期间，每次 WMI 探测前调用一次 `TryConfirm`（常数成本，不枚举进程）；保留对象 ≤1 句柄、≤2 读取任务。确认路径的 P50/P95/最大值以第 2 版第 10 节第 5 项实测为准。
+- **真实路径：** 真实触发清理未确认需要一个故意持有管道的后代进程，只能在自动化夹具中复现，真机验收标 `NOT RUN`。安装后只验收正常路径不回退：亮度读数正常，切换后亮度恢复正常，无 WMI 告警。
+
+---
+
+## 第 2 版设计（历史）
 
 ## 1. 背景与根因
 
