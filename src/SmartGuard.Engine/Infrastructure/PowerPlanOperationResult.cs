@@ -30,3 +30,10 @@ internal readonly record struct PowerPlanApplyResult(
   PowerPlanFailureKind FailureKind,
   string Diagnostic,
   int? Win32Error = null);
+
+internal enum BrightnessCapability
+{
+  Supported,
+  Unsupported,
+  ProbeFailed,
+}

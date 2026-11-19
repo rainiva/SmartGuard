@@ -126,21 +126,41 @@ public static partial class PowerCfgExecutor
     CancellationToken cancellationToken)
     => PowerCfgProcessRunner.RunPowerCfgAsync(arguments, cancellationToken);
 
-  public static bool IsBrightnessSupported(Guid probePlanGuid)
+  private static readonly PowerSource[] BothSources = [PowerSource.Ac, PowerSource.Dc];
+
+  // Read-only capability probe: never writes a trial value. Only a confirmed absence (Win32 2) means
+  // "unsupported"; any other failure is unknown and must not switch the guardian to WMI-only mode.
+  internal static (BrightnessCapability Capability, PowerSchemeStatus Status) ProbeBrightnessCapability(Guid probePlanGuid)
   {
-    var result = PowerCfgProcessRunner.RunPowerCfg(
-      $"/setacvalueindex {probePlanGuid:D} SUB_VIDEO VIDEONORMALLEVEL 50");
-    return result.Succeeded && !ContainsPowerCfgError(result.CombinedOutput);
+    var read = PowerSchemeService.ReadValueIndexAsync(probePlanGuid, PowerSchemeSetting.VideoNormalLevel, PowerSource.Ac)
+      .GetAwaiter().GetResult();
+    var capability = read.Succeeded ? BrightnessCapability.Supported
+      : read.Status is { FailureKind: "api-error", Win32Error: 2 } ? BrightnessCapability.Unsupported
+      : BrightnessCapability.ProbeFailed;
+    return (capability, read.Status);
   }
 
-  public static void SyncPlanBrightness(Guid planGuid, int brightness)
+  // Both return the first failed write, or a success status when every write succeeded.
+  internal static PowerSchemeStatus SyncPlanBrightness(Guid planGuid, int brightness)
+    => brightness is < 0 or > 100
+      ? new PowerSchemeStatus("invalid-parameter", null, 0)
+      : WriteBothSources(planGuid, PowerSchemeSetting.VideoNormalLevel, (uint)brightness);
+
+  internal static PowerSchemeStatus DisableAdaptiveBrightness(Guid planGuid)
+    => WriteBothSources(planGuid, PowerSchemeSetting.AdaptiveBrightness, 0);
+
+  private static PowerSchemeStatus WriteBothSources(Guid planGuid, PowerSchemeSetting setting, uint value)
   {
-    if (brightness < 0 || brightness > 100) return;
-    PowerCfgProcessRunner.RunPowerCfg(
-      $"/setacvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
-    PowerCfgProcessRunner.RunPowerCfg(
-      $"/setdcvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
+    foreach (var source in BothSources)
+    {
+      var write = PowerSchemeService.WriteValueIndexAsync(planGuid, setting, source, value).GetAwaiter().GetResult();
+      if (!write.Succeeded) return write.Status;
+    }
+    return new PowerSchemeStatus("none", null, 0);
   }
+
+  internal static string DescribeSchemeFailure(PowerSchemeStatus status)
+    => DescribeFailure(MapFailureKind(status), status.Win32Error);
 
   // Optional synchronization before switching: the target scheme takes effect with SetActive.
   internal static async Task SyncPlanBrightnessAsync(Guid planGuid, int brightness,
@@ -161,11 +181,6 @@ public static partial class PowerCfgExecutor
     }
   }
 
-  public static void DisableAdaptiveBrightness(Guid planGuid)
-  {
-    PowerCfgProcessRunner.RunPowerCfg($"/setacvalueindex {planGuid:D} SUB_VIDEO ADAPTBRIGHT 0");
-    PowerCfgProcessRunner.RunPowerCfg($"/setdcvalueindex {planGuid:D} SUB_VIDEO ADAPTBRIGHT 0");
-  }
 
   private static PowerPlanProbeResult FailedProbe(PowerPlanFailureKind kind, string diagnostic)
     => new(false, null, kind, diagnostic);
