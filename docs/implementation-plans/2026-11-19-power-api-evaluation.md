@@ -1,6 +1,6 @@
 # 以 Windows 电源 API 替代 powercfg 的评估
 
-日期：2026-11-19　性质：评估（spike），未修改生产代码　关联：[子进程清理闩锁设计](2026-11-19-process-cleanup-reopen.md)
+日期：2026-11-19　性质：评估（spike），未修改生产代码　关联：[子进程清理闩锁设计](2026-11-19-process-cleanup-reopen.md)　后续：[迁移设计](2026-11-19-power-scheme-api-migration.md)
 
 ## 1. 结论
 
