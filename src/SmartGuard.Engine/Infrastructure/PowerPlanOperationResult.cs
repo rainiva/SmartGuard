@@ -8,13 +8,17 @@ internal enum PowerPlanFailureKind
   CommandFailed,
   ParseFailed,
   VerificationMismatch,
+  ApiFailed,
+  CallPending,
+  NotAdmitted,
 }
 
 internal readonly record struct PowerPlanProbeResult(
   bool Succeeded,
   PowerSchemeInfo? Plan,
   PowerPlanFailureKind FailureKind,
-  string Diagnostic)
+  string Diagnostic,
+  int? Win32Error = null)
 {
   public Guid? ObservedGuid => Plan?.Guid;
 }
@@ -24,4 +28,5 @@ internal readonly record struct PowerPlanApplyResult(
   Guid TargetGuid,
   Guid? ObservedGuid,
   PowerPlanFailureKind FailureKind,
-  string Diagnostic);
+  string Diagnostic,
+  int? Win32Error = null);
