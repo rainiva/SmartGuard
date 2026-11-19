@@ -229,7 +229,7 @@ Task 4 与 Task 6 的 RED 前后，机器状态快照一致：当前方案为高
 | 系统设置手动切换 | PASS。Engine 读到“平衡”，与用户操作一致；非名单程序期间只作为基线吸收 |
 | 电源模式滑块 | PASS。叠加方案 `961cc777…`（最佳能效）生效时，Engine 状态 `currentPlanGUID=381b4222…`（平衡），与 `powercfg /getactivescheme` 一致 |
 | 睡眠/唤醒 | PASS。21:02:34 挂起、21:02:39 恢复，恢复后立即读到当前计划。唤醒瞬间有两条“暂时无法识别当前程序”，来自前台识别，属已有行为 |
-| 无 powercfg 子进程 | PASS。多次检查 `Win32_Process` 中 `powercfg.exe` 均为空 |
+| 无 powercfg 子进程 | PASS（采样证据）。多次检查 `Win32_Process` 中 `powercfg.exe` 均为空。采样只能证明检查时刻不存在，不能排除短命启动。Engine 不启动 powercfg 的主证据是架构门禁 `Engine_never_starts_powercfg`。第二阶段起，验收改用 `Win32_ProcessStartTrace` 启动监视并做阳性对照 |
 | 无旧分类、无电源服务告警 | PASS。日志无 `ProcessStartFailed`，无 `NativeProbeFailed` |
 | `plan-catalog` | PASS。启动首轮约 1 秒内完成并解析出计划名称，无告警 |
 | 首次初始化真实路径 | BLOCKED（第一阶段内）。生产启动入口自 `7be38e78` 起缺失，用户当时决定不恢复。之后用户改为恢复，并选择“探测与对齐拆开”：见[首次初始化：能力探测与一次性对齐拆分](2026-11-19-first-run-capability-split.md)，`8311b1e5`。全新安装路径仍 `NOT RUN` |
