@@ -197,4 +197,64 @@ public static partial class PowerCfgExecutor
 
   [GeneratedRegex(@"GUID:\s+([0-9a-fA-F-]{36})\s+\(([^)]+)\)", RegexOptions.IgnoreCase)]
   private static partial Regex PowerSchemeListPattern();
+
+  // Guardian probe through PowerSchemeService (PWR-INV-SCHEME-API). A missing name is presentation only.
+  internal static async Task<PowerPlanProbeResult> ProbeCurrentPlanAsync(CancellationToken cancellationToken,
+    Action<PowerSchemeStatus>? observe = null)
+  {
+    var active = await PowerSchemeService.GetActiveAsync(cancellationToken).ConfigureAwait(false);
+    observe?.Invoke(active.Status);
+    if (!active.Succeeded)
+      return new PowerPlanProbeResult(false, null, MapFailureKind(active.Status), active.Status.FailureKind, active.Status.Win32Error);
+    var name = await PowerSchemeService.ReadNameAsync(active.Value, cancellationToken).ConfigureAwait(false);
+    return new PowerPlanProbeResult(true, new PowerSchemeInfo(active.Value, name.Succeeded ? name.Value : null),
+      PowerPlanFailureKind.None, string.Empty);
+  }
+
+  internal static async Task<PowerPlanApplyResult> ApplyAndVerifyAsync(
+    Guid targetGuid,
+    Func<Guid, CancellationToken, Task<PowerSchemeResult<bool>>> setActive,
+    Func<CancellationToken, Task<PowerSchemeResult<Guid>>> getActive,
+    Func<TimeSpan, CancellationToken, Task> delayAsync,
+    CancellationToken cancellationToken)
+  {
+    var set = await setActive(targetGuid, cancellationToken).ConfigureAwait(false);
+    if (!set.Succeeded)
+      return new PowerPlanApplyResult(false, targetGuid, null, MapFailureKind(set.Status), set.Status.FailureKind, set.Status.Win32Error);
+
+    Guid? observedGuid = null;
+    var delays = new[] { TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(750) };
+    for (var attempt = 0; attempt < 3; attempt++)
+    {
+      if (attempt > 0)
+        await delayAsync(delays[attempt - 1], cancellationToken).ConfigureAwait(false);
+      var probe = await getActive(cancellationToken).ConfigureAwait(false);
+      if (!probe.Succeeded)
+        return new PowerPlanApplyResult(false, targetGuid, null, MapFailureKind(probe.Status), probe.Status.FailureKind, probe.Status.Win32Error);
+      observedGuid = probe.Value;
+      if (observedGuid == targetGuid)
+        return new PowerPlanApplyResult(true, targetGuid, observedGuid, PowerPlanFailureKind.None, string.Empty);
+    }
+
+    return new PowerPlanApplyResult(false, targetGuid, observedGuid, PowerPlanFailureKind.VerificationMismatch,
+      $"Active scheme did not converge to {targetGuid:D}.");
+  }
+
+  internal static PowerPlanFailureKind MapFailureKind(PowerSchemeStatus status) => status.FailureKind switch
+  {
+    "call-pending" => PowerPlanFailureKind.CallPending,
+    "timed-out" => PowerPlanFailureKind.TimedOut,
+    "not-admitted" => PowerPlanFailureKind.NotAdmitted,
+    _ => PowerPlanFailureKind.ApiFailed,
+  };
+
+  internal static string DescribeFailure(PowerPlanFailureKind kind, int? win32Error) => kind switch
+  {
+    PowerPlanFailureKind.ApiFailed => win32Error is int code ? $"电源服务调用失败（错误码 {code}）" : "电源服务调用失败",
+    PowerPlanFailureKind.CallPending => "上次电源服务调用仍未返回，本轮未发起",
+    PowerPlanFailureKind.TimedOut => "电源服务调用超时",
+    PowerPlanFailureKind.VerificationMismatch => "切换后读回的计划不一致",
+    PowerPlanFailureKind.NotAdmitted => "电源状态已变化，本次未执行",
+    _ => kind.ToString(),
+  };
 }
