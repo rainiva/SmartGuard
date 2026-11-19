@@ -50,4 +50,22 @@ public class NativeProbeLoggingTests
     record.Message.Should().Contain("命令执行").And.NotContain("电源计划已切换");
     record.Properties!["recoveryScope"].GetString().Should().Be("command-execution");
   }
+
+  [Theory]
+  [InlineData("plan-read", "timed-out")]
+  [InlineData("plan-apply", "call-pending")]
+  [InlineData("plan-brightness-dc", "timed-out")]
+  public void Scheme_api_wait_failures_do_not_mention_child_processes(string operation, string kind)
+  {
+    var record = GuardianLoop.CreateNativeProbeEvent(new(operation, kind, 2000, 2000, true, null, 0, false));
+    record.Message.Should().Contain("电源服务调用仍在进行，期间不发起新调用，返回后自动恢复").And.NotContain("子进程");
+  }
+
+  [Fact]
+  public void Scheme_api_error_reports_its_win32_code()
+  {
+    var record = GuardianLoop.CreateNativeProbeEvent(new("plan-brightness-ac", "api-error", 1, 2000, true, null, 0, false, 5));
+    record.Properties!["win32Error"].GetInt32().Should().Be(5);
+    record.Message.Should().Contain("电源服务返回错误码 5").And.NotContain("子进程");
+  }
 }

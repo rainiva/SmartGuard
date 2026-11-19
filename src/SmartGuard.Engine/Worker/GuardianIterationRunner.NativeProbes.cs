@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SmartGuard.Configuration;
 using SmartGuard.Engine.Domain;
 using SmartGuard.Engine.Infrastructure;
@@ -9,7 +10,6 @@ internal sealed partial class GuardianIterationRunner
   // Only fixed operation names below enter this bounded, main-round-owned map.
   // It stores aggregate failure evidence, never configuration or process facts.
   private readonly Dictionary<string, (string Kind, long Count, long At)> _processFailures = new();
-  private bool _processExecutionClosed;
   private PowerPlanFailureKind? _lastPlanProbeFailure;
   private long _lastPlanProbeWarningAt, _suppressedPlanProbeWarnings;
 
@@ -23,13 +23,15 @@ internal sealed partial class GuardianIterationRunner
       _suppressedPlanProbeWarnings++;
       return;
     }
+    var properties = new Dictionary<string, JsonElement>
+    {
+      ["failureKind"] = JsonSerializer.SerializeToElement(probe.FailureKind.ToString()),
+      ["suppressedCount"] = JsonSerializer.SerializeToElement(_suppressedPlanProbeWarnings),
+    };
+    if (probe.Win32Error is int code) properties["win32Error"] = JsonSerializer.SerializeToElement(code);
     var result = writeLog(config, LogLevel.Warn,
-      $"电源计划探测失败，停止本轮切换：{probe.FailureKind}；合并省略 {_suppressedPlanProbeWarnings} 次同类异常。",
-      EventNameRegistry.PowerPlanProbeFailed, new Dictionary<string, System.Text.Json.JsonElement>
-      {
-        ["failureKind"] = System.Text.Json.JsonSerializer.SerializeToElement(probe.FailureKind.ToString()),
-        ["suppressedCount"] = System.Text.Json.JsonSerializer.SerializeToElement(_suppressedPlanProbeWarnings),
-      }, null);
+      $"电源计划探测失败，停止本轮切换：{PowerCfgExecutor.DescribeFailure(probe.FailureKind, probe.Win32Error)}；合并省略 {_suppressedPlanProbeWarnings} 次同类异常。",
+      EventNameRegistry.PowerPlanProbeFailed, properties, null);
     if (result.IsAccepted() || result == GuardianLogWriteResult.SuppressedByLevel)
     {
       _lastPlanProbeFailure = probe.FailureKind;
@@ -58,28 +60,55 @@ internal sealed partial class GuardianIterationRunner
   {
     token.ThrowIfCancellationRequested();
     var value = readCurrentPlan is not null ? readCurrentPlan()
-      : PowerCfgExecutor.ParseProbeResult(await RunObservedPowerCfgAsync("/getactivescheme", token));
+      : await PowerCfgExecutor.ProbeCurrentPlanAsync(token, status => ReportSchemeStatus("plan-read", status));
     token.ThrowIfCancellationRequested();
     return value;
   }
 
-  private async Task<PowerCfgCommandResult> RunObservedPowerCfgAsync(string arguments, CancellationToken token)
+  // admit is re-evaluated by the executor right before the native call: lifecycle revocation is a
+  // predicate, not a cancellation, so the caller's own earlier check is not enough.
+  private async Task<PowerSchemeResult<bool>> SetActiveObservedAsync(Guid target, Func<bool> admit, CancellationToken token)
   {
-    token.ThrowIfCancellationRequested();
-    var result = _processExecutionClosed
-      ? new PowerCfgCommandResult(false, false, null, "", "Process cleanup remains unconfirmed.")
-        { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false }
-      : await PowerCfgExecutor.RunPowerCfgAsync(arguments, token);
-    var diagnostic = result.Succeeded && arguments == "/getactivescheme" && !PowerCfgExecutor.ParseProbeResult(result).Succeeded
-      ? result with { FailureKind = "invalid-reply" } : result;
-    ReportProcessResult(arguments.StartsWith("/setactive", StringComparison.Ordinal) ? "plan-apply" : "plan-read", diagnostic, 5000);
-    token.ThrowIfCancellationRequested();
+    var result = await PowerSchemeService.SetActiveAsync(target, admit, token);
+    ReportSchemeStatus("plan-apply", result.Status);
     return result;
   }
 
+  private async Task<PowerSchemeResult<Guid>> GetActiveObservedAsync(CancellationToken token)
+  {
+    var result = await PowerSchemeService.GetActiveAsync(token);
+    ReportSchemeStatus("plan-read", result.Status);
+    return result;
+  }
+
+  // A scheme API call leaves no child process behind, so TerminationConfirmed is always true here.
+  private void ReportSchemeStatus(string operation, PowerSchemeStatus status)
+  {
+    // A lifecycle refusal is neither a failure nor evidence of recovery.
+    if (observeNativeProbe is null || status.FailureKind == "not-admitted") return;
+    var budgetMs = (long)(operation == "plan-catalog"
+      ? PowerSchemeService.EnumerateDeadline : PowerSchemeService.DefaultDeadline).TotalMilliseconds;
+    var time = timeProvider ?? TimeProvider.System;
+    var now = time.GetTimestamp();
+    var hadFailure = _processFailures.TryGetValue(operation, out var previous);
+    if (status.Succeeded)
+    {
+      if (!hadFailure) return;
+      _processFailures.Remove(operation);
+      SafeObserveNativeProbe(new(operation, "none", status.ElapsedMilliseconds, budgetMs, true, null, previous.Count, true));
+      return;
+    }
+    var kind = status.FailureKind;
+    var count = hadFailure ? previous.Count + 1 : 1;
+    var emit = !hadFailure || previous.Kind != kind || time.GetElapsedTime(previous.At, now) >= TimeSpan.FromMinutes(1);
+    _processFailures[operation] = (kind, emit ? 0 : count, emit ? now : previous.At);
+    if (emit) SafeObserveNativeProbe(new(operation, kind, status.ElapsedMilliseconds, budgetMs,
+      true, null, count - 1, false, status.Win32Error));
+  }
+
+  // Catalog still runs through the process runner until Task 5 moves it to the scheme service.
   private void ReportProcessResult(string operation, PowerCfgCommandResult result, long budgetMs)
   {
-    _processExecutionClosed |= !result.TerminationConfirmed;
     if (observeNativeProbe is null) return;
     var time = timeProvider ?? TimeProvider.System;
     var now = time.GetTimestamp();
@@ -106,8 +135,8 @@ internal sealed partial class GuardianIterationRunner
     try { observeNativeProbe?.Invoke(observation); }
     catch
     {
-      // Diagnostics are optional; the probe result and cleanup latch remain
-      // authoritative even when its consumer cannot accept an observation.
+      // Diagnostics are optional; the probe result remains authoritative even when
+      // its consumer cannot accept an observation.
     }
   }
 

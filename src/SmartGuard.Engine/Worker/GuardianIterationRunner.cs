@@ -239,7 +239,7 @@ internal sealed partial class GuardianIterationRunner(
         writeLog(
           config,
           LogLevel.Warn,
-          $"电源计划切换未验证成功：{applied.FailureKind}",
+          $"电源计划切换未验证成功：{PowerCfgExecutor.DescribeFailure(applied.FailureKind, applied.Win32Error)}",
           EventNameRegistry.PowerPlanApplyFailed, ActionProperties(expected, current, "failed"), null);
       }
       else
@@ -487,7 +487,7 @@ internal sealed partial class GuardianIterationRunner(
     {
       if (syncPlanBrightness is not null) syncPlanBrightness(target, brightnessBefore);
       else await PowerCfgExecutor.SyncPlanBrightnessAsync(target, brightnessBefore, cancellationToken,
-        (operation, result) => ReportProcessResult(operation, result, 2000), canMutate);
+        (operation, status) => ReportSchemeStatus(operation, status), canMutate);
     }
 
     cancellationToken.ThrowIfCancellationRequested();
@@ -496,10 +496,14 @@ internal sealed partial class GuardianIterationRunner(
     Func<Guid, CancellationToken, Task<PowerPlanApplyResult>> applyOperation =
       applyPlan ?? ((targetGuid, token) => PowerCfgExecutor.ApplyAndVerifyAsync(
         targetGuid,
-        RunObservedPowerCfgAsync,
+        (guid, setToken) => SetActiveObservedAsync(guid, canMutate, setToken),
+        GetActiveObservedAsync,
         Task.Delay,
         token));
     var apply = await applyOperation(target, cancellationToken);
+    // Refused at the executor because the lifecycle revoked mutation after the check above:
+    // same outcome as that check, not a switch failure.
+    if (apply.FailureKind == PowerPlanFailureKind.NotAdmitted) return (null, brightnessBefore, brightnessBefore);
     if (!apply.Succeeded)
       return (apply, brightnessBefore, -1);
 
@@ -526,7 +530,8 @@ internal sealed partial class GuardianIterationRunner(
     return (new PowerPlanApplyResult(
       verified, target, finalProbe.ObservedGuid,
       verified ? PowerPlanFailureKind.None : finalProbe.Succeeded ? PowerPlanFailureKind.VerificationMismatch : finalProbe.FailureKind,
-      verified ? string.Empty : finalProbe.Succeeded ? "Active scheme changed before final publication." : finalProbe.Diagnostic),
+      verified ? string.Empty : finalProbe.Succeeded ? "Active scheme changed before final publication." : finalProbe.Diagnostic,
+      verified ? null : finalProbe.Win32Error),
       brightnessBefore, after);
   }
 

@@ -8,6 +8,9 @@ namespace SmartGuard.Engine.Tests;
 [Collection("LoggingFallbackTests")]
 public sealed class GuardianProbeHardeningTests
 {
+  private static readonly Guid High = PowerPlanCatalogProvider.HighPerformancePlanGuid;
+  private static readonly Guid Balanced = PowerPlanCatalogProvider.BalancedPlanGuid;
+
   [Fact]
   public async Task Cold_catalog_uses_the_cancelable_path_without_synchronous_enrichment()
   {
@@ -85,66 +88,62 @@ public sealed class GuardianProbeHardeningTests
   [Fact]
   public async Task Diagnostic_callback_failure_does_not_prevent_probe_failure_state_publication()
   {
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(
-      new PowerCfgCommandResult(true, true, null, "", "") { FailureKind = "timed-out" });
-    try
+    var native = new FakePowrProfNative { GetActive = () => (5, Guid.Empty) };
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, path) =>
     {
-      await WithRunner(async (runner, state, path) =>
-      {
-        state.PlanCatalog = new Dictionary<Guid, string>();
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-        StatusJsonReader.TryRead(path)!.guardReason.Should().Be("probe-failed");
-      }, useNativePlanReader: true, observe: _ => throw new IOException("diagnostic sink unavailable"));
-    }
-    finally { ResetOverrides(); }
+      state.PlanCatalog = new Dictionary<Guid, string>();
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      StatusJsonReader.TryRead(path)!.guardReason.Should().Be("probe-failed");
+    }, useNativePlanReader: true, observe: _ => throw new IOException("diagnostic sink unavailable")));
   }
 
   [Fact]
-  public async Task Current_plan_probe_also_uses_cancelable_process_execution()
+  public async Task Current_plan_probe_uses_the_scheme_service()
   {
-    var syncCalls = 0;
-    PowerCfgProcessRunner.RunOverrideForTests = (_, _) =>
+    var native = new FakePowrProfNative { GetActive = () => (0, High), ReadName = _ => (0, "高性能") };
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, path) =>
     {
-      syncCalls++;
-      return new(false, false, null, "", "unexpected synchronous work");
-    };
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(
-      new PowerCfgCommandResult(true, false, 0,
-        $"GUID: {PowerPlanCatalogProvider.HighPerformancePlanGuid:D} (high)", ""));
-    try
-    {
-      await WithRunner(async (runner, state, path) =>
-      {
-        state.PlanCatalog = new Dictionary<Guid, string>();
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-        StatusJsonReader.TryRead(path)!.guardReason.Should().Be("paused");
-      }, useNativePlanReader: true);
-      syncCalls.Should().Be(0);
-    }
-    finally { ResetOverrides(); }
+      state.PlanCatalog = new Dictionary<Guid, string>();
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      StatusJsonReader.TryRead(path)!.guardReason.Should().Be("paused");
+    }, useNativePlanReader: true));
+    native.Calls.Should().StartWith(["get-active", $"read-name {High:D}"]);
   }
 
   [Fact]
-  public async Task Unconfirmed_process_cleanup_blocks_further_process_creation_in_that_guardian()
+  public async Task Timed_out_call_blocks_new_calls_until_it_returns_then_probing_recovers()
   {
-    var calls = 0;
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) =>
+    using var release = new ManualResetEventSlim();
+    var first = true;
+    var native = new FakePowrProfNative
     {
-      calls++;
-      return Task.FromResult(new PowerCfgCommandResult(true, true, null, "", "")
-        { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false });
-    };
-    try
-    {
-      await WithRunner(async (runner, state, _) =>
+      GetActive = () =>
       {
-        state.PlanCatalog = new Dictionary<Guid, string>();
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-      }, useNativePlanReader: true);
-      calls.Should().Be(1, "an uncertain child cannot accumulate a new sibling on every periodic retry");
-    }
-    finally { ResetOverrides(); }
+        if (first) { first = false; release.Wait(TimeSpan.FromSeconds(10)); }
+        return (0, High);
+      },
+    };
+    var observations = new List<WmiProbeObservation>();
+    await PowerSchemeTestScope.WithNative(native, async () =>
+    {
+      try
+      {
+        await WithRunner(async (runner, state, _) =>
+        {
+          state.PlanCatalog = new Dictionary<Guid, string>();
+          await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+          await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+          native.Calls.Count(call => call == "get-active").Should().Be(1, "an in-flight call admits no sibling");
+          observations.Select(x => x.FailureKind).Should().Equal("timed-out", "call-pending");
+
+          release.Set();
+          await PowerSchemeTestScope.WaitUntilIdleAsync();
+          await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+          observations.Should().ContainSingle(x => x.Operation == "plan-read" && x.Recovered);
+        }, useNativePlanReader: true, observe: observations.Add);
+      }
+      finally { release.Set(); }
+    }, deadline: TimeSpan.FromMilliseconds(100));
   }
 
   private static async Task WithRunner(Func<GuardianIterationRunner, GuardianLoopIterationState, string, Task> run,
@@ -152,7 +151,7 @@ public sealed class GuardianProbeHardeningTests
     bool paused = true, int brightness = -1, Guid? observedPlan = null,
     Func<bool>? canMutate = null, Action<GuardConfig>? configure = null,
     Func<Guid, CancellationToken, Task<PowerPlanApplyResult>>? apply = null,
-    Action<string>? loggedEvent = null)
+    Action<string>? loggedEvent = null, bool useNativeApply = false)
   {
     var root = Path.Combine(Path.GetTempPath(), "SmartGuardProbeRound_" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(root);
@@ -170,7 +169,7 @@ public sealed class GuardianProbeHardeningTests
         readCurrentPlan: useNativePlanReader ? null
           : () => new(true, new PowerSchemeInfo(observedPlan ?? config.ActivePlanGuid, null), PowerPlanFailureKind.None, ""),
         readBrightness: () => brightness, observeNativeProbe: observe, canMutatePolicy: canMutate,
-        applyPlan: apply ?? ((_, _) => throw new InvalidOperationException("Fixture forbids physical plan writes")));
+        applyPlan: useNativeApply ? null : apply ?? ((_, _) => throw new InvalidOperationException("Fixture forbids physical plan writes")));
       await run(runner, new GuardianLoopIterationState(), path);
     }
     finally { Directory.Delete(root, true); }
@@ -180,23 +179,14 @@ public sealed class GuardianProbeHardeningTests
   public async Task Lifecycle_revocation_during_ac_sync_prevents_dc_write()
   {
     var permitted = true;
-    var commands = new List<string>();
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (command, _, _) =>
+    var native = new FakePowrProfNative { WriteValue = (_, _, _, _) => { permitted = false; return 0; } };
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, _) =>
     {
-      commands.Add(command);
-      permitted = false;
-      return Task.FromResult(new PowerCfgCommandResult(true, false, 0, "", ""));
-    };
-    try
-    {
-      await WithRunner(async (runner, state, _) =>
-      {
-        state.PlanCatalog = new Dictionary<Guid, string>();
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-      }, paused: false, brightness: 50, observedPlan: PowerPlanCatalogProvider.BalancedPlanGuid, canMutate: () => permitted);
-      commands.Should().ContainSingle().Which.Should().StartWith("/setacvalueindex");
-    }
-    finally { ResetOverrides(); }
+      state.PlanCatalog = new Dictionary<Guid, string>();
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+    }, paused: false, brightness: 50, observedPlan: Balanced, canMutate: () => permitted));
+    native.Calls.Where(call => call.StartsWith("write-value", StringComparison.Ordinal))
+      .Should().ContainSingle().Which.Should().Contain(" Ac 50");
   }
 
   [Fact]
@@ -224,29 +214,20 @@ public sealed class GuardianProbeHardeningTests
   }
 
   [Fact]
-  public async Task Malformed_success_exit_does_not_announce_plan_probe_recovery()
+  public async Task Plan_probe_recovery_is_announced_once_after_a_failure()
   {
     var round = 0;
+    var native = new FakePowrProfNative { GetActive = () => ++round == 1 ? (5u, Guid.Empty) : (0u, High) };
     var observations = new List<WmiProbeObservation>();
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(++round switch
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, _) =>
     {
-      1 => new PowerCfgCommandResult(true, true, null, "", "") { FailureKind = "timed-out" },
-      2 => new PowerCfgCommandResult(true, false, 0, "not a power plan", ""),
-      _ => new PowerCfgCommandResult(true, false, 0, $"GUID: {PowerPlanCatalogProvider.HighPerformancePlanGuid:D} (high)", ""),
-    });
-    try
-    {
-      await WithRunner(async (runner, state, _) =>
-      {
-        state.PlanCatalog = new Dictionary<Guid, string>();
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-        observations.Should().NotContain(x => x.Recovered);
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-        observations.Should().ContainSingle(x => x.Recovered);
-      }, useNativePlanReader: true, observe: observations.Add);
-    }
-    finally { ResetOverrides(); }
+      state.PlanCatalog = new Dictionary<Guid, string>();
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      observations.Should().ContainSingle(x => x.FailureKind == "api-error" && x.Win32Error == 5);
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      observations.Should().ContainSingle(x => x.Recovered);
+    }, useNativePlanReader: true, observe: observations.Add));
   }
 
   [Fact]
@@ -272,19 +253,33 @@ public sealed class GuardianProbeHardeningTests
   public async Task Persistent_plan_read_failure_does_not_flood_the_legacy_warning_path()
   {
     var warnings = 0;
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(
-      new PowerCfgCommandResult(true, true, null, "", "") { FailureKind = "timed-out" });
-    try
+    var native = new FakePowrProfNative { GetActive = () => (5, Guid.Empty) };
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, _) =>
     {
-      await WithRunner(async (runner, state, _) =>
-      {
-        state.PlanCatalog = new Dictionary<Guid, string>();
-        for (var i = 0; i < 12; i++)
-          await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
-      }, useNativePlanReader: true,
-        loggedEvent: name => { if (name == EventNameRegistry.PowerPlanProbeFailed) warnings++; });
-      warnings.Should().Be(1, "native aggregation must not leave the legacy per-round warning flooding the log");
-    }
-    finally { ResetOverrides(); }
+      state.PlanCatalog = new Dictionary<Guid, string>();
+      for (var i = 0; i < 12; i++)
+        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+    }, useNativePlanReader: true,
+      loggedEvent: name => { if (name == EventNameRegistry.PowerPlanProbeFailed) warnings++; }));
+    warnings.Should().Be(1, "native aggregation must not leave the legacy per-round warning flooding the log");
+  }
+
+  [Fact]
+  public async Task Plan_apply_switches_through_the_scheme_service_and_verifies()
+  {
+    var active = Balanced;
+    var native = new FakePowrProfNative
+    {
+      GetActive = () => (0, active),
+      SetActive = scheme => { active = scheme; return 0; },
+    };
+    var events = new List<string>();
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, _) =>
+    {
+      state.PlanCatalog = new Dictionary<Guid, string>();
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+    }, paused: false, useNativePlanReader: true, useNativeApply: true, loggedEvent: events.Add));
+    native.Calls.Should().Contain(call => call.StartsWith("set-active ", StringComparison.Ordinal));
+    events.Should().Contain(EventNameRegistry.PowerPlanSwitched);
   }
 }

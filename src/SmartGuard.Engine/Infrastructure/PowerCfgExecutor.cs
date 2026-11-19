@@ -142,24 +142,21 @@ public static partial class PowerCfgExecutor
       $"/setdcvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
   }
 
+  // Optional synchronization before switching: the target scheme takes effect with SetActive.
   internal static async Task SyncPlanBrightnessAsync(Guid planGuid, int brightness,
-    CancellationToken cancellationToken, Action<string, PowerCfgCommandResult>? observe = null,
+    CancellationToken cancellationToken, Action<string, PowerSchemeStatus>? observe = null,
     Func<bool>? canMutate = null)
   {
-    if (brightness < 0 || brightness > 100) return;
-    using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-    budget.CancelAfter(TimeSpan.FromSeconds(2));
-    foreach (var mode in new[] { "ac", "dc" })
+    if (brightness is < 0 or > 100) return;
+    foreach (var source in new[] { PowerSource.Ac, PowerSource.Dc })
     {
       cancellationToken.ThrowIfCancellationRequested();
-      if (budget.IsCancellationRequested || canMutate?.Invoke() == false) return;
-      var result = await PowerCfgProcessRunner.RunPowerCfgAsync(
-        $"/set{mode}valueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}", budget.Token);
-      if (budget.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        result = result with { TimedOut = true, FailureKind = "timed-out" };
-      observe?.Invoke("plan-brightness-" + mode, result);
-      cancellationToken.ThrowIfCancellationRequested();
-      // Optional synchronization cannot spend another command budget after failure.
+      if (canMutate?.Invoke() == false) return;
+      // The executor re-checks canMutate right before the native write.
+      var result = await PowerSchemeService.WriteValueIndexAsync(planGuid, PowerSchemeSetting.VideoNormalLevel,
+        source, (uint)brightness, canMutate, cancellationToken).ConfigureAwait(false);
+      observe?.Invoke(source == PowerSource.Ac ? "plan-brightness-ac" : "plan-brightness-dc", result.Status);
+      // Optional synchronization stops at the first failure or refusal.
       if (!result.Succeeded) return;
     }
   }
