@@ -252,7 +252,7 @@ internal sealed class GuardianLifecycleHarness : IDisposable
         return GuardianLogWriteResult.AcceptedByPipeline;
       },
       _ => { },
-      powerCfgBrightnessSupported: suspendDuringBrightnessSync,
+      powerCfgBrightnessSupported: () => suspendDuringBrightnessSync,
       heartbeatSchedule: _heartbeatSchedule,
       readIdleSeconds: () => _apiIdle,
       readBatteryInfo: force =>

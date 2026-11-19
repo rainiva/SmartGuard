@@ -112,7 +112,7 @@ public class GuardEventsHealthPublishingTests : IDisposable
           : GuardConfigReadResult.Unavailable,
         (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
         _ => { },
-        powerCfgBrightnessSupported: false,
+        powerCfgBrightnessSupported: () => false,
         heartbeatSchedule: new HeartbeatSchedule(time),
         readIdleSeconds: () => 10,
         readBatteryInfo: _ => (80, true),

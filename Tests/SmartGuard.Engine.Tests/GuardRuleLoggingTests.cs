@@ -32,7 +32,7 @@ public sealed class GuardRuleLoggingTests : IDisposable
       {
         events.Add(new(name, level, message, properties ?? new Dictionary<string, JsonElement>(), at ?? clock.GetUtcNow()));
         return GuardianLogWriteResult.AcceptedByPipeline;
-      }, _ => { }, false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
+      }, _ => { }, () => false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
       readBatteryInfo: _ => (90, true),
       readCurrentPlan: () => new(true, new PowerSchemeInfo(config.ActivePlanGuid, null), PowerPlanFailureKind.None, ""),
       applyPlan: (target, _) => { applies++; return Task.FromResult(new PowerPlanApplyResult(true, target, target, PowerPlanFailureKind.None, "")); },
@@ -77,7 +77,7 @@ public sealed class GuardRuleLoggingTests : IDisposable
       new IdleTracker(), new BrightnessService(), new StatusPublisher(Path.Combine(_root, "status.json")),
       () => GuardConfigReadResult.FromConfig(config),
       (_, _, _, eventName, _, _) => { events.Add(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
-      _ => { }, false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
+      _ => { }, () => false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
       readBatteryInfo: _ => (90, true),
       readCurrentPlan: () => { reads++; return new(true, new PowerSchemeInfo(config.ActivePlanGuid, null), PowerPlanFailureKind.None, ""); },
       applyPlan: (target, _) => { applies++; return Task.FromResult(new PowerPlanApplyResult(true, target, target, PowerPlanFailureKind.None, "")); },

@@ -1042,7 +1042,7 @@ internal sealed class ForegroundGuardHarness : IDisposable
         return GuardianLogWriteResult.AcceptedByPipeline;
       },
       _ => { },
-      powerCfgBrightnessSupported: false,
+      powerCfgBrightnessSupported: () => false,
       heartbeatSchedule: new HeartbeatSchedule(_time),
       readIdleSeconds: () => _apiIdle,
       readBatteryInfo: _ => (70, true),

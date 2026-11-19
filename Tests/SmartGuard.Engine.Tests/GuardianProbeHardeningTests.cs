@@ -164,7 +164,7 @@ public sealed class GuardianProbeHardeningTests
       var runner = new GuardianIterationRunner(new IdleTracker(), new BrightnessService(), new StatusPublisher(path),
         () => GuardConfigReadResult.FromConfig(config),
         (_, _, _, eventName, _, _) => { loggedEvent?.Invoke(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
-        _ => { }, true, new HeartbeatSchedule(), readIdleSeconds: () => 0,
+        _ => { }, () => true, new HeartbeatSchedule(), readIdleSeconds: () => 0,
         readBatteryInfo: _ => (90, true),
         readCurrentPlan: useNativePlanReader ? null
           : () => new(true, new PowerSchemeInfo(observedPlan ?? config.ActivePlanGuid, null), PowerPlanFailureKind.None, ""),

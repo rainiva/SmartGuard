@@ -55,7 +55,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
           if (eventName == EventNameRegistry.GuardStateChanged) guardFacts.Add(properties!["actionResult"]);
           return GuardianLogWriteResult.AcceptedByPipeline;
         },
-        _ => { }, true, new HeartbeatSchedule(clock),
+        _ => { }, () => true, new HeartbeatSchedule(clock),
         readIdleSeconds: () => 0,
         readBatteryInfo: _ => (90, true),
         readCurrentPlan: () => new(true, new PowerSchemeInfo(config.BalancedPlanGuid, null),
@@ -143,7 +143,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
         new IdleTracker(clock), new BrightnessService(), new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => GuardConfigReadResult.FromConfig(config),
         (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
-        _ => { }, false, new HeartbeatSchedule(clock),
+        _ => { }, () => false, new HeartbeatSchedule(clock),
         readIdleSeconds: () => changed && becameIdle ? (uint)(config.PowerSaverThresholdSec + 1) : 0,
         readBatteryInfo: _ => changed && !becameIdle ? (1, false) : (90, true),
         readCurrentPlan: () => new(true, new PowerSchemeInfo(
@@ -195,7 +195,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
         new IdleTracker(clock), new BrightnessService(), new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => latest,
         (_, _, _, eventName, _, _) => { events.Add(eventName); return GuardianLogWriteResult.AcceptedByPipeline; },
-        _ => { }, false, new HeartbeatSchedule(clock),
+        _ => { }, () => false, new HeartbeatSchedule(clock),
         readIdleSeconds: () => 0,
         readBatteryInfo: _ =>
         {
@@ -247,7 +247,7 @@ public sealed class GuardRulesAcceptanceRegressionTests
         new IdleTracker(clock), new BrightnessService(), new StatusPublisher(Path.Combine(root, "status.json"), clock),
         () => GuardConfigReadResult.FromConfig(config),
         (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
-        _ => { }, false, new HeartbeatSchedule(clock),
+        _ => { }, () => false, new HeartbeatSchedule(clock),
         readIdleSeconds: () => 0, readBatteryInfo: _ => (90, true),
         readCurrentPlan: () => new(true, new PowerSchemeInfo(config.BalancedPlanGuid, null), PowerPlanFailureKind.None, ""),
         applyPlan: (_, _) => throw new InvalidOperationException("An empty list cannot authorize a switch."),

@@ -71,7 +71,7 @@ public sealed class ExternalPlanObservationLoggingTests : IDisposable
     }
     var runner = new GuardianIterationRunner(new IdleTracker(), new BrightnessService(),
       new StatusPublisher(SmartGuardPaths.StatusFile(_root)), () => GuardConfigReadResult.FromConfig(config), Write,
-      _ => { }, false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
+      _ => { }, () => false, new HeartbeatSchedule(), readIdleSeconds: () => 0,
       readBatteryInfo: _ => (90, true), readCurrentPlan: () => new(true,
         new PowerSchemeInfo(iteration == 1 && scenario == "changed" ? config.PowerSaverPlanGuid :
           iteration == 1 && scenario == "returned" ? config.BalancedPlanGuid : config.ActivePlanGuid, "Observed"), PowerPlanFailureKind.None, ""),

@@ -36,7 +36,8 @@ internal sealed partial class GuardianIterationRunner(
   Func<GuardConfigReadResult> loadConfig,
   Func<GuardConfig?, LogLevel, string, string, IReadOnlyDictionary<string, JsonElement>?, DateTimeOffset?, GuardianLogWriteResult> writeLog,
   Action<bool> observePowerSource,
-  bool powerCfgBrightnessSupported,
+  // Read on every switch: the capability is a startup fact owned by GuardianLoop, never a copy.
+  Func<bool> powerCfgBrightnessSupported,
   HeartbeatSchedule heartbeatSchedule,
   Func<uint>? readIdleSeconds = null,
   Func<bool, (int Percent, bool IsOnAc)>? readBatteryInfo = null,
@@ -483,7 +484,7 @@ internal sealed partial class GuardianIterationRunner(
   {
     cancellationToken.ThrowIfCancellationRequested();
     if (!canMutate()) return (null, brightnessBefore, brightnessBefore);
-    if (powerCfgBrightnessSupported && brightnessBefore >= 0)
+    if (powerCfgBrightnessSupported() && brightnessBefore >= 0)
     {
       if (syncPlanBrightness is not null) syncPlanBrightness(target, brightnessBefore);
       else await PowerCfgExecutor.SyncPlanBrightnessAsync(target, brightnessBefore, cancellationToken,

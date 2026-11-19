@@ -496,7 +496,7 @@ internal sealed class GuardDecisionHarness : IDisposable
                 return GuardianLogWriteResult.AcceptedByPipeline;
             },
             _ => { },
-            powerCfgBrightnessSupported: false,
+            powerCfgBrightnessSupported: () => false,
             _heartbeatSchedule,
             readIdleSeconds: () => _apiIdle,
             readBatteryInfo: _ => (70, _onAc),

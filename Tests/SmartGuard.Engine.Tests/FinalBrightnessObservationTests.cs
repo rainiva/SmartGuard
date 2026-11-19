@@ -34,7 +34,7 @@ public class FinalBrightnessObservationTests
       var runner = new GuardianIterationRunner(new IdleTracker(), new BrightnessService(probe), new StatusPublisher(path),
         () => GuardConfigReadResult.FromConfig(config),
         (_, _, message, name, _, _) => { events.Add((name, message)); return GuardianLogWriteResult.AcceptedByPipeline; },
-        _ => { }, false, new HeartbeatSchedule(), readIdleSeconds: () => 0, readBatteryInfo: _ => (90, true),
+        _ => { }, () => false, new HeartbeatSchedule(), readIdleSeconds: () => 0, readBatteryInfo: _ => (90, true),
         readCurrentPlan: () => new(true, new PowerSchemeInfo(switched ? config.ActivePlanGuid : config.BalancedPlanGuid, null), PowerPlanFailureKind.None, ""),
         applyPlan: (target, _) =>
         {

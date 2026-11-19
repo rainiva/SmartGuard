@@ -81,7 +81,7 @@ public sealed partial class GuardianLoop
       () => GuardConfigReadResult.TryFromRepository(_configRepository),
       (c, l, m, e, p, at) => WriteLog(c, l, m, e, properties: p, observedAtUtc: at),
       ObservePowerSource,
-      _powerCfgBrightnessSupported,
+      () => _powerCfgBrightnessSupported,
       _heartbeatSchedule,
       // Shared observation state must never mix timestamps from different providers.
       timeProvider: _observationTime,

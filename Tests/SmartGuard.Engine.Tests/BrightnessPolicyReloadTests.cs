@@ -37,7 +37,7 @@ public class BrightnessPolicyReloadTests
         new IdleTracker(), new BrightnessService(), new StatusPublisher(statusPath),
         () => GuardConfigReadResult.TryFromRepository(repository),
         (_, _, _, _, _, _) => GuardianLogWriteResult.AcceptedByPipeline,
-        _ => { }, false, new HeartbeatSchedule(),
+        _ => { }, () => false, new HeartbeatSchedule(),
         readIdleSeconds: () => 600,
         readBatteryInfo: _ => (100, true),
         readCurrentPlan: () => new(true, new PowerSchemeInfo(current, null), PowerPlanFailureKind.None, ""),
