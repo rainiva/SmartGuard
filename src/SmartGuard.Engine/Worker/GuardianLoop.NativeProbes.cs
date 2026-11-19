@@ -36,7 +36,7 @@ public sealed partial class GuardianLoop
       "plan-brightness-ac" or "plan-brightness-dc" => "停止本次可选亮度同步",
       _ => "本次计划操作未确认，等待下一轮重新探测",
     };
-    var schemeApi = observation.Operation is "plan-read" or "plan-apply" or "plan-brightness-ac" or "plan-brightness-dc";
+    var schemeApi = observation.Operation is "plan-read" or "plan-apply" or "plan-brightness-ac" or "plan-brightness-dc" or "plan-catalog";
     var cleanup = schemeApi
       ? observation.FailureKind is "timed-out" or "call-pending"
         ? "电源服务调用仍在进行，期间不发起新调用，返回后自动恢复"

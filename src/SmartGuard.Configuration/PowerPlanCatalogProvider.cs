@@ -59,11 +59,55 @@ public static class PowerPlanCatalogProvider
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
     => LoadWithRetryAsync(cancellationToken: cancellationToken);
 
-  // The guardian only needs display names. Its caller supplies one total
-  // deadline rather than entering the Settings catalog retry workflow.
-  internal static Task<IReadOnlyDictionary<Guid, string>> TryLoadOnceAsync(CancellationToken cancellationToken,
-    Action<PowerCfgCommandResult>? observe = null)
-    => TryLoadAsync(cancellationToken, observe);
+  internal static readonly TimeSpan GuardianLoadBudget = TimeSpan.FromSeconds(5);
+
+  // Guardian-only: one load through PowerSchemeService (PWR-INV-SCHEME-API). Enumeration and every
+  // name read share one total budget, so the chain is bounded regardless of the scheme count. Names are
+  // presentation only; only a confirmed absence (Win32 2) of a hidden known scheme is normal.
+  internal static async Task<IReadOnlyDictionary<Guid, string>> TryLoadOnceAsync(CancellationToken cancellationToken,
+    Action<PowerSchemeStatus>? observe = null, TimeSpan? budget = null)
+  {
+    if (_sessionCache is not null) return _sessionCache;
+    if (LoadImplementationForTests is { } loader) return loader();
+
+    var catalog = new Dictionary<Guid, string>();
+    using var total = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    total.CancelAfter(budget ?? GuardianLoadBudget);
+    var started = System.Diagnostics.Stopwatch.GetTimestamp();
+    var complete = false;
+    try
+    {
+      var schemes = await PowerSchemeService.EnumerateSchemesAsync(total.Token).ConfigureAwait(false);
+      observe?.Invoke(schemes.Status);
+      if (!schemes.Succeeded) return catalog;
+
+      var listed = schemes.Value!;
+      complete = true;
+      foreach (var guid in listed.Concat(KnownSchemeGuids.Where(known => !listed.Contains(known))))
+      {
+        var name = await PowerSchemeService.ReadNameAsync(guid, total.Token).ConfigureAwait(false);
+        if (name.Succeeded)
+        {
+          if (!string.IsNullOrWhiteSpace(name.Value)) catalog[guid] = name.Value!;
+          continue;
+        }
+        var confirmedAbsent = !listed.Contains(guid) && name.Status is { FailureKind: "api-error", Win32Error: 2 };
+        if (confirmedAbsent) continue;
+        complete = false;
+        observe?.Invoke(name.Status);
+      }
+    }
+    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+      // Total budget exhausted: keep the names read so far; the guardian continues by GUID.
+      complete = false;
+      observe?.Invoke(new PowerSchemeStatus("timed-out", null,
+        (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+    }
+
+    if (complete && catalog.Count > 0 && !HasMissingKnownSchemes(catalog)) _sessionCache = catalog;
+    return catalog;
+  }
 
   public static async Task<IReadOnlyDictionary<Guid, string>> LoadWithRetryAsync(
     int maxAttempts = 3,

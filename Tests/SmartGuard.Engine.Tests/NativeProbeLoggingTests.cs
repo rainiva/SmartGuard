@@ -55,6 +55,7 @@ public class NativeProbeLoggingTests
   [InlineData("plan-read", "timed-out")]
   [InlineData("plan-apply", "call-pending")]
   [InlineData("plan-brightness-dc", "timed-out")]
+  [InlineData("plan-catalog", "timed-out")]
   public void Scheme_api_wait_failures_do_not_mention_child_processes(string operation, string kind)
   {
     var record = GuardianLoop.CreateNativeProbeEvent(new(operation, kind, 2000, 2000, true, null, 0, false));

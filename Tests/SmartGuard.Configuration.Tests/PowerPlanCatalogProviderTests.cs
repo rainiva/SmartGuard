@@ -318,4 +318,102 @@ public class PowerPlanCatalogProviderTests
       PowerPlanCatalogProvider.ClearSessionCacheForTests();
     }
   }
+
+    [Fact]
+    public async Task TryLoadOnceAsync_reads_listed_and_hidden_known_names_through_the_scheme_service()
+    {
+        var custom = Guid.Parse("56c8d9b8-d34d-4d19-96a4-c177cf5f4882");
+        var names = new Dictionary<Guid, string>
+        {
+            [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+            [custom] = "自定义模式",
+            [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
+            [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
+        };
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => (0, [PowerPlanCatalogProvider.BalancedPlanGuid, custom]),
+            ReadName = guid => names.TryGetValue(guid, out var name) ? (0u, name) : (2u, string.Empty),
+        };
+        var statuses = new List<PowerSchemeStatus>();
+        IReadOnlyDictionary<Guid, string> catalog = new Dictionary<Guid, string>();
+        await PowerSchemeTestScope.WithNative(native, async () =>
+            catalog = await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, statuses.Add));
+        catalog.Should().BeEquivalentTo(names);
+        statuses.Should().OnlyContain(status => status.Succeeded);
+        native.Calls.Should().Contain("enumerate");
+    }
+
+    [Fact]
+    public async Task TryLoadOnceAsync_reports_enumeration_failure_and_returns_empty()
+    {
+        var native = new FakePowrProfNative { Enumerate = () => (5, []) };
+        var statuses = new List<PowerSchemeStatus>();
+        IReadOnlyDictionary<Guid, string> catalog = new Dictionary<Guid, string> { [Guid.Empty] = "x" };
+        await PowerSchemeTestScope.WithNative(native, async () =>
+            catalog = await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, statuses.Add));
+        catalog.Should().BeEmpty();
+        statuses.Should().ContainSingle().Which.Should().Be(new PowerSchemeStatus("api-error", 5, statuses[0].ElapsedMilliseconds));
+    }
+
+    [Fact]
+    public async Task Missing_hidden_known_scheme_is_not_reported_as_a_failure()
+    {
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => (0, [PowerPlanCatalogProvider.BalancedPlanGuid]),
+            ReadName = guid => guid == PowerPlanCatalogProvider.PowerSaverPlanGuid ? (2u, string.Empty) : (0u, "n"),
+        };
+        var statuses = new List<PowerSchemeStatus>();
+        IReadOnlyDictionary<Guid, string> catalog = new Dictionary<Guid, string>();
+        await PowerSchemeTestScope.WithNative(native, async () =>
+            catalog = await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, statuses.Add));
+        catalog.Should().NotContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
+        statuses.Should().OnlyContain(status => status.Succeeded);
+    }
+
+    [Fact]
+    public async Task Hidden_known_scheme_that_cannot_be_read_is_reported_as_a_failure()
+    {
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => (0, [PowerPlanCatalogProvider.BalancedPlanGuid]),
+            ReadName = guid => guid == PowerPlanCatalogProvider.PowerSaverPlanGuid ? (5u, string.Empty) : (0u, "n"),
+        };
+        var statuses = new List<PowerSchemeStatus>();
+        await PowerSchemeTestScope.WithNative(native, async () =>
+            await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, statuses.Add));
+        statuses.Should().Contain(status => status.FailureKind == "api-error" && status.Win32Error == 5,
+            "only a confirmed absence (Win32 2) is normal for a hidden scheme");
+    }
+
+    [Fact]
+    public async Task Name_reads_share_one_total_budget_and_return_a_partial_catalog()
+    {
+        var listed = Enumerable.Range(0, 8).Select(i => new Guid($"00000000-0000-0000-0000-{i:D12}")).ToArray();
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => (0, listed),
+            // Each read is far below its own 2 s deadline; only their sum exceeds the total budget.
+            ReadName = guid => { Thread.Sleep(100); return (0, guid.ToString("N")); },
+        };
+        var statuses = new List<PowerSchemeStatus>();
+        IReadOnlyDictionary<Guid, string> catalog = new Dictionary<Guid, string>();
+        var elapsed = TimeSpan.Zero;
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            catalog = await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, statuses.Add,
+                budget: TimeSpan.FromMilliseconds(350));
+            elapsed = watch.Elapsed;
+            await PowerSchemeTestScope.WaitUntilIdleAsync();
+            // A partial catalog is never cached: a second load enumerates again.
+            await PowerPlanCatalogProvider.TryLoadOnceAsync(CancellationToken.None, budget: TimeSpan.FromMilliseconds(350));
+        });
+        elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "the chain is bounded by the total budget, not by the scheme count");
+        // Only the upper bound is asserted: how many 100 ms reads finish within the budget depends on the test pool.
+        catalog.Count.Should().BeLessThan(listed.Length);
+        statuses.Should().Contain(status => status.FailureKind == "timed-out");
+        native.Calls.Count(call => call == "enumerate").Should().Be(2);
+    }
 }

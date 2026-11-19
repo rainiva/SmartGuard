@@ -12,77 +12,77 @@ public sealed class GuardianProbeHardeningTests
   private static readonly Guid Balanced = PowerPlanCatalogProvider.BalancedPlanGuid;
 
   [Fact]
-  public async Task Cold_catalog_uses_the_cancelable_path_without_synchronous_enrichment()
+  public async Task Cold_catalog_is_loaded_once_through_the_scheme_service()
   {
-    var syncCalls = 0;
-    var asyncCalls = 0;
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    PowerCfgProcessRunner.RunOverrideForTests = (_, _) =>
+    var native = new FakePowrProfNative { Enumerate = () => (0, [Balanced, High]) };
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(async (runner, state, _) =>
     {
-      syncCalls++;
-      return new(false, false, null, "", "unexpected synchronous work");
-    };
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) =>
-    {
-      asyncCalls++;
-      return Task.FromResult(new PowerCfgCommandResult(false, false, null, "", "unavailable"));
-    };
-    try
-    {
-      await WithRunner(async (runner, state, _) =>
-        await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None));
-      syncCalls.Should().Be(0, "display-name enrichment cannot hold the core round in the old 105-second path");
-      asyncCalls.Should().Be(1, "the guardian does not need catalog retries to decide policy");
-    }
-    finally { ResetOverrides(); }
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+      state.PlanCatalog.Should().ContainKey(Balanced).And.ContainKey(High);
+    }));
+    native.Calls.Count(call => call == "enumerate").Should().Be(1, "the guardian loads names once and caches them");
   }
 
   [Fact]
   public async Task Cancellation_during_catalog_stops_the_round_before_state_publication()
   {
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    PowerCfgProcessRunner.RunOverrideForTests = (_, _) => new(false, false, null, "", "unavailable");
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = async (_, _, token) =>
+    using var release = new ManualResetEventSlim();
+    var native = new FakePowrProfNative { Enumerate = () => { release.Wait(TimeSpan.FromSeconds(10)); return (0, [Balanced]); } };
+    await PowerSchemeTestScope.WithNative(native, async () =>
     {
-      await Task.Delay(Timeout.InfiniteTimeSpan, token);
-      return new(false, false, null, "", "unreachable");
-    };
-    try
-    {
-      await WithRunner(async (runner, state, path) =>
+      try
       {
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-          runner.RunAsync(state, GuardianIterationContext.Running, cancellation.Token));
-        File.Exists(path).Should().BeFalse("a stopped round cannot later publish an apparently current state");
-      });
-    }
-    finally { ResetOverrides(); }
-  }
-
-  private static void ResetOverrides()
-  {
-    PowerCfgProcessRunner.RunOverrideForTests = null;
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
+        await WithRunner(async (runner, state, path) =>
+        {
+          using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+          await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            runner.RunAsync(state, GuardianIterationContext.Running, cancellation.Token));
+          File.Exists(path).Should().BeFalse("a stopped round cannot later publish an apparently current state");
+        });
+      }
+      finally { release.Set(); }
+    });
   }
 
   [Fact]
-  public async Task Catalog_failure_keeps_real_cleanup_uncertainty_in_the_logged_transition()
+  public async Task Catalog_api_failure_is_reported_with_its_win32_code()
   {
     var observations = new List<WmiProbeObservation>();
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(
-      new PowerCfgCommandResult(true, true, null, "", "")
-      { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false, ElapsedMilliseconds = 2100 });
-    try
+    var native = new FakePowrProfNative { Enumerate = () => (5, []) };
+    await PowerSchemeTestScope.WithNative(native, () => WithRunner(
+      (runner, state, _) => runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None),
+      observe: observations.Add));
+    observations.Should().ContainSingle(x => x.Operation == "plan-catalog")
+      .Which.Should().Match<WmiProbeObservation>(x => x.FailureKind == "api-error" && x.Win32Error == 5);
+  }
+
+  [Fact]
+  public async Task Catalog_call_left_in_flight_makes_the_same_round_report_plan_read_pending()
+  {
+    using var release = new ManualResetEventSlim();
+    var native = new FakePowrProfNative
     {
-      await WithRunner((runner, state, _) => runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None),
-        observe: observations.Add);
-      observations.Should().Contain(x => x.Operation == "plan-catalog" && !x.TerminationConfirmed
-        && x.FailureKind == "cleanup-unconfirmed", "catalog degradation cannot invent a successful cleanup certificate");
-    }
-    finally { ResetOverrides(); }
+      Enumerate = () => (0, [Balanced]),
+      ReadName = _ => { release.Wait(TimeSpan.FromSeconds(10)); return (0, "n"); },
+    };
+    var observations = new List<WmiProbeObservation>();
+    await PowerSchemeTestScope.WithNative(native, async () =>
+    {
+      try
+      {
+        await WithRunner(async (runner, state, path) =>
+        {
+          await runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None);
+          StatusJsonReader.TryRead(path)!.guardReason.Should().Be("probe-failed",
+            "the name read still owns the gate, so the plan read is truthfully refused");
+        }, useNativePlanReader: true, observe: observations.Add);
+        observations.Should().Contain(x => x.Operation == "plan-catalog" && x.FailureKind == "timed-out");
+        observations.Should().Contain(x => x.Operation == "plan-read" && x.FailureKind == "call-pending");
+        native.Calls.Should().NotContain("get-active", "a refused call never reaches the native layer");
+      }
+      finally { release.Set(); }
+    }, deadline: TimeSpan.FromMilliseconds(100));
   }
 
   [Fact]
@@ -187,30 +187,6 @@ public sealed class GuardianProbeHardeningTests
     }, paused: false, brightness: 50, observedPlan: Balanced, canMutate: () => permitted));
     native.Calls.Where(call => call.StartsWith("write-value", StringComparison.Ordinal))
       .Should().ContainSingle().Which.Should().Contain(" Ac 50");
-  }
-
-  [Fact]
-  public async Task Catalog_unconfirmed_cleanup_prevents_the_remaining_hidden_queries()
-  {
-    var commands = new List<string>();
-    var observations = new List<WmiProbeObservation>();
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (command, _, _) =>
-    {
-      commands.Add(command);
-      return Task.FromResult(command == "/list"
-        ? new PowerCfgCommandResult(true, false, 0, $"GUID: {PowerPlanCatalogProvider.BalancedPlanGuid:D} (balanced)", "")
-        : new PowerCfgCommandResult(true, true, null, "", "")
-          { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false });
-    };
-    try
-    {
-      await WithRunner((runner, state, _) => runner.RunAsync(state, GuardianIterationContext.Running, CancellationToken.None),
-        observe: observations.Add);
-      commands.Should().HaveCount(2, "the first uncertain query closes the whole remaining enrichment chain");
-      observations.Should().NotContain(x => x.Recovered);
-    }
-    finally { ResetOverrides(); }
   }
 
   [Fact]
