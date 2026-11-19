@@ -82,6 +82,15 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
+  public void Live_power_scheme_service_probe_must_be_category_live()
+  {
+    var source = SourceScanHelper.ReadSource(
+      "Tests/SmartGuard.Configuration.Tests/PowerSchemeServiceLiveTests.cs");
+    source.Should().Contain("[Trait(\"Category\", \"Live\")]",
+      "machine-dependent reads stay out of the full gate like the existing live catalog probe");
+  }
+
+  [Fact]
   public void Wpf_ui_tests_must_expose_category_trait()
   {
     var source = SourceScanHelper.ReadSource(
