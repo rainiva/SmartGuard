@@ -6,37 +6,7 @@ namespace SmartGuard.Configuration;
 
 internal static class PowerCfgProcessRunner
 {
-  private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
   private static readonly Encoding ConsoleEncoding = CreateConsoleEncoding();
-
-  internal static Func<string, TimeSpan, PowerCfgCommandResult>? RunOverrideForTests;
-  internal static Func<string, TimeSpan, CancellationToken, Task<PowerCfgCommandResult>>? RunAsyncOverrideForTests;
-
-  internal static PowerCfgCommandResult RunPowerCfg(string arguments, TimeSpan? timeout = null)
-  {
-    if (RunOverrideForTests is not null)
-      return RunOverrideForTests(arguments, timeout ?? DefaultTimeout);
-
-    return RunProcess("powercfg.exe", arguments, timeout ?? DefaultTimeout);
-  }
-
-  internal static Task<PowerCfgCommandResult> RunPowerCfgAsync(
-    string arguments,
-    CancellationToken cancellationToken = default,
-    TimeSpan? timeout = null)
-  {
-    if (RunAsyncOverrideForTests is not null)
-      return RunAsyncOverrideForTests(arguments, timeout ?? DefaultTimeout, cancellationToken);
-
-    if (RunOverrideForTests is not null)
-      return Task.FromResult(RunOverrideForTests(arguments, timeout ?? DefaultTimeout));
-
-    return RunProcessAsync(
-      "powercfg.exe",
-      arguments,
-      timeout ?? DefaultTimeout,
-      cancellationToken);
-  }
 
   internal static PowerCfgCommandResult RunProcess(string fileName, string arguments, TimeSpan timeout)
   {

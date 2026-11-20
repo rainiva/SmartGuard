@@ -6,13 +6,14 @@ namespace SmartGuard.Architecture.Tests;
 public class PowerSchemeApiArchitectureTests
 {
   [Fact]
-  public void Engine_never_starts_powercfg()
+  public void Product_never_starts_powercfg()
   {
-    foreach (var file in SourceScanHelper.EnumerateCsFilesUnder("src/SmartGuard.Engine"))
+    foreach (var file in SourceScanHelper.EnumerateCsFilesUnder("src"))
     {
+      if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) continue;
       var source = File.ReadAllText(file, Encoding.UTF8);
       source.Should().NotContainEquivalentOf("\"powercfg", $"{file} must use PowerSchemeService (PWR-INV-SCHEME-API)");
-      source.Should().NotContain("RunPowerCfg", $"{file} must not reach the powercfg runner");
+      source.Should().NotContain("RunPowerCfg", $"{file} must not keep a powercfg runner");
       source.Should().NotContain("\"/setactive").And.NotContain("\"/getactivescheme");
     }
   }

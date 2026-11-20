@@ -5,11 +5,6 @@ namespace SmartGuard.Engine.Tests;
 
 internal static class PowerSchemeTestScope
 {
-  // Blocks the legacy powercfg runner for the whole scope: a RED that still falls into the old
-  // implementation fails instead of starting powercfg.exe and changing this machine's settings.
-  private static readonly PowerCfgCommandResult Blocked =
-    new(false, false, null, "", "powercfg is blocked inside PowerSchemeTestScope") { FailureKind = "start-failed" };
-
   internal static async Task WithNative(IPowrProfNative native, Func<Task> run, TimeSpan? deadline = null)
   {
     Enter(native, deadline);
@@ -47,16 +42,12 @@ internal static class PowerSchemeTestScope
   private static void Enter(IPowrProfNative native, TimeSpan? deadline)
   {
     PowerSchemeService.UseExecutorForTests(new PowerSchemeExecutor(native, deadline));
-    PowerCfgProcessRunner.RunOverrideForTests = (_, _) => Blocked;
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(Blocked);
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
   }
 
   private static void Exit()
   {
     PowerSchemeService.UseExecutorForTests(null);
-    PowerCfgProcessRunner.RunOverrideForTests = null;
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
   }
 }
