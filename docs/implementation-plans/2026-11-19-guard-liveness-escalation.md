@@ -112,4 +112,43 @@
 
 ## 8. 实施与验证记录
 
-（Task 6 填写。）
+按实施计划第 1 版执行，用户决定不等外部审查直接实施。分支 `feat/guard-liveness`，证据目录 `.work/guard-liveness/`。
+
+**基线（Task 0）：** Configuration 529 通过、1 未执行（真实写入用例，受写入保护跳过）；Engine 452；Tray 89；Settings 641；Architecture 355。
+
+| Task | 提交 | RED | GREEN |
+|------|------|-----|-------|
+| 1 状态字段与两处相等判定 | `f5c6d61f` | 4 例中 3 例按行为缺口失败：Publisher 忽略 `guardHealth` 跳过写入、轻路径 Clone 丢字段、托盘相等判定忽略它；Clone 保留用例为保护性 | Engine 454、Tray 91、Settings 641、Architecture 355 |
+| 2 判定规则 | `3a2f84d1` | 9 例中 6 例失败（骨架恒为 healthy/None、分类码恒为 other）；`One_success…`、`Resume_restarts…`、`NotAdmitted→other` 为保护性 | Engine 463、Architecture 355 |
+| 3 轮次集成、事件名与通知 | `d6a6d7e8` | 6 例全部失败：4 个轮次用例在第 102 行等处 `guardHealth` 为 null（核对堆栈，非夹具问题）；2 个事件未登记 | Configuration 529/1、Engine 469、Architecture 355 |
+| 4 托盘与设置文案 | `6f690458` | 与计划所列一致：托盘 5 例失败、设置 1 例失败；旧状态/过期、`(true,true)`、healthy 文案为保护性 | Tray 98、Settings 643、Architecture 355 |
+| 5 契约与门禁 | `2334ff56` | 门禁 3 例中契约 1 例失败 | Architecture 358 |
+
+**全量测试：** `Run-Tests.ps1` 退出码 0，summary `run-tests-20261120T102446897Z-d9a9e0254dd24e698c468448dfcb7df2.summary.json`。前后两次 `powercfg /getactivescheme` 均为“高性能”（18:24:45、18:31:53），测试未改动电源设置。
+
+| 层 | 通过 | 失败 | 跳过 |
+|----|------|------|------|
+| Pester | 158 | 0 | 0 |
+| .NET | 2167 | 0 | 0 |
+| Tray Integration | 2 | 0 | 0 |
+| Installer Integration | 9 | 0 | 0 |
+
+**安装：**
+- 安装包 `dist\SmartGuard-Setup-1.6.7-x64.exe`，SHA256 `DDDAD816A97001C06D659F509CBACD847547EBF990438E0652C102DE710D33D8`。版本提升单独提交为 `15c01533`。
+- 安装前已备份程序目录与配置。
+- 用户确认 UAC 后核对：
+  - Engine、Configuration、Settings、Tray、Contracts 五个 DLL 与候选一致，版本 `1.6.7+2334ff56`。
+  - 配置哈希 `0426BAA1…B32A` 未变。
+  - Engine 自 18:39:09 在交互会话运行。
+
+**真实路径验收：**
+- **运行 22 分钟（18:39–19:01）：PASS。**
+  - `status.json` 含 `"guardHealth":{"code":"healthy"}`。
+  - 共 19 条事件，没有 `GuardStalled`、`NativeProbeFailed` 或 `PowerPlanProbeFailed`。
+  - 唯一一条 Warn 是 18:49:15“暂时无法识别当前程序”，与本次改动无关；同类告警在旧版本下 16:37 也出现过。
+- **暂停与恢复：PASS。**
+  - 19:04:57 暂停后，19:05:05 状态为 `paused=true`、`guardReason=paused`、`guardHealth=not-applicable`。
+  - 19:07:48 恢复后，19:07:56 状态为 `paused=false`、`guardHealth=healthy`。
+  - 安装后共 25 条事件，没有停工或探测失败事件。
+- **托盘与设置窗口文字：未取得用户反馈。** 状态原因为 `waiting-for-listed-program`、`guardHealth=healthy`，按代码应显示“等待指定程序”，不出现“停工”；该路径由 Task 4 用例覆盖。
+- **NOT RUN（真机无法安全制造）：** 真实停工需要电源服务调用持续失败 10 分钟。进入/恢复、日志、通知与停工文案由 Task 2–4 用例覆盖。
