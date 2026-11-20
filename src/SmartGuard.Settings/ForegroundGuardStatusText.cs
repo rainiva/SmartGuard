@@ -24,6 +24,9 @@ internal static class ForegroundGuardStatusText
     if (status.paused)
       return "已暂停";
 
+    if (GuardHealthCodes.IsStalled(status, nowUtc ?? DateTimeOffset.UtcNow))
+      return $"守护已停工（自 {status.guardHealth!.StalledSinceUtc!.Value.ToLocalTime():HH:mm}，{DescribeStallReason(status.guardHealth.LastFailureKind)}）";
+
     if (!GuardStatusCodes.IsKnownSource(status.guardSource)
       || !GuardStatusCodes.IsKnownReason(status.guardReason))
       return UnknownText;
@@ -44,4 +47,13 @@ internal static class ForegroundGuardStatusText
       _ => UnknownText,
     };
   }
+
+  // Display text stays in the UI layer, as for guardReason; the stable codes live only in GuardHealthCodes.
+  private static string DescribeStallReason(string? kind) => kind switch
+  {
+    GuardHealthCodes.FailureKinds.CallPending => "电源服务调用一直未返回",
+    GuardHealthCodes.FailureKinds.ApiError => "电源服务调用失败",
+    GuardHealthCodes.FailureKinds.TimedOut => "电源服务调用超时",
+    _ => "原因未知",
+  };
 }

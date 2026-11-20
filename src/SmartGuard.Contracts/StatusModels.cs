@@ -35,6 +35,8 @@ public sealed class StatusPayload
   public bool? foregroundEventsAvailable { get; set; }
   /// <summary>可选日志健康；旧状态缺字段时未知，不能由日志尾部猜测。</summary>
   public LogHealthStatus? logHealth { get; set; }
+  /// <summary>可选守护健康（GUARD-INV-LIVENESS）；旧状态缺字段时未知。</summary>
+  public GuardHealthStatus? guardHealth { get; set; }
 }
 
 public sealed class NotificationEvent
@@ -50,4 +52,5 @@ public static class NotificationKinds
 {
   public const string PlanSwitch = "plan_switch";
   public const string ExternalChange = "external_change";
+  public const string GuardStalled = "guard_stalled";
 }
