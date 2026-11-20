@@ -2875,4 +2875,30 @@ function Exit-PesterFileLifecycle {
             }
         }
     }
+
+    Describe 'Integration engine roots are read-only for this machine' {
+        It 'seeds the init marker and a paused config before an integration engine starts' {
+            $root = Split-Path -Parent $PSScriptRoot
+            . (Join-Path $root 'Tests\Integration\ReadOnlyEngineRoot.ps1')
+            $engineRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('sg-readonly-root-' + [guid]::NewGuid().ToString('N'))
+            try {
+                Initialize-SmartGuardReadOnlyEngineRoot -Root $engineRoot
+
+                # The marker skips the one-time brightness alignment (the capability probe only reads).
+                Test-Path -LiteralPath (Join-Path $engineRoot $SmartGuardInitMarkerFileName) | Should -Be $true
+                # A paused config keeps the policy from switching the active plan.
+                $configPath = Join-Path $engineRoot $SmartGuardConfigFileName
+                $bytes = [System.IO.File]::ReadAllBytes($configPath)
+                ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -Be $false
+                $config = [System.Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
+                $config.Paused | Should -Be $true
+                $config.ActivePlanGUID | Should -Be '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+                $config.BalancedPlanGUID | Should -Be '381b4222-f694-41f0-9685-ff5bb260df2e'
+                $config.PowerSaverPlanGUID | Should -Be 'a1841308-3541-4fab-bc81-f71556f20b4a'
+            }
+            finally {
+                Remove-Item -LiteralPath $engineRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }

@@ -58,6 +58,7 @@ function Ensure-InstallerBuilt {
 
 . (Join-Path $PSScriptRoot 'SmartGuardStop.ps1')
 . (Join-Path $PSScriptRoot 'Restore-SmartGuardScheduledTasks.ps1')
+. (Join-Path $PSScriptRoot 'ReadOnlyEngineRoot.ps1')
 
 function Stop-SmartGuardForInstallerTest {
     Stop-SmartGuardForIntegrationTest
@@ -77,6 +78,9 @@ function Invoke-SmartGuardSilentInstall {
             Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+        # Setup ends with "schtasks /Run" for the guardian task; when a test registers that task for this
+        # root, a real Engine starts here. Seed the root so it only reads power settings.
+        Initialize-SmartGuardReadOnlyEngineRoot -Root $InstallRoot
     }
     elseif (-not (Test-Path -LiteralPath $InstallRoot)) {
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null

@@ -1,5 +1,6 @@
 . (Join-Path $PSScriptRoot 'SmartGuardStop.ps1')
 . (Join-Path $PSScriptRoot '..\..\scripts\SmartGuardPathConstants.ps1')
+. (Join-Path $PSScriptRoot 'ReadOnlyEngineRoot.ps1')
 
 function Stop-SmartGuardForTrayCoreTest {
     Stop-SmartGuardForIntegrationTest

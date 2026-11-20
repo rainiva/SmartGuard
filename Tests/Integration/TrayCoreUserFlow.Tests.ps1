@@ -22,6 +22,9 @@ Describe 'Tray core user flow (integration)' {
         $engine = Join-Path $installRoot 'bin\SmartGuard.Engine.exe'
         $statusPath = Join-Path $installRoot 'SmartGuard.status.json'
         Test-Path -LiteralPath $engine | Should -Be $true
+        Initialize-SmartGuardReadOnlyEngineRoot -Root $installRoot
+        $markerPath = Join-Path $installRoot $SmartGuardInitMarkerFileName
+        $seededMarker = [System.IO.File]::ReadAllText($markerPath)
 
         $proc = Start-Process -FilePath $engine -WorkingDirectory $installRoot -WindowStyle Hidden -PassThru
         try {
@@ -29,6 +32,11 @@ Describe 'Tray core user flow (integration)' {
             $payload | Should -Not -BeNullOrEmpty
             $payload.currentPlan | Should -Not -BeNullOrEmpty
             Test-Path -LiteralPath (Join-Path $installRoot 'SmartGuard.config.json') | Should -Be $true
+            # Reading the seeded paused config proves the engine resolved this root without --root,
+            # and keeps it from switching this machine's plan.
+            $payload.paused | Should -Be $true
+            # First-run alignment rewrites the marker; an unchanged marker means no brightness write.
+            [System.IO.File]::ReadAllText($markerPath) | Should -Be $seededMarker
         }
         finally {
             Stop-EngineTree -ProcessId $proc.Id -InstallRoot $installRoot
@@ -45,12 +53,17 @@ Describe 'Tray core user flow (integration)' {
         Copy-EnginePayload -InstallRoot $installRoot
         $engine = Join-Path $installRoot 'bin\SmartGuard.Engine.exe'
         $statusPath = Join-Path $installRoot 'SmartGuard.status.json'
+        Initialize-SmartGuardReadOnlyEngineRoot -Root $installRoot
+        $markerPath = Join-Path $installRoot $SmartGuardInitMarkerFileName
+        $seededMarker = [System.IO.File]::ReadAllText($markerPath)
 
         $proc = Start-Process -FilePath $engine -ArgumentList @('--root', $installRoot) -WorkingDirectory $installRoot -WindowStyle Hidden -PassThru
         try {
             $payload = Wait-StatusFile -StatusPath $statusPath -Process $proc
             $payload | Should -Not -BeNullOrEmpty
             $payload.currentPlan | Should -Not -BeNullOrEmpty
+            $payload.paused | Should -Be $true
+            [System.IO.File]::ReadAllText($markerPath) | Should -Be $seededMarker
         }
         finally {
             Stop-EngineTree -ProcessId $proc.Id -InstallRoot $installRoot
