@@ -38,6 +38,24 @@ public static class PowerPlanCatalogProvider
 
   internal static Func<IReadOnlyDictionary<Guid, string>>? LoadImplementationForTests;
 
+  internal static bool IsKnownScheme(Guid plan) => KnownSchemeGuids.Contains(plan);
+
+  private static volatile PowerPlanCatalogSnapshot _snapshot = PowerPlanCatalogSnapshot.Loading;
+
+  /// <summary>UI-safe: never performs IO. The latest load's result; loads run on background tasks.</summary>
+  internal static PowerPlanCatalogSnapshot Snapshot => _snapshot;
+
+  private sealed record CatalogLoad(bool Enumerated, IReadOnlyDictionary<Guid, string> Names,
+    IReadOnlySet<Guid> Listed, IReadOnlySet<Guid> ConfirmedAbsent, bool Complete);
+
+  // Test barrier: completes once no load holds the load gate. Every Settings load attempt, including its
+  // snapshot publish, runs inside the gate, so a completed barrier means every earlier load has published.
+  internal static async Task WhenLoadsIdleForTests()
+  {
+    await AsyncLoadGate.WaitAsync().ConfigureAwait(false);
+    AsyncLoadGate.Release();
+  }
+
   public static IReadOnlyDictionary<Guid, string> TryLoad()
   {
     if (_sessionCache is not null)
@@ -59,40 +77,54 @@ public static class PowerPlanCatalogProvider
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
     => LoadWithRetryAsync(cancellationToken: cancellationToken);
 
-  internal static readonly TimeSpan GuardianLoadBudget = TimeSpan.FromSeconds(5);
+  internal static readonly TimeSpan LoadBudget = TimeSpan.FromSeconds(5);
 
-  // Guardian-only: one load through PowerSchemeService (PWR-INV-SCHEME-API). Enumeration and every
-  // name read share one total budget, so the chain is bounded regardless of the scheme count. Names are
-  // presentation only; only a confirmed absence (Win32 2) of a hidden known scheme is normal.
+  // Guardian-only entry (PWR-INV-SCHEME-API).
   internal static async Task<IReadOnlyDictionary<Guid, string>> TryLoadOnceAsync(CancellationToken cancellationToken,
     Action<PowerSchemeStatus>? observe = null, TimeSpan? budget = null)
   {
     if (_sessionCache is not null) return _sessionCache;
     if (LoadImplementationForTests is { } loader) return loader();
+    var load = await LoadThroughSchemeServiceAsync(cancellationToken, observe, budget ?? LoadBudget).ConfigureAwait(false);
+    Publish(load);
+    return load.Names;
+  }
 
-    var catalog = new Dictionary<Guid, string>();
+  // One load through PowerSchemeService: enumeration and every name read share one total budget, so the
+  // chain is bounded regardless of the scheme count. Names are presentation only; only a confirmed
+  // absence (Win32 2) of a hidden known scheme is normal.
+  private static async Task<CatalogLoad> LoadThroughSchemeServiceAsync(
+    CancellationToken cancellationToken, Action<PowerSchemeStatus>? observe, TimeSpan budget)
+  {
+    var names = new Dictionary<Guid, string>();
+    var absent = new HashSet<Guid>();
     using var total = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-    total.CancelAfter(budget ?? GuardianLoadBudget);
-    var started = System.Diagnostics.Stopwatch.GetTimestamp();
+    total.CancelAfter(budget);
+    var started = Stopwatch.GetTimestamp();
+    HashSet<Guid>? listed = null;
     var complete = false;
     try
     {
       var schemes = await PowerSchemeService.EnumerateSchemesAsync(total.Token).ConfigureAwait(false);
       observe?.Invoke(schemes.Status);
-      if (!schemes.Succeeded) return catalog;
+      if (!schemes.Succeeded) return new(false, names, new HashSet<Guid>(), absent, false);
 
-      var listed = schemes.Value!;
+      var enumerated = schemes.Value!.ToHashSet();
+      listed = enumerated;
       complete = true;
-      foreach (var guid in listed.Concat(KnownSchemeGuids.Where(known => !listed.Contains(known))))
+      foreach (var guid in enumerated.Concat(KnownSchemeGuids.Where(known => !enumerated.Contains(known))))
       {
         var name = await PowerSchemeService.ReadNameAsync(guid, total.Token).ConfigureAwait(false);
         if (name.Succeeded)
         {
-          if (!string.IsNullOrWhiteSpace(name.Value)) catalog[guid] = name.Value!;
+          if (!string.IsNullOrWhiteSpace(name.Value)) names[guid] = name.Value!;
           continue;
         }
-        var confirmedAbsent = !listed.Contains(guid) && name.Status is { FailureKind: "api-error", Win32Error: 2 };
-        if (confirmedAbsent) continue;
+        if (!enumerated.Contains(guid) && name.Status is { FailureKind: "api-error", Win32Error: 2 })
+        {
+          absent.Add(guid);
+          continue;
+        }
         complete = false;
         observe?.Invoke(name.Status);
       }
@@ -102,11 +134,46 @@ public static class PowerPlanCatalogProvider
       // Total budget exhausted: keep the names read so far; the guardian continues by GUID.
       complete = false;
       observe?.Invoke(new PowerSchemeStatus("timed-out", null,
-        (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+        (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds));
     }
+    // Enumerated even when the budget ran out during name reads: unread schemes stay NameUnreadable.
+    return new(listed is not null, names, listed ?? new HashSet<Guid>(), absent, complete);
+  }
 
-    if (complete && catalog.Count > 0 && !HasMissingKnownSchemes(catalog)) _sessionCache = catalog;
-    return catalog;
+  // Test loaders return the machine's complete list; built-in schemes they omit count as confirmed absent.
+  private static CatalogLoad FromTestLoader(IReadOnlyDictionary<Guid, string> catalog)
+    => new(true, catalog, catalog.Keys.ToHashSet(), KnownSchemeGuids.Where(g => !catalog.ContainsKey(g)).ToHashSet(), true);
+
+  private static void Publish(CatalogLoad load)
+  {
+    if (load.Enumerated)
+      _snapshot = new PowerPlanCatalogSnapshot(PowerPlanCatalogState.Loaded, load.Names, load.Listed, load.ConfirmedAbsent);
+    if (load.Complete && load.Names.Count > 0 && !HasMissingKnownSchemes(load.Names)) _sessionCache = load.Names;
+  }
+
+  private static void PublishFailureUnlessLoaded()
+  {
+    if (_snapshot.State != PowerPlanCatalogState.Loaded) _snapshot = PowerPlanCatalogSnapshot.Failed;
+  }
+
+  // One Settings attempt: same core as the guardian; a failing test loader counts as a failed enumeration.
+  private static async Task<CatalogLoad> LoadAttemptAsync(CancellationToken cancellationToken)
+  {
+    if (_sessionCache is { } cached) return FromTestLoader(cached);
+    CatalogLoad load;
+    if (LoadImplementationForTests is { } loader)
+    {
+      try { load = FromTestLoader(await Task.Run(loader, cancellationToken).ConfigureAwait(false)); }
+      catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+      catch { load = new(false, new Dictionary<Guid, string>(), new HashSet<Guid>(), new HashSet<Guid>(), false); }
+    }
+    else
+    {
+      load = await LoadThroughSchemeServiceAsync(cancellationToken, null, LoadBudget).ConfigureAwait(false);
+    }
+    cancellationToken.ThrowIfCancellationRequested();
+    Publish(load);
+    return load;
   }
 
   public static async Task<IReadOnlyDictionary<Guid, string>> LoadWithRetryAsync(
@@ -128,22 +195,26 @@ public static class PowerPlanCatalogProvider
       if (cached is not null && !HasMissingKnownSchemes(cached))
         return cached;
 
+      CatalogLoad? last = null;
       for (var attempt = 0; attempt < maxAttempts; attempt++)
       {
         cancellationToken.ThrowIfCancellationRequested();
         if (attempt > 0)
           InvalidateSessionCache();
-        var catalog = await TryLoadAsync(cancellationToken).ConfigureAwait(false);
-        if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
-          return catalog;
+        last = await LoadAttemptAsync(cancellationToken).ConfigureAwait(false);
+        if (last.Names.Count > 0 && !HasMissingKnownSchemes(last.Names))
+          return last.Names;
 
         if (attempt < maxAttempts - 1)
           await Task.Delay(300, cancellationToken).ConfigureAwait(false);
       }
 
+      // Existing semantics: one final reload after the attempts (maxAttempts + 1 loads per call).
       cancellationToken.ThrowIfCancellationRequested();
       InvalidateSessionCache();
-      return await TryLoadAsync(cancellationToken).ConfigureAwait(false);
+      last = await LoadAttemptAsync(cancellationToken).ConfigureAwait(false);
+      if (!last.Enumerated) PublishFailureUnlessLoaded();
+      return last.Names;
     }
     finally
     {
@@ -177,6 +248,7 @@ public static class PowerPlanCatalogProvider
   {
     InvalidateSessionCache();
     LoadImplementationForTests = null;
+    _snapshot = PowerPlanCatalogSnapshot.Loading;
   }
 
   public static void EnrichWithHiddenSchemes(

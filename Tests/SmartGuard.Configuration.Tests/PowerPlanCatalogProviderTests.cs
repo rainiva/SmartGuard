@@ -211,84 +211,6 @@ public class PowerPlanCatalogProviderTests
   }
 
   [Fact]
-  public async Task LoadWithRetryAsync_propagates_cancellation_to_powercfg()
-  {
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    using var cancellation = new CancellationTokenSource();
-    using var started = new ManualResetEventSlim();
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = async (_, _, token) =>
-    {
-      started.Set();
-      await Task.Delay(Timeout.InfiniteTimeSpan, token);
-      return new PowerCfgCommandResult(true, false, 0, string.Empty, string.Empty);
-    };
-
-    try
-    {
-      var loadTask = PowerPlanCatalogProvider.LoadWithRetryAsync(
-        maxAttempts: 1,
-        cancellationToken: cancellation.Token);
-
-      started.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the async powercfg call should start");
-      cancellation.Cancel();
-
-      await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await loadTask);
-    }
-    finally
-    {
-      PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
-      PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    }
-  }
-
-  [Fact]
-  public async Task LoadWithRetryAsync_serializes_concurrent_powercfg_loaders()
-  {
-    PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    var active = 0;
-    var maximumActive = 0;
-    PowerCfgProcessRunner.RunAsyncOverrideForTests = async (_, _, token) =>
-    {
-      var current = Interlocked.Increment(ref active);
-      var observedMaximum = Volatile.Read(ref maximumActive);
-      while (current > observedMaximum)
-      {
-        var replaced = Interlocked.CompareExchange(
-          ref maximumActive,
-          current,
-          observedMaximum);
-        if (replaced == observedMaximum)
-          break;
-        observedMaximum = replaced;
-      }
-
-      try
-      {
-        await Task.Delay(100, token);
-        return new PowerCfgCommandResult(true, false, 0, string.Empty, string.Empty);
-      }
-      finally
-      {
-        Interlocked.Decrement(ref active);
-      }
-    };
-
-    try
-    {
-      await Task.WhenAll(
-        PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1),
-        PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1));
-
-      maximumActive.Should().Be(1, "concurrent Settings windows must share one catalog load slot");
-    }
-    finally
-    {
-      PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
-      PowerPlanCatalogProvider.ClearSessionCacheForTests();
-    }
-  }
-
-  [Fact]
   public async Task LoadWithRetryAsync_reuses_completed_catalog_for_concurrent_callers()
   {
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
@@ -415,5 +337,155 @@ public class PowerPlanCatalogProviderTests
         catalog.Count.Should().BeLessThan(listed.Length);
         statuses.Should().Contain(status => status.FailureKind == "timed-out");
         native.Calls.Count(call => call == "enumerate").Should().Be(2);
+    }
+
+    private static readonly Guid Custom = Guid.Parse("56c8d9b8-d34d-4d19-96a4-c177cf5f4882");
+
+    [Fact]
+    public async Task LoadWithRetryAsync_reads_names_through_the_scheme_service()
+    {
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => (0, [PowerPlanCatalogProvider.BalancedPlanGuid, Custom,
+                PowerPlanCatalogProvider.HighPerformancePlanGuid, PowerPlanCatalogProvider.PowerSaverPlanGuid]),
+            ReadName = guid => (0, guid == Custom ? "自定义模式" : guid.ToString("N")),
+        };
+        IReadOnlyDictionary<Guid, string> catalog = new Dictionary<Guid, string>();
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Loading);
+            catalog = await PowerPlanCatalogProvider.LoadWithRetryAsync();
+            PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Loaded);
+            PowerPlanCatalogProvider.Snapshot.PresenceOf(Custom).Should().Be(PowerPlanPresence.Named);
+        });
+        catalog.Should().ContainKey(Custom).WhoseValue.Should().Be("自定义模式");
+        native.Calls.Count(call => call == "enumerate").Should().Be(1, "a complete catalog needs no retry");
+    }
+
+    [Fact]
+    public async Task Enumeration_failing_on_every_attempt_publishes_a_failed_snapshot()
+    {
+        var native = new FakePowrProfNative { Enumerate = () => (5, []) };
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            (await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1)).Should().BeEmpty();
+            PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Failed,
+                "an exhausted load is not 'still loading'");
+            PowerPlanCatalogProvider.Snapshot.PresenceOf(Custom).Should().Be(PowerPlanPresence.ListUnavailable);
+        });
+        native.Calls.Count(call => call == "enumerate").Should().Be(2, "one attempt plus the existing final reload");
+    }
+
+    [Fact]
+    public async Task A_later_failure_keeps_the_last_loaded_snapshot_and_a_later_success_recovers()
+    {
+        var failing = false;
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => failing ? (5u, []) : (0u, [PowerPlanCatalogProvider.BalancedPlanGuid, Custom]),
+            // Power saver is genuinely absent, so the catalog stays incomplete and is never cached.
+            ReadName = guid => guid == PowerPlanCatalogProvider.PowerSaverPlanGuid ? (2u, string.Empty) : (0u, "n"),
+        };
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+            var loaded = PowerPlanCatalogProvider.Snapshot;
+            loaded.State.Should().Be(PowerPlanCatalogState.Loaded);
+
+            failing = true;
+            await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+            PowerPlanCatalogProvider.Snapshot.Should().BeSameAs(loaded, "a failed reload must not erase a real result");
+
+            failing = false;
+            await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+            PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Loaded);
+            PowerPlanCatalogProvider.Snapshot.Should().NotBeSameAs(loaded);
+        });
+    }
+
+    [Fact]
+    public async Task Failed_then_successful_load_moves_from_failed_to_loaded()
+    {
+        var failing = true;
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => failing ? (5u, []) : (0u, [PowerPlanCatalogProvider.BalancedPlanGuid]),
+        };
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+            PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Failed);
+            failing = false;
+            await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+            PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Loaded);
+        });
+    }
+
+    [Fact]
+    public async Task Presence_separates_unreadable_names_from_confirmed_absence()
+    {
+        var unknownCustom = Guid.Parse("11111111-2222-3333-4444-555555555555");
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => (0, [PowerPlanCatalogProvider.BalancedPlanGuid, Custom]),
+            ReadName = guid =>
+                guid == Custom ? (5u, string.Empty)                                     // listed, name unreadable
+                : guid == PowerPlanCatalogProvider.PowerSaverPlanGuid ? (2u, string.Empty) // hidden, confirmed absent
+                : guid == PowerPlanCatalogProvider.HighPerformancePlanGuid ? (5u, string.Empty) // hidden, unknown
+                : (0u, "平衡"),
+        };
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+            var snapshot = PowerPlanCatalogProvider.Snapshot;
+            snapshot.PresenceOf(PowerPlanCatalogProvider.BalancedPlanGuid).Should().Be(PowerPlanPresence.Named);
+            snapshot.PresenceOf(Custom).Should().Be(PowerPlanPresence.NameUnreadable, "it exists; only its name failed");
+            snapshot.PresenceOf(PowerPlanCatalogProvider.PowerSaverPlanGuid).Should().Be(PowerPlanPresence.ConfirmedAbsent);
+            snapshot.PresenceOf(PowerPlanCatalogProvider.HighPerformancePlanGuid).Should().Be(PowerPlanPresence.NameUnreadable,
+                "a hidden built-in scheme whose read failed is unknown, not absent");
+            snapshot.PresenceOf(unknownCustom).Should().Be(PowerPlanPresence.ConfirmedAbsent,
+                "a non-built-in scheme that enumeration did not list does not exist");
+        });
+    }
+
+    [Fact]
+    public async Task LoadWithRetryAsync_propagates_cancellation_through_the_scheme_service()
+    {
+        using var release = new ManualResetEventSlim();
+        var native = new FakePowrProfNative { Enumerate = () => { release.Wait(TimeSpan.FromSeconds(10)); return (0, []); } };
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            try
+            {
+                using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                    PowerPlanCatalogProvider.LoadWithRetryAsync(cancellationToken: cancellation.Token));
+            }
+            finally { release.Set(); }
+        });
+        native.Calls.Should().Contain("enumerate");
+    }
+
+    [Fact]
+    public async Task LoadWithRetryAsync_serializes_concurrent_loads_that_cannot_be_cached()
+    {
+        // High performance and power saver are genuinely absent, so no load is cached and each caller
+        // loads maxAttempts + 1 = 2 times. Cache reuse is covered by LoadWithRetryAsync_reuses_completed_catalog….
+        var native = new FakePowrProfNative
+        {
+            Enumerate = () => { Thread.Sleep(50); return (0, [PowerPlanCatalogProvider.BalancedPlanGuid]); },
+            ReadName = guid => guid == PowerPlanCatalogProvider.BalancedPlanGuid ? (0u, "平衡") : (2u, string.Empty),
+        };
+        IReadOnlyDictionary<Guid, string>[] results = [];
+        await PowerSchemeTestScope.WithNative(native, async () =>
+        {
+            results = await Task.WhenAll(
+                PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1),
+                PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1));
+        });
+        // Without the load gate the second caller would meet the executor's single-flight gate, get
+        // call-pending without reaching native code, and the count would fall below 4.
+        native.Calls.Count(call => call == "enumerate").Should().Be(4);
+        results.Should().AllSatisfy(catalog => catalog.Should().ContainKey(PowerPlanCatalogProvider.BalancedPlanGuid));
     }
 }
