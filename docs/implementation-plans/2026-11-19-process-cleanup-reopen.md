@@ -82,12 +82,14 @@
 
 | Task | 提交 | RED | GREEN |
 |------|------|-----|-------|
-| 1 脚手架 | `1e29a60d` | 不适用（不改变行为） | 三个项目计数与基线相同 |
-| 2 以 EOF 判定清理 | `6a3d91d1` | 27 例中 1 例失败：`Pipes_closing_inside_the_settle_wait…` 得到 `cleanup-unconfirmed`（旧代码在终止请求前快照孤儿管道）；迟到读取用例在脚手架上通过，记为保护性 | Configuration 522/1 未执行、Engine 430、Architecture 352 |
-| 3 保留移交与证明 | `0ced2cd0` | 7 例中 5 例按行为缺口失败（脚手架证明恒为 false、证据不变、未移交）；2 例为保护性用例与成本门 | Configuration 529/1、Engine 430、Architecture 352 |
-| 4 观测字段与文案 | `cdd0910c` | 3 个新用例失败（缺属性与范围）；电源 API 两个回归门通过 | Engine 433、Architecture 352 |
-| 5 持有并重开 | `0348eb92` | 52 例中 7 例失败，与计划所列一致；`Unprovable_cleanup…`、`A_request_arriving_during…` 为保护性用例 | Configuration 529/1、Engine 452、Architecture 352；WMI 与收尾用例重复 3 轮均 41/41 |
-| 6 契约与门禁 | `378a8399` | 门禁 3 例中契约 1 例失败 | Architecture 355 |
+| 1 脚手架 | `9dde6042` | 不适用（不改变行为） | 三个项目计数与基线相同 |
+| 2 以 EOF 判定清理 | `b2fea020` | 27 例中 1 例失败：`Pipes_closing_inside_the_settle_wait…` 得到 `cleanup-unconfirmed`（旧代码在终止请求前快照孤儿管道）；迟到读取用例在脚手架上通过，记为保护性 | Configuration 522/1 未执行、Engine 430、Architecture 352 |
+| 3 保留移交与证明 | `8189ba64` | 7 例中 5 例按行为缺口失败（脚手架证明恒为 false、证据不变、未移交）；2 例为保护性用例与成本门 | Configuration 529/1、Engine 430、Architecture 352 |
+| 4 观测字段与文案 | `90b2f16a` | 3 个新用例失败（缺属性与范围）；电源 API 两个回归门通过 | Engine 433、Architecture 352 |
+| 5 持有并重开 | `30c53c4b` | 52 例中 7 例失败，与计划所列一致；`Unprovable_cleanup…`、`A_request_arriving_during…` 为保护性用例 | Configuration 529/1、Engine 452、Architecture 352；WMI 与收尾用例重复 3 轮均 41/41 |
+| 6 契约与门禁 | `5d6fdbbb` | 门禁 3 例中契约 1 例失败 | Architecture 355 |
+
+提交号为变基到合并 PR #6 后的 main（`ab1139f2`）之后的值。变基前后每个提交的代码树逐一比对相同，因此下文安装版本号中的变基前提交 `378a8399` 与 `5d6fdbbb` 内容一致。
 
 **补充核验：**
 - **句柄变异检查：** 删除读取器的 `using` 后，`Late_scheduled_readers…` 连续 5 次失败（句柄差 0）。还原后，文件 SHA256 与变异前一致。
@@ -97,6 +99,7 @@
 - **测试收尾：**
   - `TestTaskSettle` 的 11 项隔离验证已移植为 xUnit 用例，Configuration 与 Engine 各一份。改动 stderr 与全局异常事件的用例放在禁止并行的集合 `TestHostGlobalState`。
   - 延迟释放失败的 stderr 在真实 VSTest/xUnit 宿主中可见：一个未提交的临时用例的输出同时出现在控制台日志与 TRX 中。
+- **负载下的稳定性：** 安装验收后，整个 Configuration 测试项目连续运行 10 次（真实进程竞态用例与其他测试类并行），10 次均为 529 通过、1 未执行、0 失败。
 - **夹具偏离计划：** `DescendantFixture` 要等两个 PID 文件都能解析为数字才算就绪，不只看文件是否存在，以免读到写了一半的文件。
 
 **全量测试：** `Run-Tests.ps1` 退出码 0，summary `run-tests-20261120T083317390Z-078f7011a8514dce8ee17a132b6d82fb.summary.json`。
@@ -109,7 +112,7 @@
 | Installer Integration | 9 | 0 | 0 |
 
 **安装：**
-- 安装包 `dist\SmartGuard-Setup-1.6.6-x64.exe`，SHA256 `66ED40C386D5A49FC7ECA22861CA0FD32525F9C6FB108946702C56C351EE76DF`。版本提升单独提交为 `05eb2da6`。
+- 安装包 `dist\SmartGuard-Setup-1.6.6-x64.exe`，SHA256 `66ED40C386D5A49FC7ECA22861CA0FD32525F9C6FB108946702C56C351EE76DF`。版本提升单独提交为 `806c3252`。
 - 安装前已备份程序目录与配置。
 - 用户确认 UAC 后核对：
   - Engine、Configuration、Settings、Tray 四个 DLL 与候选一致，版本 `1.6.6+378a8399`。
