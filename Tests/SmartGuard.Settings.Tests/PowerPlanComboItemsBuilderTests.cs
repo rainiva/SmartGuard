@@ -16,4 +16,26 @@ public class PowerPlanComboItemsBuilderTests
     items.Should().ContainSingle(i => i.PlanGuid == orphan);
     items.Single(i => i.PlanGuid == orphan).DisplayName.Should().Be("节能（未在本机找到）");
   }
+
+  [Theory]
+  [InlineData("Loading", "高性能（正在加载）")]
+  [InlineData("Failed", "高性能（无法读取计划列表）")]
+  [InlineData("Listed", "高性能（名称读取失败）")]
+  [InlineData("Absent", "高性能（未在本机找到）")]
+  public void Selected_plan_label_tells_loading_unavailable_unreadable_and_absent_apart(string situation, string expected)
+  {
+    var selected = Guid.Parse("56c8d9b8-d34d-4d19-96a4-c177cf5f4882");
+    var none = new Dictionary<Guid, string>();
+    var snapshot = situation switch
+    {
+      "Loading" => SmartGuard.Configuration.PowerPlanCatalogSnapshot.Loading,
+      "Failed" => SmartGuard.Configuration.PowerPlanCatalogSnapshot.Failed,
+      "Listed" => new SmartGuard.Configuration.PowerPlanCatalogSnapshot(SmartGuard.Configuration.PowerPlanCatalogState.Loaded,
+        none, new HashSet<Guid> { selected }, new HashSet<Guid>()),
+      _ => new SmartGuard.Configuration.PowerPlanCatalogSnapshot(SmartGuard.Configuration.PowerPlanCatalogState.Loaded,
+        none, new HashSet<Guid>(), new HashSet<Guid>()),
+    };
+    PowerPlanComboItemsBuilder.Build(snapshot, selected, "高性能").Should().ContainSingle()
+      .Which.DisplayName.Should().Be(expected);
+  }
 }

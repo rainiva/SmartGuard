@@ -1071,6 +1071,85 @@ public class SettingsWindowControllerTests
     }
 
     [Fact]
+    public void Plan_catalog_is_loaded_off_the_ui_thread_through_open_interact_and_close()
+    {
+        RunOnSta(() =>
+        {
+            var uiThread = Environment.CurrentManagedThreadId;
+            var loaderThreads = new System.Collections.Concurrent.ConcurrentBag<int>();
+            PowerPlanCatalogProvider.ClearSessionCacheForTests();
+            // A machine without the power saver scheme: the catalog is incomplete, so it is never cached and
+            // every repopulation would load again. A complete catalog would hide the defect behind the cache.
+            PowerPlanCatalogProvider.LoadImplementationForTests = () =>
+            {
+                loaderThreads.Add(Environment.CurrentManagedThreadId);
+                Thread.Sleep(100);
+                return new Dictionary<Guid, string>
+                {
+                    [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能（测试）",
+                    [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡（测试）",
+                };
+            };
+
+            var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsUiCatalog_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempRoot);
+            Window? window = null;
+            try
+            {
+                var repository = new GuardConfigRepository(Path.Combine(tempRoot, "SmartGuard.config.json"));
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, repository.LoadOrDefault(tempRoot));
+                controller.Should().NotBeNull();
+                window = GetWindowField(controller!);
+
+                // Open: show the real window, as the user does; names arrive only through the background
+                // load and its UI callback.
+                if (!window.IsVisible)
+                    WpfStaTestHost.ShowAndWait(window);
+                var active = (ComboBox)window.FindName("cmbActivePlan");
+                WpfStaTestHost.WaitUntil(
+                    () => active.Items.Cast<PowerPlanComboItem>().Any(item => item.DisplayName == "平衡（测试）"),
+                    TimeSpan.FromSeconds(10), "the plan names to arrive through the background load");
+                loaderThreads.Should().NotBeEmpty("the catalog was actually loaded");
+                // Opening the window is where the old code loaded synchronously; assert before any interaction.
+                loaderThreads.Should().NotContain(uiThread, "opening the window must not load on the UI thread");
+
+                // Interact: the plan combos live on the advanced page (pageAdvanced), collapsed at start.
+                // Navigate there as the user does, then the dropdown really opens and realizes its items;
+                // picking a plan must not trigger a load on the UI thread.
+                controller!.NavigateTo("advanced");
+                WpfStaTestHost.WaitUntil(() => active.IsVisible, TimeSpan.FromSeconds(10), "the advanced page to show the plan combo");
+                active.Focus();
+                active.IsDropDownOpen = true;
+                WpfStaTestHost.WaitUntil(
+                    () => active.IsDropDownOpen
+                        && active.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated,
+                    TimeSpan.FromSeconds(10), "the plan dropdown to open and realize its items");
+                active.SelectedItem = active.Items.Cast<PowerPlanComboItem>().First(item => item.DisplayName == "平衡（测试）");
+                active.IsDropDownOpen = false;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                // Close through the window; its Closing handler disposes the controller.
+                window.Close();
+                window = null;
+
+                loaderThreads.Should().NotContain(uiThread, "interacting and closing must not load on the UI thread either");
+            }
+            finally
+            {
+                window?.Close();
+                // Converge before the global hook is reset: every load that started has published (the load
+                // gate is free), and any UI callback it queued has run or been dropped. A timeout throws.
+                var idle = PowerPlanCatalogProvider.WhenLoadsIdleForTests();
+                WpfStaTestHost.WaitUntil(() => idle.IsCompleted, TimeSpan.FromSeconds(10),
+                    "every catalog load to finish after the window closed");
+                WpfStaTestHost.WaitForRender();
+                PowerPlanCatalogProvider.ClearSessionCacheForTests();
+                try { Directory.Delete(tempRoot, true); } catch { }
+            }
+        });
+    }
+
+    [Fact]
     public void User_typing_custom_range_waits_for_debounce_before_updating_view()
     {
         RunOnSta(() =>

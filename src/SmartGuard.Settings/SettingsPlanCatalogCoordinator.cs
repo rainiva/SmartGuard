@@ -78,7 +78,18 @@ internal sealed class SettingsPlanCatalogCoordinator : IDisposable
     if (_lblPlanMappingStatus is null) return;
 
     config ??= _readConfigFromUi();
-    var messages = PowerPlanMappingValidator.Validate(config, PowerPlanCatalogProvider.TryLoad());
+    var snapshot = PowerPlanCatalogProvider.Snapshot;
+    if (snapshot.State == PowerPlanCatalogState.Loading)
+    {
+      _lblPlanMappingStatus.Text = "正在加载电源计划...";
+      return;
+    }
+    if (snapshot.State == PowerPlanCatalogState.Failed)
+    {
+      _lblPlanMappingStatus.Text = "无法读取电源计划列表，可重新打开设置重试";
+      return;
+    }
+    var messages = PowerPlanMappingValidator.Validate(config, snapshot);
     _lblPlanMappingStatus.Text = messages.Count == 0
       ? "三档计划映射正常"
       : string.Join("；", messages);
@@ -184,7 +195,7 @@ internal sealed class SettingsPlanCatalogCoordinator : IDisposable
     {
       combo.DisplayMemberPath = nameof(PowerPlanComboItem.DisplayName);
       combo.SelectedValuePath = nameof(PowerPlanComboItem.PlanGuid);
-      var items = PowerPlanComboItemsBuilder.Build(PowerPlanCatalogProvider.TryLoad(), selectedGuid, orphanRoleLabel);
+      var items = PowerPlanComboItemsBuilder.Build(PowerPlanCatalogProvider.Snapshot, selectedGuid, orphanRoleLabel);
       combo.ItemsSource = items;
       combo.SelectedItem = PlanComboSelection.FindItem(items, selectedGuid);
       if (combo.SelectedItem is null && selectedGuid != Guid.Empty)
