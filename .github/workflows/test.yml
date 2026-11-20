@@ -51,6 +51,16 @@ jobs:
         run: |
           chcp 65001 | Out-Null
           ./Run-Tests.ps1
+      # The console log only names failing tests; the TRX files carry their messages and stack traces.
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-gate-test-results
+          path: |
+            .work/test-results/*.trx
+            .work/test-results/*.summary.json
+          if-no-files-found: warn
 
   full-gate:
     if: github.event_name == 'push'
