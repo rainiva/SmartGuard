@@ -4,7 +4,8 @@ namespace SmartGuard.Engine.Infrastructure;
 
 internal sealed record WmiProbeObservation(string Operation, string FailureKind,
   long ElapsedMilliseconds, long BudgetMilliseconds, bool TerminationConfirmed,
-  int? ExitCode, long SuppressedCount, bool Recovered, int? Win32Error = null);
+  int? ExitCode, long SuppressedCount, bool Recovered, int? Win32Error = null,
+  string? CleanupEvidence = null, string? PendingCleanupEvidence = null);
 
 internal sealed class WmiProbeProcess
 {
