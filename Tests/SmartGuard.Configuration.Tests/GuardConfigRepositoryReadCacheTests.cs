@@ -15,6 +15,8 @@ public class GuardConfigRepositoryReadCacheTests
             repo.ResetMetricsForTests();
             var config = GuardConfig.CreateDefault(dir);
             repo.Save(config);
+            // Only a write older than the settle window is served from memory (FileReadStamp).
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
 
             repo.TryLoad().Should().NotBeNull();
             repo.TryLoad().Should().NotBeNull();
@@ -45,6 +47,9 @@ public class GuardConfigRepositoryReadCacheTests
             loaded.Paused = true;
             repo.Save(loaded);
 
+            repo.TryLoad()!.Paused.Should().BeTrue();
+            // Once the write is older than the settle window, the next read is trusted and later ones hit memory.
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
             repo.TryLoad()!.Paused.Should().BeTrue();
 
             repo.ResetMetricsForTests();

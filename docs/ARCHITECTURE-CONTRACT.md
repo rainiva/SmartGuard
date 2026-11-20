@@ -109,7 +109,7 @@
 |------|----------|------|
 | `InstallRootResolver` | `SmartGuard.Configuration` | `--root` / `SMARTGUARD_ROOT` / `bin` 提升 / config walk-up |
 | `SmartGuardPaths` | `SmartGuard.Configuration` | config、status、log、exe 路径常量 |
-| `GuardConfigRepository` | `SmartGuard.Configuration` | 读（含迁移）、全量 Save；以 `LastWriteTimeUtc` 按需检测外部变更，禁止每实例持有长生命周期文件监听器 |
+| `GuardConfigRepository` | `SmartGuard.Configuration` | 读（含迁移）、全量 Save；经 `FileReadStamp`（写入时间 + 长度，读内容前取得；写入后 1 秒内不信任缓存、一律重读）按需检测外部变更，禁止每实例持有长生命周期文件监听器；Tray `StatusStore` 使用同一规则 |
 | `ConfigMutationService` | `SmartGuard.Configuration` | 原子局部写：Paused、ManualHighPerformanceUntil |
 | `GuardConfigValidator` | `SmartGuard.Configuration` | `GuardConfig` 保存前校验唯一入口；前台程序路径规则与 `NormalizeProgramPaths` 规范化/去重单源（Win32 绝对 `.exe`、≤128 项、单条 ≤32767 字符、无通配符/设备路径） |
 | `PolicyEngine`（`Evaluate`）/ `GuardDecision` / `ForegroundObservation` | `SmartGuard.Engine.Domain` | 自动守护统一决策唯一入口（优先级矩阵：手动 → 暂停 → 前台准入 → 空闲/电量/插电链）与决策/前台事实值；`GetExpectedPlanGuid` 已退役；Domain 值不依赖 Win32/WPF、不携带窗口标题 |
@@ -252,7 +252,7 @@
 | M-11 | **已关闭** | `DesktopAppBootstrap` |
 | M-14 | **已关闭** | `status.json` `enginePid` |
 | M-16 | **已关闭** | `BrandIconLoader` |
-| L-02 | **已关闭** | `GuardConfigRepository` 仅以 `LastWriteTimeUtc` 按需检测外部变更；不得为短生命周期 Repository 实例创建未释放的 `FileSystemWatcher` |
+| L-02 | **已关闭** | `GuardConfigRepository` 仅经 `FileReadStamp` 按需检测外部变更（只比对写入时间会在粗粒度文件时钟下漏掉同一时间片内的改动，2026-11-20 修正）；不得为短生命周期 Repository 实例创建未释放的 `FileSystemWatcher` |
 | L-03 | **已关闭** | `LegacyPaths` |
 | L-04 | **已关闭** | 本文档 + `docs/archive/**` 历史边界；live contract 不得保留指向已归档 migration 文档的索引指针 |
 

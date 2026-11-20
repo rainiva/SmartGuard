@@ -6,29 +6,28 @@ namespace SmartGuard.Tray;
 public sealed class StatusStore(string statusPath)
 {
   private StatusPayload? _cached;
-  private DateTime _cachedWriteTimeUtc = DateTime.MinValue;
+  private FileReadStamp? _cachedStamp;
+  private bool _cachedSettled;
 
   internal int DiskReadCountForTests { get; private set; }
 
   internal void ResetMetricsForTests()
   {
     DiskReadCountForTests = 0;
-    _cached = null;
-    _cachedWriteTimeUtc = DateTime.MinValue;
+    Forget();
   }
 
   public StatusPayload? Read()
   {
-    if (!File.Exists(statusPath))
+    // Captured before the content is read; only a settled stamp is trusted (FileReadStamp).
+    if (FileReadStamp.TryCapture(statusPath) is not { } stamp)
     {
-      _cached = null;
-      _cachedWriteTimeUtc = DateTime.MinValue;
+      Forget();
       SyncOperationId(_cached);
       return null;
     }
 
-    var writeTimeUtc = File.GetLastWriteTimeUtc(statusPath);
-    if (_cached is not null && _cachedWriteTimeUtc == writeTimeUtc)
+    if (_cached is not null && _cachedSettled && _cachedStamp == stamp)
     {
       SyncOperationId(_cached);
       return _cached;
@@ -36,9 +35,17 @@ public sealed class StatusStore(string statusPath)
 
     DiskReadCountForTests++;
     _cached = StatusJsonReader.TryRead(statusPath);
-    _cachedWriteTimeUtc = _cached is null ? DateTime.MinValue : writeTimeUtc;
+    _cachedStamp = _cached is null ? null : stamp;
+    _cachedSettled = _cached is not null && stamp.IsSettled(DateTime.UtcNow);
     SyncOperationId(_cached);
     return _cached;
+  }
+
+  private void Forget()
+  {
+    _cached = null;
+    _cachedStamp = null;
+    _cachedSettled = false;
   }
 
   private static void SyncOperationId(StatusPayload? status)

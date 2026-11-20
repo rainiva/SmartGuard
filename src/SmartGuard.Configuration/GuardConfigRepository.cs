@@ -16,7 +16,8 @@ public sealed class GuardConfigRepository
   };
   private GuardConfig? _readCache;
   private GuardConfigLoadResult? _detailedReadCache;
-  private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
+  private FileReadStamp? _readCacheStamp;
+  private bool _readCacheSettled;
 
   public GuardConfigRepository(string configPath)
   {
@@ -33,8 +34,10 @@ public sealed class GuardConfigRepository
   {
     try
     {
-      var writeTimeUtc = File.GetLastWriteTimeUtc(_configPath);
-      if (_readCache is not null && _detailedReadCache is not null && _readCacheWriteTimeUtc == writeTimeUtc)
+      // Captured before the content is read, so a write landing during the read can never be paired
+      // with the older content. Only a settled stamp is trusted (FileReadStamp).
+      var stamp = FileReadStamp.TryCapture(_configPath);
+      if (stamp is not null && _readCache is not null && _detailedReadCache is not null && _readCacheSettled && _readCacheStamp == stamp)
         return _detailedReadCache;
 
       // Open explicitly: File.Exists hides access failures as "missing".
@@ -53,7 +56,8 @@ public sealed class GuardConfigRepository
           TryPersistRetiredFieldCleanup(obj);
       }
       _readCache = result;
-      _readCacheWriteTimeUtc = File.GetLastWriteTimeUtc(_configPath);
+      _readCacheStamp = stamp;
+      _readCacheSettled = stamp is { } taken && taken.IsSettled(DateTime.UtcNow);
       return _detailedReadCache = result is null
         ? new(null, "invalid", null)
         : new(result, null, ComputeRuleFingerprint(result));
@@ -275,7 +279,8 @@ public sealed class GuardConfigRepository
   {
     _readCache = null;
     _detailedReadCache = null;
-    _readCacheWriteTimeUtc = DateTime.MinValue;
+    _readCacheStamp = null;
+    _readCacheSettled = false;
   }
 
   private static bool RemoveRetiredSecretFields(JsonObject node)

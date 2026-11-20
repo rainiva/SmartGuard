@@ -41,6 +41,8 @@ public sealed class GuardConfigDetailedLoadTests : IDisposable
     config.ForegroundRestrictionEnabled = true;
     config.ForegroundProgramPaths = [@"C:\Apps\alpha.exe"];
     repo.Save(config);
+    // Only a write older than the settle window is served from memory (FileReadStamp).
+    File.SetLastWriteTimeUtc(ConfigPath, DateTime.UtcNow - TimeSpan.FromMinutes(1));
     var first = Read(repo);
     var fingerprint = Field<string>(first, "RuleFingerprint");
     fingerprint.Should().HaveLength(64);

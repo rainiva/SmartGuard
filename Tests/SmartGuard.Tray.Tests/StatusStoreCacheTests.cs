@@ -20,6 +20,8 @@ public class StatusStoreCacheTests
             brightness = 50,
         };
         File.WriteAllText(path, JsonSerializer.Serialize(payload));
+        // Only a write older than the settle window is served from memory (FileReadStamp).
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
 
         try
         {
@@ -64,6 +66,33 @@ public class StatusStoreCacheTests
             updated!.currentPlan.Should().Be("节能");
 
             store.DiskReadCountForTests.Should().Be(2);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Read_rereads_a_rewrite_that_keeps_the_same_stamp_inside_the_settle_window()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "SmartGuardStatusStore_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "SmartGuard.status.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new StatusPayload { currentPlan = "平衡", paused = false }));
+
+        try
+        {
+            var store = new StatusStore(path);
+            store.Read()!.paused.Should().BeFalse();
+            var stamp = File.GetLastWriteTimeUtc(path);
+
+            // Same length ("false" -> " true") and the same stamp, as a coarse file clock produces.
+            File.WriteAllText(path, JsonSerializer.Serialize(new StatusPayload { currentPlan = "平衡", paused = true }) + " ");
+            File.SetLastWriteTimeUtc(path, stamp);
+            new FileInfo(path).Length.Should().Be(JsonSerializer.Serialize(new StatusPayload { currentPlan = "平衡", paused = false }).Length);
+
+            store.Read()!.paused.Should().BeTrue("a write inside the settle window cannot be trusted by its stamp");
         }
         finally
         {
