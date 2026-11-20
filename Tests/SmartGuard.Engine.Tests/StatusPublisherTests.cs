@@ -217,6 +217,36 @@ public class StatusPublisherTests : IDisposable
         SmartGuard.Configuration.StatusJsonReader.TryRead(_statusPath)!.batteryPercent.Should().Be(80);
     }
 
+    [Fact]
+    public void Publish_writes_when_only_guard_health_changes()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var planGuid = Guid.NewGuid().ToString();
+        publisher.Publish(CreatePayload(idleSeconds: 10, batteryPercent: 80, planGuid));
+        var stalled = CreatePayload(idleSeconds: 10, batteryPercent: 80, planGuid);
+        stalled.guardHealth = new GuardHealthStatus(GuardHealthCodes.Stalled,
+            new DateTimeOffset(2026, 11, 20, 1, 0, 0, TimeSpan.Zero), GuardHealthCodes.FailureKinds.CallPending);
+
+        publisher.Publish(stalled);
+
+        File.ReadAllText(_statusPath).Should().Contain("\"stalled\"", "a stall is a meaningful change and must not wait for the 60 s refresh");
+    }
+
+    [Fact]
+    public void Log_health_light_path_keeps_the_guard_health()
+    {
+        var publisher = new StatusPublisher(_statusPath);
+        var payload = CreatePayload(idleSeconds: 10, batteryPercent: 80, Guid.NewGuid().ToString());
+        payload.guardHealth = new GuardHealthStatus(GuardHealthCodes.Stalled,
+            new DateTimeOffset(2026, 11, 20, 1, 0, 0, TimeSpan.Zero), GuardHealthCodes.FailureKinds.CallPending);
+        publisher.Publish(payload);
+
+        publisher.PublishLogHealth(new LogHealthStatus(LogHealthCodes.Degraded, DateTimeOffset.UtcNow, 1, 1, 0, 0, 0, 0));
+
+        File.ReadAllText(_statusPath).Should().Contain("\"degraded\"").And.Contain("\"stalled\"",
+            "the light path clones the last guard payload and must not drop guardHealth");
+    }
+
     private static StatusPayload CreatePayload(int idleSeconds, int batteryPercent, string planGuid)
     {
         return new StatusPayload

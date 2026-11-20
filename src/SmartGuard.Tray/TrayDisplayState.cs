@@ -45,6 +45,7 @@ internal sealed class TrayDisplayState(Func<DateTimeOffset>? utcNow = null)
       && left.guardReason == right.guardReason
       && left.foregroundEventsAvailable == right.foregroundEventsAvailable
       && left.logHealth?.Code == right.logHealth?.Code
+      && Equals(left.guardHealth, right.guardHealth)
       && left.notificationEvent?.id == right.notificationEvent?.id;
   }
 
@@ -69,6 +70,7 @@ internal sealed class TrayDisplayState(Func<DateTimeOffset>? utcNow = null)
       guardReason = status.guardReason,
       foregroundEventsAvailable = status.foregroundEventsAvailable,
       logHealth = status.logHealth,
+      guardHealth = status.guardHealth,
       notificationEvent = status.notificationEvent is null
         ? null
         : new NotificationEvent

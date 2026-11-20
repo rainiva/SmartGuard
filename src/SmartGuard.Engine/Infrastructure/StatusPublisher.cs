@@ -125,6 +125,7 @@ public sealed class StatusPublisher
       && a.guardReason == b.guardReason
       && a.foregroundEventsAvailable == b.foregroundEventsAvailable
       && !HealthMeaningfullyChanged(a.logHealth, b.logHealth)
+      && Equals(a.guardHealth, b.guardHealth)
       && a.notificationEvent?.id == b.notificationEvent?.id;
   }
 
@@ -144,6 +145,7 @@ public sealed class StatusPublisher
     lastExternalChange = payload.lastExternalChange, operationId = payload.operationId,
     guardSource = payload.guardSource, guardReason = payload.guardReason,
     foregroundEventsAvailable = payload.foregroundEventsAvailable, logHealth = payload.logHealth,
+    guardHealth = payload.guardHealth,
     notificationEvent = payload.notificationEvent is null ? null : new NotificationEvent
     {
       id = payload.notificationEvent.id, kind = payload.notificationEvent.kind,
