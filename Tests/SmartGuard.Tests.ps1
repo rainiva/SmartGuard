@@ -19,8 +19,9 @@ Describe 'SmartGuard' {
             & $pwsh.Source -NoProfile -File (Join-Path $PSScriptRoot 'Integration/AcceptanceStatusReader.Fixture.ps1') -ReaderPath (Join-Path $root 'scripts/Read-SmartGuardAcceptanceStatus.ps1') -BinDirectory (Join-Path $root 'bin') -Root $fixtureRoot -Case $Case | Out-Null
             $LASTEXITCODE | Should -Be 0
             $result=Get-Content (Join-Path $fixtureRoot 'result.json') -Raw -Encoding UTF8|ConvertFrom-Json
-            $result.Success | Should -Be $Success
-            $result.ElapsedMs | Should -BeLessThan 2000
+            # Carry the fixture's own reason into the failure message; CI keeps no TestDrive files.
+            $result.Success | Should -Be $Success -Because "fixture result: $($result | ConvertTo-Json -Compress)"
+            $result.ElapsedMs | Should -BeLessThan 2000 -Because "fixture result: $($result | ConvertTo-Json -Compress)"
             if($Success){$result.Pid|Should -Be 123; $result.Attempts|Should -BeLessOrEqual 6}
             else{$result.Error|Should -Not -BeNullOrEmpty}
         }
