@@ -71,17 +71,18 @@ internal static class PowerCfgProcessRunner
     if (proc is null)
       return Result(false, "start-failed");
 
-    using var process = proc;
-
+    var readerCts = new CancellationTokenSource();
+    // Taken before scheduling: a reader that starts after the source was disposed must still enter
+    // ReadBoundedAsync, which owns the reader's disposal.
+    var readerToken = readerCts.Token;
     var failureSignal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
     // Anonymous pipe implementations may perform synchronous work before their first await.
     // Capture before scheduling: a late worker must not access an already-disposed Process.
     // Reading the properties transfers stream ownership away from Process.Dispose.
     var standardOutput = proc.StandardOutput;
     var standardError = proc.StandardError;
-    var linkedToken = linkedCts.Token;
-    var readOutTask = StartReader(standardOutput, failureSignal, linkedToken);
-    var readErrTask = StartReader(standardError, failureSignal, linkedToken);
+    var readOutTask = StartReader(standardOutput, failureSignal, readerToken);
+    var readErrTask = StartReader(standardError, failureSignal, readerToken);
     var exitTask = proc.WaitForExitAsync();
     var completion = Task.WhenAll(exitTask, readOutTask, readErrTask);
     string failure;
@@ -98,7 +99,9 @@ internal static class PowerCfgProcessRunner
         linkedCts.Token.ThrowIfCancellationRequested();
         var output = (await readOutTask.ConfigureAwait(false)).Text;
         var error = (await readErrTask.ConfigureAwait(false)).Text;
-        return Result(true, "none", exitCode: proc.ExitCode, output: output, error: error) with { CleanupEvidence = "confirmed" };
+        var exitCode = proc.ExitCode;
+        Release(proc, readerCts);
+        return Result(true, "none", exitCode: exitCode, output: output, error: error) with { CleanupEvidence = "confirmed" };
       }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -114,22 +117,39 @@ internal static class PowerCfgProcessRunner
       failure = "io-failed";
     }
 
-    // Do not equate parent exit with tree cleanup. An exited parent with open pipes cannot
-    // safely identify its surviving descendants; the caller must disable further probes.
-    var orphanedPipes = proc.HasExited && (!readOutTask.IsCompleted || !readErrTask.IsCompleted);
     var killSucceeded = TryKill(proc);
     AfterTerminationRequest.Value?.Invoke();
-    linkedCts.Cancel();
-    var settled = await Task.WhenAny(completion, Task.Delay(250)).ConfigureAwait(false) == completion;
+    // Readers keep running through the settle wait: the proof is EOF on both pipes after the child exited.
+    await Task.WhenAny(completion, Task.Delay(250)).ConfigureAwait(false);
     // Observe every reader/exit failure even if an OS pipe cannot settle inside the cleanup budget.
     _ = completion.ContinueWith(t => { _ = t.Exception; }, CancellationToken.None,
       TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-    var confirmed = killSucceeded && proc.HasExited && settled && !orphanedPipes;
-    return Result(true, failure, confirmed) with
+    var evidence = JudgeCleanup(killSucceeded, proc, readOutTask, readErrTask);
+    if (evidence == "confirmed")
     {
-      FailureKind = confirmed ? failure : "cleanup-unconfirmed",
-      CleanupEvidence = confirmed ? "confirmed" : "pipes-open",
-    };
+      Release(proc, readerCts);
+      return Result(true, failure) with { CleanupEvidence = evidence };
+    }
+    readerCts.Cancel();
+    Release(proc, readerCts);
+    return Result(true, "cleanup-unconfirmed", confirmed: false) with { CleanupEvidence = evidence };
+  }
+
+  // Proof = the child exited and both redirected pipes reached EOF (PWR-INV-CLEANUP-REOPEN). A cancelled
+  // or faulted reader can never prove it.
+  internal static string JudgeCleanup(bool killSucceeded, Process proc, Task<PipeReadOutcome> stdout, Task<PipeReadOutcome> stderr)
+  {
+    if (!killSucceeded) return "kill-failed";
+    if (!proc.HasExited) return "not-exited";
+    if (stdout.IsFaulted || stdout.IsCanceled || stderr.IsFaulted || stderr.IsCanceled) return "reader-failed";
+    return stdout.IsCompletedSuccessfully && stderr.IsCompletedSuccessfully && stdout.Result.ReachedEof && stderr.Result.ReachedEof
+      ? "confirmed" : "pipes-open";
+  }
+
+  private static void Release(Process proc, CancellationTokenSource readerCts)
+  {
+    proc.Dispose();
+    readerCts.Dispose();
   }
 
   private static bool TryKill(Process proc)
@@ -156,16 +176,20 @@ internal static class PowerCfgProcessRunner
     const int limit = 65536;
     var output = new StringBuilder();
     var buffer = new char[2048];
+    var overLimit = false;
     try
     {
       while (true)
       {
         var count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
         if (count == 0) return new(output.ToString(), true);
+        // Past the limit, keep reading and discarding with the fixed buffer so EOF stays observable.
+        if (overLimit) continue;
         if (count > limit - output.Length)
         {
+          overLimit = true;
           failure.TrySetResult("output-limit");
-          return new(output.ToString(), false);
+          continue;
         }
         output.Append(buffer, 0, count);
       }

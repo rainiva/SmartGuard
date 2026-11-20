@@ -122,4 +122,75 @@ public class PowerCfgProcessRunnerTests
         result.Succeeded.Should().BeFalse();
         result.ExitCode.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Pipes_closing_inside_the_settle_wait_prove_cleanup_despite_the_parent_exiting_first()
+    {
+        // No `using`: TestTaskSettle owns these and releases them only after every task has ended.
+        var fixture = new DescendantFixture();
+        var stop = new CancellationTokenSource();
+        Task<PowerCfgCommandResult>? run = null;
+        PowerCfgProcessRunner.UseAfterTerminationRequestForTests(fixture.SignalDescendantExit);
+        try
+        {
+            run = PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(15), stop.Token);
+            fixture.WaitParentExitedWithDescendantAlive(TimeSpan.FromSeconds(10))
+                .Should().BeTrue("the scenario needs an exited parent whose descendant still holds the pipes");
+            stop.Cancel();
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(10));
+            result.FailureKind.Should().Be("cancelled");
+            result.TerminationConfirmed.Should().BeTrue("both pipes reached EOF inside the 250ms settle wait");
+            result.CleanupEvidence.Should().Be("confirmed");
+        }
+        finally
+        {
+            // Unblock everything first, then wait for every task; resources go last.
+            PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null);
+            stop.Cancel();
+            fixture.KillAndWait();
+            await TestTaskSettle.SettleAsync([run], stop, fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Pipes_closing_after_the_settle_wait_leave_cleanup_unconfirmed()
+    {
+        // No `using`: TestTaskSettle owns these and releases them only after every task has ended.
+        var fixture = new DescendantFixture();
+        var stop = new CancellationTokenSource();
+        Task<PowerCfgCommandResult>? run = null;
+        Task? lateSignal = null;
+        // The descendant dies one second after the termination request, well outside the 250ms budget.
+        PowerCfgProcessRunner.UseAfterTerminationRequestForTests(() =>
+            lateSignal = Task.Delay(1000).ContinueWith(_ => fixture.SignalDescendantExit(), TaskScheduler.Default));
+        try
+        {
+            run = PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(15), stop.Token);
+            fixture.WaitParentExitedWithDescendantAlive(TimeSpan.FromSeconds(10)).Should().BeTrue();
+            stop.Cancel();
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(10));
+            result.FailureKind.Should().Be("cleanup-unconfirmed");
+            result.CleanupEvidence.Should().Be("pipes-open");
+            result.PendingCleanup.Should().BeNull("a caller that does not retain gets nothing to own");
+        }
+        finally
+        {
+            // Unblock everything first, then wait for every task (one timing out never skips the other).
+            PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null);
+            stop.Cancel();
+            fixture.KillAndWait();
+            await TestTaskSettle.SettleAsync([run, lateSignal], stop, fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Held_pipes_after_parent_exit_are_reported_as_pipes_open()
+    {
+        using var fixture = new DescendantFixture();
+        var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(2));
+        result.FailureKind.Should().Be("cleanup-unconfirmed");
+        result.TerminationConfirmed.Should().BeFalse();
+        result.CleanupEvidence.Should().Be("pipes-open");
+        result.PendingCleanup.Should().BeNull("a caller that does not retain gets nothing to own");
+    }
 }
