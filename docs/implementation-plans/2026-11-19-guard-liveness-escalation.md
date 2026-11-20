@@ -118,11 +118,13 @@
 
 | Task | 提交 | RED | GREEN |
 |------|------|-----|-------|
-| 1 状态字段与两处相等判定 | `f5c6d61f` | 4 例中 3 例按行为缺口失败：Publisher 忽略 `guardHealth` 跳过写入、轻路径 Clone 丢字段、托盘相等判定忽略它；Clone 保留用例为保护性 | Engine 454、Tray 91、Settings 641、Architecture 355 |
-| 2 判定规则 | `3a2f84d1` | 9 例中 6 例失败（骨架恒为 healthy/None、分类码恒为 other）；`One_success…`、`Resume_restarts…`、`NotAdmitted→other` 为保护性 | Engine 463、Architecture 355 |
-| 3 轮次集成、事件名与通知 | `d6a6d7e8` | 6 例全部失败：4 个轮次用例在第 102 行等处 `guardHealth` 为 null（核对堆栈，非夹具问题）；2 个事件未登记 | Configuration 529/1、Engine 469、Architecture 355 |
-| 4 托盘与设置文案 | `6f690458` | 与计划所列一致：托盘 5 例失败、设置 1 例失败；旧状态/过期、`(true,true)`、healthy 文案为保护性 | Tray 98、Settings 643、Architecture 355 |
-| 5 契约与门禁 | `2334ff56` | 门禁 3 例中契约 1 例失败 | Architecture 358 |
+| 1 状态字段与两处相等判定 | `85ea8abe` | 4 例中 3 例按行为缺口失败：Publisher 忽略 `guardHealth` 跳过写入、轻路径 Clone 丢字段、托盘相等判定忽略它；Clone 保留用例为保护性 | Engine 454、Tray 91、Settings 641、Architecture 355 |
+| 2 判定规则 | `1367fc87` | 9 例中 6 例失败（骨架恒为 healthy/None、分类码恒为 other）；`One_success…`、`Resume_restarts…`、`NotAdmitted→other` 为保护性 | Engine 463、Architecture 355 |
+| 3 轮次集成、事件名与通知 | `8dc14685` | 6 例全部失败：4 个轮次用例在第 102 行等处 `guardHealth` 为 null（核对堆栈，非夹具问题）；2 个事件未登记 | Configuration 529/1、Engine 469、Architecture 355 |
+| 4 托盘与设置文案 | `65474484` | 与计划所列一致：托盘 5 例失败、设置 1 例失败；旧状态/过期、`(true,true)`、healthy 文案为保护性 | Tray 98、Settings 643、Architecture 355 |
+| 5 契约与门禁 | `942708cb` | 门禁 3 例中契约 1 例失败 | Architecture 358 |
+
+提交号为变基到合并 PR #8 后的 main（`3e9dc163`）之后的值。变基前后每个提交的代码树逐一比对相同，因此下文安装版本号中的变基前提交 `2334ff56` 与 `942708cb` 内容一致。
 
 **全量测试：** `Run-Tests.ps1` 退出码 0，summary `run-tests-20261120T102446897Z-d9a9e0254dd24e698c468448dfcb7df2.summary.json`。前后两次 `powercfg /getactivescheme` 均为“高性能”（18:24:45、18:31:53），测试未改动电源设置。
 
@@ -134,7 +136,7 @@
 | Installer Integration | 9 | 0 | 0 |
 
 **安装：**
-- 安装包 `dist\SmartGuard-Setup-1.6.7-x64.exe`，SHA256 `DDDAD816A97001C06D659F509CBACD847547EBF990438E0652C102DE710D33D8`。版本提升单独提交为 `15c01533`。
+- 安装包 `dist\SmartGuard-Setup-1.6.7-x64.exe`，SHA256 `DDDAD816A97001C06D659F509CBACD847547EBF990438E0652C102DE710D33D8`。版本提升单独提交为 `29f86b4e`。
 - 安装前已备份程序目录与配置。
 - 用户确认 UAC 后核对：
   - Engine、Configuration、Settings、Tray、Contracts 五个 DLL 与候选一致，版本 `1.6.7+2334ff56`。
