@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using SmartGuard.Configuration;
+using SmartGuard.Configuration.Shell;
 
 namespace SmartGuard.Settings;
 
@@ -168,33 +169,18 @@ internal static class SettingsProgramCatalog
     finally { foreach (var process in processes) process.Dispose(); }
     if (!WithinBudget()) return Normalize(candidates);
 
-    object? shell = null;
-    try
+    foreach (var folder in shortcutRoots.Take(2))
     {
-      var shellType = Type.GetTypeFromProgID("WScript.Shell");
-      if (shellType is not null) shell = Activator.CreateInstance(shellType);
-      foreach (var folder in shortcutRoots.Take(2))
+      foreach (var linkPath in EnumerateLinks(folder, WithinBudget))
       {
-        foreach (var linkPath in EnumerateLinks(folder, WithinBudget))
-        {
-          if (!WithinBudget()) break;
-          inspected++;
-          object? link = null;
-          try
-          {
-            if (shell is null) break;
-            link = ((dynamic)shell).CreateShortcut(linkPath);
-            string target = ((dynamic)link).TargetPath;
-            // Do not Resolve: link tracking may search disks/network or prompt for missing targets.
-            Add(Path.GetFileNameWithoutExtension(linkPath), target, ProgramCandidateSource.Shortcut);
-          }
-          catch (Exception error) when (error is COMException or IOException or UnauthorizedAccessException) { }
-          finally { if (link is not null && Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link); }
-        }
+        if (!WithinBudget()) break;
+        inspected++;
+        // Unicode shell link API (names outside the ANSI code page); never resolves the link, because
+        // link tracking may search disks/network or prompt for missing targets.
+        if (ShellLinkTarget.TryRead(linkPath) is { } target)
+          Add(Path.GetFileNameWithoutExtension(linkPath), target, ProgramCandidateSource.Shortcut);
       }
     }
-    catch (COMException) { /* Shell automation may be disabled; running programs remain discoverable. */ }
-    finally { if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell); }
 
     return Normalize(candidates);
   }

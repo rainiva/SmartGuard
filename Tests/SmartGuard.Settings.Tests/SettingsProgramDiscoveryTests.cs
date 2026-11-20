@@ -21,6 +21,25 @@ public class SettingsProgramDiscoveryTests
   }
 
   [Fact]
+  public async Task A_shortcut_whose_name_is_outside_the_ansi_code_page_is_discovered()
+  {
+    // On a machine whose ANSI code page cannot spell the name (an emoji anywhere, Chinese on an English
+    // system), the shortcut must still be read: names are Unicode.
+    var root = Path.Combine(Path.GetTempPath(), "SmartGuardProgramDiscoveryUnicode_" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+      var name = "候选" + char.ConvertFromUtf32(0x1F600);
+      var target = Path.Combine(Environment.SystemDirectory, "notepad.exe");
+      WpfStaTestHost.Run(() => UnicodeShortcutFixture.Create(Path.Combine(root, name + ".lnk"), target));
+      var candidates = await SettingsProgramCatalog.LoadAsync(CancellationToken.None, [root]);
+      var matched = candidates.Where(c => c.Source == ProgramCandidateSource.Shortcut).Should().ContainSingle().Subject;
+      matched.ExecutablePath.Should().BeEquivalentTo(target);
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
+  [Fact]
   public async Task An_unopened_local_program_is_discovered_from_its_chinese_shortcut_name()
   {
     var root = Path.Combine(Path.GetTempPath(), "SmartGuardProgramDiscovery_" + Guid.NewGuid().ToString("N"));
