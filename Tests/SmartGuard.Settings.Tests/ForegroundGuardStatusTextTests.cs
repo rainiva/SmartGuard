@@ -100,6 +100,24 @@ public class ForegroundGuardStatusTextTests
       Fresh(reason: GuardStatusCodes.Reasons.WaitingForListedProgram, writtenAt: Now.Add(-ForegroundGuardStatusText.MaxStatusAge)),
       Now).Should().Be("等待指定程序");
 
+  [Fact]
+  public void Stall_shows_its_start_and_reason_instead_of_probe_failure()
+  {
+    var since = new DateTimeOffset(2026, 9, 30, 11, 40, 0, TimeSpan.Zero);
+    var status = Fresh(GuardStatusCodes.Sources.None, GuardStatusCodes.Reasons.ProbeFailed);
+    status.guardHealth = new GuardHealthStatus(GuardHealthCodes.Stalled, since, GuardHealthCodes.FailureKinds.CallPending);
+    ForegroundGuardStatusText.Describe(status, Now)
+      .Should().Be($"守护已停工（自 {since.ToLocalTime():HH:mm}，电源服务调用一直未返回）");
+  }
+
+  [Fact]
+  public void Healthy_guard_health_keeps_the_existing_reason_text()
+  {
+    var status = Fresh(GuardStatusCodes.Sources.None, GuardStatusCodes.Reasons.ProbeFailed);
+    status.guardHealth = new GuardHealthStatus(GuardHealthCodes.Healthy, null, null);
+    ForegroundGuardStatusText.Describe(status, Now).Should().Be("状态探测失败");
+  }
+
   private static string Describe(
     string source = GuardStatusCodes.Sources.Automatic,
     string? reason = GuardStatusCodes.Reasons.PolicySelected)

@@ -53,6 +53,8 @@ public static class TrayStatusFormatter
     if (status.paused) return string.Empty;
     if (!GuardStatusFreshness.IsFresh(status.timestamp, nowUtc ?? DateTimeOffset.UtcNow))
       return string.Empty;
+    if (GuardHealthCodes.IsStalled(status, nowUtc ?? DateTimeOffset.UtcNow))
+      return FormatStall(status.guardHealth!);
     if (!GuardStatusCodes.IsKnownSource(status.guardSource)
       || !GuardStatusCodes.IsKnownReason(status.guardReason))
       return string.Empty;
@@ -74,6 +76,18 @@ public static class TrayStatusFormatter
       _ => string.Empty,
     };
   }
+
+  // GUARD-INV-LIVENESS display: a stable start time, not a running minute count (the tray only re-renders on change).
+  internal static string FormatStall(GuardHealthStatus health)
+    => $"守护已停工（自 {health.StalledSinceUtc!.Value.ToLocalTime():HH:mm}，{DescribeStallReason(health.LastFailureKind)}）";
+
+  private static string DescribeStallReason(string? kind) => kind switch
+  {
+    GuardHealthCodes.FailureKinds.CallPending => "电源服务调用一直未返回",
+    GuardHealthCodes.FailureKinds.ApiError => "电源服务调用失败",
+    GuardHealthCodes.FailureKinds.TimedOut => "电源服务调用超时",
+    _ => "原因未知",
+  };
 }
 
 public static class NotificationDeduper
