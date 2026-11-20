@@ -63,7 +63,8 @@ jobs:
           if-no-files-found: warn
 
   full-gate:
-    if: github.event_name == 'push'
+    # Manual dispatch lets a branch run the full tier before it reaches main.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     env:
       SMARTGUARD_SKIP_INSTALLER_TESTS: '1'
@@ -99,6 +100,15 @@ jobs:
         run: |
           chcp 65001 | Out-Null
           ./Run-Tests.ps1
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-gate-test-results
+          path: |
+            .work/test-results/*.trx
+            .work/test-results/*.summary.json
+          if-no-files-found: warn
 
   stability-gate:
     if: >-
