@@ -1,11 +1,25 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace SmartGuard.Settings.Tests;
 
 [Collection("WpfUiTests")]
 public class SettingsProgramDiscoveryTests
 {
+  [Fact]
+  public void Shortcut_fixture_writes_names_outside_the_ansi_code_page()
+  {
+    // An emoji is outside every ANSI code page, so this is what a Chinese name is on a non-Chinese machine.
+    var root = Path.Combine(Path.GetTempPath(), "SmartGuardShortcutFixture_" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+      var path = Path.Combine(root, "候选" + char.ConvertFromUtf32(0x1F600) + ".lnk");
+      WpfStaTestHost.Run(() => UnicodeShortcutFixture.Create(path, Path.Combine(Environment.SystemDirectory, "notepad.exe")));
+      File.Exists(path).Should().BeTrue();
+    }
+    finally { Directory.Delete(root, true); }
+  }
+
   [Fact]
   public async Task An_unopened_local_program_is_discovered_from_its_chinese_shortcut_name()
   {
@@ -14,22 +28,7 @@ public class SettingsProgramDiscoveryTests
     try
     {
       var target = Path.Combine(Environment.SystemDirectory, "notepad.exe");
-      WpfStaTestHost.Run(() =>
-      {
-        var shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
-        object? shortcut = null;
-        try
-        {
-          shortcut = ((dynamic)shell).CreateShortcut(Path.Combine(root, "微信测试候选.lnk"));
-          ((dynamic)shortcut).TargetPath = target;
-          ((dynamic)shortcut).Save();
-        }
-        finally
-        {
-          if (shortcut is not null) Marshal.FinalReleaseComObject(shortcut);
-          Marshal.FinalReleaseComObject(shell);
-        }
-      });
+      WpfStaTestHost.Run(() => UnicodeShortcutFixture.Create(Path.Combine(root, "微信测试候选.lnk"), target));
       var elapsed = Stopwatch.StartNew();
       var candidates = await SettingsProgramCatalog.LoadAsync(CancellationToken.None, [root]);
       var matched = SettingsProgramCatalog.Search(candidates, "微信测试候选").Single();
