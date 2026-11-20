@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**状态：** 第 2 版草案，已按 2026-11-19 外部审查修订（见文末“外部审查修订记录”），待用户批准后实施。设计见 [2026-11-19-power-scheme-api-migration.md](2026-11-19-power-scheme-api-migration.md) 第 2.2 节“阶段二”，第一阶段记录见同文档末尾。
+**状态：** 第 3 版草案，已按 2026-11-19 外部审查与 2026-11-20 复审修订（见文末两份修订记录），待用户批准后实施。设计见 [2026-11-19-power-scheme-api-migration.md](2026-11-19-power-scheme-api-migration.md) 第 2.2 节“阶段二”，第一阶段记录见同文档末尾。
 
 **Goal:** Settings 计划目录与 Tray“一键高性能”经 `PowerSchemeService` 调用 Windows 电源 API；删除 powercfg 包装与文本解析；整个产品不再启动 `powercfg.exe`；Settings 窗口不在 UI 线程上加载计划目录，并如实区分“正在加载 / 无法读取列表 / 名称读取失败 / 未在本机找到”。
 
@@ -78,6 +78,8 @@
 
 | 文件 | 动作 | 责任 |
 |------|------|------|
+| `src/SmartGuard.Configuration/PowrProfNative.cs` | 修改 | 列举达到上限时报告“列表被截断”，不报告为完整列表（Task 0.5） |
+| `Tests/SmartGuard.Configuration.Tests/PowrProfNativeEnumerationTests.cs` | 新建 | 列举上限边界 |
 | `src/SmartGuard.Configuration/PowerPlanCatalogSnapshot.cs` | 新建 | 快照、状态、存在性 |
 | `src/SmartGuard.Configuration/PowerPlanCatalogProvider.cs` | 修改 | 共享加载核心与快照发布；删除同步与 powercfg 路径 |
 | `src/SmartGuard.Configuration/PowerPlanMappingValidator.cs` | 修改 | 快照重载，只对 `ConfirmedAbsent` 报缺失 |
@@ -103,7 +105,10 @@
 - 同第一阶段：UTF-8 无 BOM；精确补丁；只暂存本任务文件；Conventional Commits，结尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。
 - 每个 RED 前先 `dotnet build` 受影响测试项目并确认编译状态；RED 必须因行为缺口失败。
 - 测试只读真实电源设置，真实写入由 `PowerWriteGuard` 拒绝。
-- **修改任何 `.ps1` 后核对 `git ls-files --eol` 为 `w/crlf`，并用 Windows PowerShell 5.1 解析一次**：Edit 工具会写 LF，5.1 会误读含中文的 LF 脚本，第一阶段收尾时出现过。
+- **修改任何 `.ps1` 后核对 `git ls-files --eol` 为 `w/crlf`，并用 Windows PowerShell 5.1 解析一次。**
+  - 根因是编码，不是换行。本仓库脚本按规则为 UTF-8 无 BOM，5.1 读取无 BOM 脚本时按系统 ANSI 代码页（本机 GBK）解码（见微软 [about_Character_Encoding](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding?view=powershell-5.1)）。含中文的字符串在 5.1 运行时得到的本来就不是原文，改成 CRLF 不能修正这一点。
+  - CRLF 只起防护作用：误解码有时会吞掉中文之后的一个字节。行尾是 CRLF 时，被吞的是 `\r`，脚本仍能解析；是 LF 时，被吞的是换行，下一行代码会并入注释，导致解析失败。Edit 工具会写 LF，第一阶段收尾时出现过这种失败。
+  - 不改为加 BOM（项目规则要求无 BOM）。本计划新增的脚本只用 ASCII。
 - 受影响测试项目：Configuration、Engine、Settings、Tray、Architecture。
 
 ---
@@ -118,6 +123,147 @@ foreach ($p in 'Configuration','Engine','Settings','Tray','Architecture') { dotn
 ```
 
 Expected: 全部通过，记录各项目通过/跳过数（Settings 含 WpfUi 用例，耗时约 2 分钟）。
+
+---
+
+### Task 0.5: 列举达到上限时不报告为完整列表
+
+Task 1 把“列举成功但未列出的自定义方案”判为本机不存在。这个结论要求列举结果完整。当前 `PowrProfNative.EnumerateSchemes` 读满 256 项后直接返回成功，若本机方案超过 256 个，上限之外的方案会被误判为不存在。本任务保留上限，把截断报告为 `ERROR_MORE_DATA`（234）：调用方按列举失败处理，界面显示“无法读取计划列表”，不会得出“不存在”的结论。
+
+取舍：不给结果增加“是否完整”的标志。超过 256 个方案的机器极少见，按失败降级（Guardian 名称与 Settings 列表都不可用，并记录错误码 234）比让接口、三份替身和第一阶段调用方都多一个字段更简单，而且同样不会产生错误的“不存在”结论。
+
+**Files:**
+- Modify: `src/SmartGuard.Configuration/PowrProfNative.cs`
+- Create: `Tests/SmartGuard.Configuration.Tests/PowrProfNativeEnumerationTests.cs`
+
+- [ ] **Step 1: 抽出可测的列举循环（行为不变）**
+
+`PowrProfNative` 中加入常量 `private const uint ErrorMoreData = 234;`，并把 `EnumerateSchemes` 替换为：
+
+```csharp
+  public uint EnumerateSchemes(out Guid[] schemes) => EnumerateBounded(EnumerateAt, MaxSchemes, out schemes);
+
+  private static (uint Rc, Guid Scheme) EnumerateAt(uint index)
+  {
+    var buffer = new byte[16];
+    var size = (uint)buffer.Length;
+    var rc = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, AccessScheme, index, buffer, ref size);
+    return (rc, rc == 0 ? new Guid(buffer) : Guid.Empty);
+  }
+
+  // Scaffold: same behaviour as before (stops silently at the cap).
+  internal static uint EnumerateBounded(Func<uint, (uint Rc, Guid Scheme)> enumerateAt, uint max, out Guid[] schemes)
+  {
+    var found = new List<Guid>();
+    schemes = [];
+    for (uint index = 0; index < max; index++)
+    {
+      var (rc, scheme) = enumerateAt(index);
+      if (rc == ErrorNoMoreItems) break;
+      if (rc != 0) return rc;
+      found.Add(scheme);
+    }
+    schemes = found.ToArray();
+    return 0;
+  }
+```
+
+- [ ] **Step 2: 写失败测试**
+
+`Tests/SmartGuard.Configuration.Tests/PowrProfNativeEnumerationTests.cs`：
+
+```csharp
+using FluentAssertions;
+using SmartGuard.Configuration;
+
+namespace SmartGuard.Configuration.Tests;
+
+public class PowrProfNativeEnumerationTests
+{
+  private const uint NoMoreItems = 259;
+
+  private static Func<uint, (uint Rc, Guid Scheme)> ListOf(int count, uint failAt = uint.MaxValue, uint failCode = 0)
+    => index => index == failAt ? (failCode, Guid.Empty)
+      : index < count ? (0u, new Guid((int)index + 1, 0, 0, new byte[8]))
+      : (NoMoreItems, Guid.Empty);
+
+  [Fact]
+  public void A_list_that_ends_at_the_cap_is_complete()
+  {
+    PowrProfNative.EnumerateBounded(ListOf(3), 3, out var schemes).Should().Be(0u);
+    schemes.Should().HaveCount(3);
+  }
+
+  [Fact]
+  public void A_list_longer_than_the_cap_is_reported_as_cut_never_as_complete()
+  {
+    var calls = 0;
+    var source = ListOf(5);
+    PowrProfNative.EnumerateBounded(index => { calls++; return source(index); }, 3, out var schemes)
+      .Should().Be(234u, "a cut list must not let callers conclude that unlisted schemes are absent");
+    schemes.Should().BeEmpty();
+    calls.Should().Be(4, "one read past the cap is enough to know the list was cut");
+  }
+
+  [Fact]
+  public void An_api_error_is_returned_as_is()
+  {
+    PowrProfNative.EnumerateBounded(ListOf(5, failAt: 1, failCode: 5), 3, out var schemes).Should().Be(5u);
+    schemes.Should().BeEmpty();
+  }
+}
+```
+
+- [ ] **Step 3: RED**
+
+```powershell
+dotnet build Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj --no-restore -v q; "build exit=$LASTEXITCODE"
+dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj --no-build --filter FullyQualifiedName~PowrProfNativeEnumerationTests --logger "trx;LogFileName=task05-red.trx" --results-directory .work/power-scheme-api-phase2
+```
+
+Expected: 编译退出码 0。`A_list_longer_than_the_cap…` 失败：骨架读满 3 项后返回 0 和 3 个方案。另外两例通过，属保护性用例：第一例证明恰好等于上限的列表仍算完整，第三例证明错误码原样返回。
+
+- [ ] **Step 4: 实现**
+
+`EnumerateBounded` 替换为：
+
+```csharp
+  // Reads at most `max` schemes. A list is complete only when the API reports ERROR_NO_MORE_ITEMS; an item
+  // past the cap means the list was cut, reported as ERROR_MORE_DATA so callers treat the list as unknown
+  // instead of concluding that unlisted schemes are absent. At most max + 1 native calls.
+  internal static uint EnumerateBounded(Func<uint, (uint Rc, Guid Scheme)> enumerateAt, uint max, out Guid[] schemes)
+  {
+    var found = new List<Guid>();
+    schemes = [];
+    for (uint index = 0; ; index++)
+    {
+      var (rc, scheme) = enumerateAt(index);
+      if (rc == ErrorNoMoreItems)
+      {
+        schemes = found.ToArray();
+        return 0;
+      }
+      if (rc != 0) return rc;
+      if (index == max) return ErrorMoreData;
+      found.Add(scheme);
+    }
+  }
+```
+
+- [ ] **Step 5: GREEN**
+
+```powershell
+foreach ($p in 'Configuration','Engine','Architecture') { dotnet test "Tests/SmartGuard.$p.Tests/SmartGuard.$p.Tests.csproj" --no-restore --logger "trx;LogFileName=task05-green-$p.trx" --results-directory .work/power-scheme-api-phase2 }
+```
+
+Expected: 全部通过。`PowerSchemeServiceLiveTests`（`Category=Live`，只读）若在本机运行，列举仍成功（本机方案远少于 256 个）。
+
+- [ ] **Step 6: 提交**
+
+```powershell
+git add -- src/SmartGuard.Configuration/PowrProfNative.cs Tests/SmartGuard.Configuration.Tests/PowrProfNativeEnumerationTests.cs
+git commit -m "fix(config): report a scheme list cut at the cap as incomplete" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
 
 ---
 
@@ -145,11 +291,30 @@ Expected: 全部通过，记录各项目通过/跳过数（Settings 含 WpfUi �
     PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(Blocked);
 ```
 
-`finally` 内层 `UseExecutorForTests(null);` 之后加入：
+`finally` 整体替换为（只有确认无在途调用后才解除封锁；超时照常抛出，封锁留在原处，迟到的调用也到不了 powercfg）：
 
 ```csharp
-        PowerCfgProcessRunner.RunOverrideForTests = null;
-        PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
+    finally
+    {
+      // A blocked fake must return before the scope ends: the gate belongs to the in-flight call.
+      var idle = false;
+      try
+      {
+        await WaitUntilIdleAsync();
+        idle = true;
+      }
+      finally
+      {
+        // Reset in this frame (not in a nested async method) so the change applies to this flow.
+        PowerSchemeService.UseExecutorForTests(null);
+        PowerPlanCatalogProvider.ClearSessionCacheForTests();
+        if (idle)
+        {
+          PowerCfgProcessRunner.RunOverrideForTests = null;
+          PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
+        }
+      }
+    }
 ```
 
 - [ ] **Step 2: 骨架（不改变行为）**
@@ -197,7 +362,17 @@ internal sealed class PowerPlanCatalogSnapshot
 
   /// <summary>UI-safe: never performs IO. Scaffold only.</summary>
   internal static PowerPlanCatalogSnapshot Snapshot => PowerPlanCatalogSnapshot.Loading;
+
+  // Test barrier: completes once no load holds the load gate. Every Settings load attempt, including its
+  // snapshot publish, runs inside the gate, so a completed barrier means every earlier load has published.
+  internal static async Task WhenLoadsIdleForTests()
+  {
+    await AsyncLoadGate.WaitAsync().ConfigureAwait(false);
+    AsyncLoadGate.Release();
+  }
 ```
+
+（`WhenLoadsIdleForTests` 只供测试等待收敛，不改变行为；Task 2 的窗口用例与 Settings 作用域依赖它。）
 
 - [ ] **Step 3: 写失败测试**（追加到 `PowerPlanCatalogProviderTests` 类末尾）
 
@@ -330,29 +505,26 @@ internal sealed class PowerPlanCatalogSnapshot
     }
 
     [Fact]
-    public async Task LoadWithRetryAsync_serializes_concurrent_loads_through_one_enumeration()
+    public async Task LoadWithRetryAsync_serializes_concurrent_loads_that_cannot_be_cached()
     {
-        using var entered = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
+        // High performance and power saver are genuinely absent, so no load is cached and each caller
+        // loads maxAttempts + 1 = 2 times. Cache reuse is covered by LoadWithRetryAsync_reuses_completed_catalog….
         var native = new FakePowrProfNative
         {
-            Enumerate = () =>
-            {
-                entered.Set();
-                release.Wait(TimeSpan.FromSeconds(10));
-                return (0, [PowerPlanCatalogProvider.BalancedPlanGuid, PowerPlanCatalogProvider.HighPerformancePlanGuid,
-                    PowerPlanCatalogProvider.PowerSaverPlanGuid]);
-            },
+            Enumerate = () => { Thread.Sleep(50); return (0, [PowerPlanCatalogProvider.BalancedPlanGuid]); },
+            ReadName = guid => guid == PowerPlanCatalogProvider.BalancedPlanGuid ? (0u, "平衡") : (2u, string.Empty),
         };
+        IReadOnlyDictionary<Guid, string>[] results = [];
         await PowerSchemeTestScope.WithNative(native, async () =>
         {
-            var first = PowerPlanCatalogProvider.LoadWithRetryAsync();
-            entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
-            var second = PowerPlanCatalogProvider.LoadWithRetryAsync();
-            release.Set();
-            (await second).Should().BeSameAs(await first, "the second caller reuses the completed catalog");
+            results = await Task.WhenAll(
+                PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1),
+                PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1));
         });
-        native.Calls.Count(call => call == "enumerate").Should().Be(1);
+        // Without the load gate the second caller would meet the executor's single-flight gate, get
+        // call-pending without reaching native code, and the count would fall below 4.
+        native.Calls.Count(call => call == "enumerate").Should().Be(4);
+        results.Should().AllSatisfy(catalog => catalog.Should().ContainKey(PowerPlanCatalogProvider.BalancedPlanGuid));
     }
 ```
 
@@ -376,8 +548,9 @@ Expected: 编译退出码均为 0。新用例中：
 (a) `PowerPlanCatalogSnapshot.PresenceOf` 替换为：
 
 ```csharp
-  // Absence is a conclusion only after a successful enumeration: a non-built-in scheme that was not
-  // listed does not exist; a hidden built-in scheme is absent only when its name read returned Win32 2.
+  // Absence is a conclusion only after a successful enumeration, which is always a complete list (a list
+  // cut at the cap is reported as a failure, Task 0.5): a non-built-in scheme that was not listed does not
+  // exist; a hidden built-in scheme is absent only when its name read returned Win32 2.
   internal PowerPlanPresence PresenceOf(Guid plan) => State switch
   {
     PowerPlanCatalogState.Loading => PowerPlanPresence.Loading,
@@ -543,13 +716,18 @@ Expected: 编译退出码均为 0。新用例中：
 foreach ($p in 'Configuration','Engine','Settings') { dotnet test "Tests/SmartGuard.$p.Tests/SmartGuard.$p.Tests.csproj" --no-restore --logger "trx;LogFileName=task1-green-$p.trx" --results-directory .work/power-scheme-api-phase2 }
 ```
 
-Expected: 新用例全部通过。已知变化：`LoadWithRetryAsync_propagates_cancellation_to_powercfg`、`LoadWithRetryAsync_serializes_concurrent_powercfg_loaders`、`LoadWithRetryAsync_reuses_completed_catalog_for_concurrent_callers` 使用 `RunAsyncOverrideForTests`，新实现不再调用 powercfg，因此失败。**删除这三个旧用例**，由 Step 3 的 `propagates_cancellation…`、`serializes…` 以及既有 `LoadWithRetryAsync_reuses…`（缓存复用）语义取代，并在提交说明中列明。若还有其他用例失败，按 systematic-debugging 定位，不改断言迁就实现。
+Expected: 新用例全部通过。
+
+旧用例的处理：
+- **删除 2 个：** `LoadWithRetryAsync_propagates_cancellation_to_powercfg` 与 `LoadWithRetryAsync_serializes_concurrent_powercfg_loaders` 经 `RunAsyncOverrideForTests` 模拟 powercfg，新实现不再调用 powercfg，它们失败。分别由 Step 3 的 `propagates_cancellation…` 与 `serializes_concurrent_loads_that_cannot_be_cached` 取代；后者与被删用例一样覆盖“目录不可缓存时并发加载仍串行”。
+- **保留：** `LoadWithRetryAsync_reuses_completed_catalog_for_concurrent_callers` 使用 `LoadImplementationForTests`，不经 powercfg，在新实现上应继续通过（首个加载发布完整目录并写入缓存，第二个调用复用）。它是“完整目录被复用”的覆盖，不删除。
+- 提交说明列明删除的 2 个用例及替代关系。若还有其他用例失败，按 systematic-debugging 定位，不改断言迁就实现。
 
 - [ ] **Step 7: 提交**
 
 ```powershell
 git add -- src/SmartGuard.Configuration/PowerPlanCatalogSnapshot.cs src/SmartGuard.Configuration/PowerPlanCatalogProvider.cs Tests/SmartGuard.Configuration.Tests/PowerSchemeTestScope.cs Tests/SmartGuard.Configuration.Tests/PowerPlanCatalogProviderTests.cs
-git commit -m "feat(config): load settings plan catalog through the scheme service with a state snapshot" -m "Replaces the powercfg-based concurrency tests with scheme-service equivalents." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(config): load settings plan catalog through the scheme service with a state snapshot" -m "Removes LoadWithRetryAsync_propagates_cancellation_to_powercfg and LoadWithRetryAsync_serializes_concurrent_powercfg_loaders; scheme-service equivalents replace them. LoadWithRetryAsync_reuses_completed_catalog_for_concurrent_callers is kept." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -568,34 +746,48 @@ git commit -m "feat(config): load settings plan catalog through the scheme servi
 `Tests/SmartGuard.Settings.Tests/PowerSchemeTestScope.cs`：
 
 ```csharp
-using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings.Tests;
 
 internal static class PowerSchemeTestScope
 {
+  private static readonly TimeSpan ConvergenceTimeout = TimeSpan.FromSeconds(10);
+
   private static readonly PowerCfgCommandResult Blocked =
     new(false, false, null, "", "powercfg is blocked inside PowerSchemeTestScope") { FailureKind = "start-failed" };
 
   // Synchronous on purpose: WPF tests run on the STA thread; loads started inside inherit the
-  // AsyncLocal executor through the execution context.
+  // AsyncLocal executor through the execution context. Blocking the STA thread here is safe: loads use
+  // ConfigureAwait(false) and never need the dispatcher.
+  // Before the global hooks are reset, every load must have published (the load gate is free) and no
+  // native call may be in flight. Otherwise the test fails and the hooks stay in place, so a late load
+  // can neither reach powercfg.exe nor publish into the next test's cleared cache.
   internal static void WithNativeSync(IPowrProfNative native, Action run)
   {
     PowerSchemeService.UseExecutorForTests(new PowerSchemeExecutor(native));
     PowerCfgProcessRunner.RunOverrideForTests = (_, _) => Blocked;
     PowerCfgProcessRunner.RunAsyncOverrideForTests = (_, _, _) => Task.FromResult(Blocked);
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
+    ExceptionDispatchInfo? failure = null;
     try { run(); }
-    finally
+    catch (Exception ex) { failure = ExceptionDispatchInfo.Capture(ex); }
+
+    var converged = PowerPlanCatalogProvider.WhenLoadsIdleForTests().Wait(ConvergenceTimeout)
+      && SpinWait.SpinUntil(() => !PowerSchemeService.IsCallInFlight, ConvergenceTimeout);
+    PowerSchemeService.UseExecutorForTests(null);
+    if (converged)
     {
-      var watch = Stopwatch.StartNew();
-      while (PowerSchemeService.IsCallInFlight && watch.Elapsed < TimeSpan.FromSeconds(10)) Thread.Sleep(10);
-      PowerSchemeService.UseExecutorForTests(null);
       PowerCfgProcessRunner.RunOverrideForTests = null;
       PowerCfgProcessRunner.RunAsyncOverrideForTests = null;
       PowerPlanCatalogProvider.ClearSessionCacheForTests();
     }
+
+    failure?.Throw();
+    if (!converged)
+      throw new TimeoutException(
+        $"A catalog load or scheme-service call was still running after {ConvergenceTimeout.TotalSeconds:0} s; the global test hooks were left in place.");
   }
 }
 ```
@@ -612,58 +804,66 @@ internal static class PowerSchemeTestScope
         {
             var uiThread = Environment.CurrentManagedThreadId;
             var loaderThreads = new System.Collections.Concurrent.ConcurrentBag<int>();
-            var inFlight = 0;
             PowerPlanCatalogProvider.ClearSessionCacheForTests();
             PowerPlanCatalogProvider.LoadImplementationForTests = () =>
             {
-                Interlocked.Increment(ref inFlight);
-                try
+                loaderThreads.Add(Environment.CurrentManagedThreadId);
+                Thread.Sleep(100);
+                return new Dictionary<Guid, string>
                 {
-                    loaderThreads.Add(Environment.CurrentManagedThreadId);
-                    Thread.Sleep(100);
-                    return new Dictionary<Guid, string>
-                    {
-                        [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能（测试）",
-                        [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡（测试）",
-                        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能（测试）",
-                    };
-                }
-                finally { Interlocked.Decrement(ref inFlight); }
+                    [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能（测试）",
+                    [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡（测试）",
+                    [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能（测试）",
+                };
             };
 
             var tempRoot = Path.Combine(Path.GetTempPath(), "SmartGuardSettingsUiCatalog_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempRoot);
-            SettingsWindowController? controller = null;
+            Window? window = null;
             try
             {
                 var repository = new GuardConfigRepository(Path.Combine(tempRoot, "SmartGuard.config.json"));
-                controller = SettingsWindowController.TryCreate(tempRoot, repository, repository.LoadOrDefault(tempRoot));
+                var controller = SettingsWindowController.TryCreate(tempRoot, repository, repository.LoadOrDefault(tempRoot));
                 controller.Should().NotBeNull();
-                var window = (Window)typeof(SettingsWindowController)
-                    .GetField("_window", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller)!;
-                var active = (ComboBox)window.FindName("cmbActivePlan");
+                window = GetWindowField(controller!);
 
-                // Open: names become visible only through the background load and its UI callback.
+                // Open: show the real window, as the user does; names arrive only through the background
+                // load and its UI callback.
+                if (!window.IsVisible)
+                    WpfStaTestHost.ShowAndWait(window);
+                var active = (ComboBox)window.FindName("cmbActivePlan");
                 WpfStaTestHost.WaitUntil(
                     () => active.Items.Cast<PowerPlanComboItem>().Any(item => item.DisplayName == "平衡（测试）"),
                     TimeSpan.FromSeconds(10), "the plan names to arrive through the background load");
                 loaderThreads.Should().NotBeEmpty("the catalog was actually loaded");
 
-                // Interact: opening and changing a combo must not trigger a load on the UI thread.
+                // Interact: the dropdown really opens on the shown window and realizes its items; picking a
+                // plan must not trigger a load on the UI thread.
+                active.Focus();
                 active.IsDropDownOpen = true;
-                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitUntil(
+                    () => active.IsDropDownOpen
+                        && active.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated,
+                    TimeSpan.FromSeconds(10), "the plan dropdown to open and realize its items");
                 active.SelectedItem = active.Items.Cast<PowerPlanComboItem>().First(item => item.DisplayName == "平衡（测试）");
-                WpfStaTestHost.PumpDispatcher(window);
                 active.IsDropDownOpen = false;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                // Close through the window; its Closing handler disposes the controller.
+                window.Close();
+                window = null;
 
                 loaderThreads.Should().NotContain(uiThread, "catalog loads run on background tasks only");
             }
             finally
             {
-                // Close: the background load must have converged before the global hook is reset.
-                controller?.Dispose();
-                WpfStaTestHost.WaitUntil(() => Volatile.Read(ref inFlight) == 0,
-                    TimeSpan.FromSeconds(10), "the catalog load to finish after close");
+                window?.Close();
+                // Converge before the global hook is reset: every load that started has published (the load
+                // gate is free), and any UI callback it queued has run or been dropped. A timeout throws.
+                var idle = PowerPlanCatalogProvider.WhenLoadsIdleForTests();
+                WpfStaTestHost.WaitUntil(() => idle.IsCompleted, TimeSpan.FromSeconds(10),
+                    "every catalog load to finish after the window closed");
+                WpfStaTestHost.WaitForRender();
                 PowerPlanCatalogProvider.ClearSessionCacheForTests();
                 try { Directory.Delete(tempRoot, true); } catch { }
             }
@@ -671,7 +871,7 @@ internal static class PowerSchemeTestScope
     }
 ```
 
-（文件顶部补 `using System.Reflection;`、`using System.Windows;`、`using System.Windows.Controls;`，以现有 using 为准。）
+（`GetWindowField` 是本测试文件已有的辅助方法，其他用例也用它取窗口并以 `ShowAndWait` 显示。展开下拉框的方式与 `LogWorkbenchCommandsTests` 中已通过的用例相同：先 `Focus()` 再设 `IsDropDownOpen`。`using System.Windows;`、`using System.Windows.Controls;` 以文件现有 using 为准。）
 
 (b) `PowerPlanComboItemsBuilderTests` 中加入：
 
@@ -803,7 +1003,7 @@ dotnet test Tests/SmartGuard.Architecture.Tests/SmartGuard.Architecture.Tests.cs
 
 Expected: 编译退出码均为 0。失败用例：
 
-- UI 线程用例：`PopulatePlanCombo` 经同步 `TryLoad()` 在 STA 线程调用加载器，`NotContain(uiThread)` 失败。前面的 `NotBeEmpty` 与名称等待保证测试确实走到了加载路径，不会因加载器未被调用而假绿。
+- UI 线程用例：`PopulatePlanCombo` 经同步 `TryLoad()` 在 STA 线程调用加载器，`NotContain(uiThread)` 失败。前面的 `NotBeEmpty` 与名称等待保证测试确实走到了加载路径，不会因加载器未被调用而假绿。旧实现的后台异步加载同样经过加载门，收尾的收敛等待照常完成，RED 只由线程断言产生。
 - 文案 Theory：`Loading`、`Failed`、`Listed` 三例失败（仍为“未在本机找到”），`Absent` 通过，属保护性用例。
 - 协调器失败用例：状态栏不会出现“无法读取…”（旧路径不产生 `Failed`），等待超时失败。
 - 名称读取失败用例：下拉框为“（未在本机找到）”，失败。
@@ -1031,7 +1231,7 @@ internal interface IPowerPlanActivator
 }
 ```
 
-`PowerPlanActivator` 保留旧实现，只把进程启动换成默认等于 `Process.Start` 的可替换边界：
+`PowerPlanActivator` 保留旧实现，只把进程启动换成可替换边界；未设置替换时仍调用 `Process.Start`：
 
 ```csharp
 using System.Diagnostics;
@@ -1040,9 +1240,14 @@ namespace SmartGuard.Configuration;
 
 internal sealed class PowerPlanActivator : IPowerPlanActivator
 {
-  // Test seam around the legacy process start only; the default is Process.Start, so behaviour is unchanged.
+  // Test seam around the legacy process start only; unset, it is Process.Start, so behaviour is unchanged.
+  // AsyncLocal on purpose: a call keeps the starter of the context it was queued from, so resetting the
+  // seam can never hand a test call that is still running (or not yet started) the real Process.Start.
   // Removed together with the legacy implementation in Step 6.
-  internal static Func<ProcessStartInfo, Process?> StartProcessForTests = Process.Start;
+  private static readonly AsyncLocal<Func<ProcessStartInfo, Process?>?> ProcessStarterForTests = new();
+
+  internal static void UseProcessStarterForTests(Func<ProcessStartInfo, Process?>? starter)
+    => ProcessStarterForTests.Value = starter;
 
   public PowerSchemeStatus SetActivePlan(Guid planGuid)
   {
@@ -1051,7 +1256,7 @@ internal sealed class PowerPlanActivator : IPowerPlanActivator
       UseShellExecute = false,
       CreateNoWindow = true,
     };
-    using var proc = StartProcessForTests(psi);
+    using var proc = ProcessStarterForTests.Value is { } starter ? starter(psi) : Process.Start(psi);
     proc?.WaitForExit();
     return new PowerSchemeStatus("none", null, 0);
   }
@@ -1082,35 +1287,71 @@ public class PowerPlanActivatorTests
 {
   private static readonly Guid High = PowerPlanCatalogProvider.HighPerformancePlanGuid;
 
-  // The legacy activator starts a process; in tests it starts a harmless child instead of powercfg,
-  // so no RED ever changes this machine's power plan.
-  private static List<Process> UseHarmlessChild(string cmdArguments)
+  private sealed class HarmlessStarts
   {
-    var started = new List<Process>();
-    PowerPlanActivator.StartProcessForTests = _ =>
-    {
-      var child = Process.Start(new ProcessStartInfo("cmd.exe", cmdArguments) { UseShellExecute = false, CreateNoWindow = true });
-      if (child is not null) lock (started) started.Add(child);
-      return child;
-    };
-    return started;
+    internal List<Process> Children { get; } = new();
+    // Set when the switch under test begins: by the legacy start below, or by the fake's SetActive.
+    internal ManualResetEventSlim Entered { get; } = new();
   }
 
-  private static void Restore(List<Process> started)
+  // The legacy activator starts a process; in tests it starts a harmless child instead of powercfg, so no
+  // RED ever changes this machine's power plan. The seam is AsyncLocal: a Task.Run queued after this call
+  // captures the harmless starter even if it only starts running after the test has reset the seam.
+  private static HarmlessStarts UseHarmlessChild(string cmdArguments)
   {
-    PowerPlanActivator.StartProcessForTests = Process.Start;
-    lock (started)
-      foreach (var child in started)
+    var starts = new HarmlessStarts();
+    PowerPlanActivator.UseProcessStarterForTests(_ =>
+    {
+      var child = Process.Start(new ProcessStartInfo("cmd.exe", cmdArguments) { UseShellExecute = false, CreateNoWindow = true });
+      if (child is not null) lock (starts.Children) starts.Children.Add(child);
+      starts.Entered.Set();
+      return child;
+    });
+    return starts;
+  }
+
+  private static void KillChildren(HarmlessStarts starts)
+  {
+    lock (starts.Children)
+      foreach (var child in starts.Children)
       {
-        try { if (!child.HasExited) child.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-        child.Dispose();
+        try
+        {
+          if (!child.HasExited)
+          {
+            child.Kill(entireProcessTree: true);
+            child.WaitForExit(5000);
+          }
+        }
+        catch (InvalidOperationException) { }
       }
+  }
+
+  // Order matters. The fake was already released inside the scope. Here our children end first, which
+  // unblocks the legacy wait; children are killed repeatedly because a late call may still start one.
+  // Only after the call under test has finished are the children disposed and the seam reset. If it never
+  // finishes, nothing it may still use is disposed and the test fails.
+  private static void Cleanup(HarmlessStarts starts, Task? call)
+  {
+    var watch = Stopwatch.StartNew();
+    while (true)
+    {
+      KillChildren(starts);
+      if (call is null || call.IsCompleted || watch.Elapsed > TimeSpan.FromSeconds(10)) break;
+      Thread.Sleep(50);
+    }
+    var finished = call is null || call.IsCompleted;
+    if (finished)
+      lock (starts.Children)
+        foreach (var child in starts.Children) child.Dispose();
+    PowerPlanActivator.UseProcessStarterForTests(null);
+    finished.Should().BeTrue("the call under test must finish before the test ends");
   }
 
   [Fact]
   public async Task Activation_switches_through_the_scheme_service()
   {
-    var started = UseHarmlessChild("/c exit 0");
+    var starts = UseHarmlessChild("/c exit 0");
     var native = new FakePowrProfNative();
     PowerSchemeStatus status = default;
     try
@@ -1121,7 +1362,7 @@ public class PowerPlanActivatorTests
         return Task.CompletedTask;
       });
     }
-    finally { Restore(started); }
+    finally { Cleanup(starts, call: null); }
     status.Succeeded.Should().BeTrue();
     native.Calls.Should().Equal($"set-active {High:D}");
   }
@@ -1130,11 +1371,21 @@ public class PowerPlanActivatorTests
   public async Task Activation_returns_within_a_bound_when_the_switch_hangs()
   {
     // Legacy path: the child runs about 30 s and the activator waits for it without a bound.
-    var started = UseHarmlessChild("/c ping -n 30 127.0.0.1 >nul");
+    var starts = UseHarmlessChild("/c ping -n 30 127.0.0.1 >nul");
     using var release = new ManualResetEventSlim();
     // Scheme service path: the native call blocks; the executor's deadline must bound the wait.
-    var native = new FakePowrProfNative { SetActive = _ => { release.Wait(TimeSpan.FromSeconds(30)); return 0; } };
+    var native = new FakePowrProfNative
+    {
+      SetActive = _ =>
+      {
+        starts.Entered.Set();
+        release.Wait(TimeSpan.FromSeconds(30));
+        return 0;
+      },
+    };
     PowerSchemeStatus status = default;
+    Task? call = null;
+    var entered = false;
     var finished = false;
     try
     {
@@ -1142,14 +1393,17 @@ public class PowerPlanActivatorTests
       {
         try
         {
-          var call = Task.Run(() => status = new PowerPlanActivator().SetActivePlan(High));
-          finished = call.Wait(TimeSpan.FromSeconds(4));
+          call = Task.Run(() => status = new PowerPlanActivator().SetActivePlan(High));
+          // The bound is measured from the switch itself, not from when the thread pool ran the task.
+          entered = starts.Entered.Wait(TimeSpan.FromSeconds(10));
+          finished = entered && call.Wait(TimeSpan.FromSeconds(4));
         }
         finally { release.Set(); }
         return Task.CompletedTask;
       }, deadline: TimeSpan.FromMilliseconds(100));
     }
-    finally { Restore(started); }
+    finally { Cleanup(starts, call); }
+    entered.Should().BeTrue("the switch under test must have started");
     finished.Should().BeTrue("the tray must never wait without a bound for a power switch");
     status.FailureKind.Should().Be("timed-out");
   }
@@ -1209,7 +1463,7 @@ powercfg /getactivescheme | Out-File -Append -Encoding utf8 .work/power-scheme-a
 Expected: 3 例失败，且原因均为原缺陷：
 
 - `Activation_switches…`：旧实现启动的是无害子进程并等待其退出，替身未被调用，`native.Calls` 为空。
-- `Activation_returns_within_a_bound…`：旧实现等待约 30 秒的子进程，4 秒内未返回，`finished` 为 false。这直接证明旧实现没有等待上界。`Restore` 结束子进程后测试收尾。
+- `Activation_returns_within_a_bound…`：`entered` 为 true（无害子进程已启动），之后 4 秒内未返回，`finished` 为 false。这直接证明旧实现没有等待上界。`Cleanup` 结束子进程，确认被测调用随之返回后才释放子进程对象并复位边界。
 - `Failed_activation…`：激活结果被丢弃，日志中没有说明。
 
 原用例 `Apply_sets_manual_boost…` 通过。前后两次 `getactivescheme` 一致：RED 未启动 powercfg。
@@ -1224,7 +1478,7 @@ Expected: 3 例失败，且原因均为原缺陷：
     => PowerSchemeService.SetActiveAsync(planGuid).GetAwaiter().GetResult().Status;
 ```
 
-（`StartProcessForTests` 此步暂留，Step 6 删除。）
+（`UseProcessStarterForTests` 此步暂留，Step 6 删除。）
 
 `ManualHighPerformanceMessages.cs` 加入：
 
@@ -1268,7 +1522,62 @@ foreach ($p in 'Configuration','Tray','Architecture') { dotnet test "Tests/Smart
 
 - [ ] **Step 6: 重构：删除旧边界（保持全绿）**
 
-删除 `PowerPlanActivator.StartProcessForTests` 与 `using System.Diagnostics;`；`PowerPlanActivatorTests` 删除 `UseHarmlessChild`、`Restore`、两处 `var started = …` 与 `finally { Restore(started); }`，并去掉“Legacy path”注释（测试的替身断言不变）。
+删除 `PowerPlanActivator` 中的 `ProcessStarterForTests`、`UseProcessStarterForTests` 与 `using System.Diagnostics;`。
+
+`PowerPlanActivatorTests` 删除 `HarmlessStarts`、`UseHarmlessChild`、`KillChildren`、`Cleanup` 与“Legacy path”注释；`using System.Diagnostics;` 不再需要也一并删除。两个用例改为下面的形式（替身断言不变，有界等待的握手改由替身完成，被测调用仍须在测试结束前返回）：
+
+```csharp
+  [Fact]
+  public async Task Activation_switches_through_the_scheme_service()
+  {
+    var native = new FakePowrProfNative();
+    PowerSchemeStatus status = default;
+    await PowerSchemeTestScope.WithNative(native, () =>
+    {
+      status = new PowerPlanActivator().SetActivePlan(High);
+      return Task.CompletedTask;
+    });
+    status.Succeeded.Should().BeTrue();
+    native.Calls.Should().Equal($"set-active {High:D}");
+  }
+
+  [Fact]
+  public async Task Activation_returns_within_a_bound_when_the_switch_hangs()
+  {
+    using var started = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    // The native call blocks; the executor's deadline must bound the wait.
+    var native = new FakePowrProfNative
+    {
+      SetActive = _ =>
+      {
+        started.Set();
+        release.Wait(TimeSpan.FromSeconds(30));
+        return 0;
+      },
+    };
+    PowerSchemeStatus status = default;
+    Task? call = null;
+    var entered = false;
+    var finished = false;
+    await PowerSchemeTestScope.WithNative(native, () =>
+    {
+      try
+      {
+        call = Task.Run(() => status = new PowerPlanActivator().SetActivePlan(High));
+        // The bound is measured from the switch itself, not from when the thread pool ran the task.
+        entered = started.Wait(TimeSpan.FromSeconds(10));
+        finished = entered && call.Wait(TimeSpan.FromSeconds(4));
+      }
+      finally { release.Set(); }
+      return Task.CompletedTask;
+    }, deadline: TimeSpan.FromMilliseconds(100));
+    call!.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue("the call under test must finish before the test ends");
+    entered.Should().BeTrue("the switch under test must have started");
+    finished.Should().BeTrue("the tray must never wait without a bound for a power switch");
+    status.FailureKind.Should().Be("timed-out");
+  }
+```
 
 ```powershell
 foreach ($p in 'Configuration','Tray') { dotnet test "Tests/SmartGuard.$p.Tests/SmartGuard.$p.Tests.csproj" --no-restore --logger "trx;LogFileName=task4-refactor-$p.trx" --results-directory .work/power-scheme-api-phase2 }
@@ -1393,24 +1702,73 @@ git commit -m "docs(contract): close the settings and tray powercfg exceptions" 
 进程快照只能证明采样时刻没有 powercfg，不能排除短命启动。验收期间改用进程启动事件订阅。`Win32_ProcessStartTrace` 需要管理员权限，由用户在管理员 PowerShell 中运行。脚本保存为 `.work/power-scheme-api-phase2/watch-powercfg.ps1`：
 
 ```powershell
-# Records every powercfg.exe start while it runs. Requires an elevated Windows PowerShell.
+# Records every powercfg.exe start while it runs. Requires an elevated Windows PowerShell. ASCII only.
+# Register-CimIndicationEvent has no -Filter parameter; the condition goes into a full WQL -Query.
+# No -Action: an action block does not run while the script blocks in a .NET call, so events are queued
+# and written by this loop instead. Any failure stops the script and is recorded in the stop line.
+$ErrorActionPreference = 'Stop'
 $log = Join-Path $PSScriptRoot 'powercfg-starts.log'
-Register-CimIndicationEvent -ClassName Win32_ProcessStartTrace -Filter "ProcessName='powercfg.exe'" `
-  -SourceIdentifier SgPowercfgStart -MessageData $log -Action {
-    $e = $Event.SourceEventArgs.NewEvent
-    Add-Content -LiteralPath $Event.MessageData -Encoding utf8 `
-      -Value ('{0:o} pid={1} ppid={2}' -f (Get-Date), $e.ProcessID, $e.ParentProcessID)
-  } | Out-Null
-'Watching powercfg.exe starts; press Enter to stop.'
-[void][Console]::ReadLine()
-Unregister-Event -SourceIdentifier SgPowercfgStart
+$source = 'SgPowercfgStart'
+$query = "SELECT * FROM Win32_ProcessStartTrace WHERE ProcessName='powercfg.exe'"
+
+function Write-WatchLine([string]$text)
+{
+  Add-Content -LiteralPath $log -Encoding utf8 -Value ('{0:o} {1}' -f (Get-Date), $text)
+}
+
+function Write-StartEvent($evt)
+{
+  $e = $evt.SourceEventArgs.NewEvent
+  Write-WatchLine ('start pid={0} ppid={1}' -f $e.ProcessID, $e.ParentProcessID)
+  Remove-Event -EventIdentifier $evt.EventIdentifier
+}
+
+Register-CimIndicationEvent -Query $query -SourceIdentifier $source
+$failure = ''
+try
+{
+  # Written only after registration succeeded: without this line the watch never ran.
+  Write-WatchLine 'watch-started'
+  'Watching powercfg.exe starts; press Q to stop.'
+  while ($true)
+  {
+    $evt = Wait-Event -SourceIdentifier $source -Timeout 1
+    if ($evt) { Write-StartEvent $evt }
+    if ([Console]::KeyAvailable -and [Console]::ReadKey($true).Key -eq 'Q') { break }
+  }
+}
+catch
+{
+  $failure = $_.ToString()
+  throw
+}
+finally
+{
+  foreach ($evt in @(Get-Event -SourceIdentifier $source -ErrorAction SilentlyContinue)) { Write-StartEvent $evt }
+  Write-WatchLine ('watch-stopping failure=[{0}]' -f $failure)
+  Unregister-Event -SourceIdentifier $source
+}
 ```
+
+（已在本机 Windows PowerShell 5.1 核对：
+- `Register-CimIndicationEvent` 的参数集只有 `-ClassName` 与 `-Query` 两类，没有 `-Filter`。
+- 以非管理员身份运行上面的注册语句，失败原因为 `HRESULT 0x80041003`（WMI 拒绝访问），不是参数绑定错误。
+- 不带 `-Action` 注册、再用 `Wait-Event -Timeout 1` 循环取事件的方式，用计时器事件验证可以取到事件。
+- 带 `-Action` 时，事件作业状态在事件触发后仍为 `NotStarted`，不能作为“监视有效”的依据，所以不用。）
 
 监视流程：
 
-1. **阳性对照：** 启动监视后，在另一个终端执行一次只读的 `powercfg /getactivescheme`，确认日志出现一行，且 `ppid` 为该终端。这证明监视有效。
-2. **验收：** 在监视下完成 Step 5 的全部操作。
-3. **判定：** 停止监视后，日志中除阳性对照外不得有其他行。若有，按 `ppid` 对照 `Get-Process SmartGuard*` 定位来源。
+1. **启动：** 用户在管理员 Windows PowerShell 中运行脚本。注册失败时脚本因 `-ErrorAction Stop` 直接报错退出，日志中不会有 `watch-started`，此时验收标 `BLOCKED`，**不得**判为“没有启动 powercfg”。
+2. **开始阳性对照：** 在另一个终端执行一次只读的 `powercfg /getactivescheme`，确认日志出现一行 `start`，且 `ppid` 为该终端。
+3. **验收：** 在监视下完成 Step 5 的全部操作。
+4. **结束阳性对照：** 停止监视前再执行一次只读的 `powercfg /getactivescheme`，确认日志再出现一行 `start`。这证明监视在整个验收期间一直有效。
+5. **判定：** 只有同时满足以下条件才判为通过：
+   - 日志有 `watch-started`；
+   - 两次阳性对照各有一行 `start`；
+   - `watch-stopping` 行显示 `failure=[]`；
+   - 除两次阳性对照外没有其他 `start` 行。
+
+   任一条件不满足：缺少前三项时标 `BLOCKED` 并重做；出现其他 `start` 行时判为失败，按 `ppid` 对照 `Get-Process SmartGuard*` 定位来源。
 
 - [ ] **Step 5: 真实路径验收（需用户配合）：**
   - **打开设置窗口（冷启动，先结束 Settings 进程）：**
@@ -1421,8 +1779,9 @@ Unregister-Event -SourceIdentifier SgPowercfgStart
   - **托盘“一键高性能”：**
     - 当前为平衡时点击，立即切到高性能，主日志出现“托盘手动切换高性能”。
     - Engine 随后的轮次不报外部变更。
-  - **自动化覆盖、真机不可控的路径：** 以下标 `NOT RUN`，由 Task 1、2、4 的用例覆盖。
+  - **自动化覆盖、真机不可控的路径：** 以下标 `NOT RUN`，由 Task 0.5、1、2、4 的用例覆盖。
     - 目录“无法读取列表”与“名称读取失败”。
+    - 方案超过 256 个时列举被截断。
     - 托盘切换超时、错误码。
 - [ ] **Step 6: 记录并提交**：
   - 迁移设计追加“第二阶段实施与验证记录”，内容包括：
@@ -1444,26 +1803,30 @@ Unregister-Event -SourceIdentifier SgPowercfgStart
   - 门禁收紧到全部 `src` → Task 5。
   - 契约 → Task 6。
 - **超出设计的范围（已说明理由）：**
+  - 列举达到上限时报告截断（Task 0.5）：Task 1 的“确认不存在”结论以完整列表为前提，否则会把上限之外的方案误报为不存在。
   - Settings UI 线程同步加载（新发现 #2–#4）与存在性区分（#7）属于同一目录真源的调用方式。
   - 迁移后若保留同步 `TryLoad`，会把 1.1–1.6 秒的 API 加载留在 UI 线程。
   - 只改成读快照而不区分状态，会把“未加载 / 读不到”显示成“未找到”。
 - **RED 合规：**
-  - 新成员都先以不改变行为的骨架或边界引入：快照与存在性、`Build`/`Validate` 快照重载、activator 返回状态与 `StartProcessForTests`。
+  - 新成员都先以不改变行为的骨架或边界引入：列举循环 `EnumerateBounded`、快照与存在性、`Build`/`Validate` 快照重载、activator 返回状态与 `UseProcessStarterForTests`。
   - 每个 RED 都因原缺陷失败：
-    - UI 线程用例先等待名称出现，再断言线程。
-    - 托盘用例直接测出旧实现没有等待上界。
+    - 列举用例直接测出达到上限时仍报告成功。
+    - UI 线程用例先显示窗口并等待名称出现，再断言线程。
+    - 托盘用例先确认切换已开始，再测出旧实现没有等待上界。
   - Task 3 的迁移用例在当前实现上通过，只算回归保护。
 - **系统修改边界：**
-  - Configuration/Settings 作用域在 Task 1–4 期间封锁 `PowerCfgProcessRunner`。
-  - Tray 旧实现绕过该封锁，由 `StartProcessForTests` 换成无害子进程。
+  - Configuration/Settings 作用域在 Task 1–4 期间封锁 `PowerCfgProcessRunner`；只有确认加载与原生调用都已结束才解除封锁，超时则测试失败、封锁保留。
+  - Tray 旧实现绕过该封锁，由 `UseProcessStarterForTests` 换成无害子进程。该边界是 `AsyncLocal`，迟到的被测调用沿用排队时的无害启动；收尾先结束子进程并确认被测调用返回，再释放和复位。
   - 真实写入由 `PowerWriteGuard` 拒绝。
+- **测试收敛：** Settings 用例在复位全局钩子前，经 `WhenLoadsIdleForTests` 确认所有加载已发布快照，并确认没有在途原生调用；等待超时即失败，不静默复位。
 - **类型一致：**
   - `PowerPlanCatalogState{Loading,Failed,Loaded}`。
   - `PowerPlanPresence{Loading,ListUnavailable,Named,NameUnreadable,ConfirmedAbsent}`。
   - `PowerPlanCatalogSnapshot(State, Names, Listed, ConfirmedAbsent).PresenceOf`。
-  - `PowerPlanCatalogProvider.{Snapshot, IsKnownScheme, LoadBudget, LoadThroughSchemeServiceAsync, FromTestLoader, Publish, PublishFailureUnlessLoaded, LoadAttemptAsync}`。
+  - `PowrProfNative.EnumerateBounded(Func<uint, (uint Rc, Guid Scheme)>, uint, out Guid[])`，截断返回 234。
+  - `PowerPlanCatalogProvider.{Snapshot, IsKnownScheme, WhenLoadsIdleForTests, LoadBudget, LoadThroughSchemeServiceAsync, FromTestLoader, Publish, PublishFailureUnlessLoaded, LoadAttemptAsync}`。
   - `PowerPlanComboItemsBuilder.Build(PowerPlanCatalogSnapshot, Guid, string?)`、`PowerPlanMappingValidator.Validate(GuardConfig, PowerPlanCatalogSnapshot)`。
-  - `IPowerPlanActivator.SetActivePlan(Guid) → PowerSchemeStatus`、`PowerPlanActivator.StartProcessForTests`（仅 Task 4 Step 1–5 存在）。
+  - `IPowerPlanActivator.SetActivePlan(Guid) → PowerSchemeStatus`、`PowerPlanActivator.UseProcessStarterForTests(Func<ProcessStartInfo, Process?>?)`（仅 Task 4 Step 1–5 存在）。
   - `ManualHighPerformanceMessages.FormatActivationDeferred(string)`。
 - **已知风险：**
   - Settings 与 Engine 进程各有一个执行器。两进程同时调用电源 API 互不影响门，但由操作系统串行化，单次耗时可能上升；第一阶段基线显示仍在预算内。
@@ -1482,3 +1845,18 @@ Unregister-Event -SourceIdentifier SgPowercfgStart
 | — | 验收证据：多次进程快照为空只能证明采样时未发现 | 成立 | Task 7 改用 `Win32_ProcessStartTrace` 订阅记录 powercfg 启动，并以一次只读 `powercfg /getactivescheme` 作阳性对照 |
 
 第三阶段相关的发现（#5–#7 与确认成本测试）已记入[子进程清理闩锁设计](2026-11-19-process-cleanup-reopen.md)第 3 版的“实施计划约束”。
+
+第 3 版对上表 #2、#3 的修订方式又做了调整，见下一节。
+
+---
+
+## 复审修订记录（2026-11-20，审查对象为第 2 版 `fd5e492a`）
+
+| # | 复审发现 | 核实结果 | 修订 |
+|---|----------|----------|------|
+| 1（P1） | 托盘 RED 可能执行真实电源切换：`Task.Run` 若 4 秒内未开始执行，`Restore` 先把启动入口恢复为 `Process.Start`，迟到的任务会真的运行 `powercfg /setactive`；任务已开始时，未等它结束就释放了它正在等待的 `Process` | 成立 | 边界改为 `AsyncLocal`（`UseProcessStarterForTests`），被测调用沿用排队时的无害启动，复位不影响它；先等“切换已开始”的握手（旧实现由无害启动发出，新实现由替身发出），再计 4 秒；收尾顺序固定为释放替身 → 反复结束自有子进程 → 确认被测调用返回 → 释放子进程对象 → 复位边界，被测调用未返回则不释放并判失败。重构后的用例形式也已写出 |
+| 2（P1） | 监视脚本无法启动：`Register-CimIndicationEvent` 没有 `-Filter` 参数 | 成立（本机 5.1 命令元数据：无 `Filter`，有 `Query`） | 改用 `-Query` 提交完整 WQL；`-ErrorAction Stop`，注册成功后才写 `watch-started`；验收首尾各做一次阳性对照；停止时记录失败原因；缺少这些证据时标 `BLOCKED`，不得判为“没有启动”。另外发现 `-Action` 块在脚本阻塞于 `[Console]::ReadLine()` 时不会执行，且事件作业状态不可用作证据，改为不带 `-Action` 注册、用 `Wait-Event` 循环写日志。脚本已在本机 5.1 解析通过，非管理员运行时因 WMI 拒绝访问（0x80041003）退出 |
+| 3（P2） | 窗口测试未覆盖完整用户路径：窗口未显示，直接改控件属性不能证明下拉框展开；加载器计数归零不代表目录续体、缓存发布与 Dispatcher 回调结束；Settings 作用域超时后静默复位 | 成立 | 用 `GetWindowField` 加 `ShowAndWait` 显示真实窗口，等待下拉框展开并生成项容器，再经 `window.Close()` 关闭；新增测试屏障 `WhenLoadsIdleForTests`（加载门空闲即所有加载已发布快照），收尾等待屏障并处理 Dispatcher 队列；`WithNativeSync` 确认加载与原生调用都结束才复位，超时即失败且保留全局钩子。Configuration 作用域同样改为确认空闲后才解除 powercfg 封锁 |
+| 4（P2） | 删除说明自相矛盾：同一缓存复用用例既要删除又被列为替代覆盖，且它用的是 `LoadImplementationForTests`；新并发用例只覆盖可缓存目录 | 成立 | 只删除两个经 `RunAsyncOverrideForTests` 的用例，明确保留 `reuses_completed_catalog…`；并发用例改为“目录不可缓存”的情形，断言 4 次列举。没有加载门时，第二个调用会撞上执行器的单飞门而返回 `call-pending`，次数少于 4，所以该断言能区分有无串行 |
+| 5（P2） | “未列举即确认不存在”缺少完整性前提：原生列举读满 256 项仍返回成功 | 成立（`PowrProfNative.cs:55-69`） | 新增 Task 0.5：保留上限，抽出可测的 `EnumerateBounded`，上限之外仍有方案时返回 `ERROR_MORE_DATA`（234），调用方按列举失败处理，显示“无法读取计划列表”；补上限边界用例。不增加“是否完整”标志的理由见 Task 0.5 |
+| 技术说明 | 通用约束把 5.1 中文误读归因于 LF 不准确，根因是 BOM 与编码识别，CRLF 不能解决编码问题 | 成立 | 通用约束改写：根因是 5.1 按 ANSI 代码页解码无 BOM 的 UTF-8；CRLF 只防止误解码吞掉换行导致解析失败；按项目规则不加 BOM，新增脚本只用 ASCII |
