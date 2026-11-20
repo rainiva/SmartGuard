@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**状态：** 第 2 版草案，已按 2026-11-20 外部审查修订（见文末“外部审查修订记录”），待复审与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
+**状态：** 第 3 版草案，已按 2026-11-20 两轮外部审查修订（见文末两份修订记录），待复审与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
 
-**基线：** 第二阶段完成后的 `fix/logging-observability`（`f410f960` 及之后）。已核实：
+**基线：** main `674ba619`（第二阶段、PR #4、PR #5 均已合并）。PR #4 已建立禁止并行的测试集合 `ProcessHandleMeasurement` 与类 `PowerCfgProcessRunnerHandleTests`，本计划的句柄测量放在其中。已核实：
 - `PowerCfgProcessRunner` 只剩 `RunProcess`/`RunProcessAsync`，生产调用方只有 `WmiProbeProcess`（全仓 grep）。设计 3.6 表因此只剩 `WmiProbeProcess` 一行。
 - `WmiProbeObservation` 现有 9 个参数，第 9 个为 `int? Win32Error = null`。
 - `GuardianLoop.CreateNativeProbeEvent` 含电源 API 分支（`schemeApi`）与 `win32Error` 属性。
@@ -49,6 +49,8 @@
 | `src/SmartGuard.Engine/Infrastructure/WmiProbeProcess.cs` | 修改 | `_closed` → `_pending`；重开；`cleanup-pending` 观测 |
 | `src/SmartGuard.Engine/Worker/GuardianLoop.NativeProbes.cs` | 修改 | 非电源 API 分支的清理文案与两个属性；`process-cleanup` 标签与恢复范围 |
 | `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerTests.cs` | 修改 | 竞态、保留移交、证据取值 |
+| `Tests/SmartGuard.Configuration.Tests/DescendantFixture.cs` | 新建 | 继承管道的后代进程夹具与测试任务收尾（共用） |
+| `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerHandleTests.cs` | 修改 | 迟到读取的句柄释放（隔离集合内测量） |
 | `Tests/SmartGuard.Configuration.Tests/UnconfirmedChildTests.cs` | 新建 | 证明规则与成本 |
 | `Tests/SmartGuard.Engine.Tests/WmiProbeProcessTests.cs`、`BrightnessServiceTests.cs`、`NativeProbeLoggingTests.cs` | 修改 | 重开、拒绝观测、单飞、用户可见后果、日志 |
 | `Tests/SmartGuard.Architecture.Tests/ProcessCleanupReopenArchitectureTests.cs` | 新建 | 门禁 |
@@ -176,7 +178,7 @@ Expected: 计数与 Task 0 相同，全部通过。
 
 ### Task 2: 运行器以 EOF 判定清理
 
-**Files:** `PowerCfgProcessRunner.cs`、`PowerCfgProcessRunnerTests.cs`
+**Files:** `PowerCfgProcessRunner.cs`、`PowerCfgProcessRunnerTests.cs`、新建 `DescendantFixture.cs`、`PowerCfgProcessRunnerHandleTests.cs`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -238,11 +240,15 @@ Expected: 计数与 Task 0 相同，全部通过。
         }
     }
 
-    // Test cleanup: never leave a started run unobserved, even when an assertion failed first.
+    // Test cleanup, called only after the task has been unblocked. A task that does not finish in time is
+    // a failed cleanup, never a silent one: the timeout throws, so the caller's later disposals do not run
+    // while the task may still use those objects. A finished task's exception is observed here.
     private static async Task SettleAsync(Task? task)
     {
         if (task is null) return;
-        try { await task.WaitAsync(TimeSpan.FromSeconds(10)); } catch { /* observed */ }
+        if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10))) != task)
+            throw new TimeoutException("A background task did not finish after it was unblocked; its resources were left in place.");
+        try { await task; } catch { /* outcome asserted elsewhere; observed here */ }
     }
 
     [Fact]
@@ -303,38 +309,6 @@ Expected: 计数与 Task 0 相同，全部通过。
     }
 
     [Fact]
-    public async Task Late_scheduled_readers_still_release_their_pipes_on_the_unconfirmed_path()
-    {
-        // Readers that only start after the runner has returned must still dispose their pipe handles:
-        // the token is captured before scheduling, so a disposed token source cannot skip the reader's own disposal.
-        using var fixture = new DescendantFixture();
-        var scheduler = new ManualTaskScheduler();
-        PowerCfgProcessRunner.UseReaderSchedulerForTests(scheduler);
-        using var current = System.Diagnostics.Process.GetCurrentProcess();
-        try
-        {
-            var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(2));
-            result.FailureKind.Should().Be("cleanup-unconfirmed", "the readers never ran, so EOF was never observed");
-            fixture.KillAndWait();
-            current.Refresh();
-            var before = current.HandleCount;
-            GC.TryStartNoGCRegion(16 * 1024 * 1024).Should().BeTrue();
-            try
-            {
-                scheduler.RunPending().Should().Be(2);
-                SpinWait.SpinUntil(() => { current.Refresh(); return before - current.HandleCount >= 2; }, TimeSpan.FromSeconds(5))
-                    .Should().BeTrue("both late readers disposed their pipe handles without a collection");
-            }
-            finally { GC.EndNoGCRegion(); }
-        }
-        finally
-        {
-            PowerCfgProcessRunner.UseReaderSchedulerForTests(null);
-            scheduler.RunPending();
-        }
-    }
-
-    [Fact]
     public async Task Held_pipes_after_parent_exit_are_reported_as_pipes_open()
     {
         using var fixture = new DescendantFixture();
@@ -347,6 +321,50 @@ Expected: 计数与 Task 0 相同，全部通过。
 ```
 
 （`ManualTaskScheduler` 为第一阶段已有的 Configuration 测试替身，`RunPending()` 返回执行的任务数。）
+
+**夹具位置：** 上面的 `DescendantFixture` 放进独立文件 `Tests/SmartGuard.Configuration.Tests/DescendantFixture.cs`（`internal sealed class`，内容同上），供本类与下面的句柄测量类共用。`SettleAsync` 同样提为该文件中的 `internal static class TestTaskSettle`，各测试类调用 `TestTaskSettle.SettleAsync`。
+
+**迟到读取的句柄测量**放进 main 上已有的隔离类 `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerHandleTests.cs`（`[Collection("ProcessHandleMeasurement")]`，集合禁止并行，测量期间同进程内没有其他测试类运行）：
+
+```csharp
+    [Fact]
+    public async Task Late_scheduled_readers_still_release_their_pipes_on_the_unconfirmed_path()
+    {
+        // Readers that only start after the runner has returned must still dispose their pipe handles:
+        // the token is captured before scheduling, so a disposed token source cannot skip the reader's
+        // own disposal. Between the baseline and the measurement only the two queued readers run, inside
+        // a no-GC region entered before the baseline, so no collection or finalizer can close handles.
+        using var fixture = new DescendantFixture();
+        var scheduler = new ManualTaskScheduler();
+        PowerCfgProcessRunner.UseReaderSchedulerForTests(scheduler);
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        try
+        {
+            var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(2));
+            result.FailureKind.Should().Be("cleanup-unconfirmed", "the readers never ran, so EOF was never observed");
+            fixture.KillAndWait();
+            GC.TryStartNoGCRegion(16 * 1024 * 1024).Should().BeTrue();
+            try
+            {
+                current.Refresh();
+                var before = current.HandleCount;
+                scheduler.RunPending().Should().Be(2);
+                // A reader started with an already-cancelled token unwinds synchronously through its using.
+                current.Refresh();
+                (before - current.HandleCount).Should().BeGreaterThanOrEqualTo(2,
+                    "both late readers disposed their pipe handles without a collection");
+            }
+            finally { GC.EndNoGCRegion(); }
+        }
+        finally
+        {
+            PowerCfgProcessRunner.UseReaderSchedulerForTests(null);
+            scheduler.RunPending();
+        }
+    }
+```
+
+**变异检查（Task 2 GREEN 之后必做，防假绿）：** 临时删掉 `ReadBoundedAsync` 中的 `using var ownedReader = reader;`（只留 `var ownedReader = reader;`），连续运行本用例 5 次，必须 5 次都失败；然后还原，并以 `git diff --quiet` 证明产品文件与提交一致。任何一次通过，说明测量会被其他句柄变化满足，本用例不得作为证据，返回设计阶段。结果写入证据目录。托管代码拿不到两个管道句柄的数值，所以用“隔离 + 无 GC 区内取基线 + 变异检查”来证明测到的就是目标句柄。
 
 - [ ] **Step 2: RED**
 
@@ -540,7 +558,10 @@ public class UnconfirmedChildTests(ITestOutputHelper output)
   [Fact]
   public void Exited_child_with_both_pipes_at_eof_is_proven()
   {
-    var child = UnconfirmedChild.FromProcess(ExitedChild(), Eof(), Eof(), new CancellationTokenSource(), "pipes-open");
+    // The proof releases both; the test still owns them in case an assertion fails first (disposal is idempotent).
+    using var process = ExitedChild();
+    using var cts = new CancellationTokenSource();
+    var child = UnconfirmedChild.FromProcess(process, Eof(), Eof(), cts, "pipes-open");
     child.TryConfirm().Should().BeTrue();
     child.Evidence.Should().Be("confirmed");
   }
@@ -548,8 +569,10 @@ public class UnconfirmedChildTests(ITestOutputHelper output)
   [Fact]
   public void Reader_that_ended_without_eof_is_not_proof()
   {
-    var child = UnconfirmedChild.FromProcess(ExitedChild(), Task.FromResult(new PipeReadOutcome("", false)), Eof(),
-      new CancellationTokenSource(), "pipes-open");
+    // Never proven, so the child never releases them: the test owns and disposes both.
+    using var process = ExitedChild();
+    using var cts = new CancellationTokenSource();
+    var child = UnconfirmedChild.FromProcess(process, Task.FromResult(new PipeReadOutcome("", false)), Eof(), cts, "pipes-open");
     child.TryConfirm().Should().BeFalse();
     child.Evidence.Should().Be("pipes-open");
   }
@@ -562,7 +585,9 @@ public class UnconfirmedChildTests(ITestOutputHelper output)
     var reader = how == "cancelled"
       ? Task.FromCanceled<PipeReadOutcome>(new CancellationToken(true))
       : Task.FromException<PipeReadOutcome>(new IOException());
-    var child = UnconfirmedChild.FromProcess(ExitedChild(), reader, Eof(), new CancellationTokenSource(), "pipes-open");
+    using var process = ExitedChild();
+    using var cts = new CancellationTokenSource();
+    var child = UnconfirmedChild.FromProcess(process, reader, Eof(), cts, "pipes-open");
     child.TryConfirm().Should().BeFalse();
     child.TryConfirm().Should().BeFalse();
     child.Evidence.Should().Be("reader-failed");
@@ -988,11 +1013,15 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
     Assert.Equal(50, probe.ReadBrightness());                 // its 30 s cooldown from the original failure has passed
   }
 
-  // Test cleanup: never leave a started request unobserved, even when an assertion failed first.
+  // Test cleanup, called only after the task has been unblocked. A task that does not finish in time is
+  // a failed cleanup, never a silent one: the timeout throws, so the caller's later disposals do not run
+  // while the task may still use those objects. A finished task's exception is observed here.
   private static async Task SettleAsync(Task? task)
   {
     if (task is null) return;
-    try { await task.WaitAsync(TimeSpan.FromSeconds(10)); } catch { /* observed */ }
+    if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10))) != task)
+      throw new TimeoutException("A background task did not finish after it was unblocked; its resources were left in place.");
+    try { await task; } catch { /* outcome asserted elsewhere; observed here */ }
   }
 
   [Fact]
@@ -1078,26 +1107,44 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
   [Fact]
   public async Task No_execution_ever_starts_while_a_child_is_held()
   {
-    // Invariant guard under contention: executions alternate between leaving a provable child and
-    // succeeding; the executor records a violation whenever it is entered while a child is held.
+    // Invariant guard under contention: every execution leaves a provable child, so each round is
+    // failure -> proof -> re-execution. The executor records a violation whenever it is entered while a
+    // child is held. The production 30 s cooldown stays in force: the proof advances a controllable clock
+    // past it, so the guard really reaches the re-execution instead of stopping at the cooldown.
+    var clock = new ConcurrentClock();
     WmiProbeProcess? probe = null;
     var violations = 0;
-    var calls = 0;
-    probe = new WmiProbeProcess((_, args, _, _) =>
+    var executions = 0;
+    var proofs = 0;
+    probe = new WmiProbeProcess((_, _, _, _) =>
     {
       if (probe!.HasPendingCleanupForTests) Interlocked.Increment(ref violations);
-      return Task.FromResult(Interlocked.Increment(ref calls) % 2 == 1
-        ? Unconfirmed(UnconfirmedChild.ForTests(() => (true, "confirmed"), "pipes-open"))
-        : Reply(args.Contains("battery-read") ? "SGWMI1|battery|80|ac" : "SGWMI1|brightness|50"));
-    });
-    var workers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+      Interlocked.Increment(ref executions);
+      return Task.FromResult(Unconfirmed(UnconfirmedChild.ForTests(() =>
+      {
+        Interlocked.Increment(ref proofs);
+        clock.Advance(TimeSpan.FromSeconds(31));
+        return (true, "confirmed");
+      }, "pipes-open")));
+    }, clock);
+    var workers = Enumerable.Range(0, 4).Select(worker => Task.Run(() =>
     {
-      for (var i = 0; i < 500; i++) _ = probe.ReadBattery();
+      for (var i = 0; i < 500; i++) probe.ReadBattery();
     })).ToArray();
     try { await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(30)); }
     finally { foreach (var worker in workers) await SettleAsync(worker); }
     Assert.Equal(0, violations);
-    Assert.True(calls > 1, "the guard must have exercised both outcomes");
+    Assert.True(executions > 10, $"failure -> proof -> re-execution must repeat (executions={executions})");
+    Assert.True(proofs >= executions - 1, $"every re-execution follows a proof (proofs={proofs}, executions={executions})");
+  }
+
+  // Thread-safe controllable clock for the contention guard.
+  private sealed class ConcurrentClock : TimeProvider
+  {
+    private long _ticks;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+    internal void Advance(TimeSpan elapsed) => Interlocked.Add(ref _ticks, elapsed.Ticks);
   }
 
   [Fact]
@@ -1402,3 +1449,14 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 | 5（P2） | 迟到读取任务可能跳过释放：读取令牌在任务执行时才取得 | 成立 | 令牌在调度前取得；读取调度改走可替换调度器入口，新增“读取任务在运行器返回后才执行仍释放管道句柄”的确定性用例 |
 | 6（P2） | 测试失败路径遗弃后台任务 | 成立 | 所有自建任务在 `finally` 中解除阻塞、取消、有界等待并观察，最后释放同步对象 |
 | 表述 | 双 EOF 只证明管道写端关闭，不证明继承管道的后代已退出 | 成立 | 文首增加“证明边界”；契约条文同步收窄为“父端至多持有一个对象、持有期间不启动新子进程” |
+
+---
+
+## 复审修订记录（2026-11-20，审查对象为第 2 版 `2db001f9`）
+
+| # | 复审发现 | 核实结果 | 修订 |
+|---|----------|----------|------|
+| 1（P1） | 并发不变量用例无法编译：外层 `Select(_ => …)` 的 `_` 是 int 参数，内部 `_ = probe.ReadBattery()` 赋值报 CS0029 | 成立 | 外层参数改名为 `worker`，内部直接调用不赋值 |
+| 2（P2） | 修正编译后该用例仍失败：只请求 `battery-read`，首次失败触发该操作 30 秒冷却，证明成功后仍被拒，执行器只调用 1 次 | 成立（按计划的 `TryAcquire` 推演：失败后 `_pending` 证明成功，但 `InCooldown` 拒绝本次执行） | 不改生产冷却规则、不删断言：引入线程安全的可控时钟，证明函数把时钟推过 30 秒，每轮都真正经历失败、证明、重新执行；断言执行次数 > 10 且证明次数 ≥ 执行次数 − 1 |
+| 3（P2） | 收尾辅助方法吞掉超时，任务可能仍在运行却释放了同步对象；不可证明用例不释放 `Process` 与 CTS | 成立 | `SettleAsync` 只在解除阻塞后调用；超时抛出 `TimeoutException`，之后的释放语句不再执行；已结束任务的异常在此观察。`UnconfirmedChildTests` 中由测试以 `using` 持有 `Process` 与 CTS（释放幂等，已证明的用例同样适用） |
+| 4（P2） | 迟到读取的句柄测试可能假绿：基线取在 `TryStartNoGCRegion` 之前，该调用允许先做完整 GC | 成立 | 移到隔离集合 `ProcessHandleMeasurement`；先进入无 GC 区再取基线，基线与测量之间只运行两个排队的读取任务；新增变异检查步骤：删除读取器释放后必须 5 次全部失败，否则用例不作为证据 |
