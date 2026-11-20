@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**状态：** 第 3 版草案，已按 2026-11-20 两轮外部审查修订（见文末两份修订记录），待复审与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
+**状态：** 第 4 版草案，已按 2026-11-20 三轮外部审查修订（见文末三份修订记录），待复审与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
 
 **基线：** main `674ba619`（第二阶段、PR #4、PR #5 均已合并）。PR #4 已建立禁止并行的测试集合 `ProcessHandleMeasurement` 与类 `PowerCfgProcessRunnerHandleTests`，本计划的句柄测量放在其中。已核实：
 - `PowerCfgProcessRunner` 只剩 `RunProcess`/`RunProcessAsync`，生产调用方只有 `WmiProbeProcess`（全仓 grep）。设计 3.6 表因此只剩 `WmiProbeProcess` 一行。
@@ -49,7 +49,8 @@
 | `src/SmartGuard.Engine/Infrastructure/WmiProbeProcess.cs` | 修改 | `_closed` → `_pending`；重开；`cleanup-pending` 观测 |
 | `src/SmartGuard.Engine/Worker/GuardianLoop.NativeProbes.cs` | 修改 | 非电源 API 分支的清理文案与两个属性；`process-cleanup` 标签与恢复范围 |
 | `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerTests.cs` | 修改 | 竞态、保留移交、证据取值 |
-| `Tests/SmartGuard.Configuration.Tests/DescendantFixture.cs` | 新建 | 继承管道的后代进程夹具与测试任务收尾（共用） |
+| `Tests/SmartGuard.Configuration.Tests/DescendantFixture.cs` | 新建 | 继承管道的后代进程夹具与 `TestTaskSettle` 测试收尾（共用） |
+| `Tests/SmartGuard.Configuration.Tests/TestTaskSettleTests.cs`、`Tests/SmartGuard.Engine.Tests/TestTaskSettle.cs`、`Tests/SmartGuard.Engine.Tests/TestTaskSettleTests.cs` | 新建 | 收尾工具的反例用例；Engine 侧同内容副本（测试程序集互不引用） |
 | `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerHandleTests.cs` | 修改 | 迟到读取的句柄释放（隔离集合内测量） |
 | `Tests/SmartGuard.Configuration.Tests/UnconfirmedChildTests.cs` | 新建 | 证明规则与成本 |
 | `Tests/SmartGuard.Engine.Tests/WmiProbeProcessTests.cs`、`BrightnessServiceTests.cs`、`NativeProbeLoggingTests.cs` | 修改 | 重开、拒绝观测、单飞、用户可见后果、日志 |
@@ -240,22 +241,14 @@ Expected: 计数与 Task 0 相同，全部通过。
         }
     }
 
-    // Test cleanup, called only after the task has been unblocked. A task that does not finish in time is
-    // a failed cleanup, never a silent one: the timeout throws, so the caller's later disposals do not run
-    // while the task may still use those objects. A finished task's exception is observed here.
-    private static async Task SettleAsync(Task? task)
-    {
-        if (task is null) return;
-        if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10))) != task)
-            throw new TimeoutException("A background task did not finish after it was unblocked; its resources were left in place.");
-        try { await task; } catch { /* outcome asserted elsewhere; observed here */ }
-    }
+    // (TestTaskSettle lives in DescendantFixture.cs; see "夹具位置" below.)
 
     [Fact]
     public async Task Pipes_closing_inside_the_settle_wait_prove_cleanup_despite_the_parent_exiting_first()
     {
-        using var fixture = new DescendantFixture();
-        using var stop = new CancellationTokenSource();
+        // No `using`: TestTaskSettle owns these and releases them only after every task has ended.
+        var fixture = new DescendantFixture();
+        var stop = new CancellationTokenSource();
         Task<PowerCfgCommandResult>? run = null;
         PowerCfgProcessRunner.UseAfterTerminationRequestForTests(fixture.SignalDescendantExit);
         try
@@ -271,18 +264,20 @@ Expected: 计数与 Task 0 相同，全部通过。
         }
         finally
         {
+            // Unblock everything first, then wait for every task; resources go last.
             PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null);
             stop.Cancel();
-            await SettleAsync(run);
             fixture.KillAndWait();
+            await TestTaskSettle.SettleAsync([run], stop, fixture);
         }
     }
 
     [Fact]
     public async Task Pipes_closing_after_the_settle_wait_leave_cleanup_unconfirmed()
     {
-        using var fixture = new DescendantFixture();
-        using var stop = new CancellationTokenSource();
+        // No `using`: TestTaskSettle owns these and releases them only after every task has ended.
+        var fixture = new DescendantFixture();
+        var stop = new CancellationTokenSource();
         Task<PowerCfgCommandResult>? run = null;
         Task? lateSignal = null;
         // The descendant dies one second after the termination request, well outside the 250ms budget.
@@ -300,11 +295,11 @@ Expected: 计数与 Task 0 相同，全部通过。
         }
         finally
         {
+            // Unblock everything first, then wait for every task (one timing out never skips the other).
             PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null);
             stop.Cancel();
-            await SettleAsync(run);
-            await SettleAsync(lateSignal);
             fixture.KillAndWait();
+            await TestTaskSettle.SettleAsync([run, lateSignal], stop, fixture);
         }
     }
 
@@ -322,7 +317,88 @@ Expected: 计数与 Task 0 相同，全部通过。
 
 （`ManualTaskScheduler` 为第一阶段已有的 Configuration 测试替身，`RunPending()` 返回执行的任务数。）
 
-**夹具位置：** 上面的 `DescendantFixture` 放进独立文件 `Tests/SmartGuard.Configuration.Tests/DescendantFixture.cs`（`internal sealed class`，内容同上），供本类与下面的句柄测量类共用。`SettleAsync` 同样提为该文件中的 `internal static class TestTaskSettle`，各测试类调用 `TestTaskSettle.SettleAsync`。
+**夹具位置：** 上面的 `DescendantFixture` 放进独立文件 `Tests/SmartGuard.Configuration.Tests/DescendantFixture.cs`（`internal sealed class`，内容同上），供本类与下面的句柄测量类共用。同一文件加入测试收尾工具 `internal static class TestTaskSettle`：
+
+```csharp
+// Test cleanup. Call it after unblocking every task. It waits for ALL tasks (one timing out never
+// skips the others) and owns the resources those tasks may use: disposed at once when every task has
+// ended; otherwise handed to a continuation that disposes them only after the remaining tasks end, and
+// the cleanup fails. Throwing can never stand in for keeping a resource alive. Exceptions of the tasks
+// are observed either way; their outcomes are asserted by the tests themselves.
+internal static class TestTaskSettle
+{
+    internal static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
+
+    internal static Task SettleAsync(IEnumerable<Task?> tasks, params IDisposable?[] resources)
+        => SettleAsync(tasks, DefaultTimeout, resources);
+
+    internal static async Task SettleAsync(IEnumerable<Task?> tasks, TimeSpan timeout, params IDisposable?[] resources)
+    {
+        var started = tasks.OfType<Task>().ToArray();
+        var all = Task.WhenAll(started);
+        if (await Task.WhenAny(all, Task.Delay(timeout)) == all)
+        {
+            _ = all.Exception;
+            DisposeAll(resources);
+            return;
+        }
+        var running = started.Where(task => !task.IsCompleted).ToArray();
+        _ = Task.WhenAll(running).ContinueWith(late => { _ = late.Exception; DisposeAll(resources); },
+            CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        throw new TimeoutException(
+            $"{running.Length} background task(s) did not finish after being unblocked; their resources are released only when they end.");
+    }
+
+    private static void DisposeAll(IDisposable?[] resources)
+    {
+        foreach (var resource in resources)
+        {
+            try { resource?.Dispose(); } catch { /* one failed disposal must not keep the others alive */ }
+        }
+    }
+}
+```
+
+**反例用例**（`Tests/SmartGuard.Configuration.Tests/TestTaskSettleTests.cs`，随 Task 2 一起加入）：
+
+```csharp
+public class TestTaskSettleTests
+{
+    private sealed class Tracked : IDisposable
+    {
+        internal volatile bool Disposed;
+        public void Dispose() => Disposed = true;
+    }
+
+    [Fact]
+    public async Task A_timed_out_task_keeps_its_resources_until_it_ends()
+    {
+        var gate = new TaskCompletionSource();
+        var resource = new Tracked();
+        var stuck = gate.Task;
+        var finished = Task.CompletedTask;
+
+        var settle = () => TestTaskSettle.SettleAsync([stuck, finished], TimeSpan.FromMilliseconds(100), resource);
+        await settle.Should().ThrowAsync<TimeoutException>();
+        resource.Disposed.Should().BeFalse("the stuck task may still use it");
+
+        gate.SetResult();
+        SpinWait.SpinUntil(() => resource.Disposed, TimeSpan.FromSeconds(5)).Should().BeTrue("released once the task ends");
+    }
+
+    [Fact]
+    public async Task Every_task_is_awaited_even_when_one_failed()
+    {
+        var resource = new Tracked();
+        var slow = Task.Delay(200);
+        await TestTaskSettle.SettleAsync([Task.FromException(new InvalidOperationException()), slow], resource);
+        slow.IsCompleted.Should().BeTrue("a faulted first task never skips waiting for the next one");
+        resource.Disposed.Should().BeTrue();
+    }
+}
+```
+
+Engine 测试程序集与 Configuration 测试程序集互不引用，`WmiProbeProcessTests` 使用同内容的 `Tests/SmartGuard.Engine.Tests/TestTaskSettle.cs`（仅命名空间不同），并带同样的两个反例用例 `TestTaskSettleTests`。
 
 **迟到读取的句柄测量**放进 main 上已有的隔离类 `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerHandleTests.cs`（`[Collection("ProcessHandleMeasurement")]`，集合禁止并行，测量期间同进程内没有其他测试类运行）：
 
@@ -370,7 +446,7 @@ Expected: 计数与 Task 0 相同，全部通过。
 
 ```powershell
 dotnet build Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj --no-restore -v q; "build exit=$LASTEXITCODE"
-dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj --no-build --filter "FullyQualifiedName~PowerCfgProcessRunnerTests" --logger "trx;LogFileName=task2-red.trx" --results-directory .work/process-cleanup-phase3
+dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj --no-build --filter "FullyQualifiedName~PowerCfgProcessRunnerTests|FullyQualifiedName~PowerCfgProcessRunnerHandleTests|FullyQualifiedName~TestTaskSettleTests" --logger "trx;LogFileName=task2-red.trx" --results-directory .work/process-cleanup-phase3
 ```
 
 Expected:
@@ -1013,17 +1089,6 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
     Assert.Equal(50, probe.ReadBrightness());                 // its 30 s cooldown from the original failure has passed
   }
 
-  // Test cleanup, called only after the task has been unblocked. A task that does not finish in time is
-  // a failed cleanup, never a silent one: the timeout throws, so the caller's later disposals do not run
-  // while the task may still use those objects. A finished task's exception is observed here.
-  private static async Task SettleAsync(Task? task)
-  {
-    if (task is null) return;
-    if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10))) != task)
-      throw new TimeoutException("A background task did not finish after it was unblocked; its resources were left in place.");
-    try { await task; } catch { /* outcome asserted elsewhere; observed here */ }
-  }
-
   [Fact]
   public async Task Confirmation_in_progress_rejects_concurrent_requests_without_a_second_proof()
   {
@@ -1058,10 +1123,7 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
     finally
     {
       release.Set();
-      await SettleAsync(confirming);
-      await SettleAsync(concurrent);
-      entered.Dispose();
-      release.Dispose();
+      await TestTaskSettle.SettleAsync([confirming, concurrent], entered, release);
     }
   }
 
@@ -1097,10 +1159,7 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
     finally
     {
       release.Set();
-      await SettleAsync(b);
-      await SettleAsync(a);
-      entered.Dispose();
-      release.Dispose();
+      await TestTaskSettle.SettleAsync([b, a], entered, release);
     }
   }
 
@@ -1132,7 +1191,7 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
       for (var i = 0; i < 500; i++) probe.ReadBattery();
     })).ToArray();
     try { await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(30)); }
-    finally { foreach (var worker in workers) await SettleAsync(worker); }
+    finally { await TestTaskSettle.SettleAsync(workers); }
     Assert.Equal(0, violations);
     Assert.True(executions > 10, $"failure -> proof -> re-execution must repeat (executions={executions})");
     Assert.True(proofs >= executions - 1, $"every re-execution follows a proof (proofs={proofs}, executions={executions})");
@@ -1430,7 +1489,7 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 - **相对设计的取舍：**
   - 设计 3.4 的证据取值未列 `unprovable`；本计划为“无证明材料”（执行器抛出、执行故障、结果无可证明对象）增加该取值，日志可区分“暂未证实”与“永远无法证实”。
   - `io-failed`（读取异常）此后一律判为 `reader-failed` 而不可证实，这是设计 3.1 的直接结果；旧行为在父进程退出且收尾完成时会判为已确认。
-- **测试资源：** 每个自建任务、子进程与同步对象都在 `finally` 中先解除阻塞、取消，再有界等待并观察异常，最后释放（`SettleAsync`）。断言失败不会遗弃后台任务或进程。
+- **测试资源：** 有后台任务的用例不用 `using` 持有它们可能使用的资源。`finally` 中先解除所有阻塞（释放屏障、取消、结束夹具后代），再交给 `TestTaskSettle.SettleAsync`：它等待**全部**任务，任一超时不跳过其他任务；全部结束才立即释放资源，否则把释放交给“剩余任务结束后”的后续动作，并以 `TimeoutException` 判收尾失败。抛异常不再被当作“保留资源”的手段。收尾工具自身有反例用例（`TestTaskSettleTests`）。
 - **已知风险：**
   - 真实进程夹具依赖 PowerShell 启动速度。父进程退出与后代存活都有显式前置判定，后代 20 秒自退出，测试在 `finally` 中结束后代。
   - 成本用例串行启动 200 个无后代的 `cmd.exe`，耗时约数秒；只在 Configuration 测试中运行。
@@ -1460,3 +1519,15 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 | 2（P2） | 修正编译后该用例仍失败：只请求 `battery-read`，首次失败触发该操作 30 秒冷却，证明成功后仍被拒，执行器只调用 1 次 | 成立（按计划的 `TryAcquire` 推演：失败后 `_pending` 证明成功，但 `InCooldown` 拒绝本次执行） | 不改生产冷却规则、不删断言：引入线程安全的可控时钟，证明函数把时钟推过 30 秒，每轮都真正经历失败、证明、重新执行；断言执行次数 > 10 且证明次数 ≥ 执行次数 − 1 |
 | 3（P2） | 收尾辅助方法吞掉超时，任务可能仍在运行却释放了同步对象；不可证明用例不释放 `Process` 与 CTS | 成立 | `SettleAsync` 只在解除阻塞后调用；超时抛出 `TimeoutException`，之后的释放语句不再执行；已结束任务的异常在此观察。`UnconfirmedChildTests` 中由测试以 `using` 持有 `Process` 与 CTS（释放幂等，已证明的用例同样适用） |
 | 4（P2） | 迟到读取的句柄测试可能假绿：基线取在 `TryStartNoGCRegion` 之前，该调用允许先做完整 GC | 成立 | 移到隔离集合 `ProcessHandleMeasurement`；先进入无 GC 区再取基线，基线与测量之间只运行两个排队的读取任务；新增变异检查步骤：删除读取器释放后必须 5 次全部失败，否则用例不作为证据 |
+
+---
+
+## 第三轮复审修订记录（2026-11-20，审查对象为第 3 版 `b13d6505`）
+
+| # | 复审发现 | 核实结果 | 修订 |
+|---|----------|----------|------|
+| 1（P2） | 超时抛异常不能阻止外层 `using` 释放资源；第一个收尾失败还会跳过后续任务的等待 | 成立：`using var stop/fixture` 在异常退栈时照常 `Dispose`，而 `run`/`lateSignal` 可能仍在使用；`await SettleAsync(run); await SettleAsync(lateSignal);` 中前者抛出即跳过后者 | 收尾改为 `TestTaskSettle.SettleAsync(tasks, resources)`：先解除阻塞与结束夹具后代，再等待全部任务；全部结束才释放，否则把释放交给剩余任务结束后的后续动作并判失败。有后台任务的用例不再用 `using` 持有这些资源。新增两个反例：超时任务结束前资源不被释放；一个任务失败不跳过等待其余任务 |
+| 2 | 共享收尾方法需明确为 `internal static` | 成立 | `internal static class TestTaskSettle`，代码已写入计划 |
+| 3 | Task 2 测试过滤器未包含迁入隔离类的句柄用例 | 成立 | 过滤器加入 `PowerCfgProcessRunnerHandleTests` 与 `TestTaskSettleTests` |
+
+本轮复审确认已关闭：并发用例编译与冷却问题（纯内存核验 500 次执行、499 次证明、0 次违规）、不可证明用例的资源释放、句柄测量的隔离与基线。句柄用例的真实变异检查仍待实施阶段执行，已列为必做步骤。
