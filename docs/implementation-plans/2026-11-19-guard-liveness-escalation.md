@@ -1,6 +1,6 @@
 # 守护长时间停工告警 — 设计
 
-日期：2026-11-19　状态：**设计草案**，第 6 节决定项已由用户决定（2026-11-20，全部按建议）；经外部审查后再出实施计划。前置：电源方案 API 第一阶段（已暴露 `PowerSchemeService.IsCallInFlight`/`InFlightSince`/`LastSucceededAt`）。
+日期：2026-11-19　状态：**已出实施计划并实施**，第 6 节决定项已由用户决定（2026-11-20，全部按建议）。实施计划 [2026-11-20-guard-liveness-escalation-plan.md](2026-11-20-guard-liveness-escalation-plan.md)（第 1 版，含相对本设计的 4 处取舍）；用户决定不等外部审查直接实施（2026-11-20）。前置：电源方案 API 第一阶段（已暴露 `PowerSchemeService.IsCallInFlight`/`InFlightSince`/`LastSucceededAt`）。
 
 ## 1. 背景
 
@@ -109,3 +109,7 @@
 - 日志：同一次停工只记一次 `GuardStalled`，恢复记一次 `GuardStallRecovered`。
 - Tray/Settings：`stalled` 文案；旧状态缺字段显示未知而非健康。
 - 架构门禁：契约含 `GUARD-INV-LIVENESS`；事件名已登记。
+
+## 8. 实施与验证记录
+
+（Task 6 填写。）
