@@ -33,6 +33,48 @@ public sealed class StartupFallbackHistoryTests : IDisposable
   }
 
   [Fact]
+  public async Task Fallback_repeating_the_primary_prefix_in_the_same_clock_tick_is_still_its_own_source()
+  {
+    // A coarse file clock can give both files the same creation time; with an identical first 4 KiB they
+    // used to share one source identity, which crashed the merged history and could drop a file's rows.
+    var main = Path.Combine(_root, "main.log"); var startup = Path.Combine(_root, "startup.log");
+    var events = Enumerable.Range(0, 400).Select(_ => Event(1)).ToArray();
+    File.WriteAllLines(main, events.Take(200).Select(LogJsonlFormatter.FormatLine));
+    File.WriteAllLines(startup, events.Select(LogJsonlFormatter.FormatLine));
+    File.SetCreationTimeUtc(startup, File.GetCreationTimeUtc(main));
+    var reader = new LogTailReader(main, startup);
+    var request = new LogReadRequest(null, LogReadDirection.Latest, 20, 262144);
+    var page = await reader.ReadLatestAsync(request, CancellationToken.None);
+    var ids = new HashSet<string>();
+    for (var i = 0; i < 100 && page.Events.Count > 0; i++)
+    {
+      foreach (var item in page.Events) ids.Add(item.EventId);
+      page = await reader.ReadOlderAsync(request with { Cursor = page.OlderCursor, Direction = LogReadDirection.Older }, CancellationToken.None);
+    }
+    ids.Count.Should().Be(400);
+  }
+
+  [Fact]
+  public void Distinct_files_with_the_same_creation_time_and_prefix_have_distinct_identities()
+  {
+    var first = Path.Combine(_root, "a.log"); var second = Path.Combine(_root, "b.log");
+    File.WriteAllText(first, "same prefix\n"); File.WriteAllText(second, "same prefix\n");
+    File.SetCreationTimeUtc(second, File.GetCreationTimeUtc(first));
+    LogSourceIdentity.FromFilePath(first).Should().NotBe(LogSourceIdentity.FromFilePath(second));
+  }
+
+  [Fact]
+  public void A_renamed_file_keeps_its_identity()
+  {
+    // Rotation renames the active log; its identity must survive so cursors keep pointing at it.
+    var active = Path.Combine(_root, "active.log"); var rotated = Path.Combine(_root, "active.log.20261120.001.bak");
+    File.WriteAllText(active, "rotating content\n");
+    var before = LogSourceIdentity.FromFilePath(active);
+    File.Move(active, rotated);
+    LogSourceIdentity.FromFilePath(rotated).Should().Be(before);
+  }
+
+  [Fact]
   public async Task Partial_primary_batch_repeated_in_fallback_cannot_skip_unique_fallback_rows()
   {
     var main = Path.Combine(_root, "main.log"); var startup = Path.Combine(_root, "startup.log");

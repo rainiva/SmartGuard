@@ -565,7 +565,7 @@ public sealed partial class LogTailReader : ILogEventSource, ILogPhysicalLineSou
       "\n",
       sources.Select(source => string.Create(
         System.Globalization.CultureInfo.InvariantCulture,
-        $"{source.Source.CreatedAtUtc:O}|{source.Source.ContentHashHex}|{source.Kind}|{source.CapturedLength}|{source.BoundaryFingerprint}")));
+        $"{source.Source.CreatedAtUtc:O}|{source.Source.ContentHashHex}|{source.Source.FileId}|{source.Kind}|{source.CapturedLength}|{source.BoundaryFingerprint}")));
     return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
   }
 
