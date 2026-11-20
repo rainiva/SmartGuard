@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**状态：** 第 4 版草案，已按 2026-11-20 三轮外部审查修订（见文末三份修订记录），待复审与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
+**状态：** 第 5 版草案，已于 2026-11-20 将独立 .NET 8 验证通过的测试收尾最小修订回写（见文末“测试收尾集中验证与回写记录”）；主体设计不变，待用户批准后实施。隔离辅助代码通过不代表第三阶段实现、xUnit 集成或真实进程验收通过。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
 
 **基线：** main `674ba619`（第二阶段、PR #4、PR #5 均已合并）。PR #4 已建立禁止并行的测试集合 `ProcessHandleMeasurement` 与类 `PowerCfgProcessRunnerHandleTests`，本计划的句柄测量放在其中。已核实：
 - `PowerCfgProcessRunner` 只剩 `RunProcess`/`RunProcessAsync`，生产调用方只有 `WmiProbeProcess`（全仓 grep）。设计 3.6 表因此只剩 `WmiProbeProcess` 一行。
@@ -339,22 +339,34 @@ internal static class TestTaskSettle
         if (await Task.WhenAny(all, Task.Delay(timeout)) == all)
         {
             _ = all.Exception;
-            DisposeAll(resources);
+            var disposalFailure = DisposeAll(resources);
+            if (disposalFailure is not null) throw disposalFailure;
             return;
         }
-        var running = started.Where(task => !task.IsCompleted).ToArray();
-        _ = Task.WhenAll(running).ContinueWith(late => { _ = late.Exception; DisposeAll(resources); },
-            CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        var runningCount = started.Count(task => !task.IsCompleted);
+        var cleanup = all.ContinueWith(late =>
+        {
+            _ = late.Exception;
+            var disposalFailure = DisposeAll(resources);
+            if (disposalFailure is not null)
+                Console.Error.WriteLine($"Delayed test cleanup failed: {disposalFailure}");
+        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        _ = cleanup.ContinueWith(failed => _ = failed.Exception,
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         throw new TimeoutException(
-            $"{running.Length} background task(s) did not finish after being unblocked; their resources are released only when they end.");
+            $"{runningCount} background task(s) did not finish after being unblocked; their resources are released only when they end.");
     }
 
-    private static void DisposeAll(IDisposable?[] resources)
+    private static AggregateException? DisposeAll(IDisposable?[] resources)
     {
+        List<Exception>? failures = null;
         foreach (var resource in resources)
         {
-            try { resource?.Dispose(); } catch { /* one failed disposal must not keep the others alive */ }
+            try { resource?.Dispose(); }
+            catch (Exception error) { (failures ??= []).Add(error); }
         }
+        return failures is null ? null : new AggregateException("Test resource cleanup failed.", failures);
     }
 }
 ```
@@ -364,10 +376,14 @@ internal static class TestTaskSettle
 ```csharp
 public class TestTaskSettleTests
 {
-    private sealed class Tracked : IDisposable
+    private sealed class Tracked(string? failure = null) : IDisposable
     {
         internal volatile bool Disposed;
-        public void Dispose() => Disposed = true;
+        public void Dispose()
+        {
+            Disposed = true;
+            if (failure is not null) throw new IOException(failure);
+        }
     }
 
     [Fact]
@@ -378,12 +394,17 @@ public class TestTaskSettleTests
         var stuck = gate.Task;
         var finished = Task.CompletedTask;
 
-        var settle = () => TestTaskSettle.SettleAsync([stuck, finished], TimeSpan.FromMilliseconds(100), resource);
-        await settle.Should().ThrowAsync<TimeoutException>();
-        resource.Disposed.Should().BeFalse("the stuck task may still use it");
-
-        gate.SetResult();
-        SpinWait.SpinUntil(() => resource.Disposed, TimeSpan.FromSeconds(5)).Should().BeTrue("released once the task ends");
+        try
+        {
+            var settle = () => TestTaskSettle.SettleAsync([stuck, finished], TimeSpan.FromMilliseconds(100), resource);
+            await settle.Should().ThrowAsync<TimeoutException>();
+            resource.Disposed.Should().BeFalse("the stuck task may still use it");
+        }
+        finally
+        {
+            gate.TrySetResult();
+            SpinWait.SpinUntil(() => resource.Disposed, TimeSpan.FromSeconds(5)).Should().BeTrue("released once the task ends");
+        }
     }
 
     [Fact]
@@ -395,10 +416,27 @@ public class TestTaskSettleTests
         slow.IsCompleted.Should().BeTrue("a faulted first task never skips waiting for the next one");
         resource.Disposed.Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Disposal_failures_are_reported_after_every_resource_is_attempted(bool secondFails)
+    {
+        var first = new Tracked("first-dispose-failed");
+        var second = new Tracked(secondFails ? "second-dispose-failed" : null);
+        var settle = () => TestTaskSettle.SettleAsync([Task.CompletedTask], first, second);
+
+        var failure = await settle.Should().ThrowAsync<AggregateException>();
+        failure.Which.Flatten().InnerExceptions.Should().HaveCount(secondFails ? 2 : 1);
+        first.Disposed.Should().BeTrue();
+        second.Disposed.Should().BeTrue("one failed disposal must not skip the next resource");
+    }
 }
 ```
 
-Engine 测试程序集与 Configuration 测试程序集互不引用，`WmiProbeProcessTests` 使用同内容的 `Tests/SmartGuard.Engine.Tests/TestTaskSettle.cs`（仅命名空间不同），并带同样的两个反例用例 `TestTaskSettleTests`。
+Engine 测试程序集与 Configuration 测试程序集互不引用，`WmiProbeProcessTests` 使用同内容的 `Tests/SmartGuard.Engine.Tests/TestTaskSettle.cs`（仅命名空间不同），并带同样的反例用例 `TestTaskSettleTests`。
+
+**补充验证门禁：** 以上用例之外，Task 2/5 的辅助代码验证还须覆盖文末 11 项矩阵中的取消、多任务超时、超时前后故障、延迟释放失败和独立收尾。延迟分支必须挂到原始 `all` 并观察其异常；不能另建只包含剩余任务的聚合来代替。按时完成后的释放异常以 `AggregateException` 判失败；超时本身已判失败，延迟释放错误另外写入 stderr。stderr 可见性目前仅在独立 console harness 验证，实施时须核对实际 xUnit/测试宿主落盘证据，不能将此项预填为通过。全局异常事件或 stderr 捕获不得污染其他并行用例。
 
 **迟到读取的句柄测量**放进 main 上已有的隔离类 `Tests/SmartGuard.Configuration.Tests/PowerCfgProcessRunnerHandleTests.cs`（`[Collection("ProcessHandleMeasurement")]`，集合禁止并行，测量期间同进程内没有其他测试类运行）：
 
@@ -1489,7 +1527,7 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 - **相对设计的取舍：**
   - 设计 3.4 的证据取值未列 `unprovable`；本计划为“无证明材料”（执行器抛出、执行故障、结果无可证明对象）增加该取值，日志可区分“暂未证实”与“永远无法证实”。
   - `io-failed`（读取异常）此后一律判为 `reader-failed` 而不可证实，这是设计 3.1 的直接结果；旧行为在父进程退出且收尾完成时会判为已确认。
-- **测试资源：** 有后台任务的用例不用 `using` 持有它们可能使用的资源。`finally` 中先解除所有阻塞（释放屏障、取消、结束夹具后代），再交给 `TestTaskSettle.SettleAsync`：它等待**全部**任务，任一超时不跳过其他任务；全部结束才立即释放资源，否则把释放交给“剩余任务结束后”的后续动作，并以 `TimeoutException` 判收尾失败。抛异常不再被当作“保留资源”的手段。收尾工具自身有反例用例（`TestTaskSettleTests`）。
+- **测试资源：** 有后台任务的用例不用 `using` 持有它们可能使用的资源。`finally` 中先解除所有阻塞（释放屏障、取消、结束夹具后代），再交给 `TestTaskSettle.SettleAsync`：它等待**全部**任务，任一超时不跳过其他任务；全部结束才立即释放资源，否则把观察异常与释放交给原始 `all` 的后续动作，并以 `TimeoutException` 判收尾失败。每项资源均尝试释放，按时完成分支聚合释放异常并抛出，延迟分支写 stderr，后续任务自身的异常也被观察。抛异常不被当作“保留资源”的手段。辅助代码的 11 项隔离验证见文末；xUnit 集成与真实进程验证不由此替代。
 - **已知风险：**
   - 真实进程夹具依赖 PowerShell 启动速度。父进程退出与后代存活都有显式前置判定，后代 20 秒自退出，测试在 `finally` 中结束后代。
   - 成本用例串行启动 200 个无后代的 `cmd.exe`，耗时约数秒；只在 Configuration 测试中运行。
@@ -1531,3 +1569,47 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 | 3 | Task 2 测试过滤器未包含迁入隔离类的句柄用例 | 成立 | 过滤器加入 `PowerCfgProcessRunnerHandleTests` 与 `TestTaskSettleTests` |
 
 本轮复审确认已关闭：并发用例编译与冷却问题（纯内存核验 500 次执行、499 次证明、0 次违规）、不可证明用例的资源释放、句柄测量的隔离与基线。句柄用例的真实变异检查仍待实施阶段执行，已列为必做步骤。
+
+---
+
+## 测试收尾集中验证与回写记录（2026-11-20）
+
+**范围：** 冻结 WMI 主体设计，只验证并回写 `TestTaskSettle` 的最小修订，不修改生产代码。验证原文取自第 4 版 `74e40f7f`；运行前逐字核对辅助类与计划一致。独立项目目标为 .NET 8，实际运行时为 .NET 8.0.27，无第三方测试依赖、不启动进程夹具、不写电源设置。
+
+**两个根因与修订：**
+- 超时分支原先另建 `WhenAll(running)`，遗漏原始 `all` 的异常观察。修订为直接在原始 `all` 上安排观察和延迟释放；诊断任务自身的故障也被观察。
+- 原先吞掉所有 `Dispose` 异常。修订为继续尝试全部资源、汇总异常；按时完成分支抛出 `AggregateException`，已经超时的分支保留失败结论并另写 stderr 诊断。
+
+Task 2 辅助类代码与[已验证候选](../../.work/phase3-settle-validation-20261120/Candidate.cs)一致，候选文件 SHA256：`92bab29cc965b31f6f204ac7f6352b800657f5b2d7b8e8f0a7b85a6e02c2e0f4`。测试反例同时覆盖释放异常并将开闸放入 `finally`，不恢复逐轮扩写主体设计的审查方式。
+
+| 版本 | 编译 | 通过 | 失败 | 总计 | 测试进程退出码 |
+|------|------|------|------|------|----------------|
+| 第 4 版原文 | 0 警告、0 错误 | 6 | 5 | 11 | 1 |
+| 最小修订 | 0 警告、0 错误 | 11 | 0 | 11 | 0 |
+
+五个失败用例归于上述两个根因，并非五个新增主体设计问题。两组进程退出码均与各自 summary 一致；原文 RED 证据保留，不被 GREEN 覆盖。
+
+| 隔离验证项 | 原文 | 最小修订 |
+|------------|------|----------|
+| 空任务及 null 输入释放一次 | PASS | PASS |
+| 已完成任务释放全部资源一次 | PASS | PASS |
+| 一个任务失败不跳过其余任务 | PASS | PASS |
+| 一个任务取消不跳过其余任务 | PASS | PASS |
+| 超时保留资源，全部任务结束后才释放 | PASS | PASS |
+| 单个释放失败可见，后续资源仍被释放 | FAIL | PASS |
+| 多个释放异常被完整聚合 | FAIL | PASS |
+| 延迟释放失败有可见诊断 | FAIL | PASS |
+| 超时前发生故障不遗留未观察聚合异常 | FAIL | PASS |
+| 超时后发生故障不遗留未观察聚合异常 | FAIL | PASS |
+| 两次并发收尾的资源所有权互不影响 | PASS | PASS |
+
+**证据：** [原文回执](../../.work/phase3-settle-validation-20261120/original-receipt.json)、[原文输出](../../.work/phase3-settle-validation-20261120/original-run.log)、[候选回执](../../.work/phase3-settle-validation-20261120/candidate-receipt.json)、[候选 summary](../../.work/phase3-settle-validation-20261120/candidate-summary.json)、[行为用例](../../.work/phase3-settle-validation-20261120/Program.cs)。两份回执记录源文件 hash、构建退出码、运行退出码及 summary 对照。
+
+候选可在隔离目录重复构建运行，输出使用新文件保留已有证据：
+
+```powershell
+dotnet build .work/phase3-settle-validation-20261120/SettleValidation.csproj --configuration Release -p:ImportDirectoryBuildProps=false -p:ImportDirectoryBuildTargets=false -p:SettleVariant=Candidate
+dotnet .work/phase3-settle-validation-20261120/bin/Release/net8.0/SettleValidation.dll Candidate .work/phase3-settle-validation-20261120/candidate-rerun-summary.json
+```
+
+**验证边界：** 11 项 PASS 仅表示测试收尾辅助代码的隔离行为通过，不表示第三阶段已经实现。Configuration/Engine 的 xUnit 集成、实际测试宿主的 stderr 落盘、真实进程 EOF/清理夹具、句柄五次变异检查、成本采样、`Run-Tests.ps1` 四层门禁、安装与桌面验收均为 `NOT RUN`，仍按 Task 2–7 执行。无需为纯计划回写运行会改变现场的安装或电源测试。
