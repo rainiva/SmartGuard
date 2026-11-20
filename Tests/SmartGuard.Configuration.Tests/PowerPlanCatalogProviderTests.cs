@@ -33,13 +33,13 @@ public class PowerPlanCatalogProviderTests
     }
 
   [Fact]
-  public void TryLoad_reuses_session_cache_without_calling_loader_again()
+  public async Task LoadWithRetryAsync_reuses_session_cache_without_calling_loader_again()
   {
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
     var callCount = 0;
     PowerPlanCatalogProvider.LoadImplementationForTests = () =>
     {
-      callCount++;
+      Interlocked.Increment(ref callCount);
       return new Dictionary<Guid, string>
       {
         [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
@@ -50,10 +50,10 @@ public class PowerPlanCatalogProviderTests
 
     try
     {
-      PowerPlanCatalogProvider.TryLoad();
-      PowerPlanCatalogProvider.TryLoad();
+      await PowerPlanCatalogProvider.LoadWithRetryAsync();
+      await PowerPlanCatalogProvider.LoadWithRetryAsync();
 
-      callCount.Should().Be(1, "second TryLoad should reuse session cache");
+      callCount.Should().Be(1, "the second load should reuse the session cache");
     }
     finally
     {
@@ -62,26 +62,29 @@ public class PowerPlanCatalogProviderTests
   }
 
   [Fact]
-  public void TryLoad_retries_after_loader_failure_without_caching_empty_catalog()
+  public async Task LoadWithRetryAsync_retries_after_loader_failure_without_caching_empty_catalog()
   {
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
     var callCount = 0;
-    var planGuid = Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e");
     PowerPlanCatalogProvider.LoadImplementationForTests = () =>
     {
-      callCount++;
-      if (callCount == 1)
-        throw new TimeoutException("powercfg timed out");
+      if (Interlocked.Increment(ref callCount) == 1)
+        throw new TimeoutException("plan catalog load timed out");
 
-      return new Dictionary<Guid, string> { [planGuid] = "平衡" };
+      return new Dictionary<Guid, string>
+      {
+        [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
+        [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
+        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
+      };
     };
 
     try
     {
-      PowerPlanCatalogProvider.TryLoad().Should().BeEmpty();
-      PowerPlanCatalogProvider.TryLoad().Should().ContainKey(planGuid);
+      var catalog = await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 2);
 
-      callCount.Should().Be(2);
+      catalog.Should().ContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
+      callCount.Should().Be(2, "the failed first attempt is not cached");
     }
     finally
     {
@@ -90,22 +93,22 @@ public class PowerPlanCatalogProviderTests
   }
 
   [Fact]
-  public void TryLoad_does_not_cache_empty_catalog()
+  public async Task LoadWithRetryAsync_does_not_cache_empty_catalog()
   {
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
     var callCount = 0;
     PowerPlanCatalogProvider.LoadImplementationForTests = () =>
     {
-      callCount++;
+      Interlocked.Increment(ref callCount);
       return new Dictionary<Guid, string>();
     };
 
     try
     {
-      PowerPlanCatalogProvider.TryLoad().Should().BeEmpty();
-      PowerPlanCatalogProvider.TryLoad().Should().BeEmpty();
+      (await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1)).Should().BeEmpty();
+      (await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1)).Should().BeEmpty();
 
-      callCount.Should().Be(2);
+      callCount.Should().Be(4, "each call makes one attempt plus the final reload, and nothing is cached");
     }
     finally
     {
@@ -139,34 +142,29 @@ public class PowerPlanCatalogProviderTests
   }
 
   [Fact]
-  public void TryLoad_does_not_cache_incomplete_catalog()
+  public async Task LoadWithRetryAsync_does_not_cache_incomplete_catalog()
   {
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
     var callCount = 0;
     PowerPlanCatalogProvider.LoadImplementationForTests = () =>
     {
-      callCount++;
-      if (callCount == 1)
-      {
-        return new Dictionary<Guid, string>
-        {
-          [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
-        };
-      }
-
+      Interlocked.Increment(ref callCount);
       return new Dictionary<Guid, string>
       {
         [PowerPlanCatalogProvider.HighPerformancePlanGuid] = "高性能",
         [PowerPlanCatalogProvider.BalancedPlanGuid] = "平衡",
-        [PowerPlanCatalogProvider.PowerSaverPlanGuid] = "节能",
       };
     };
 
     try
     {
-      PowerPlanCatalogProvider.TryLoad().Should().ContainKey(PowerPlanCatalogProvider.BalancedPlanGuid);
-      PowerPlanCatalogProvider.TryLoad().Should().ContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
-      callCount.Should().Be(2);
+      (await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1)).Should().ContainKey(PowerPlanCatalogProvider.BalancedPlanGuid);
+      await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 1);
+
+      callCount.Should().Be(4, "an incomplete catalog is never cached");
+      PowerPlanCatalogProvider.Snapshot.State.Should().Be(PowerPlanCatalogState.Loaded);
+      PowerPlanCatalogProvider.Snapshot.PresenceOf(PowerPlanCatalogProvider.PowerSaverPlanGuid)
+        .Should().Be(PowerPlanPresence.ConfirmedAbsent);
     }
     finally
     {
@@ -175,14 +173,13 @@ public class PowerPlanCatalogProviderTests
   }
 
   [Fact]
-  public void LoadWithRetry_returns_complete_catalog_from_loader()
+  public async Task LoadWithRetryAsync_returns_complete_catalog_from_loader()
   {
     PowerPlanCatalogProvider.ClearSessionCacheForTests();
     var callCount = 0;
     PowerPlanCatalogProvider.LoadImplementationForTests = () =>
     {
-      callCount++;
-      if (callCount == 1)
+      if (Interlocked.Increment(ref callCount) == 1)
       {
         return new Dictionary<Guid, string>
         {
@@ -200,7 +197,7 @@ public class PowerPlanCatalogProviderTests
 
     try
     {
-      var catalog = PowerPlanCatalogProvider.LoadWithRetry(maxAttempts: 2);
+      var catalog = await PowerPlanCatalogProvider.LoadWithRetryAsync(maxAttempts: 2);
       catalog.Should().ContainKey(PowerPlanCatalogProvider.PowerSaverPlanGuid);
       callCount.Should().Be(2);
     }

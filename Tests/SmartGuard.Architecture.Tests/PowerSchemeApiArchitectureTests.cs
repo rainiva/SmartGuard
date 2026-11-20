@@ -41,4 +41,14 @@ public class PowerSchemeApiArchitectureTests
     contract.Should().Contain("PWR-INV-SCHEME-API").And.Contain("`PowerSchemeService`");
     contract.Should().NotContain("`powercfg /setactive`", "lifecycle gating now names the API call");
   }
+
+  [Fact]
+  public void Plan_catalog_has_no_synchronous_or_powercfg_path()
+  {
+    var provider = SourceScanHelper.ReadSource("src/SmartGuard.Configuration/PowerPlanCatalogProvider.cs");
+    provider.Should().NotContain("PowerCfgProcessRunner").And.NotContain("PowerPlanCatalogParser");
+    provider.Should().NotContain("public static IReadOnlyDictionary<Guid, string> TryLoad()");
+    File.Exists(Path.Combine(SourceScanHelper.RepoRoot, "src", "SmartGuard.Configuration", "PowerPlanCatalogParser.cs"))
+      .Should().BeFalse();
+  }
 }

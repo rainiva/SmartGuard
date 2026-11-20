@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
-using System.Text;
 
 namespace SmartGuard.Configuration;
 
@@ -54,24 +52,6 @@ public static class PowerPlanCatalogProvider
   {
     await AsyncLoadGate.WaitAsync().ConfigureAwait(false);
     AsyncLoadGate.Release();
-  }
-
-  public static IReadOnlyDictionary<Guid, string> TryLoad()
-  {
-    if (_sessionCache is not null)
-      return _sessionCache;
-
-    try
-    {
-      var catalog = LoadImplementationForTests?.Invoke() ?? LoadCore();
-      if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
-        _sessionCache = catalog;
-      return catalog;
-    }
-    catch
-    {
-      return new Dictionary<Guid, string>();
-    }
   }
 
   public static Task<IReadOnlyDictionary<Guid, string>> LoadAsync(CancellationToken cancellationToken = default)
@@ -222,23 +202,6 @@ public static class PowerPlanCatalogProvider
     }
   }
 
-  public static IReadOnlyDictionary<Guid, string> LoadWithRetry(int maxAttempts = 3)
-  {
-    for (var attempt = 0; attempt < maxAttempts; attempt++)
-    {
-      InvalidateSessionCache();
-      var catalog = TryLoad();
-      if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
-        return catalog;
-
-      if (attempt < maxAttempts - 1)
-        Thread.Sleep(300);
-    }
-
-    InvalidateSessionCache();
-    return TryLoad();
-  }
-
   public static void InvalidateSessionCache() => _sessionCache = null;
 
   public static bool HasMissingKnownSchemes(IReadOnlyDictionary<Guid, string> catalog)
@@ -249,157 +212,5 @@ public static class PowerPlanCatalogProvider
     InvalidateSessionCache();
     LoadImplementationForTests = null;
     _snapshot = PowerPlanCatalogSnapshot.Loading;
-  }
-
-  public static void EnrichWithHiddenSchemes(
-    IDictionary<Guid, string> catalog,
-    Func<Guid, string?> queryPlanName)
-  {
-    foreach (var guid in KnownSchemeGuids)
-    {
-      if (catalog.ContainsKey(guid))
-        continue;
-
-      var name = queryPlanName(guid);
-      if (!string.IsNullOrWhiteSpace(name))
-        catalog[guid] = name!;
-    }
-  }
-
-  private static IReadOnlyDictionary<Guid, string> LoadCore()
-  {
-    var listResult = PowerCfgProcessRunner.RunPowerCfg("/list", TimeSpan.FromSeconds(15));
-    if (!listResult.Succeeded)
-      return new Dictionary<Guid, string>();
-
-    var catalog = PowerPlanCatalogParser.ParseList(listResult.StandardOutput);
-    EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
-
-    if (HasMissingKnownSchemes(catalog))
-    {
-      Thread.Sleep(250);
-      EnrichWithHiddenSchemes(catalog, TryQueryPlanName);
-    }
-
-    return catalog;
-  }
-
-  private static async Task<IReadOnlyDictionary<Guid, string>> TryLoadAsync(
-    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
-  {
-    if (_sessionCache is not null)
-      return _sessionCache;
-
-    try
-    {
-      var catalog = LoadImplementationForTests is { } loader
-        ? await Task.Run(loader, cancellationToken).ConfigureAwait(false)
-        : await LoadCoreAsync(cancellationToken, observe).ConfigureAwait(false);
-
-      cancellationToken.ThrowIfCancellationRequested();
-      if (catalog.Count > 0 && !HasMissingKnownSchemes(catalog))
-        _sessionCache = catalog;
-      return catalog;
-    }
-    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-    {
-      throw;
-    }
-    catch
-    {
-      return new Dictionary<Guid, string>();
-    }
-  }
-
-  private static async Task<IReadOnlyDictionary<Guid, string>> LoadCoreAsync(
-    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
-  {
-    var listResult = await PowerCfgProcessRunner.RunPowerCfgAsync(
-        "/list",
-        cancellationToken,
-        TimeSpan.FromSeconds(15))
-      .ConfigureAwait(false);
-    observe?.Invoke(listResult);
-    cancellationToken.ThrowIfCancellationRequested();
-    if (!listResult.Succeeded)
-      return new Dictionary<Guid, string>();
-
-    var catalog = PowerPlanCatalogParser.ParseList(listResult.StandardOutput);
-    await EnrichWithHiddenSchemesAsync(catalog, cancellationToken, observe).ConfigureAwait(false);
-
-    if (HasMissingKnownSchemes(catalog))
-    {
-      await Task.Delay(250, cancellationToken).ConfigureAwait(false);
-      await EnrichWithHiddenSchemesAsync(catalog, cancellationToken, observe).ConfigureAwait(false);
-    }
-
-    return catalog;
-  }
-
-  private static async Task EnrichWithHiddenSchemesAsync(
-    IDictionary<Guid, string> catalog,
-    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
-  {
-    foreach (var guid in KnownSchemeGuids)
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-      if (catalog.ContainsKey(guid))
-        continue;
-
-      var name = await TryQueryPlanNameAsync(guid, cancellationToken, observe).ConfigureAwait(false);
-      if (!string.IsNullOrWhiteSpace(name))
-        catalog[guid] = name!;
-    }
-  }
-
-  private static PowerCfgCommandResult RunPowerCfg(string arguments)
-    => PowerCfgProcessRunner.RunPowerCfg(arguments, TimeSpan.FromSeconds(15));
-
-  private static string? TryQueryPlanName(Guid guid)
-  {
-    try
-    {
-      var result = PowerCfgProcessRunner.RunPowerCfg(
-        $"/query {guid:D}",
-        TimeSpan.FromSeconds(15));
-      if (!result.Succeeded ||
-          !PowerPlanCatalogParser.TryParseQueryHeader(result.StandardOutput, out var parsedGuid, out var name))
-        return null;
-
-      return parsedGuid == guid ? name : null;
-    }
-    catch
-    {
-      return null;
-    }
-  }
-
-  private static async Task<string?> TryQueryPlanNameAsync(
-    Guid guid,
-    CancellationToken cancellationToken, Action<PowerCfgCommandResult>? observe = null)
-  {
-    try
-    {
-      var result = await PowerCfgProcessRunner.RunPowerCfgAsync(
-          $"/query {guid:D}",
-          cancellationToken,
-          TimeSpan.FromSeconds(15))
-        .ConfigureAwait(false);
-      observe?.Invoke(result);
-      cancellationToken.ThrowIfCancellationRequested();
-      if (!result.Succeeded ||
-          !PowerPlanCatalogParser.TryParseQueryHeader(result.StandardOutput, out var parsedGuid, out var name))
-        return null;
-
-      return parsedGuid == guid ? name : null;
-    }
-    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-    {
-      throw;
-    }
-    catch
-    {
-      return null;
-    }
   }
 }
