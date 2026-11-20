@@ -152,5 +152,5 @@
   - 19:04:57 暂停后，19:05:05 状态为 `paused=true`、`guardReason=paused`、`guardHealth=not-applicable`。
   - 19:07:48 恢复后，19:07:56 状态为 `paused=false`、`guardHealth=healthy`。
   - 安装后共 25 条事件，没有停工或探测失败事件。
-- **托盘与设置窗口文字：未取得用户反馈。** 状态原因为 `waiting-for-listed-program`、`guardHealth=healthy`，按代码应显示“等待指定程序”，不出现“停工”；该路径由 Task 4 用例覆盖。
+- **托盘与设置窗口文字：PASS。** 用户确认显示“等待指定程序”，没有“停工”。当时状态原因为 `waiting-for-listed-program`、`guardHealth=healthy`，与代码预期一致。
 - **NOT RUN（真机无法安全制造）：** 真实停工需要电源服务调用持续失败 10 分钟。进入/恢复、日志、通知与停工文案由 Task 2–4 用例覆盖。
