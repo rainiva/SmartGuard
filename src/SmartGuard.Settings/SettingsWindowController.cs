@@ -14,14 +14,20 @@ public sealed class SettingsWindowController
   private readonly SettingsNavigationShell _navigationShell;
   private readonly SettingsLogPageHost _logPageHost;
   private readonly ToastNotificationService _toastService;
+  private SettingsDiagnosticExportSession? _diagnosticSession;
 
   private string? _initialPage;
+  private bool _disposed;
 
   internal bool IsDarkThemeEnabled => _themeCoordinator.IsDarkThemeEnabled;
 
   internal bool IsLogViewInitializedForTests => _logPageHost.IsLogViewInitializedForTests;
 
   internal bool IsLogRefreshInFlightForTests => _logPageHost.IsRefreshInFlightForTests;
+
+  internal int ActiveLogRefreshCountForTests => _logPageHost.ActiveRefreshCountForTests;
+
+  internal int ApplyAfterDisposeCountForTests => _logPageHost.ApplyAfterDisposeCountForTests;
 
   internal static int ForceRefreshLogViewCountForTests =>
     SettingsLogPageHost.ForceRefreshLogViewCountForTests;
@@ -110,12 +116,13 @@ public sealed class SettingsWindowController
       Require<CheckBox>(window, "tglNotifyExternal"),
       Require<CheckBox>(window, "tglAutoStart"));
 
+    var diagnosticSession = new SettingsDiagnosticExportSession();
     var logPageHost = new SettingsLogPageHost(
       window,
       root,
       toastService,
       SmartGuardPaths.ResolveLogFile(config, root),
-      SmartGuardPaths.StartupLogFile(root));
+      SmartGuardPaths.StartupLogFile(root), diagnosticSession);
 
     var themeState = new SettingsThemeState
     {
@@ -160,22 +167,25 @@ public sealed class SettingsWindowController
     SettingsControlLabels.RegisterNumberBoxLabels(window);
     aboutCoordinator.WireAboutPage(
       window,
-      Require<TextBlock>(window, "txtVersion"),
-      () => policyCoordinator.ReadConfigFromUi().GitHubToken);
-
-    var gitHubTokenCoordinator = new SettingsGitHubTokenCoordinator(
-      repository,
-      () => policyCoordinator.ReadConfigFromUi(),
-      policyCoordinator.CommitSavedConfig,
-      (message, isError) => toastService.Show(message, isError));
-    gitHubTokenCoordinator.WireAboutPage(window);
+      Require<TextBlock>(window, "txtVersion"));
+    aboutCoordinator.WireLogRetention(
+      window,
+      config,
+      updatedConfig =>
+      {
+        repository.Save(updatedConfig);
+        toastService.Show("日志保存时间已更新", false);
+      });
 
     var diagnosticExportCoordinator = new SettingsDiagnosticExportCoordinator(
       root,
       SettingsAboutCoordinator.GetDisplayVersion,
-      (message, isError) => toastService.Show(message, isError));
+      (message, isError) => toastService.Show(message, isError),
+      logPageHost.GetDiagnosticPaths,
+      diagnosticSession,
+      isAlive: () => !controller._disposed && window.FindName("navList") is ListBox { SelectedIndex: 5 });
+    controller._diagnosticSession = diagnosticSession;
     diagnosticExportCoordinator.WireAboutPage(window);
-
     WireThemeToggles(window, themeCoordinator);
     themeCoordinator.Initialize(window);
 
@@ -189,7 +199,9 @@ public sealed class SettingsWindowController
     navigationShell.AttachLayoutTheme(
       () => controller.IsDarkThemeEnabled,
       () => SettingsWindowLayoutStability.StabilizeContentLayout(window));
-    navigationShell.WireWindowState(navList, controller.SetLogPageActive);
+    navigationShell.WireWindowState(
+      navList,
+      controller.SetLogPageActive);
 
     window.Closing += (_, _) => controller.Dispose();
 
@@ -253,6 +265,11 @@ public sealed class SettingsWindowController
 
   public void Dispose()
   {
+    if (_disposed)
+      return;
+
+    _disposed = true;
+    _diagnosticSession?.Dispose();
     _policyCoordinator.Dispose();
     _logPageHost.Dispose();
     _navigationShell.Dispose();

@@ -13,6 +13,23 @@ public static class PowerPlanMappingValidator
     return messages;
   }
 
+  // Only a confirmed absence is a mapping error; loading, an unreadable list and unreadable names are not.
+  internal static IReadOnlyList<string> Validate(GuardConfig config, PowerPlanCatalogSnapshot snapshot)
+  {
+    var messages = new List<string>(ValidateDuplicates(config));
+    foreach (var (plan, role) in new[]
+    {
+      (config.ActivePlanGuid, PowerPlanCatalogProvider.HighPerformanceDisplayName),
+      (config.BalancedPlanGuid, PowerPlanCatalogProvider.BalancedDisplayName),
+      (config.PowerSaverPlanGuid, PowerPlanCatalogProvider.PowerSaverDisplayName),
+    })
+    {
+      if (plan != Guid.Empty && snapshot.PresenceOf(plan) == PowerPlanPresence.ConfirmedAbsent)
+        messages.Add($"{role}计划未在本机找到");
+    }
+    return messages;
+  }
+
   public static IReadOnlyList<string> ValidateMissingPlans(
     GuardConfig config,
     IReadOnlyDictionary<Guid, string> catalog)

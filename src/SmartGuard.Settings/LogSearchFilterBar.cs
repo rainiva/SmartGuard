@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -29,6 +30,8 @@ public sealed class LogSearchFilterBar : Panel
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        AutomationProperties.SetName(_keywordBox, "日志查询");
+        AutomationProperties.SetHelpText(_keywordBox, "输入关键词或组合查询");
         _keywordBox.TextChanged += (_, _) => FiltersChanged?.Invoke(this, EventArgs.Empty);
 
         Children.Add(_chipPanel);
@@ -36,6 +39,16 @@ public sealed class LogSearchFilterBar : Panel
     }
 
     public string Keyword => _keywordBox.Text;
+
+    public bool FocusKeywordInput()
+    {
+        if (!_keywordBox.IsEnabled || !_keywordBox.Focusable)
+            return false;
+
+        _keywordBox.Focus();
+        Keyboard.Focus(_keywordBox);
+        return _keywordBox.IsKeyboardFocusWithin;
+    }
 
     public IReadOnlyList<string> ActiveTags =>
         _chipPanel.Children

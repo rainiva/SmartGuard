@@ -5,7 +5,7 @@ namespace SmartGuard.Settings;
 internal static class SettingsLogViewRefresher
 {
   internal static void Apply(
-    LogViewSnapshot snapshot,
+    LogViewRefreshResult refreshResult,
     LogViewController controller,
     LogViewListPresenter listPresenter,
     TextBlock statusLabel,
@@ -14,69 +14,43 @@ internal static class SettingsLogViewRefresher
     ref bool logStatusMayBeStale,
     ref IReadOnlyList<string> lastDisplayedLines,
     ref int forceRefreshCountForTests,
-    SettingsLogFollowTailCoordinator followTailCoordinator,
-    Func<ScrollViewer?> resolveScrollViewer,
+    LogViewportController viewport,
     bool forceRedraw)
   {
+    var snapshot = refreshResult.Snapshot;
     if (forceRedraw)
       forceRefreshCountForTests++;
 
-    var idleRead = LogViewIdleReader.TryRead(root);
+    var idleRead = refreshResult.StatusObservation ?? new LogViewIdleReadResult(null, false);
     if (idleRead.Seconds is not null)
       logIdleSeconds = idleRead.Seconds;
     logStatusMayBeStale = idleRead.StatusMayBeStale;
 
-    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, logIdleSeconds, logStatusMayBeStale);
-    var plan = LogViewUpdatePlanner.CreatePlan(lastDisplayedLines, snapshot.DisplayLines, forceRedraw);
+    var statusText = LogViewStatusTextBuilder.Build(snapshot, DateTime.Now, logIdleSeconds, logStatusMayBeStale,
+      logHealth: idleRead.LogHealth);
 
-    if (!forceRedraw && !snapshot.ContentChanged && plan.Mode == LogViewUpdateMode.NoChange)
+    if (!forceRedraw
+        && !refreshResult.ContentChanged
+        && refreshResult.WindowDelta.IsEmpty
+        && snapshot.EmptyStateMessage is null
+        && !snapshot.LoadFailed)
     {
-      statusLabel.Text = statusText;
+      LogStatusLiveRegion.Set(statusLabel, statusText);
       return;
     }
 
-    var scrollViewer = resolveScrollViewer();
-    var savedVerticalOffset = scrollViewer?.VerticalOffset ?? 0;
-    var savedHorizontalOffset = scrollViewer?.HorizontalOffset ?? 0;
-    var wasAtTail = scrollViewer is null || LogViewScrollState.IsAtTail(scrollViewer);
-    var scrollToTail = controller.FollowTail && wasAtTail;
+    viewport.BeginDataApply();
+    var capturedAnchor = viewport.CaptureAnchorIfNeeded();
+    LogViewApplyResult applyResult;
+    if (forceRedraw
+        || (snapshot.EmptyStateMessage is not null && snapshot.FilteredLines.Count == 0))
+      applyResult = listPresenter.Apply(LogViewUpdatePlan.ReplaceAll(snapshot.DisplayLines));
+    else
+      applyResult = listPresenter.ApplyDelta(refreshResult.WindowDelta);
 
-    listPresenter.Apply(plan);
     lastDisplayedLines = snapshot.DisplayLines.ToArray();
-    statusLabel.Text = statusText;
-
-    if (scrollToTail)
-    {
-      followTailCoordinator.ApplyScrollIfEnabled();
-      RestoreHorizontalOffset(scrollViewer, savedHorizontalOffset);
-      return;
-    }
-
-    if (scrollViewer is null)
-      return;
-
-    scrollViewer.UpdateLayout();
-    if (!wasAtTail)
-      scrollViewer.ScrollToVerticalOffset(savedVerticalOffset);
-
-    RestoreHorizontalOffset(scrollViewer, savedHorizontalOffset);
-  }
-
-  private static void RestoreHorizontalOffset(ScrollViewer? scrollViewer, double savedHorizontalOffset)
-  {
-    if (scrollViewer is null || savedHorizontalOffset <= 0)
-      return;
-
-    scrollViewer.Dispatcher.BeginInvoke(
-      () =>
-      {
-        scrollViewer.UpdateLayout();
-        if (scrollViewer.ScrollableWidth <= 0)
-          return;
-
-        var restored = Math.Min(savedHorizontalOffset, scrollViewer.ScrollableWidth);
-        scrollViewer.ScrollToHorizontalOffset(restored);
-      },
-      System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    LogStatusLiveRegion.Set(statusLabel, statusText);
+    viewport.OnDataApplied(applyResult, capturedAnchor);
+    controller.FollowTail = viewport.FollowLatest;
   }
 }

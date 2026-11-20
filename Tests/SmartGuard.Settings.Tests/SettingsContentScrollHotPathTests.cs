@@ -347,7 +347,7 @@ public class SettingsContentScrollHotPathTests
         controller!.NavigateTo("logs");
         window.UpdateLayout();
         controller.EnsureLogScrollViewerHooked();
-        SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+        SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
         scrollViewer = GetLogScrollViewer(window, controller);
         return ctx;
@@ -363,8 +363,10 @@ public class SettingsContentScrollHotPathTests
             return builder.ToString();
         }
 
+        // Trailing newline required: LogTailReader holds a final unterminated
+        // slice as an incomplete half-line and does not surface it yet.
         return wideLine
-            ? "[INFO] 2026-07-04 09:00:00 START-" + new string('x', 500) + "-END"
+            ? "[INFO] 2026-07-04 09:00:00 START-" + new string('x', 500) + "-END\n"
             : "[INFO] 2026-07-04 09:00:00 ok\n";
     }
 

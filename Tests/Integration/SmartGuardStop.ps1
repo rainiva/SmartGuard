@@ -35,16 +35,83 @@ function Wait-SmartGuardEngineExit {
     return $false
 }
 
-function Stop-SmartGuardProcessesWithoutElevation {
+function Get-SmartGuardProcessesForStop {
     param([int]$ProcessId = 0)
 
+    $byId = @{}
     if ($ProcessId -gt 0) {
-        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+        $target = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if ($target) {
+            $byId[$target.Id] = $target
+        }
     }
 
-    Get-Process -Name 'SmartGuard.Engine', 'SmartGuard.Tray' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-    Wait-SmartGuardEngineExit -ProcessId $ProcessId | Out-Null
+    foreach ($process in @(Get-Process -Name 'SmartGuard.Engine', 'SmartGuard.Tray' -ErrorAction SilentlyContinue)) {
+        $byId[$process.Id] = $process
+    }
+
+    return @($byId.Values)
+}
+
+function Assert-SmartGuardProcessesExited {
+    param(
+        [int]$ProcessId = 0,
+        [int]$TimeoutMs = 2000,
+        [int]$PollMs = 100,
+        [object[]]$StopFailures = @()
+    )
+
+    $effectiveTimeoutMs = [Math]::Min([Math]::Max($TimeoutMs, 0), 2000)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($effectiveTimeoutMs)
+    $remaining = @()
+
+    do {
+        $remaining = @(Get-SmartGuardProcessesForStop -ProcessId $ProcessId)
+        if ($remaining.Count -eq 0) {
+            return
+        }
+
+        $remainingMs = [int][Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if ($remainingMs -le 0) {
+            break
+        }
+
+        Start-Sleep -Milliseconds ([Math]::Min([Math]::Max($PollMs, 1), $remainingMs))
+    } while ($true)
+
+    $processDetails = @($remaining | Sort-Object Id | ForEach-Object {
+        "PID=$($_.Id), Name=$($_.ProcessName)"
+    }) -join '; '
+    $failureDetails = @($StopFailures | ForEach-Object {
+        "PID=$($_.Id), Name=$($_.Name), Error=$($_.Error)"
+    }) -join '; '
+    $elevated = Test-IsProcessElevated
+    $failureSuffix = if ($failureDetails) { " StopFailures=$failureDetails." } else { '' }
+
+    throw "SmartGuard processes did not exit within $effectiveTimeoutMs ms: $processDetails. CurrentProcessElevated=$elevated.$failureSuffix Re-run the complete test gate from an administrator PowerShell, then investigate duplicate single-instance or startup failures."
+}
+
+function Stop-SmartGuardProcessesWithoutElevation {
+    param(
+        [int]$ProcessId = 0,
+        [int]$TimeoutMs = 2000
+    )
+
+    $stopFailures = @()
+    foreach ($process in @(Get-SmartGuardProcessesForStop -ProcessId $ProcessId)) {
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        }
+        catch {
+            $stopFailures += [pscustomobject]@{
+                Id = $process.Id
+                Name = $process.ProcessName
+                Error = $_.Exception.Message
+            }
+        }
+    }
+
+    Assert-SmartGuardProcessesExited -ProcessId $ProcessId -TimeoutMs $TimeoutMs -StopFailures $stopFailures
 }
 
 function Stop-SmartGuardProcesses {

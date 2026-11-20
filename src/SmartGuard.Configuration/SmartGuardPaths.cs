@@ -24,6 +24,7 @@ public static class SmartGuardPaths
 
   public static string ConfigFile(string root) => Path.Combine(root, ConfigFileName);
   public static string StatusFile(string root) => Path.Combine(root, StatusFileName);
+  public static string StatusBackupForFile(string statusPath) => statusPath + ".bak";
   public static string DefaultLogFile(string root) => Path.Combine(root, DefaultLogFileName);
   public static string StartupLogFile(string root) => Path.Combine(root, StartupLogFileName);
   public static string EngineExe(string root) => Path.Combine(root, "bin", EngineExeFileName);

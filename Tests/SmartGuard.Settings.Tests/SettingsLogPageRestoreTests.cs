@@ -29,7 +29,7 @@ public class SettingsLogPageRestoreTests
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
                 SettingsWindowController.ResetTestMetricsForTests();
                 controller.SetLogPageActive(false);
@@ -64,7 +64,7 @@ public class SettingsLogPageRestoreTests
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
                 var lstLogView = window.FindName("lstLogView") as ListBox;
                 lstLogView.Should().NotBeNull();
@@ -98,18 +98,20 @@ public class SettingsLogPageRestoreTests
             SettingsWindowController? controller = null;
             try
             {
-                SettingsWindowController.ResetTestMetricsForTests();
                 controller = CreateController(installRoot);
                 var window = GetWindow(controller!);
                 WpfStaTestHost.ShowAndWait(window);
                 controller!.NavigateTo("logs");
-                SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
-
-                SettingsWindowController.ForceRefreshLogViewCountForTests.Should().BeGreaterThan(0,
-                    "first navigation to logs should load log content");
-
+                WpfStaTestHost.Track(controller);
                 var lstLogView = window.FindName("lstLogView") as ListBox;
                 lstLogView.Should().NotBeNull();
+                WpfStaTestHost.WaitUntil(
+                    () =>
+                        lstLogView!.Items.Count > 0 &&
+                        controller.ActiveLogRefreshCountForTests == 0,
+                    TimeSpan.FromSeconds(10),
+                    "first log items to load and the active refresh flight to finish");
+
                 lstLogView!.Items.Count.Should().BeGreaterThan(0);
             }
             finally

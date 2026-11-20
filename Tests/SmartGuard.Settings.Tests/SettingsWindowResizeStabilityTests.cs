@@ -1,8 +1,11 @@
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using SmartGuard.Configuration;
 using SmartGuard.Settings;
 
@@ -37,12 +40,144 @@ public class SettingsWindowResizeStabilityTests
     }
 
     [Fact]
+    public void Log_status_stays_within_window_bounds_when_high_dpi_layout_is_constrained()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            var lines = Enumerable.Range(1, 200)
+                .Select(index => $"[INFO] 2026-08-07 10:00:{index % 60:00} Uninstall event {index}")
+                .ToArray();
+            File.WriteAllText(
+                Path.Combine(installRoot, "SmartGuard.log"),
+                string.Join(Environment.NewLine, lines),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                try
+                {
+                    window.Width = 800;
+                    window.Height = 640;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("logs");
+                    window.UpdateLayout();
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                    WpfStaTestHost.WaitForRender();
+
+                    var pageLogs = window.FindName("pageLogs") as FrameworkElement;
+                    var status = window.FindName("lblLogStatus") as FrameworkElement;
+                    pageLogs.Should().NotBeNull();
+                    status.Should().NotBeNull();
+
+                    var statusOrigin = status!.TranslatePoint(new Point(0, 0), window);
+                    var statusRight = statusOrigin.X + status.ActualWidth;
+
+                    statusRight.Should().BeLessThanOrEqualTo(
+                        window.ActualWidth + 1.0,
+                        "the status summary must remain reachable inside the window at high DPI");
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void Log_status_refresh_raises_live_region_changed_event()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            File.WriteAllText(
+                Path.Combine(installRoot, "SmartGuard.log"),
+                "[INFO] 2026-08-07 10:00:00 live region test",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                try
+                {
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("logs");
+                    var status = window.FindName("lblLogStatus") as TextBlock;
+                    status.Should().NotBeNull();
+                    WpfStaTestHost.WaitUntil(
+                        () =>
+                            controller.ActiveLogRefreshCountForTests == 0 &&
+                            status!.Text != "正在加载日志…",
+                        TimeSpan.FromSeconds(10),
+                        "the log status to settle after navigation");
+
+                    var automationWindow = AutomationElement.FromHandle(new WindowInteropHelper(window).Handle);
+                    var statusElement = automationWindow.FindFirst(
+                        TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "lblLogStatus"));
+                    statusElement.Should().NotBeNull();
+
+                    var eventCount = 0;
+                    AutomationEventHandler handler = (_, _) => Interlocked.Increment(ref eventCount);
+                    Automation.AddAutomationEventHandler(
+                        AutomationElementIdentifiers.LiveRegionChangedEvent,
+                        statusElement!,
+                        TreeScope.Element,
+                        handler);
+                    try
+                    {
+                        controller.ForceRefreshLogView();
+                        WpfStaTestHost.WaitUntil(
+                            () => eventCount > 0,
+                            TimeSpan.FromSeconds(10),
+                            "the log status live-region event to be raised after refresh");
+                    }
+                    finally
+                    {
+                        Automation.RemoveAutomationEventHandler(
+                            AutomationElementIdentifiers.LiveRegionChangedEvent,
+                            statusElement!,
+                            handler);
+                    }
+
+                    eventCount.Should().BeGreaterThan(0);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
     public void Layout_stability_is_scoped_to_visible_log_page()
     {
         var source = File.ReadAllText(RepoLayoutStabilityPath());
 
-        source.Should().Contain("window.FindName(\"pageLogs\") is not FrameworkElement pageLogs");
-        source.Should().Contain("pageLogs.Visibility != Visibility.Visible");
+        source.Should().Contain("var pageLogsVisible = window.FindName(\"pageLogs\") is FrameworkElement pageLogs");
+        source.Should().Contain("if (!pageLogsVisible)");
+        source.Should().Contain("window.FindName(\"logTable\") is DataGrid logTable");
     }
 
     [Fact]
@@ -104,7 +239,7 @@ public class SettingsWindowResizeStabilityTests
                     WpfStaTestHost.ShowAndWait(window);
                     controller!.NavigateTo("logs");
                     window.UpdateLayout();
-                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller!, window);
 
                     SettingsWindowLayoutStability.StabilizeContentLayout(window);
                     window.UpdateLayout();
@@ -124,6 +259,9 @@ public class SettingsWindowResizeStabilityTests
                     var lstLogView = window.FindName("lstLogView") as ListBox;
                     lstLogView.Should().NotBeNull();
                     lstLogView!.ActualHeight.Should().BeGreaterThan(100);
+                    var logTable = window.FindName("logTable") as DataGrid;
+                    logTable.Should().NotBeNull();
+                    logTable!.ActualHeight.Should().BeGreaterThan(100);
 
                     SettingsWindowLayoutStability.StabilizeContentLayout(window);
                     SettingsWindowLayoutStability.HandleWindowStateChanged(window, isDarkTheme: false, WindowState.Maximized);
@@ -135,10 +273,89 @@ public class SettingsWindowResizeStabilityTests
                         System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
                     lstLogView.ActualHeight.Should().BeGreaterThan(100);
+                    logTable.ActualHeight.Should().BeGreaterThan(100);
                 }
                 finally
                 {
                     WindowTitleBarTheme.Apply(window, isDarkMode: false);
+                    window.Close();
+                }
+            }
+            finally
+            {
+                TryDelete(installRoot);
+            }
+        });
+    }
+
+    [Fact]
+    public void Rapid_maximize_restore_keeps_log_surface_inside_content_bounds()
+    {
+        RunOnSta(() =>
+        {
+            EnsureApplication();
+
+            var installRoot = CreateInstallRoot();
+            var lines = Enumerable.Range(1, 200)
+                .Select(index => $"[INFO] 2026-08-07 10:{index / 60:00}:{index % 60:00} maximize probe event {index}")
+                .ToArray();
+            File.WriteAllText(
+                Path.Combine(installRoot, "SmartGuard.log"),
+                string.Join(Environment.NewLine, lines),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                var controller = CreateController(installRoot);
+                controller.Should().NotBeNull();
+
+                var window = GetWindow(controller!);
+                try
+                {
+                    window.Width = 1200;
+                    window.Height = 900;
+                    WpfStaTestHost.ShowAndWait(window);
+                    controller!.NavigateTo("logs");
+                    window.UpdateLayout();
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
+                    WpfStaTestHost.WaitForRender();
+                    Pump(window);
+
+                    // Single-shot, non-retryable gate: the first failing round fails
+                    // the whole test; a later successful run must never mask it.
+                    for (var round = 1; round <= 20; round++)
+                    {
+                        RunGateRound(window, round, "maximized", () =>
+                        {
+                            window.WindowState = WindowState.Maximized;
+                            WpfStaTestHost.WaitForRender();
+                            Pump(window);
+                            AssertLogSurfaceContained(window, round, "maximized");
+                        });
+
+                        RunGateRound(window, round, "restored", () =>
+                        {
+                            window.WindowState = WindowState.Normal;
+                            WpfStaTestHost.WaitForRender();
+                            Pump(window);
+                            AssertLogSurfaceContained(window, round, "restored");
+                        });
+                    }
+                }
+                finally
+                {
+                    WindowTitleBarTheme.Apply(window, isDarkMode: false);
+                    try
+                    {
+                        window.WindowState = WindowState.Normal;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 清理期的状态回置失败不得掩盖门禁本体失败；
+                        // 窗口是否真正关闭仍由 RunOnSta 的 AssertQuiescent 兜底。
+                        System.Diagnostics.Debug.WriteLine($"maximize gate cleanup state reset failed: {ex.Message}");
+                    }
+
                     window.Close();
                 }
             }
@@ -404,13 +621,23 @@ public class SettingsWindowResizeStabilityTests
 
                     controller.NavigateTo("logs");
                     window.UpdateLayout();
-                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(window);
+                    SettingsLogNavResponsivenessTests.WaitUntilLogContent(controller, window);
 
                     controller.NavigateTo("about");
                     window.UpdateLayout();
-                    window.Dispatcher.Invoke(
-                        () => { },
-                        System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                    var pageAbout = window.FindName("pageAbout") as FrameworkElement;
+                    pageAbout.Should().NotBeNull();
+                    WpfStaTestHost.WaitUntil(
+                        () =>
+                            pageAbout!.Visibility == Visibility.Visible &&
+                            pageAbout.IsVisible,
+                        TimeSpan.FromSeconds(10),
+                        "the About page to become visible after returning from logs");
+                    WpfStaTestHost.WaitForRender();
+                    WpfStaTestHost.WaitUntil(
+                        () => Math.Abs(contentScrollViewer.VerticalOffset) <= 1.0,
+                        TimeSpan.FromSeconds(10),
+                        "the About page vertical offset to return to the top");
 
                     contentScrollViewer.VerticalOffset.Should().BeApproximately(
                         0,
@@ -455,6 +682,68 @@ public class SettingsWindowResizeStabilityTests
                 TryDelete(installRoot);
             }
         });
+    }
+
+    private static void RunGateRound(Window window, int round, string phase, Action body)
+    {
+        try
+        {
+            body();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Maximize gate failed at round {round} ({phase}): {ex.Message}",
+                ex);
+        }
+    }
+
+    private static void AssertLogSurfaceContained(Window window, int round, string phase)
+    {
+        var rightContentRoot = window.FindName("rightContentRoot") as FrameworkElement;
+        var pageLogs = window.FindName("pageLogs") as FrameworkElement;
+        var logViewportBorder = window.FindName("logViewportBorder") as FrameworkElement;
+        var logTable = window.FindName("logTable") as FrameworkElement;
+        var logPager = window.FindName("logPager") as FrameworkElement;
+
+        rightContentRoot.Should().NotBeNull($"round {round} ({phase}) needs rightContentRoot");
+        pageLogs.Should().NotBeNull($"round {round} ({phase}) needs pageLogs");
+        logViewportBorder.Should().NotBeNull($"round {round} ({phase}) needs logViewportBorder");
+        logTable.Should().NotBeNull($"round {round} ({phase}) needs logTable");
+        logPager.Should().NotBeNull($"round {round} ({phase}) needs logPager");
+
+        pageLogs!.Visibility.Should().Be(Visibility.Visible, $"round {round} ({phase}) shows the log page");
+
+        var contentRoot = window.Content as FrameworkElement;
+        contentRoot.Should().NotBeNull($"round {round} ({phase}) needs a FrameworkElement window content root");
+        AssertContained(contentRoot!, rightContentRoot!);
+
+        foreach (var element in new[] { rightContentRoot!, pageLogs, logViewportBorder!, logTable!, logPager! })
+        {
+            element.ActualHeight.Should().BeGreaterThan(
+                0,
+                $"round {round} ({phase}) keeps {element.Name} at a positive height");
+            element.IsMeasureValid.Should().BeTrue(
+                $"round {round} ({phase}) keeps {element.Name} measure-valid");
+            element.IsArrangeValid.Should().BeTrue(
+                $"round {round} ({phase}) keeps {element.Name} arrange-valid");
+        }
+
+        AssertContained(rightContentRoot!, pageLogs);
+        AssertContained(pageLogs, logViewportBorder!);
+        AssertContained(logViewportBorder!, logTable!);
+        AssertContained(pageLogs, logPager!);
+    }
+
+    private static void AssertContained(FrameworkElement container, FrameworkElement child)
+    {
+        var origin = child.TranslatePoint(new Point(0, 0), container);
+        origin.X.Should().BeGreaterThanOrEqualTo(-1);
+        origin.Y.Should().BeGreaterThanOrEqualTo(-1);
+        (origin.X + child.ActualWidth).Should().BeLessThanOrEqualTo(container.ActualWidth + 1);
+        (origin.Y + child.ActualHeight).Should().BeLessThanOrEqualTo(container.ActualHeight + 1);
+        child.IsMeasureValid.Should().BeTrue();
+        child.IsArrangeValid.Should().BeTrue();
     }
 
     private static string RepoXamlPath() => SettingsSourcePaths.ProjectSettingsXamlPath();

@@ -16,8 +16,11 @@
 *.xml text eol=lf
 *.config text eol=lf
 
-# 脚本与文档统一使用 LF
-*.ps1 text eol=lf
+# 脚本与文档统一使用 LF；PowerShell 例外：
+# Windows PowerShell 5.1 会把无 BOM 的 UTF-8 .ps1 按 ANSI/GBK 解码，
+# 中文标点末字节（如 。 的 0x82）会吞掉裸 LF、把下一行语句并进注释，
+# 因此 .ps1 必须以 CRLF 检出。
+*.ps1 text eol=crlf
 *.md text eol=lf
 *.txt text eol=lf
 *.yml text eol=lf

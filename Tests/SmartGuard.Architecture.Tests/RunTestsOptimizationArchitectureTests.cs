@@ -14,15 +14,41 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Dotnet_test_helper_must_build_once_and_run_parallel_with_no_build()
+  public void Dotnet_test_helper_must_build_once_and_poll_parallel_processes_with_no_build()
   {
     var helper = SourceScanHelper.ReadSource("scripts/Invoke-SmartGuardDotNetTests.ps1");
-    helper.Should().Contain("Start-Job");
+    helper.Should().Contain("dotnet-test-$RunId.stdout.log");
+    helper.Should().Contain("function Start-SmartGuardCapturedCommand");
+    helper.Should().Contain("function Complete-SmartGuardCapturedCommand");
+    helper.Should().Contain("function Read-SmartGuardTrxResult");
+    helper.Should().Contain("$Entry.Process.ExitCode");
+    helper.Should().Contain("trx;LogFileName=$trxFileName");
+    helper.Should().Contain("$counterValues.total -le 0");
+    helper.Should().NotContain(".exit");
+    helper.Should().NotContain("ExitPath");
+    helper.Should().NotContain("%ERRORLEVEL%");
+    var capturedCommandProtocol = System.Text.RegularExpressions.Regex.Match(
+      helper,
+      @"(?s)function Start-SmartGuardCapturedCommand.*?(?=\r?\nfunction Read-SmartGuardTrxResult)");
+    capturedCommandProtocol.Success.Should().BeTrue();
+    capturedCommandProtocol.Value.Should().NotContain("$LASTEXITCODE");
+    helper.Should().Contain("function Read-SmartGuardTextFileWhenUnlocked");
+    helper.Should().Contain("catch [System.IO.IOException]");
+    helper.Should().Contain("Stop-Process");
+    helper.Should().NotContain("Wait-Job");
+    helper.Should().Contain("foreach ($project in $serialProjects)");
     helper.Should().Contain("Get-SmartGuardParallelDotNetTestProjectPaths");
     helper.Should().Contain("Get-SmartGuardSerialDotNetTestProjectPaths");
     helper.Should().Contain("--no-restore");
     helper.Should().Contain("--no-build");
     helper.Should().Contain("Ensure-SmartGuardDotNetTestBuild");
+
+    var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
+    runTests.Should().Contain("$dotNetResult.Result -ne 'Passed'");
+    runTests.Should().Contain("run-tests-$runId.summary.json");
+    runTests.Should().Contain("$summaryJson = $summary | ConvertTo-Json -Depth 10");
+    runTests.Should().MatchRegex(
+      @"\[System\.IO\.File\]::WriteAllText\(\s*\$summaryPath,\s*\$summaryJson,\s*\[System\.Text\.UTF8Encoding\]::new\(\$false\)\s*\)");
   }
 
   [Theory]
@@ -56,6 +82,15 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
+  public void Live_power_scheme_service_probe_must_be_category_live()
+  {
+    var source = SourceScanHelper.ReadSource(
+      "Tests/SmartGuard.Configuration.Tests/PowerSchemeServiceLiveTests.cs");
+    source.Should().Contain("[Trait(\"Category\", \"Live\")]",
+      "machine-dependent reads stay out of the full gate like the existing live catalog probe");
+  }
+
+  [Fact]
   public void Wpf_ui_tests_must_expose_category_trait()
   {
     var source = SourceScanHelper.ReadSource(
@@ -80,21 +115,58 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Invoke_RunTestsSingleElevation_must_exit_parent_after_successful_elevation_handoff()
+  public void Run_Tests_must_use_single_elevation_result_protocol_and_fail_installer_layer()
   {
-    var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
     var runTests = SourceScanHelper.ReadSource("Run-Tests.ps1");
-    var fnMatch = System.Text.RegularExpressions.Regex.Match(
+    var installerFlowBlock = System.Text.RegularExpressions.Regex.Match(
+      runTests,
+      @"(?ms)^\$installerFlowResult = New-SmartGuardTestLayerResult\r?\n.*?(?=^\$exitCode = 0\r?$)");
+    installerFlowBlock.Success.Should().BeTrue();
+    installerFlowBlock.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation(?:[ \t]*`[ \t]*|\s*$)");
+    installerFlowBlock.Value.Should().NotMatchRegex(
+      @"(?m)^[ \t]*(?:\$[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?Invoke-Pester(?!-)(?:[ \t]|$)");
+    installerFlowBlock.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\$installerIntegrationLayer\s*=\s*\r?\n[ \t]*ConvertTo-SmartGuardPesterLayerResult -PesterResult \$installerFlowResult");
+    installerFlowBlock.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*if\s*\(\s*\$installerFlowResult\.Result\s*-ne\s*'Passed'\s*\)\s*\{");
+
+    var layerResultConverter = System.Text.RegularExpressions.Regex.Match(
+      runTests,
+      @"(?s)function ConvertTo-SmartGuardPesterLayerResult.*?(?=\r?\nfunction |\z)");
+    layerResultConverter.Success.Should().BeTrue();
+    layerResultConverter.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*Result = \$PesterResult\.Result\.ToString\(\)");
+    layerResultConverter.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*TotalCount = \[int\]\$PesterResult\.TotalCount");
+
+    var installerFailureGate = System.Text.RegularExpressions.Regex.Match(
+      runTests,
+      @"(?ms)^if\s*\(\s*\$installerIntegrationLayer\.Result\s*-notin\s*@\('Passed', 'Skipped'\)\s*\)\s*\{\s*\$exitCode\s*=\s*1\s*\}");
+    installerFailureGate.Success.Should().BeTrue();
+
+    var elevation = SourceScanHelper.ReadSource("scripts/Test-IsProcessElevated.ps1");
+    var protocolMatch = System.Text.RegularExpressions.Regex.Match(
       elevation,
-      @"(?s)function Invoke-RunTestsSingleElevation.*?(?=\r?\nfunction |\z)");
-    fnMatch.Success.Should().BeTrue();
-    fnMatch.Value.Should().Contain("HandedOff = $true");
-    fnMatch.Value.Should().Contain("exit `$LASTEXITCODE");
-    elevation.Should().Contain("function Get-WindowsPowerShellExePath");
-    fnMatch.Value.Should().Contain("$powershellExe = Get-WindowsPowerShellExePath");
-    fnMatch.Value.Should().Contain("Start-Process -FilePath $powershellExe -Verb RunAs");
-    fnMatch.Value.Should().Contain("Unable to launch elevated Windows PowerShell");
-    runTests.Should().MatchRegex(@"if\s*\(\s*\$handoff\.HandedOff\s*\)\s*\{\s*exit\s+\$handoff\.ExitCode");
+      @"(?s)function Test-SmartGuardElevatedPesterResult.*?(?=\r?\nfunction |\z)");
+    protocolMatch.Success.Should().BeTrue();
+    protocolMatch.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\[string\]\$Result\.Result\s*-eq\s*'Passed'");
+    protocolMatch.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\[int\]\$Result\.ExitCode\s*-eq\s*0");
+    protocolMatch.Value.Should().MatchRegex(
+      @"(?m)^[ \t]*\[int\]\$Result\.TotalCount\s*-gt\s*0");
+
+    const string commentedProtocolCall =
+      "# $installerFlowResult = Invoke-PesterFileSingleElevation";
+    const string stringProtocolCall =
+      "\"$installerFlowResult = Invoke-PesterFileSingleElevation\"";
+    System.Text.RegularExpressions.Regex.Match(
+      commentedProtocolCall,
+      @"(?m)^[ \t]*\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation(?:[ \t]*`[ \t]*|\s*$)").Success.Should().BeFalse();
+    System.Text.RegularExpressions.Regex.Match(
+      stringProtocolCall,
+      @"(?m)^[ \t]*\$installerFlowResult\s*=\s*Invoke-PesterFileSingleElevation(?:[ \t]*`[ \t]*|\s*$)").Success.Should().BeFalse();
   }
 
   [Fact]
@@ -106,14 +178,14 @@ public class RunTestsOptimizationArchitectureTests
   }
 
   [Fact]
-  public void Installer_integration_gate_must_require_elevation_to_avoid_repeated_uac()
+  public void Installer_integration_gate_must_allow_the_flow_to_own_its_single_elevation()
   {
     var helper = SourceScanHelper.ReadSource("scripts/Invoke-SmartGuardDotNetTests.ps1");
     var fnMatch = System.Text.RegularExpressions.Regex.Match(
       helper,
       @"(?s)function Test-SmartGuardInstallerIntegrationEnabled.*?(?=\r?\nfunction |\z)");
     fnMatch.Success.Should().BeTrue();
-    fnMatch.Value.Should().Contain("Test-IsProcessElevated");
+    fnMatch.Value.Should().NotContain("Test-IsProcessElevated");
     fnMatch.Value.Should().NotMatchRegex(
       @"if\s*\(\s*\$Tier\s*-eq\s*'nightly'\s*\)\s*\{\s*return\s+\$true\s*\}");
   }

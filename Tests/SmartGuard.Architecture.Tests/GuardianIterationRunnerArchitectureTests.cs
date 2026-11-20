@@ -5,9 +5,16 @@ namespace SmartGuard.Architecture.Tests;
 public class GuardianIterationRunnerArchitectureTests
 {
   [Fact]
+  public void Contract_registers_final_plan_observation_invariant()
+  {
+    SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md")
+      .Should().Contain("PLAN-FINAL-OBSERVATION");
+  }
+
+  [Fact]
   public void GuardianLoop_delegates_iteration_to_GuardianIterationRunner()
   {
-    var loop = SourceScanHelper.ReadSource("src/SmartGuard.Engine/Worker/GuardianLoop.cs");
+    var loop = SourceScanHelper.ReadGuardianLoopSource();
     loop.Should().NotContain("private async Task ProcessIterationAsync");
     loop.Should().Contain("GuardianIterationRunner");
 

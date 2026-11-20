@@ -12,8 +12,8 @@ public class GuardianStartupCatalogTests
         var runnerSource = File.ReadAllText(GuardianIterationRunnerSourcePath());
         runnerSource.Should().NotContain("state.PlanCatalog = PowerPlanCatalogProvider.TryLoad();",
             "plan catalog should load lazily on the first iteration to shorten cold start");
-        runnerSource.Should().Contain("state.PlanCatalog ?? PowerPlanCatalogProvider.TryLoad()",
-            "first iteration must still load the catalog when it is missing");
+        runnerSource.Should().Contain("state.PlanCatalog ?? await LoadPlanCatalogAsync",
+            "first iteration must lazily use the bounded, cancelable catalog path");
     }
 
     private static string GuardianLoopSourcePath()

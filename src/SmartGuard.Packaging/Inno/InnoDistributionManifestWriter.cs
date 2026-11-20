@@ -63,7 +63,7 @@ internal static class InnoDistributionManifestWriter
   {
     var lines = new List<string>
     {
-      @"Source: ""{#StagingDir}\bin\*""; DestDir: ""{app}\bin""; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace",
+      @"Source: ""{#StagingDir}\bin\*""; DestDir: ""{app}\bin""; Flags: ignoreversion recursesubdirs createallsubdirs",
     };
 
     lines.AddRange(DesktopDistributionManifest.PayloadEntries.Select(entry =>

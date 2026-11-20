@@ -28,7 +28,9 @@ public class TrayPauseStartupTests
 
         File.WriteAllText(statusPath, JsonSerializer.Serialize(new StatusPayload { paused = true }));
         File.SetLastWriteTimeUtc(statusPath, DateTime.UtcNow.AddSeconds(1));
-        WaitForPauseItemText(context, "恢复守护", TimeSpan.FromSeconds(3));
+        // The tray promises the watcher first and its 5 s timer at the latest; on slow runners the watcher
+        // can miss a 3 s window, so allow one full timer tick.
+        WaitForPauseItemText(context, "恢复守护", TimeSpan.FromSeconds(7));
       });
     }
     finally

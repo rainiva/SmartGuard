@@ -61,7 +61,7 @@ public class SettingsDarkThemeBehaviorTests
                     WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeFalse();
 
                     SetManualDarkMode(window, enabled: true);
-                    WaitForThemeMidpoint(window);
+                    WaitForDarkTitleBarRequest(window);
 
                     WindowTitleBarTheme.GetLastRequestedDarkMode(window).Should().BeTrue();
                 }
@@ -160,21 +160,11 @@ public class SettingsDarkThemeBehaviorTests
         tglThemeDark!.IsChecked = enabled;
     }
 
-    private static void WaitForThemeMidpoint(Window window)
-    {
-        var frame = new DispatcherFrame();
-        var timer = new DispatcherTimer(DispatcherPriority.Render, window.Dispatcher)
-        {
-            Interval = ThemeTransitionProfile.TitleBarApplyAt + TimeSpan.FromMilliseconds(120)
-        };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            frame.Continue = false;
-        };
-        timer.Start();
-        Dispatcher.PushFrame(frame);
-    }
+    private static void WaitForDarkTitleBarRequest(Window window)
+        => WpfStaTestHost.WaitUntil(
+            () => WindowTitleBarTheme.GetLastRequestedDarkMode(window) == true,
+            TimeSpan.FromSeconds(2),
+            "the theme transition to request a dark title bar");
 
     private static Window GetWindow(SettingsWindowController? controller)
     {

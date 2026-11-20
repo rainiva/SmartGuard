@@ -1,161 +1,122 @@
-using System.Diagnostics;
-using System.Globalization;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Engine.Infrastructure;
 
-public static partial class PowerCfgExecutor
+/// <summary>Guardian power-plan operations on top of PowerSchemeService (PWR-INV-SCHEME-API).</summary>
+public static class PowerCfgExecutor
 {
-  private static readonly Regex GuidRegex = ActiveSchemeGuidPattern();
-  private static readonly Encoding PowerCfgConsoleEncoding = CreatePowerCfgConsoleEncoding();
+  private static readonly PowerSource[] BothSources = [PowerSource.Ac, PowerSource.Dc];
 
-  public static Guid? ParseActiveSchemeGuid(string output)
+  // Read-only capability probe: never writes a trial value. Only a confirmed absence (Win32 2) means
+  // "unsupported"; any other failure is unknown and must not switch the guardian to WMI-only mode.
+  internal static (BrightnessCapability Capability, PowerSchemeStatus Status) ProbeBrightnessCapability(Guid probePlanGuid)
   {
-    var match = GuidRegex.Match(output);
-    return match.Success ? Guid.Parse(match.Groups[1].Value) : null;
+    var read = PowerSchemeService.ReadValueIndexAsync(probePlanGuid, PowerSchemeSetting.VideoNormalLevel, PowerSource.Ac)
+      .GetAwaiter().GetResult();
+    var capability = read.Succeeded ? BrightnessCapability.Supported
+      : read.Status is { FailureKind: "api-error", Win32Error: 2 } ? BrightnessCapability.Unsupported
+      : BrightnessCapability.ProbeFailed;
+    return (capability, read.Status);
   }
 
-  public static PowerSchemeInfo? ParseCurrentPlanInfo(string output)
+  // Both return the first failed write, or a success status when every write succeeded.
+  internal static PowerSchemeStatus SyncPlanBrightness(Guid planGuid, int brightness)
+    => brightness is < 0 or > 100
+      ? new PowerSchemeStatus("invalid-parameter", null, 0)
+      : WriteBothSources(planGuid, PowerSchemeSetting.VideoNormalLevel, (uint)brightness);
+
+  internal static PowerSchemeStatus DisableAdaptiveBrightness(Guid planGuid)
+    => WriteBothSources(planGuid, PowerSchemeSetting.AdaptiveBrightness, 0);
+
+  private static PowerSchemeStatus WriteBothSources(Guid planGuid, PowerSchemeSetting setting, uint value)
   {
-    foreach (Match match in PowerSchemeListPattern().Matches(output))
+    foreach (var source in BothSources)
     {
-      return new PowerSchemeInfo(
-        Guid.Parse(match.Groups[1].Value),
-        match.Groups[2].Value.Trim());
+      var write = PowerSchemeService.WriteValueIndexAsync(planGuid, setting, source, value).GetAwaiter().GetResult();
+      if (!write.Succeeded) return write.Status;
     }
-
-    var guid = ParseActiveSchemeGuid(output);
-    return guid is null ? null : new PowerSchemeInfo(guid.Value, null);
+    return new PowerSchemeStatus("none", null, 0);
   }
 
-  public static PowerSchemeInfo? GetCurrentPlanInfo()
-  {
-    var output = RunPowerCfg("/getactivescheme");
-    return ParseCurrentPlanInfo(output);
-  }
+  internal static string DescribeSchemeFailure(PowerSchemeStatus status)
+    => DescribeFailure(MapFailureKind(status), status.Win32Error);
 
-  public static Guid? GetCurrentPlanGuid() => GetCurrentPlanInfo()?.Guid;
-
-  public static Dictionary<Guid, string> ParsePowerSchemeList(string output)
+  // Optional synchronization before switching: the target scheme takes effect with SetActive.
+  internal static async Task SyncPlanBrightnessAsync(Guid planGuid, int brightness,
+    CancellationToken cancellationToken, Action<string, PowerSchemeStatus>? observe = null,
+    Func<bool>? canMutate = null)
   {
-    var result = new Dictionary<Guid, string>();
-    foreach (Match match in PowerSchemeListPattern().Matches(output))
+    if (brightness is < 0 or > 100) return;
+    foreach (var source in new[] { PowerSource.Ac, PowerSource.Dc })
     {
-      var guid = Guid.Parse(match.Groups[1].Value);
-      var name = match.Groups[2].Value.Trim();
-      result[guid] = name;
-    }
-    return result;
-  }
-
-  public static void SetActivePlan(Guid planGuid)
-  {
-    RunPowerCfg($"/setactive {planGuid:D}");
-  }
-
-  public static bool IsBrightnessSupported(Guid probePlanGuid)
-  {
-    var output = RunPowerCfg($"/setacvalueindex {probePlanGuid:D} SUB_VIDEO VIDEONORMALLEVEL 50");
-    return !ContainsPowerCfgError(output);
-  }
-
-  public static void SyncPlanBrightness(Guid planGuid, int brightness)
-  {
-    if (brightness < 0 || brightness > 100) return;
-    RunPowerCfg($"/setacvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
-    RunPowerCfg($"/setdcvalueindex {planGuid:D} SUB_VIDEO VIDEONORMALLEVEL {brightness}");
-  }
-
-  public static void DisableAdaptiveBrightness(Guid planGuid)
-  {
-    RunPowerCfg($"/setacvalueindex {planGuid:D} SUB_VIDEO ADAPTBRIGHT 0");
-    RunPowerCfg($"/setdcvalueindex {planGuid:D} SUB_VIDEO ADAPTBRIGHT 0");
-  }
-
-  private static string RunPowerCfg(string arguments)
-  {
-    return RunPowerCfg(arguments, TimeSpan.FromSeconds(5));
-  }
-
-  private static string RunPowerCfg(string arguments, TimeSpan timeout)
-  {
-    try
-    {
-      return RunPowerCfgAsync(arguments, timeout).GetAwaiter().GetResult();
-    }
-    catch (TimeoutException)
-    {
-      throw;
-    }
-    catch
-    {
-      return string.Empty;
+      cancellationToken.ThrowIfCancellationRequested();
+      if (canMutate?.Invoke() == false) return;
+      // The executor re-checks canMutate right before the native write.
+      var result = await PowerSchemeService.WriteValueIndexAsync(planGuid, PowerSchemeSetting.VideoNormalLevel,
+        source, (uint)brightness, canMutate, cancellationToken).ConfigureAwait(false);
+      observe?.Invoke(source == PowerSource.Ac ? "plan-brightness-ac" : "plan-brightness-dc", result.Status);
+      // Optional synchronization stops at the first failure or refusal.
+      if (!result.Succeeded) return;
     }
   }
 
-  private static async Task<string> RunPowerCfgAsync(string arguments, TimeSpan timeout)
+  // Guardian probe through PowerSchemeService (PWR-INV-SCHEME-API). A missing name is presentation only.
+  internal static async Task<PowerPlanProbeResult> ProbeCurrentPlanAsync(CancellationToken cancellationToken,
+    Action<PowerSchemeStatus>? observe = null)
   {
-    var psi = new ProcessStartInfo("powercfg.exe", arguments)
-    {
-      RedirectStandardOutput = true,
-      RedirectStandardError = true,
-      StandardOutputEncoding = PowerCfgConsoleEncoding,
-      StandardErrorEncoding = PowerCfgConsoleEncoding,
-      UseShellExecute = false,
-      CreateNoWindow = true
-    };
-    using var proc = Process.Start(psi);
-    if (proc is null) return string.Empty;
-
-    using var cts = new CancellationTokenSource(timeout);
-    var readOutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
-    var readErrTask = proc.StandardError.ReadToEndAsync(cts.Token);
-
-    try
-    {
-      await proc.WaitForExitAsync(cts.Token);
-    }
-    catch (OperationCanceledException)
-    {
-      try { proc.Kill(); } catch { }
-      throw new TimeoutException($"powercfg.exe {arguments} timed out after {timeout.TotalSeconds}s");
-    }
-
-    var output = await readOutTask;
-    var error = await readErrTask;
-    return output + error;
+    var active = await PowerSchemeService.GetActiveAsync(cancellationToken).ConfigureAwait(false);
+    observe?.Invoke(active.Status);
+    if (!active.Succeeded)
+      return new PowerPlanProbeResult(false, null, MapFailureKind(active.Status), active.Status.FailureKind, active.Status.Win32Error);
+    var name = await PowerSchemeService.ReadNameAsync(active.Value, cancellationToken).ConfigureAwait(false);
+    return new PowerPlanProbeResult(true, new PowerSchemeInfo(active.Value, name.Succeeded ? name.Value : null),
+      PowerPlanFailureKind.None, string.Empty);
   }
 
-  private static Encoding CreatePowerCfgConsoleEncoding()
+  internal static async Task<PowerPlanApplyResult> ApplyAndVerifyAsync(
+    Guid targetGuid,
+    Func<Guid, CancellationToken, Task<PowerSchemeResult<bool>>> setActive,
+    Func<CancellationToken, Task<PowerSchemeResult<Guid>>> getActive,
+    Func<TimeSpan, CancellationToken, Task> delayAsync,
+    CancellationToken cancellationToken)
   {
-    try
+    var set = await setActive(targetGuid, cancellationToken).ConfigureAwait(false);
+    if (!set.Succeeded)
+      return new PowerPlanApplyResult(false, targetGuid, null, MapFailureKind(set.Status), set.Status.FailureKind, set.Status.Win32Error);
+
+    Guid? observedGuid = null;
+    var delays = new[] { TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(750) };
+    for (var attempt = 0; attempt < 3; attempt++)
     {
-      Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-      var codePage = CultureInfo.CurrentCulture.TextInfo.OEMCodePage;
-      if (codePage > 0) return Encoding.GetEncoding(codePage);
-    }
-    catch
-    {
-      // fall back below
+      if (attempt > 0)
+        await delayAsync(delays[attempt - 1], cancellationToken).ConfigureAwait(false);
+      var probe = await getActive(cancellationToken).ConfigureAwait(false);
+      if (!probe.Succeeded)
+        return new PowerPlanApplyResult(false, targetGuid, null, MapFailureKind(probe.Status), probe.Status.FailureKind, probe.Status.Win32Error);
+      observedGuid = probe.Value;
+      if (observedGuid == targetGuid)
+        return new PowerPlanApplyResult(true, targetGuid, observedGuid, PowerPlanFailureKind.None, string.Empty);
     }
 
-    return Encoding.UTF8;
+    return new PowerPlanApplyResult(false, targetGuid, observedGuid, PowerPlanFailureKind.VerificationMismatch,
+      $"Active scheme did not converge to {targetGuid:D}.");
   }
 
-  private static bool ContainsPowerCfgError(string text)
+  internal static PowerPlanFailureKind MapFailureKind(PowerSchemeStatus status) => status.FailureKind switch
   {
-    return text.Contains("不存在", StringComparison.Ordinal)
-      || text.Contains("无效", StringComparison.Ordinal)
-      || text.Contains("invalid", StringComparison.OrdinalIgnoreCase)
-      || text.Contains("not exist", StringComparison.OrdinalIgnoreCase);
-  }
+    "call-pending" => PowerPlanFailureKind.CallPending,
+    "timed-out" => PowerPlanFailureKind.TimedOut,
+    "not-admitted" => PowerPlanFailureKind.NotAdmitted,
+    _ => PowerPlanFailureKind.ApiFailed,
+  };
 
-  [GeneratedRegex(@"GUID:\s+([0-9a-fA-F-]{36})", RegexOptions.IgnoreCase)]
-  private static partial Regex ActiveSchemeGuidPattern();
-
-  [GeneratedRegex(@"GUID:\s+([0-9a-fA-F-]{36})\s+\(([^)]+)\)", RegexOptions.IgnoreCase)]
-  private static partial Regex PowerSchemeListPattern();
+  internal static string DescribeFailure(PowerPlanFailureKind kind, int? win32Error) => kind switch
+  {
+    PowerPlanFailureKind.ApiFailed => win32Error is int code ? $"电源服务调用失败（错误码 {code}）" : "电源服务调用失败",
+    PowerPlanFailureKind.CallPending => "上次电源服务调用仍未返回，本轮未发起",
+    PowerPlanFailureKind.TimedOut => "电源服务调用超时",
+    PowerPlanFailureKind.VerificationMismatch => "切换后读回的计划不一致",
+    PowerPlanFailureKind.NotAdmitted => "电源状态已变化，本次未执行",
+    _ => kind.ToString(),
+  };
 }

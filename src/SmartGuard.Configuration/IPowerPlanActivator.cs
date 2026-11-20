@@ -1,6 +1,6 @@
 namespace SmartGuard.Configuration;
 
-public interface IPowerPlanActivator
+internal interface IPowerPlanActivator
 {
-  void SetActivePlan(Guid planGuid);
+  PowerSchemeStatus SetActivePlan(Guid planGuid);
 }

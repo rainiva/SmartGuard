@@ -49,4 +49,26 @@ public class LogLineDisplayFormatterTests
     output.Should().Contain("[WARN] 2026-06-16 16:00:14 EXTERNAL: two");
     output.Split(Environment.NewLine, StringSplitOptions.None).Should().HaveCount(3);
   }
+
+  [Fact]
+  public void FormatText_labels_legacy_log_pipeline_health_as_diagnostic()
+  {
+    var input = "{\"health\":\"LogPipeline\",\"enqueuedTotal\":90,\"droppedNormal\":0}";
+
+    LogLineDisplayFormatter.FormatText(input)
+      .Should().Be("[DIAG] {\"health\":\"LogPipeline\",\"enqueuedTotal\":90,\"droppedNormal\":0}");
+  }
+
+  [Fact]
+  public void FormatText_inherits_error_context_for_stack_trace_continuations()
+  {
+    var input = "[ERROR] 2026-08-01 13:26:29 powercfg.exe failed"
+      + Environment.NewLine
+      + "StackTrace: at SmartGuard.Engine.Infrastructure.PowerCfgExecutor";
+
+    LogLineDisplayFormatter.FormatText(input).Should().Be(
+      "[ERROR] 2026-08-01 13:26:29 powercfg.exe failed"
+      + Environment.NewLine
+      + "[ERROR] 2026-08-01 13:26:29 StackTrace: at SmartGuard.Engine.Infrastructure.PowerCfgExecutor");
+  }
 }

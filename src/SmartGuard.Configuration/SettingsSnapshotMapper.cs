@@ -16,7 +16,10 @@ public static class SettingsSnapshotMapper
     bool paused,
     bool notifyOnPlanChange,
     bool notifyOnExternalChange,
-    bool autoStartEnabled)
+    bool autoStartEnabled,
+    bool? foregroundRestrictionEnabled = null,
+    IReadOnlyList<string>? foregroundProgramPaths = null,
+    int? foregroundObservationSec = null)
   {
     return new GuardConfig
     {
@@ -31,6 +34,11 @@ public static class SettingsSnapshotMapper
       LogFile = current.LogFile,
       Paused = paused,
       LogMaxBytes = current.LogMaxBytes,
+      LogMinimumLevel = current.LogMinimumLevel,
+      LogHeartMinIntervalSec = current.LogHeartMinIntervalSec,
+      LogRetentionDays = current.LogRetentionDays,
+      LogMaxArchiveFiles = current.LogMaxArchiveFiles,
+      LogDirectoryMaxBytes = current.LogDirectoryMaxBytes,
       BrightnessRetryCount = current.BrightnessRetryCount,
       BrightnessRetryDelayMs = current.BrightnessRetryDelayMs,
       NotifyOnPlanChange = notifyOnPlanChange,
@@ -39,8 +47,14 @@ public static class SettingsSnapshotMapper
       AutoStartEnabled = autoStartEnabled,
       ThemeFollowSystem = current.ThemeFollowSystem,
       ThemeIsDark = current.ThemeIsDark,
-      GitHubToken = current.GitHubToken,
       ManualHighPerformanceUntil = current.ManualHighPerformanceUntil,
+      ForegroundRestrictionEnabled = foregroundRestrictionEnabled ?? current.ForegroundRestrictionEnabled,
+      ForegroundObservationSec = foregroundObservationSec ?? current.ForegroundObservationSec,
+      ForegroundProgramPaths = foregroundProgramPaths is { } programPaths
+        ? new List<string>(programPaths)
+        : current.ForegroundProgramPaths is { } existingPaths
+          ? new List<string>(existingPaths)
+          : new List<string>(),
     };
   }
 }

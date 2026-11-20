@@ -14,6 +14,8 @@ public class SettingsPlanCatalogArchitectureTests
 
     var catalog = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsPlanCatalogCoordinator.cs");
     catalog.Should().NotMatchRegex(@"private\s+IReadOnlyDictionary<Guid,\s*string>\s+_planCatalog\b");
-    catalog.Should().Contain("PowerPlanCatalogProvider.TryLoad()");
+    // S-05: the UI reads the IO-free snapshot; loads only run through the cancelable async path.
+    catalog.Should().Contain("PowerPlanCatalogProvider.Snapshot");
+    catalog.Should().NotContain("PowerPlanCatalogProvider.TryLoad()");
   }
 }

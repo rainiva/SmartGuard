@@ -42,12 +42,14 @@ public class ScheduledTaskNamesContractTests
   }
 
   [Fact]
-  public void Inno_stop_procedure_does_not_duplicate_schtasks_literals()
+  public void Inno_stop_function_does_not_duplicate_schtasks_literals()
   {
     var iss = SourceScanHelper.ReadSource("installer/SmartGuard.iss");
-    var start = iss.IndexOf("procedure StopSmartGuardProcesses", StringComparison.Ordinal);
+    var start = iss.IndexOf("function TryStopSmartGuardProcesses", StringComparison.Ordinal);
     start.Should().BeGreaterThan(-1);
-    var stopBlock = iss[start..(iss.IndexOf("end;", start, StringComparison.Ordinal) + 4)];
+    var end = iss.IndexOf("\nfunction EnsureSmartGuardStopped", start, StringComparison.Ordinal);
+    end.Should().BeGreaterThan(start);
+    var stopBlock = iss[start..end];
     stopBlock.Should().NotContain("schtasks /End");
     stopBlock.Should().NotContain("schtasks /Delete");
     stopBlock.Should().Contain("--uninstall");

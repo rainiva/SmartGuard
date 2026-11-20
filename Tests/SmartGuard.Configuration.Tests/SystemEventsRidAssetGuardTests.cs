@@ -52,9 +52,13 @@ public class SystemEventsRidAssetGuardTests
   }
 
   [Fact]
-  public void Validate_returns_error_when_win_rid_asset_missing_but_root_present()
+  public void Validate_accepts_root_only_layout_from_flattened_publish()
   {
-    var bin = Path.Combine(Path.GetTempPath(), "sg-sysevents-missing-rid-" + Guid.NewGuid().ToString("N"));
+    // dotnet publish -r win-x64 lets NuGet flatten the win RID asset straight
+    // to the bin root without a runtimes\ tree. The stub hazard the guard
+    // exists for (lib stub at root + real DLL under runtimes\) can only occur
+    // when the runtimes\ tree is present, so a root-only layout is valid.
+    var bin = Path.Combine(Path.GetTempPath(), "sg-sysevents-root-only-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(bin);
     File.WriteAllBytes(Path.Combine(bin, FileName), [9, 9, 9]);
 
@@ -62,7 +66,7 @@ public class SystemEventsRidAssetGuardTests
     {
       var errors = SystemEventsRidAssetGuard.Validate(bin);
 
-      errors.Should().NotBeEmpty();
+      errors.Should().BeEmpty();
     }
     finally
     {

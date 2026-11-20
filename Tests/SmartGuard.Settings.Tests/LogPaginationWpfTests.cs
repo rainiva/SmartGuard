@@ -1,0 +1,908 @@
+using System.Linq;
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Media;
+using SmartGuard.Settings;
+
+namespace SmartGuard.Settings.Tests;
+
+[Collection("WpfUiTests")]
+[Trait("Category", "WpfUi")]
+public class LogPaginationWpfTests
+{
+    [Fact]
+    public void Log_page_visual_order_matches_toolbar_table_pager()
+    {
+        var xaml = SettingsSourcePaths.ReadSettingsXamlSource();
+        var logPage = SliceLogPage(xaml);
+
+        IndexOf(logPage, "x:Name=\"logToolbar\"").Should().BeLessThan(IndexOf(logPage, "x:Name=\"logTable\""));
+        IndexOf(logPage, "x:Name=\"logTable\"").Should().BeLessThan(IndexOf(logPage, "x:Name=\"lblLogTotalCount\""));
+        IndexOf(logPage, "x:Name=\"lblLogTotalCount\"").Should().BeLessThan(IndexOf(logPage, "x:Name=\"btnLogFirstPage\""));
+    }
+
+    [Fact]
+    public void Pager_page_one_of_sixty_three_matches_reference_tokens()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+        var tokens = LogPagerTokenBuilder.Build(currentPage: 1, totalPages: 63);
+
+        tokens.Select(RenderToken).Should().Equal("1", "2", "3", "4", "5", "…", "63");
+        xaml.Should().Contain("x:Name=\"logPageNumberItems\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logPageNumberItems\"[\\s\\S]{0,1600}ItemsPanel",
+            "page numbers should be rendered by a dedicated horizontal items panel");
+    }
+
+    [Fact]
+    public void Boundary_buttons_disable_on_first_and_last_page()
+    {
+        var firstPage = LogPaginationState.Initial.ApplyExactCount(1248, isScanComplete: true);
+        firstPage.CanGoFirst.Should().BeFalse();
+        firstPage.CanGoPrevious.Should().BeFalse();
+        firstPage.CanGoNext.Should().BeTrue();
+        firstPage.CanGoLast.Should().BeTrue();
+
+        var lastPage = firstPage.StartNavigation(firstPage.TotalPages).ApplyExactCount(1248, isScanComplete: true);
+        lastPage.CanGoFirst.Should().BeTrue();
+        lastPage.CanGoPrevious.Should().BeTrue();
+        lastPage.CanGoNext.Should().BeFalse();
+        lastPage.CanGoLast.Should().BeFalse();
+
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+        xaml.Should().MatchRegex(
+            "btnLogFirstPage[\\s\\S]{0,800}Command=|Command=\\{x:Static local:LogPaginationCommands.FirstPage\\}[\\s\\S]{0,800}btnLogFirstPage",
+            "boundary buttons must be wired to pagination commands");
+    }
+
+    [Fact]
+    public void Pagination_commands_use_state_for_boundary_and_page_can_execute()
+    {
+        var state = LogPaginationState.Initial.ApplyExactCount(1248, isScanComplete: true);
+
+        LogPaginationCommands.CanExecute(LogPaginationCommands.FirstPage, state).Should().BeFalse();
+        LogPaginationCommands.CanExecute(LogPaginationCommands.PreviousPage, state).Should().BeFalse();
+        LogPaginationCommands.CanExecute(LogPaginationCommands.NextPage, state).Should().BeTrue();
+        LogPaginationCommands.CanExecute(LogPaginationCommands.LastPage, state).Should().BeTrue();
+        LogPaginationCommands.CanExecute(LogPaginationCommands.GoToPage, state, 2).Should().BeTrue();
+        LogPaginationCommands.CanExecute(LogPaginationCommands.GoToPage, state, 1).Should().BeFalse();
+        LogPaginationCommands.TryGetPageNumber("63", out var pageNumber).Should().BeTrue();
+        pageNumber.Should().Be(63);
+    }
+
+    [Fact]
+    public void Pagination_commands_are_bound_with_state_driven_can_execute()
+    {
+        var wiring = ReadSource("src/SmartGuard.Settings/SettingsLogPageHostWiring.cs");
+        wiring.Should().Contain("WirePaginationCommands");
+        wiring.Should().Contain("window.CommandBindings.Add");
+        wiring.Should().Contain("LogPaginationCommands.CanExecute");
+        ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.Refresh.cs")
+            .Should().Contain("GoToPageAsync");
+    }
+
+    [Fact]
+    public void Ellipsis_is_not_focusable_or_clickable()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+        var pagerIndex = IndexOf(xaml, "x:Name=\"logPageNumberItems\"");
+        var pager = xaml[pagerIndex..];
+
+        pager.Should().MatchRegex("IsHitTestVisible=\"False\"[\\s\\S]{0,500}Focusable=\"False\"");
+    }
+
+    [Fact]
+    public void DataGrid_time_sort_is_server_side_and_resets_page_one()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+        xaml.Should().Contain("x:Name=\"logTable\"");
+        xaml.Should().NotContain("Text=\"↕\"");
+        xaml.Should().MatchRegex("Text=\"时间\"[\\s\\S]{0,700}<Path[\\s\\S]{0,700}<Path");
+
+        var wiring = ReadSource("src/SmartGuard.Settings/SettingsLogPageHostWiring.cs");
+        wiring.Should().Contain("logTable.Sorting");
+        wiring.Should().Contain("toggleSortAsync");
+        wiring.Should().Contain("e.Handled = true");
+    }
+
+    [Fact]
+    public void Log_table_uses_subtle_horizontal_dividers_without_vertical_grid_lines()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+
+        source.Should().MatchRegex(
+            "x:Key=\"LogTableHeaderStyle\"[\\s\\S]{0,500}Property=\"BorderBrush\" Value=\"\\{DynamicResource DividerBrush\\}\"[\\s\\S]{0,120}Property=\"BorderThickness\" Value=\"0,0,0,1\"");
+        source.Should().MatchRegex(
+            "x:Key=\"LogTableCellStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0\"",
+            "cells must not draw vertical separators between columns");
+        source.Should().MatchRegex(
+            "x:Key=\"LogTableRowStyle\"[\\s\\S]{0,500}Property=\"BorderThickness\" Value=\"0,0,0,1\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logViewportBorder\"[\\s\\S]{0,300}BorderBrush=\"\\{DynamicResource DividerBrush\\}\"");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logViewportBorder\"[\\s\\S]{0,300}Padding=\"1\"",
+            "the table child must sit 2px inside the border; a square child corner would overpaint the 4px corner arc and break the outline");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logTable\"[\\s\\S]{0,600}BorderThickness=\"0\"",
+            "the viewport border is the single outer frame; the DataGrid's own default border would render as a dark second outline inside it");
+        source.Should().NotContain("x:Key=\"CardShadowColor\"",
+            "the retired shadow token must not linger and invite the dark-block mechanism back");
+    }
+
+    [Fact]
+    public void Log_table_pins_level_palette_level_text_style_and_scrollbar_resource()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+
+        source.Should().Contain("#1A6FBF");
+        source.Should().Contain("#C47A00");
+        source.Should().Contain("#C62828");
+        source.Should().Contain("#5F6B7A");
+        source.Should().Contain("x:Key=\"LogTableLevelTextStyle\"");
+        xaml.Should().Contain("ElementStyle=\"{StaticResource LogTableLevelTextStyle}\"",
+            "the level column must keep its dedicated text style or every level would render the default foreground");
+        xaml.Should().MatchRegex(
+            "x:Name=\"logTable\"[\\s\\S]{0,2400}<DataGrid.Resources>[\\s\\S]{0,500}SettingsScrollBar",
+            "the log table must style its scrollbars through the shared SettingsScrollBar resource");
+    }
+
+    [Fact]
+    public void Log_table_omits_sparse_status_column_and_describes_visible_columns()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+
+        xaml.Should().NotContain("Header=\"状态\"");
+        xaml.Should().NotContain("Binding=\"{Binding StatusText}\"");
+        xaml.Should().Contain("按级别、时间、来源和事件查看当前页日志");
+    }
+
+    [Fact]
+    public void Filter_popup_stays_within_log_toolbar_at_narrow_window_width()
+    {
+        const double toolbarLeftRelativeToButton = -215;
+        const double toolbarWidth = 429;
+        var placements = SettingsLogPageHost.CreateLogFilterPopupPlacements(
+            new Size(420, 300),
+            new Size(46, 36),
+            new Point(),
+            toolbarLeftRelativeToButton,
+            toolbarWidth);
+
+        var primaryLeft = placements[0].Point.X;
+        var primaryRight = primaryLeft + 420;
+        primaryLeft.Should().BeGreaterThanOrEqualTo(toolbarLeftRelativeToButton);
+        primaryRight.Should().BeLessThanOrEqualTo(toolbarLeftRelativeToButton + toolbarWidth);
+    }
+
+    [Fact]
+    public void Filter_popup_stays_inside_settings_content_in_normal_window()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var contentRoot = (FrameworkElement)window.FindName("rightContentRoot");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+            var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                // The four-edge contract is defined against the content area of a
+                // really shown window, so move the window onto the primary monitor
+                // instead of leaving it parked off-screen by the headless helper.
+                window.Left = 64;
+                window.Top = 64;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                foreach (var (width, height) in new[] { (800d, 640d), (700d, 560d), (600d, 500d) })
+                {
+                    window.Width = width;
+                    window.Height = height;
+                    WpfStaTestHost.PumpDispatcher(window);
+
+                    foreach (var customTimeExpanded in new[] { false, true })
+                    {
+                        customRange.Visibility = customTimeExpanded
+                            ? Visibility.Visible
+                            : Visibility.Collapsed;
+                        SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                        popup.IsOpen = true;
+                        SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                        WpfStaTestHost.PumpDispatcher(window);
+                        WpfStaTestHost.WaitForRender();
+
+                        AssertPanelInsideContentRoot(
+                            window,
+                            contentRoot,
+                            panel,
+                            $"window {width:0}x{height:0} with {(customTimeExpanded ? "custom time expanded" : "default filter content")}");
+
+                        popup.IsOpen = false;
+                        WpfStaTestHost.PumpDispatcher(window);
+                    }
+                }
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                customRange.Visibility = Visibility.Collapsed;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Filter_popup_panel_hugs_content_without_dead_width()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Left = 64;
+                window.Top = 64;
+                window.Width = 800;
+                window.Height = 640;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                popup.IsOpen = true;
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                panel.ActualWidth.Should().BeLessThanOrEqualTo(
+                    360d,
+                    "the popup must hug its roughly 320 DIP of content; a forced 420 DIP width leaves dead whitespace to the right of the combos");
+
+                popup.IsOpen = false;
+                WpfStaTestHost.PumpDispatcher(window);
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Filter_popup_custom_time_text_area_is_tall_enough_for_text()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
+            var startBox = (TextBox)window.FindName("txtLogRangeStartTime");
+            var endBox = (TextBox)window.FindName("txtLogRangeEndTime");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                customRange!.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Width = 800;
+                window.Height = 640;
+                WpfStaTestHost.PumpDispatcher(window);
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                popup!.IsOpen = true;
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                foreach (var box in new[] { startBox!, endBox! })
+                {
+                    var presenter = FindDescendant<ScrollContentPresenter>(box);
+                    presenter.Should().NotBeNull("the time input must host its text in a scroll content presenter");
+                    presenter!.ActualHeight.Should().BeGreaterThanOrEqualTo(
+                        14d,
+                        $"{box.Name} renders {box.FontSize:0}px text; a smaller text window vertically clips the digits (double-applied padding)");
+                }
+
+                popup.IsOpen = false;
+                WpfStaTestHost.PumpDispatcher(window);
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                customRange!.Visibility = Visibility.Collapsed;
+                window.Close();
+            }
+        });
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            var nested = FindDescendant<T>(child);
+            if (nested is not null) return nested;
+        }
+        return null;
+    }
+
+    [Fact]
+    public void Log_table_vertical_scrollbar_spans_header_and_rows()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var table = (DataGrid)window.FindName("logTable");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                ScrollBar? scrollbar = null;
+                foreach (var bar in FindDescendants<ScrollBar>(table!))
+                {
+                    if (bar.Name == "PART_VerticalScrollBar")
+                    {
+                        scrollbar = bar;
+                        break;
+                    }
+                }
+
+                scrollbar.Should().NotBeNull("the log table must own a named vertical scrollbar");
+                Grid.GetRow(scrollbar!).Should().Be(0, "the overlay scrollbar must start at the table top, level with the pinned header");
+                Grid.GetRowSpan(scrollbar!).Should().Be(2, "the overlay scrollbar must span the header and rows bands so the thumb can reach the table top");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Log_table_vertical_scrollbar_value_tracks_content_scroll()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var table = (DataGrid)window.FindName("logTable");
+            table!.ItemsSource = Enumerable.Range(0, 20)
+                .Select(i => new
+                {
+                    LevelText = "INFO",
+                    TimeText = $"2026-09-25 10:{i:00}:00",
+                    SourceText = "Engine",
+                    EventText = $"event {i}",
+                })
+                .ToArray();
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                window.Width = 800;
+                window.Height = 640;
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                var scrollViewer = FindDescendant<ScrollViewer>(table);
+                scrollViewer.Should().NotBeNull("the log table template must contain its scroll viewer");
+                var scrollbar = FindDescendants<ScrollBar>(table).First(bar => bar.Name == "PART_VerticalScrollBar");
+
+                WpfStaTestHost.PumpDispatcher(window);
+                scrollbar.Value.Should().BeLessThanOrEqualTo(1d, "the view starts at the top");
+
+                scrollViewer.ScrollToVerticalOffset(200);
+                WpfStaTestHost.PumpDispatcher(window);
+                WpfStaTestHost.WaitForRender();
+
+                scrollViewer.VerticalOffset.Should().BeGreaterThan(0d, "the content must actually scroll");
+                scrollbar.Value.Should().BeApproximately(scrollViewer.VerticalOffset, 2d,
+                    "the thumb value must track the content offset or the thumb sits still while rows scroll under it");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private static System.Collections.Generic.IEnumerable<T> FindDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var nested in FindDescendants<T>(child)) yield return nested;
+        }
+    }
+
+    [Fact]
+    public void Filter_popup_placements_clamp_to_content_client_area_on_all_edges()
+    {
+        const double contentLeft = -280;
+        const double contentWidth = 332;
+        const double contentTop = -92;
+        const double contentHeight = 464;
+        var placements = SettingsLogPageHost.CreateLogFilterPopupPlacements(
+            new Size(300, 300),
+            new Size(46, 36),
+            new Point(),
+            contentLeft,
+            contentWidth,
+            contentTop,
+            contentHeight);
+
+        foreach (var placement in placements)
+        {
+            placement.Point.X.Should().BeGreaterThanOrEqualTo(contentLeft,
+                "the popup left edge must stay inside the content client area");
+            placement.Point.X.Should().BeLessThanOrEqualTo(contentLeft + contentWidth,
+                "the popup right edge must stay inside the content client area");
+            placement.Point.Y.Should().BeGreaterThanOrEqualTo(contentTop,
+                "the popup top edge must stay inside the content client area");
+            placement.Point.Y.Should().BeLessThanOrEqualTo(contentTop + contentHeight,
+                "the popup bottom edge must stay inside the content client area");
+        }
+
+        placements[0].Point.Y.Should().Be(36 + 8,
+            "the below candidate keeps the 8 DIP gap under the button while it fits");
+        placements[1].Point.Y.Should().Be(contentTop,
+            "an above candidate that would poke out of the client top is pulled back inside");
+
+        // With room on both sides the 8 DIP gap opens away from the button in
+        // both directions instead of overlapping the button.
+        var roomy = SettingsLogPageHost.CreateLogFilterPopupPlacements(
+            new Size(300, 200),
+            new Size(46, 36),
+            new Point(),
+            containerTop: -400,
+            containerHeight: 900);
+        roomy[0].Point.Y.Should().Be(36 + 8);
+        roomy[1].Point.Y.Should().Be(-200 - 8);
+    }
+
+    [Fact]
+    public void Filter_popup_follows_filter_button_in_maximized_window()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var filterButton = (Button)window.FindName("btnLogFilter");
+            var contentRoot = (FrameworkElement)window.FindName("rightContentRoot");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                // Popup measurements compare screen coordinates of two different
+                // HWNDs; bring the window onto the primary monitor instead of
+                // leaving it parked off-screen by the headless helper.
+                window.Left = 64;
+                window.Top = 64;
+                WpfStaTestHost.PumpDispatcher(window);
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                var tracking = SettingsLogPageHost.TrackLogFilterPopupWhileOpen(window, popup);
+                popup.IsOpen = true;
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                window.WindowState = WindowState.Maximized;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                var buttonLeft = filterButton.PointToScreen(new Point(0, 0)).X;
+                var buttonRight = filterButton.PointToScreen(new Point(filterButton.ActualWidth, 0)).X;
+                var panelLeft = panel.PointToScreen(new Point(0, 0)).X;
+                var panelRight = panel.PointToScreen(new Point(panel.ActualWidth, 0)).X;
+                var buttonCenter = (buttonLeft + buttonRight) / 2;
+
+                popup.PlacementTarget.Should().BeSameAs(filterButton);
+                buttonCenter.Should().BeInRange(panelLeft, panelRight,
+                    "the popup should remain visually attached to the filter button after maximizing");
+                AssertPanelInsideContentRoot(
+                    window,
+                    contentRoot,
+                    panel,
+                    "maximized window");
+
+                var repositionCountAfterMaximize = tracking.RepositionCount;
+                repositionCountAfterMaximize.Should().BeGreaterThan(0);
+                window.WindowState = WindowState.Normal;
+                WpfStaTestHost.PumpDispatcher(window);
+                window.Left += 24;
+                WpfStaTestHost.PumpDispatcher(window);
+                tracking.RepositionCount.Should().BeGreaterThan(
+                    repositionCountAfterMaximize,
+                    "restoring and moving the window must request fresh popup placement");
+                AssertPanelInsideContentRoot(
+                    window,
+                    contentRoot,
+                    panel,
+                    "restored window after move");
+
+                popup.IsOpen = false;
+                WpfStaTestHost.WaitUntil(
+                    () => !tracking.IsAttached,
+                    TimeSpan.FromSeconds(1),
+                    "filter popup tracking handlers to detach after close");
+                tracking.IsAttached.Should().BeFalse("closing the popup must detach window tracking handlers");
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Custom_time_inputs_fit_their_grid_and_filter_selectors_share_width()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+
+            var logPage = (FrameworkElement)window!.FindName("pageLogs");
+            var contentRoot = (FrameworkElement)window.FindName("rightContentRoot");
+            var customRange = (FrameworkElement)window.FindName("panelLogCustomRange");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("logFilterPopup");
+            var panel = (FrameworkElement)window.FindName("logFilterPanel");
+            var timeRange = (ComboBox)window.FindName("cmbLogTimeRange");
+            var level = (ComboBox)window.FindName("cmbLogLevel");
+            var source = (ComboBox)window.FindName("cmbLogSource");
+            var startTime = (TextBox)window.FindName("txtLogRangeStartTime");
+            var endTime = (TextBox)window.FindName("txtLogRangeEndTime");
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                customRange.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                // Popup measurements compare screen coordinates of two different
+                // HWNDs; bring the window onto the primary monitor instead of
+                // leaving it parked off-screen by the headless helper.
+                window.Left = 64;
+                window.Top = 64;
+                WpfStaTestHost.PumpDispatcher(window);
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                popup.IsOpen = true;
+                SettingsLogPageHost.ConfigureLogFilterPopup(window, popup);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                timeRange.ActualWidth.Should().BeApproximately(level.ActualWidth, 0.5);
+                timeRange.ActualWidth.Should().BeApproximately(source.ActualWidth, 0.5);
+
+                foreach (var textBox in new[] { startTime, endTime })
+                {
+                    var grid = (Grid)textBox.Parent;
+                    var rightEdge = textBox.TranslatePoint(new Point(textBox.ActualWidth, 0), grid).X;
+                    textBox.ActualWidth.Should().BeGreaterThanOrEqualTo(112);
+                    rightEdge.Should().BeLessThanOrEqualTo(
+                        grid.ActualWidth + 0.5,
+                        "the time text box and its left margin must fit inside the custom-range row");
+                }
+
+                AssertPanelInsideContentRoot(
+                    window,
+                    contentRoot,
+                    panel,
+                    "custom time expanded in the default window");
+
+                var scrollViewer = FindVisualChildren<ScrollViewer>(panel).FirstOrDefault();
+                scrollViewer.Should().NotBeNull(
+                    "the filter content must scroll inside a height-constrained popup");
+                panel.MaxHeight = 220;
+                WpfStaTestHost.PumpDispatcher(window);
+                scrollViewer!.ScrollableHeight.Should().BeGreaterThan(0,
+                    "constraining the popup height must expose a scrollable range instead of clipping content");
+                scrollViewer.VerticalOffset.Should().Be(0,
+                    "the constrained popup must start at the top of its scrollable range");
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Log_table_body_text_keeps_a_balanced_gap_from_cell_edge()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var window = SettingsXamlLoader.TryLoadEmbeddedWindow(out var error);
+            error.Should().BeNull();
+            window.Should().NotBeNull();
+            window!.Width = 1400;
+            window.Height = 700;
+
+            var logPage = (FrameworkElement)window.FindName("pageLogs");
+            var table = (DataGrid)window.FindName("logTable");
+            table.ItemsSource = new[]
+            {
+                new
+                {
+                    LevelText = "INFO",
+                    TimeText = "2026-08-09 20:59:52",
+                    SourceText = "Engine",
+                    EventText = "电源事件：插电，立即重新评估",
+                },
+            };
+
+            try
+            {
+                logPage.Visibility = Visibility.Visible;
+                WpfStaTestHost.ShowAndWait(window);
+                WpfStaTestHost.PumpDispatcher(window);
+
+                var levelCell = FindVisualChildren<DataGridCell>(table).First();
+                var levelText = FindVisualChildren<TextBlock>(levelCell).Single(text => text.Text == "INFO");
+                var leftGap = levelText.TranslatePoint(new Point(0, 0), levelCell).X;
+
+                leftGap.Should().BeInRange(12, 24);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void Page_size_combo_contains_20_50_100_and_defaults_20()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+        var comboIndex = IndexOf(xaml, "x:Name=\"cmbLogPageSize\"");
+        var combo = xaml[comboIndex..];
+
+        combo.Should().MatchRegex("SelectedIndex=\"0\"");
+        combo.Should().MatchRegex("Content=\"20\"[\\s\\S]{0,1200}Content=\"50\"[\\s\\S]{0,1200}Content=\"100\"");
+    }
+
+    [Fact]
+    public void Narrow_window_keeps_table_scrollable_without_overlapping_pager()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+        xaml.Should().Contain("x:Name=\"logTable\"");
+        xaml.Should().Contain("ScrollViewer.HorizontalScrollBarVisibility=\"Auto\"");
+        IndexOf(xaml, "x:Name=\"logViewportBorder\"").Should().BeLessThan(IndexOf(xaml, "x:Name=\"logPager\""));
+        IndexOf(xaml, "x:Name=\"logPager\"").Should().BeLessThan(IndexOf(xaml, "x:Name=\"btnLogFirstPage\""));
+    }
+
+    [Fact]
+    public void Wrap_off_uses_fixed_44_row_height_and_wrap_on_uses_bounded_auto_height()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+        source.Should().Contain("x:Key=\"LogTableRowStyle\"");
+        source.Should().MatchRegex("x:Key=\"LogTableRowStyle\"[\\s\\S]{0,500}Property=\"Height\" Value=\"44\"");
+        xaml.Should().Contain("x:Name=\"chkLogWrap\"");
+        xaml.Should().MatchRegex("x:Name=\"chkLogWrap\"[\\s\\S]{0,700}Content=\"自动换行\"");
+        source.Should().Contain("Property=\"MaxHeight\" Value=\"88\"");
+    }
+
+    [Fact]
+    public void Table_level_tokens_sort_glyph_and_current_page_style_match_the_compact_design()
+    {
+        var source = SettingsSourcePaths.ReadSettingsXamlSource();
+        var xaml = SliceLogPage(source);
+        var refreshSource = ReadSource("src/SmartGuard.Settings/SettingsLogPageHost.Refresh.cs");
+
+        source.Should().Contain("Trigger Property=\"Text\" Value=\"WARN\"");
+        source.Should().Contain("Trigger Property=\"Text\" Value=\"ERROR\"");
+        source.Should().Contain("Trigger Property=\"Text\" Value=\"FATAL\"");
+        source.Should().NotContain("Trigger Property=\"Text\" Value=\"警告\"");
+        xaml.Should().NotContain("Text=\"↕\"");
+        xaml.Should().MatchRegex("Text=\"时间\"[\\s\\S]{0,700}<Path[\\s\\S]{0,700}<Path");
+        source.Should().Contain("x:Key=\"LogPagerCurrentButton\"");
+        refreshSource.Should().Contain("number.IsCurrent ? currentButtonStyle : buttonStyle");
+    }
+
+    [Fact]
+    public void Log_card_uses_page_specific_breathing_room()
+    {
+        var xaml = SliceLogPage(SettingsSourcePaths.ReadSettingsXamlSource());
+
+        xaml.Should().MatchRegex(
+            "x:Name=\"pageLogs\"[\\s\\S]{0,300}<Border[\\s\\S]{0,200}Padding=\"24,20\"");
+    }
+
+    [Fact]
+    public void Wrap_toggle_switches_between_fixed_and_bounded_auto_row_height()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var table = new DataGrid { RowHeight = 44 };
+            var wrapToggle = new CheckBox();
+
+            SettingsLogPageHostWiring.WireLogTableWrapMode(table, wrapToggle);
+
+            wrapToggle.IsChecked = true;
+            double.IsNaN(table.RowHeight).Should().BeTrue();
+
+            wrapToggle.IsChecked = false;
+            table.RowHeight.Should().Be(44);
+        });
+    }
+
+    [Fact]
+    public void Native_date_and_time_inputs_update_the_existing_canonical_range_text()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var date = new DatePicker();
+            var time = new TextBox { Text = "08:30:15" };
+            var canonical = new TextBox();
+
+            SettingsLogPageHostWiring.WireLogDateTimePicker(date, time, canonical);
+            date.SelectedDate = new DateTime(2026, 8, 9);
+
+            canonical.Text.Should().Be("2026-08-09 08:30:15");
+
+            time.Text = "19:45";
+            canonical.Text.Should().Be("2026-08-09 19:45:00");
+        });
+    }
+
+    [Fact]
+    public void Wrap_mode_is_applied_to_cells_created_after_page_switch()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var cellTextStyle = new Style(typeof(TextBlock));
+            cellTextStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.NoWrap));
+            var table = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                Height = 160,
+                Width = 480,
+            };
+            table.Columns.Add(new DataGridTextColumn
+            {
+                Binding = new Binding(nameof(WrapRow.Text)),
+                ElementStyle = cellTextStyle,
+            });
+            var wrapToggle = new CheckBox();
+            SettingsLogPageHostWiring.WireLogTableWrapMode(table, wrapToggle);
+            var window = new Window { Content = table, Width = 520, Height = 220 };
+
+            try
+            {
+                table.ItemsSource = new[] { new WrapRow("page one") };
+                WpfStaTestHost.ShowAndWait(window);
+                wrapToggle.IsChecked = true;
+                WpfStaTestHost.PumpDispatcher(window);
+
+                table.ItemsSource = new[]
+                {
+                    new WrapRow("page two row one with enough text to require wrapping"),
+                    new WrapRow("page two row two with enough text to require wrapping"),
+                };
+                WpfStaTestHost.PumpDispatcher(window);
+
+                FindVisualChildren<TextBlock>(table)
+                    .Where(textBlock => textBlock.DataContext is WrapRow)
+                    .Should().NotBeEmpty()
+                    .And.OnlyContain(textBlock => textBlock.TextWrapping == TextWrapping.Wrap);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private static void AssertPanelInsideContentRoot(
+        Window window,
+        FrameworkElement contentRoot,
+        FrameworkElement panel,
+        string context)
+    {
+        var tolerance = VisualTreeHelper.GetDpi(panel).PixelsPerDip;
+        var rootTopLeft = contentRoot.PointToScreen(new Point(0, 0));
+        var rootRight = contentRoot.PointToScreen(new Point(contentRoot.ActualWidth, 0)).X;
+        var rootBottom = contentRoot.PointToScreen(new Point(0, contentRoot.ActualHeight)).Y;
+        var panelTopLeft = panel.PointToScreen(new Point(0, 0));
+        var panelRight = panel.PointToScreen(new Point(panel.ActualWidth, 0)).X;
+        var panelBottom = panel.PointToScreen(new Point(0, panel.ActualHeight)).Y;
+
+        panelTopLeft.X.Should().BeGreaterThanOrEqualTo(rootTopLeft.X - tolerance,
+            $"popup left edge must stay inside the settings content area ({context}; " +
+            $"panel left {panelTopLeft.X:0.##}, content left {rootTopLeft.X:0.##})");
+        panelRight.Should().BeLessThanOrEqualTo(rootRight + tolerance,
+            $"popup right edge must stay inside the settings content area ({context}; " +
+            $"panel right {panelRight:0.##}, content right {rootRight:0.##})");
+        panelTopLeft.Y.Should().BeGreaterThanOrEqualTo(rootTopLeft.Y - tolerance,
+            $"popup top edge must stay inside the settings content area ({context}; " +
+            $"panel top {panelTopLeft.Y:0.##}, content top {rootTopLeft.Y:0.##})");
+        panelBottom.Should().BeLessThanOrEqualTo(rootBottom + tolerance,
+            $"popup bottom edge must stay inside the settings content area ({context}; " +
+            $"panel bottom {panelBottom:0.##}, content bottom {rootBottom:0.##})");
+    }
+
+    private static string SliceLogPage(string xaml)
+    {
+        var start = xaml.IndexOf("<!-- Logs Page -->", StringComparison.Ordinal);
+        start.Should().BeGreaterThanOrEqualTo(0);
+        return xaml[start..];
+    }
+
+    private static int IndexOf(string text, string value)
+    {
+        var index = text.IndexOf(value, StringComparison.Ordinal);
+        index.Should().BeGreaterThanOrEqualTo(0, $"{value} should exist in the log page");
+        return index;
+    }
+
+    private static string ReadSource(string relativePath)
+        => File.ReadAllText(Path.Combine(SettingsSourcePaths.RepoRoot(), relativePath), Encoding.UTF8);
+
+    private static string RenderToken(LogPagerToken token)
+        => token switch
+        {
+            LogPageNumberToken number => number.PageNumber.ToString(),
+            LogPageEllipsisToken => "…",
+            _ => throw new InvalidOperationException($"Unknown token: {token.GetType().Name}"),
+        };
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+                yield return match;
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+                yield return descendant;
+        }
+    }
+
+    private sealed record WrapRow(string Text);
+}

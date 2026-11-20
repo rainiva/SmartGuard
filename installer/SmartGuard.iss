@@ -42,6 +42,7 @@ WizardStyle=modern
 PrivilegesRequired=admin
 CloseApplications=no
 RestartApplications=no
+RestartIfNeededByRun=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\bin\{#TrayExeName}
@@ -93,27 +94,6 @@ begin
   Result := DeleteUserLogs;
 end;
 
-function SmartGuardProcessesStillRunning(): Boolean;
-var
-  ResultCode: Integer;
-  OutputFile: String;
-  Output: AnsiString;
-begin
-  Result := False;
-  OutputFile := ExpandConstant('{tmp}\sg_tasklist.txt');
-  if Exec(ExpandConstant('{cmd}'),
-    '/C tasklist /NH > "' + OutputFile + '" 2>nul',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
-  begin
-    if LoadStringFromFile(OutputFile, Output) then
-    begin
-      Result :=
-#include "generated\SmartGuard.Distribution.Processes.iss.inc"
-    end;
-  end;
-  DeleteFile(OutputFile);
-end;
-
 function GetExistingSmartGuardInstallPath(): String;
 var
   Path: string;
@@ -132,7 +112,7 @@ begin
       Result := RemoveBackslash(Path);
 end;
 
-procedure StopSmartGuardProcesses();
+function TryStopSmartGuardProcesses(): Boolean;
 var
   ResultCode: Integer;
   RootPath: String;
@@ -143,35 +123,28 @@ begin
   if RootPath = '' then
     RootPath := GetExistingSmartGuardInstallPath();
   if RootPath = '' then
-    Exit;
-
-  EngineExe := RootPath + '\bin\{#EngineExeName}';
-  if not FileExists(EngineExe) then
-    Exit;
-
-  Exec(EngineExe,
-    '--root "' + RootPath + '" --uninstall',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-end;
-
-function TryStopSmartGuardProcesses(): Boolean;
-begin
-  if not SmartGuardProcessesStillRunning() then
   begin
     Result := True;
     Exit;
   end;
 
-  StopSmartGuardProcesses();
+  EngineExe := RootPath + '\bin\{#EngineExeName}';
+  if not FileExists(EngineExe) then
+  begin
+    Result := True;
+    Exit;
+  end;
 
-  Result := not SmartGuardProcessesStillRunning();
+  Result := Exec(EngineExe,
+    '--root "' + RootPath + '" --uninstall',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
 end;
 
 function EnsureSmartGuardStopped(): Boolean;
 begin
   if SmartGuardStopCompleted then
   begin
-    Result := not SmartGuardProcessesStillRunning();
+    Result := True;
     Exit;
   end;
 
@@ -184,13 +157,8 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   NeedsRestart := False;
-  if SmartGuardStopCompleted and not SmartGuardProcessesStillRunning() then
+  if SmartGuardStopCompleted then
     Exit;
-  if not SmartGuardProcessesStillRunning() then
-  begin
-    SmartGuardStopCompleted := True;
-    Exit;
-  end;
   WizardForm.StatusLabel.Caption := '正在关闭 SmartGuard 进程…';
   WizardForm.Repaint;
   if not EnsureSmartGuardStopped() then
@@ -322,11 +290,7 @@ begin
   Result := True;
 
   if CurPageID = wpReady then
-  begin
-    if SmartGuardProcessesStillRunning() then
-      StopSmartGuardProcesses();
-    SmartGuardStopCompleted := not SmartGuardProcessesStillRunning();
-  end
+    SmartGuardStopCompleted := TryStopSmartGuardProcesses()
   else if CurPageID = wpSelectDir then
   begin
     ExistingPath := GetExistingSmartGuardInstallPath();

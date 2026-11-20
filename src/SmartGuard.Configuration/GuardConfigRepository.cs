@@ -1,47 +1,49 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Encodings.Web;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SmartGuard.Configuration;
 
 public sealed class GuardConfigRepository
 {
   private readonly string _configPath;
-  private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+  private static readonly JsonSerializerOptions WriteOptions = new()
+  {
+    WriteIndented = true,
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+  };
   private GuardConfig? _readCache;
-  private DateTime _readCacheWriteTimeUtc = DateTime.MinValue;
-  private readonly FileSystemWatcher? _configWatcher;
+  private GuardConfigLoadResult? _detailedReadCache;
+  private FileReadStamp? _readCacheStamp;
+  private bool _readCacheSettled;
 
   public GuardConfigRepository(string configPath)
   {
     _configPath = configPath;
-    _configWatcher = ConfigFileWatcher.Watch(configPath, InvalidateReadCache);
   }
 
   internal int DiskReadCountForTests { get; private set; }
 
   internal void ResetMetricsForTests() => DiskReadCountForTests = 0;
 
-  public GuardConfig? TryLoad()
+  public GuardConfig? TryLoad() => TryLoadDetailed().Config;
+
+  public GuardConfigLoadResult TryLoadDetailed()
   {
-    if (!File.Exists(_configPath))
-    {
-      InvalidateReadCache();
-      return null;
-    }
-
-    var writeTimeUtc = File.GetLastWriteTimeUtc(_configPath);
-    if (_readCache is not null && _readCacheWriteTimeUtc == writeTimeUtc)
-      return _readCache;
-
-    DiskReadCountForTests++;
     try
     {
-      var node = JsonNode.Parse(File.ReadAllText(_configPath));
-      if (node is null)
-      {
-        InvalidateReadCache();
-        return null;
-      }
+      // Captured before the content is read, so a write landing during the read can never be paired
+      // with the older content. Only a settled stamp is trusted (FileReadStamp).
+      var stamp = FileReadStamp.TryCapture(_configPath);
+      if (stamp is not null && _readCache is not null && _detailedReadCache is not null && _readCacheSettled && _readCacheStamp == stamp)
+        return _detailedReadCache;
+
+      // Open explicitly: File.Exists hides access failures as "missing".
+      DiskReadCountForTests++;
+      var node = JsonNode.Parse(File.ReadAllText(_configPath, Encoding.UTF8));
+      if (node is not JsonObject) return LoadFailed("invalid");
 
       _readCache = node.Deserialize<GuardConfig>(GuardConfig.JsonOptions);
       GuardConfig? result = _readCache;
@@ -49,18 +51,47 @@ public sealed class GuardConfigRepository
       {
         ApplyNotificationMigration(result, obj);
         ApplyThemeMigration(result, obj);
-        result.GitHubToken = ReadGitHubTokenFromNode(obj) ?? string.Empty;
-        MigrateLegacyGitHubTokenIfNeeded(obj, result);
+        ApplyLogViewPreferencesMigration(result, obj);
+        if (RemoveRetiredSecretFields(obj))
+          TryPersistRetiredFieldCleanup(obj);
       }
       _readCache = result;
-      _readCacheWriteTimeUtc = File.GetLastWriteTimeUtc(_configPath);
-      return result;
+      _readCacheStamp = stamp;
+      _readCacheSettled = stamp is { } taken && taken.IsSettled(DateTime.UtcNow);
+      return _detailedReadCache = result is null
+        ? new(null, "invalid", null)
+        : new(result, null, ComputeRuleFingerprint(result));
     }
-    catch
+    catch (FileNotFoundException) { return LoadFailed("missing"); }
+    catch (DirectoryNotFoundException) { return LoadFailed("missing"); }
+    catch (UnauthorizedAccessException) { return LoadFailed("access"); }
+    catch (JsonException) { return LoadFailed("parse"); }
+    catch (IOException) { return LoadFailed("io"); }
+    catch { return LoadFailed("unknown"); }
+  }
+
+  private GuardConfigLoadResult LoadFailed(string kind)
+  {
+    InvalidateReadCache();
+    return new(null, kind, null);
+  }
+
+  private static string ComputeRuleFingerprint(GuardConfig config)
+  {
+    // Only on an actual reload, never on the foreground light path. Stream each
+    // canonical entry so no second list or old authorizing configuration is kept.
+    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    hash.AppendData([config.ForegroundRestrictionEnabled ? (byte)1 : (byte)0]);
+    hash.AppendData(BitConverter.GetBytes(config.ForegroundObservationSec));
+    foreach (var raw in config.ForegroundProgramPaths ?? [])
     {
-      InvalidateReadCache();
-      return null;
+      var value = GuardConfigValidator.TryNormalizeProgramPath(raw, out var normalized)
+        ? normalized.ToUpperInvariant() : raw ?? string.Empty;
+      var bytes = Encoding.UTF8.GetBytes(value);
+      hash.AppendData(BitConverter.GetBytes(bytes.Length));
+      hash.AppendData(bytes);
     }
+    return Convert.ToHexString(hash.GetHashAndReset());
   }
 
   public GuardConfig LoadOrDefault(string root)
@@ -83,6 +114,12 @@ public sealed class GuardConfigRepository
       config.ThemeIsDark = false;
   }
 
+  internal static void ApplyLogViewPreferencesMigration(GuardConfig config, JsonObject node)
+  {
+    if (!node.ContainsKey("LogViewPreferences") || config.LogViewPreferences is null)
+      config.LogViewPreferences = new LogViewPreferences();
+  }
+
   public void Save(GuardConfig config)
   {
     var node = LoadOrCreateNode();
@@ -103,15 +140,51 @@ public sealed class GuardConfigRepository
     WriteNode(node);
   }
 
-  public void AppendInfoLog(string message, string fallbackLogPath)
+  public void AppendInfoLog(string message, string root, string? fallbackLogPath = null)
+    => AppendMutationLog(message, root, fallbackLogPath, LogSeverity.Info, EventNameRegistry.ConfigMutationLogged);
+
+  /// <summary>Best-effort failure evidence; never masks the original save exception.</summary>
+  public void AppendMutationFailureLog(string root, string? fallbackLogPath = null)
+    => AppendMutationLog("配置未提交，变更未保存", root, fallbackLogPath,
+      LogSeverity.Warn, EventNameRegistry.ConfigMutationFailed);
+
+  private void AppendMutationLog(string message, string root, string? fallbackLogPath,
+    LogSeverity severity, string eventName)
   {
-    var config = TryLoad();
-    var logPath = config?.LogFile;
-    if (string.IsNullOrWhiteSpace(logPath)) logPath = fallbackLogPath;
-    var dir = Path.GetDirectoryName(logPath);
-    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    var line = $"[INFO] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}";
-    File.AppendAllText(logPath, line);
+    // Construct safe evidence before configuration/path preparation, so those
+    // failures can still use the existing fallback chain without recursive IO.
+    LogEvent? logEvent = null;
+    try
+    {
+      logEvent = LogStructuredSink.CreateComponentEvent(
+        severity,
+        LogComponentRegistry.Configuration,
+        LogChannelRegistry.Policy,
+        eventName,
+        message);
+      if (eventName == EventNameRegistry.ConfigMutationFailed)
+        logEvent = logEvent with { Properties = new Dictionary<string, JsonElement>
+        {
+          ["failureKind"] = JsonSerializer.SerializeToElement("save-failed"),
+        } };
+      var config = LoadOrDefault(root);
+      var logPath = SmartGuardPaths.ResolveLogFile(config, root);
+      var retention = LogRetentionPolicy.FromGuardConfig(config);
+      if (LogStructuredSink.TryWriteBatch(logPath, new[] { logEvent }, retention))
+        return;
+    }
+    catch
+    {
+      // Logging preparation is also optional; it cannot reverse a commit.
+    }
+    try
+    {
+      if (logEvent is not null) LogFallbackChain.WriteEvent(
+        () => false,
+        fallbackLogPath ?? SmartGuardPaths.StartupLogFile(root),
+        logEvent);
+    }
+    catch { /* The original persistence result remains authoritative. */ }
   }
 
   private JsonObject LoadOrCreateNode()
@@ -140,6 +213,11 @@ public sealed class GuardConfigRepository
     node["LogFile"] = config.LogFile;
     node["Paused"] = config.Paused;
     node["LogMaxBytes"] = config.LogMaxBytes;
+    node["LogMinimumLevel"] = config.LogMinimumLevel;
+    node["LogHeartMinIntervalSec"] = config.LogHeartMinIntervalSec;
+    node["LogRetentionDays"] = config.LogRetentionDays;
+    node["LogMaxArchiveFiles"] = config.LogMaxArchiveFiles;
+    node["LogDirectoryMaxBytes"] = config.LogDirectoryMaxBytes;
     node["BrightnessRetryCount"] = config.BrightnessRetryCount;
     node["BrightnessRetryDelayMs"] = config.BrightnessRetryDelayMs;
     node["NotifyOnPlanChange"] = config.NotifyOnPlanChange;
@@ -148,11 +226,38 @@ public sealed class GuardConfigRepository
     node["AutoStartEnabled"] = config.AutoStartEnabled;
     node["ThemeFollowSystem"] = config.ThemeFollowSystem;
     node["ThemeIsDark"] = config.ThemeIsDark;
-    ApplyGitHubTokenToNode(node, config);
+    node["ForegroundRestrictionEnabled"] = config.ForegroundRestrictionEnabled;
+    node["ForegroundObservationSec"] = config.ForegroundObservationSec;
+    node["ForegroundProgramPaths"] = config.ForegroundProgramPaths is { } programPaths
+      ? JsonSerializer.SerializeToNode(programPaths, GuardConfig.JsonOptions) ?? new JsonArray()
+      : new JsonArray();
+    ApplyLogViewPreferences(node, config.LogViewPreferences);
+    RemoveRetiredSecretFields(node);
     if (config.ManualHighPerformanceUntil is { } until)
       node["ManualHighPerformanceUntil"] = until.ToString("o");
     else
       node.Remove("ManualHighPerformanceUntil");
+  }
+
+  private static void ApplyLogViewPreferences(JsonObject node, LogViewPreferences preferences)
+  {
+    JsonObject prefsNode;
+    if (node["LogViewPreferences"] is JsonObject existing)
+      prefsNode = existing;
+    else
+    {
+      prefsNode = new JsonObject();
+      node["LogViewPreferences"] = prefsNode;
+    }
+
+    if (preferences.DefaultFilterId is null)
+      prefsNode.Remove("DefaultFilterId");
+    else
+      prefsNode["DefaultFilterId"] = preferences.DefaultFilterId;
+
+    prefsNode["SavedFilters"] = JsonSerializer.SerializeToNode(
+      preferences.SavedFilters,
+      GuardConfig.JsonOptions) ?? new JsonArray();
   }
 
   private void WriteNode(JsonObject node) => WriteNode(node.ToJsonString(WriteOptions));
@@ -161,64 +266,36 @@ public sealed class GuardConfigRepository
   {
     var dir = Path.GetDirectoryName(_configPath);
     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-    GuardConfigAtomicFileWriter.WriteAllText(_configPath, content);
-    InvalidateReadCache();
+    try { GuardConfigAtomicFileWriter.WriteAllText(_configPath, content); }
+    finally
+    {
+      // Callers may have edited a previously returned cached object. Even a
+      // failed publication must force the next read back to the last valid file.
+      InvalidateReadCache();
+    }
   }
 
   private void InvalidateReadCache()
   {
     _readCache = null;
-    _readCacheWriteTimeUtc = DateTime.MinValue;
+    _detailedReadCache = null;
+    _readCacheStamp = null;
+    _readCacheSettled = false;
   }
 
-  internal static string? ReadGitHubTokenFromNode(JsonObject node)
+  private static bool RemoveRetiredSecretFields(JsonObject node)
+    => RetiredSecretFieldRegistry.RemoveFrom(node);
+
+  private void TryPersistRetiredFieldCleanup(JsonObject node)
   {
-    if (node.TryGetPropertyValue(GitHubTokenProtector.ProtectedFieldName, out var protectedNode)
-        && protectedNode is JsonValue protectedValue)
+    try
     {
-      var protectedText = protectedValue.GetValue<string?>();
-      var token = GitHubTokenProtector.TryUnprotect(protectedText);
-      if (!string.IsNullOrEmpty(token))
-        return token;
+      WriteNodeWithoutCacheInvalidation(node.ToJsonString(WriteOptions));
     }
-
-    if (node.TryGetPropertyValue(GitHubTokenProtector.LegacyFieldName, out var legacyNode)
-        && legacyNode is JsonValue legacyValue)
+    catch
     {
-      var legacy = legacyValue.GetValue<string?>();
-      if (!string.IsNullOrWhiteSpace(legacy))
-        return legacy.Trim();
+      // Loading valid policy must not fail only because a retired field cannot be cleaned up yet.
     }
-
-    return string.Empty;
-  }
-
-  internal static void ApplyGitHubTokenToNode(JsonObject node, GuardConfig config)
-  {
-    node.Remove(GitHubTokenProtector.LegacyFieldName);
-
-    if (string.IsNullOrWhiteSpace(config.GitHubToken))
-    {
-      node.Remove(GitHubTokenProtector.ProtectedFieldName);
-      return;
-    }
-
-    var protectedValue = GitHubTokenProtector.Protect(config.GitHubToken);
-    if (protectedValue is not null)
-      node[GitHubTokenProtector.ProtectedFieldName] = protectedValue;
-    else
-      node.Remove(GitHubTokenProtector.ProtectedFieldName);
-  }
-
-  private void MigrateLegacyGitHubTokenIfNeeded(JsonObject node, GuardConfig config)
-  {
-    if (node.ContainsKey(GitHubTokenProtector.ProtectedFieldName))
-      return;
-    if (!node.ContainsKey(GitHubTokenProtector.LegacyFieldName))
-      return;
-
-    ApplyGitHubTokenToNode(node, config);
-    WriteNodeWithoutCacheInvalidation(node.ToJsonString(WriteOptions));
   }
 
   private void WriteNodeWithoutCacheInvalidation(string content)

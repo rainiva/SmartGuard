@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
@@ -9,12 +10,19 @@ internal sealed class SettingsLogSearchCoordinator
   private readonly Action _refreshLogView;
   private System.Windows.Threading.DispatcherTimer? _searchDebounceTimer;
   private System.Windows.Threading.DispatcherTimer? _customRangeDebounceTimer;
+  private int _matchGeneration;
 
   internal SettingsLogSearchCoordinator(Window window, Action refreshLogView)
   {
     _window = window;
     _refreshLogView = refreshLogView;
   }
+
+  internal LogMatchNavigator MatchNavigator { get; } = new();
+
+  internal int MatchGeneration => _matchGeneration;
+
+  internal event Action<int>? MatchGenerationChanged;
 
   internal System.Windows.Threading.DispatcherTimer? SearchDebounceTimerForTests => _searchDebounceTimer;
 
@@ -26,9 +34,48 @@ internal sealed class SettingsLogSearchCoordinator
     _customRangeDebounceTimer?.Stop();
   }
 
-  internal void QueueSearchRefresh() => QueueDebouncedRefresh(ref _searchDebounceTimer);
+  internal int NotifyMatchGenerationChanged()
+  {
+    _matchGeneration = unchecked(_matchGeneration + 1);
+    MatchNavigator.NotifyQueryGenerationChanged(_matchGeneration);
+    MatchGenerationChanged?.Invoke(_matchGeneration);
+    return _matchGeneration;
+  }
+
+  internal void QueueSearchRefresh()
+  {
+    NotifyMatchGenerationChanged();
+    QueueDebouncedRefresh(ref _searchDebounceTimer);
+  }
 
   internal void QueueCustomRangeRefresh() => QueueDebouncedRefresh(ref _customRangeDebounceTimer);
+
+  internal void NavigateMatch(
+    LogMatchNavigationDirection direction,
+    LogViewListPresenter? presenter,
+    LogViewportController? viewport,
+    Action<LogQueryCursor>? loadPage)
+  {
+    var visibleIds = presenter?.Items.Select(item => item.EventId) ?? Array.Empty<string>();
+    MatchNavigator.SetMatches(_matchGeneration, MatchNavigator.CurrentMatches, scanComplete: true, visibleIds);
+
+    var reverse = direction == LogMatchNavigationDirection.Backward;
+    var result = MatchNavigator.NavigateNext(reverse);
+    if (result.TargetEventId is null)
+      return;
+
+    if (result.RequiresPageLoad)
+    {
+      if (result.TargetCursor is not null)
+        loadPage?.Invoke(result.TargetCursor);
+      return;
+    }
+
+    viewport?.ScrollToEvent(result.TargetEventId);
+  }
+
+  internal void UpdateMatchCatalog(IReadOnlyList<LogMatch> matches, bool scanComplete, IEnumerable<string> visibleEventIds)
+    => MatchNavigator.SetMatches(_matchGeneration, matches, scanComplete, visibleEventIds);
 
   internal static void SyncCustomRangePanelVisibility(UIElement? panel, ComboBox? comboBox)
   {
@@ -61,14 +108,52 @@ internal sealed class SettingsLogSearchCoordinator
     CheckBox? caseSensitiveCheckBox,
     ComboBox? timeRangeComboBox,
     TextBox? rangeStart,
-    TextBox? rangeEnd)
+    TextBox? rangeEnd,
+    ComboBox? levelFilterComboBox = null,
+    ComboBox? componentFilterComboBox = null)
   {
     controller.SearchKeyword = filterBar?.Keyword ?? string.Empty;
-    controller.ActiveTagFilters = filterBar?.ActiveTags ?? [];
+    if (levelFilterComboBox is not null)
+    {
+      var level = ReadFilterValue(levelFilterComboBox);
+      controller.ActiveTagFilters = string.IsNullOrWhiteSpace(level)
+        ? filterBar?.ActiveTags ?? []
+        : [level];
+    }
+    else if (filterBar?.ActiveTags.Count > 0)
+    {
+      controller.ActiveTagFilters = filterBar.ActiveTags;
+    }
+
+    if (componentFilterComboBox is not null)
+      controller.ComponentFilter = ReadFilterValue(componentFilterComboBox);
     controller.SearchCaseSensitive = caseSensitiveCheckBox?.IsChecked == true;
     controller.TimeRange = ReadTimeRange(timeRangeComboBox);
     controller.CustomRangeStart = TryReadCustomRangeStart(rangeStart);
     controller.CustomRangeEnd = TryReadCustomRangeEnd(rangeEnd);
+  }
+
+  internal static string ReadFilterValue(ComboBox? comboBox)
+    => comboBox?.SelectedItem is ComboBoxItem item
+      ? item.Tag?.ToString() ?? string.Empty
+      : string.Empty;
+
+  internal static void SelectFilterValue(ComboBox? comboBox, string? value)
+  {
+    if (comboBox is null)
+      return;
+
+    var expected = value ?? string.Empty;
+    foreach (var item in comboBox.Items.OfType<ComboBoxItem>())
+    {
+      if (!string.Equals(item.Tag?.ToString() ?? string.Empty, expected, StringComparison.OrdinalIgnoreCase))
+        continue;
+
+      comboBox.SelectedItem = item;
+      return;
+    }
+
+    comboBox.SelectedIndex = 0;
   }
 
   private void QueueDebouncedRefresh(ref System.Windows.Threading.DispatcherTimer? timer)

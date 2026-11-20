@@ -35,7 +35,7 @@ internal sealed class GuardianExceptionStormHandler
     var suffix = count >= threshold
       ? $" (同类异常 {count} 次，将重新初始化状态以恢复)"
       : string.Empty;
-    _writeLog(config, LogLevel.Error, ex.Message + suffix);
+    _writeLog(config, LogLevel.Error, ExceptionFormatter.Format(ex) + suffix);
     if (count >= threshold)
     {
       _iterationState.LastKnownGuid = null;

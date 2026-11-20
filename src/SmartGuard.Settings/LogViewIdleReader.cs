@@ -30,17 +30,17 @@ internal static class LogViewIdleReader
       if (!TryGetPublishedAt(status, out var publishedAt))
         return new LogViewIdleReadResult(
           LogViewIdleDisplayPolicy.Resolve(status.idleSeconds, apiIdle),
-          StatusMayBeStale: false);
+          StatusMayBeStale: false, LogHealth: status.logHealth);
 
       var ageSeconds = (int)Math.Max(0, (nowLocal - publishedAt).TotalSeconds);
       if (ageSeconds > MaxStatusAgeSeconds)
-        return new LogViewIdleReadResult(apiIdle, StatusMayBeStale: true);
+        return new LogViewIdleReadResult(apiIdle, StatusMayBeStale: true, LogHealth: status.logHealth);
 
       var extrapolated = LogViewIdleResolver.ResolveFromStatus(status, nowLocal);
       var resolved = LogViewIdleDisplayPolicy.Resolve(extrapolated, apiIdle);
       return new LogViewIdleReadResult(
         resolved,
-        StatusMayBeStale: ageSeconds > StaleHintAgeSeconds);
+        StatusMayBeStale: ageSeconds > StaleHintAgeSeconds, LogHealth: status.logHealth);
     }
     catch
     {

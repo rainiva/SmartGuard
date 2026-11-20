@@ -34,7 +34,7 @@ public class SettingsUiTestModeTests
                 window.Should().NotBeNull();
 
                 var updateCheck = new SettingsUpdateCheckCoordinator();
-                updateCheck.CheckForUpdateAsync(window!, () => null).GetAwaiter().GetResult();
+                updateCheck.CheckForUpdateAsync(window!).GetAwaiter().GetResult();
 
                 Application.Current!.Windows.OfType<Window>().Should().ContainSingle();
             }

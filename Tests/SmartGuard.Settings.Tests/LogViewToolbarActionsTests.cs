@@ -1,4 +1,5 @@
 using SmartGuard.Settings;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings.Tests;
 
@@ -31,6 +32,52 @@ public class LogViewToolbarActionsTests
             "无匹配结果");
 
         LogViewToolbarActions.BuildVisibleText(snapshot).Should().Be("无匹配结果");
+    }
+
+    [Fact]
+    public void Copy_current_page_preserves_full_exception_text_in_display_order()
+    {
+        var exception = new LogExceptionInfo(
+            "System.InvalidOperationException",
+            "outer failure",
+            " at Outer()",
+            new LogExceptionInfo("System.IO.IOException", "inner failure", " at Inner()", null));
+        var root = new LogEvent(
+            LogEvent.CurrentSchemaVersion,
+            "e:exception",
+            DateTimeOffset.UtcNow,
+            LogSeverity.Error,
+            LogComponentRegistry.Engine,
+            LogChannelRegistry.Diagnostics,
+            EventNameRegistry.IterationError,
+            "outer failure",
+            exception,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            LogEvent.EmptyProperties);
+        var row = LogTableRow.FromEvent(root);
+
+        LogViewToolbarActions.BuildCurrentPageText([row])
+            .Should()
+            .Contain("System.InvalidOperationException")
+            .And.Contain(" at Outer()")
+            .And.Contain("System.IO.IOException")
+            .And.Contain(" at Inner()");
+    }
+
+    [Fact]
+    public void Export_all_matches_streams_the_current_snapshot_without_materializing_all_events()
+    {
+        var source = File.ReadAllText(
+            Path.Combine(SettingsSourcePaths.RepoRoot(), "src/SmartGuard.Settings/SettingsLogExportCoordinator.cs"),
+            System.Text.Encoding.UTF8);
+
+        source.Should().Contain("StreamMatchingEventsAsync");
+        source.Should().NotContain("QueryMatchingEventsAsync");
     }
 
     [Fact]

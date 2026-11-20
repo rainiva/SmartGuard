@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using SmartGuard.Settings;
 
 namespace SmartGuard.Settings.Tests;
@@ -9,6 +10,70 @@ namespace SmartGuard.Settings.Tests;
 [Trait("Category", "WpfUi")]
 public class ScrollViewerSmoothScrollTests
 {
+    [Theory]
+    [InlineData(-120, false, true)]
+    [InlineData(120, true, true)]
+    [InlineData(-120, true, false)]
+    [InlineData(120, false, false)]
+    public void Nested_program_list_routes_wheel_to_the_list_or_the_page_at_its_boundary(int delta, bool startAtEnd, bool listCanScroll)
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var host = new Window { Width = 420, Height = 320, ShowInTaskbar = false };
+            try
+            {
+                var list = new ListBox { Height = 110 };
+                ScrollViewer.SetCanContentScroll(list, false);
+                for (var index = 0; index < 40; index++) list.Items.Add($"Program {index}.exe");
+                var stack = new StackPanel();
+                stack.Children.Add(list);
+                stack.Children.Add(new Border { Height = 600 });
+                var outer = new ScrollViewer { Content = stack, Height = 260 };
+                host.Content = outer;
+                WpfStaTestHost.ShowAndWait(host);
+                var inner = Descendant<ScrollViewer>(list)!;
+                inner.Should().NotBeNull();
+                inner.ScrollableHeight.Should().BeGreaterThan(0);
+                if (startAtEnd) inner.ScrollToEnd();
+                inner.UpdateLayout();
+                var before = inner.VerticalOffset;
+                if (!listCanScroll && delta > 0)
+                {
+                    outer.ScrollToEnd();
+                    outer.UpdateLayout();
+                }
+                ScrollViewerSmoothScroll.Attach(outer);
+                var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
+                { RoutedEvent = UIElement.PreviewMouseWheelEvent };
+                inner.RaiseEvent(wheel);
+                if (!listCanScroll)
+                {
+                    wheel.Handled.Should().BeTrue("at the list boundary the page should consume the gesture");
+                    ScrollViewerSmoothScroll.GetVerticalVelocityForTesting(outer).Should().NotBe(0);
+                    return;
+                }
+                wheel.Handled.Should().BeFalse("the outer tunnel handler must allow the list to consume this direction");
+                wheel.RoutedEvent = UIElement.MouseWheelEvent;
+                inner.RaiseEvent(wheel);
+                inner.UpdateLayout();
+                Math.Abs(inner.VerticalOffset - before).Should().BeGreaterThan(0);
+                ScrollViewerSmoothScroll.GetVerticalVelocityForTesting(outer).Should().Be(0);
+            }
+            finally { ScrollViewerSmoothScroll.ResetForTesting(); host.Close(); }
+        });
+    }
+
+    private static T? Descendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, index);
+            if (child is T match) return match;
+            if (Descendant<T>(child) is T nested) return nested;
+        }
+        return null;
+    }
+
     [Fact]
     public void Wheel_impulse_starts_inertial_scroll_that_continues_after_input_stops()
     {
@@ -142,7 +207,7 @@ public class ScrollViewerSmoothScrollTests
     }
 
     [Fact]
-    public void Log_view_presenter_attaches_smooth_scroll_to_log_scroll_viewer()
+    public void Log_view_presenter_does_not_attach_custom_inertia_to_log_scroll_viewer()
     {
         var source = File.ReadAllText(Path.Combine(
             SettingsSourcePaths.RepoRoot(),
@@ -150,7 +215,49 @@ public class ScrollViewerSmoothScrollTests
             "SmartGuard.Settings",
             "LogViewListPresenter.cs"));
 
-        source.Should().Contain("ScrollViewerSmoothScroll.Attach(ScrollViewer)");
+        source.Should().NotContain("ScrollViewerSmoothScroll.Attach(ScrollViewer)");
+    }
+
+    [Fact]
+    public void Log_view_wheel_event_is_left_to_native_pixel_scrolling()
+    {
+        WpfStaTestHost.Run(() =>
+        {
+            var host = new Window { Width = 420, Height = 320, ShowInTaskbar = false };
+            try
+            {
+                var listBox = new ListBox { Height = 260, Width = 380 };
+                var presenter = new LogViewListPresenter();
+                presenter.Attach(listBox);
+                presenter.Apply(LogViewUpdatePlan.ReplaceAll(
+                    Enumerable.Range(0, 500)
+                        .Select(i => $"[INFO] 2026-08-02 10:00:00 line {i} {new string('x', 300)}")
+                        .ToArray()));
+                host.Content = listBox;
+                WpfStaTestHost.ShowAndWait(host);
+                presenter.EnsureScrollViewerResolved();
+                var scrollViewer = presenter.ScrollViewer!;
+                scrollViewer.ScrollToEnd();
+                scrollViewer.UpdateLayout();
+
+                var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, 120)
+                {
+                    RoutedEvent = UIElement.PreviewMouseWheelEvent,
+                    Source = scrollViewer,
+                };
+                scrollViewer.RaiseEvent(wheel);
+
+                wheel.Handled.Should().BeFalse(
+                    "the log list should use native pixel scrolling instead of swallowing the gesture");
+                ScrollViewerSmoothScroll.GetVerticalVelocityForTesting(scrollViewer)
+                    .Should().Be(0);
+            }
+            finally
+            {
+                ScrollViewerSmoothScroll.ResetForTesting();
+                host.Close();
+            }
+        });
     }
 
     private static ScrollViewer CreateTallScrollViewer()

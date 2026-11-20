@@ -18,11 +18,11 @@ public class SettingsIdleArchitectureTests
   [Fact]
   public void Log_view_refresher_must_preserve_horizontal_offset_across_refreshes()
   {
-    var refresher = SourceScanHelper.ReadSource("src/SmartGuard.Settings/SettingsLogViewRefresher.cs");
+    var viewport = SourceScanHelper.ReadSource("src/SmartGuard.Settings/LogViewportController.cs");
 
-    refresher.Should().Contain("savedHorizontalOffset");
-    refresher.Should().Contain("RestoreHorizontalOffset");
-    refresher.Should().Contain("ScrollToHorizontalOffset");
+    viewport.Should().Contain("_preferredHorizontalOffset");
+    viewport.Should().Contain("RestorePreferredHorizontalOffset");
+    viewport.Should().Contain("ScrollToHorizontalOffset");
   }
 }
 

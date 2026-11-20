@@ -6,6 +6,12 @@ namespace SmartGuard.Settings;
 
 public static class LogViewToolbarActions
 {
+    public static string BuildCurrentPageText(IReadOnlyList<LogTableRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return string.Join(Environment.NewLine, rows.Select(row => row.ExportText));
+    }
+
     public static string BuildVisibleText(LogViewSnapshot snapshot)
     {
         return string.Join(Environment.NewLine, snapshot.DisplayLines);

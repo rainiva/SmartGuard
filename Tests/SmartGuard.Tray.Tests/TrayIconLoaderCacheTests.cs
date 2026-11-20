@@ -46,4 +46,29 @@ public class TrayIconLoaderCacheTests
       TrayIconLoader.ResetCacheForTests();
     }
   }
+
+  [Fact]
+  public async Task Concurrent_first_loads_share_one_embedded_icon_initialization()
+  {
+    TrayIconLoader.ResetCacheForTests();
+    using var barrier = new Barrier(8);
+    try
+    {
+      var loads = Enumerable.Range(0, barrier.ParticipantCount)
+        .Select(_ => Task.Run(() =>
+        {
+          barrier.SignalAndWait(TimeSpan.FromSeconds(10));
+          using var icon = TrayIconLoader.Load();
+          icon.Should().NotBeNull();
+        }))
+        .ToArray();
+
+      await Task.WhenAll(loads);
+      TrayIconLoader.LoadCountForTests.Should().Be(1);
+    }
+    finally
+    {
+      TrayIconLoader.ResetCacheForTests();
+    }
+  }
 }

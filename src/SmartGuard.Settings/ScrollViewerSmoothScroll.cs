@@ -68,8 +68,30 @@ internal static class ScrollViewerSmoothScroll
     if (sender is not ScrollViewer scrollViewer)
       return;
 
+    // Preview input tunnels through the page before the list's native wheel
+    // handler. Leave it unhandled while a nested viewer can consume this
+    // direction; at its boundary the page can continue scrolling normally.
+    for (var source = e.OriginalSource as DependencyObject;
+         source is not null && source != scrollViewer;
+         source = GetInputParent(source))
+    {
+      if (source is ScrollViewer nested &&
+          ((e.Delta < 0 && nested.VerticalOffset < nested.ScrollableHeight) ||
+           (e.Delta > 0 && nested.VerticalOffset > 0)))
+        return;
+    }
+
     ApplyWheelImpulse(scrollViewer, e.Delta);
     e.Handled = true;
+  }
+
+  private static DependencyObject? GetInputParent(DependencyObject source)
+  {
+    if (source is ContentElement content)
+      return ContentOperations.GetParent(content) ?? (content as FrameworkContentElement)?.Parent;
+    return source is Visual or System.Windows.Media.Media3D.Visual3D
+      ? VisualTreeHelper.GetParent(source)
+      : LogicalTreeHelper.GetParent(source);
   }
 
   private static void ApplyWheelImpulse(ScrollViewer scrollViewer, int delta)
@@ -135,7 +157,18 @@ internal static class ScrollViewerSmoothScroll
 
     var maxOffset = scrollViewer.ScrollableHeight;
     if (maxOffset <= 0)
+    {
+      // The ScrollViewer's window has been closed or its content collapsed
+      // (e.g. navigating away from the page that hosts it). Detach the
+      // inertial animation so the static CompositionTarget.Rendering hook
+      // can be released once ActiveScrollViewers becomes empty; otherwise
+      // long-running test runs accumulate dead viewers and the rendering
+      // callback starves the dispatcher, breaking time-sensitive WPF
+      // layout pumps in subsequent tests.
+      scrollViewer.SetValue(VelocityYProperty, 0.0);
+      ActiveScrollViewers.Remove(scrollViewer);
       return;
+    }
 
     var nextOffset = scrollViewer.VerticalOffset + (velocity * elapsedSeconds);
     nextOffset = Math.Max(0, Math.Min(nextOffset, maxOffset));

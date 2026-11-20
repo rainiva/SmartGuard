@@ -11,7 +11,10 @@ public sealed record LogViewSnapshot(
     LogViewTimeRange TimeRange = LogViewTimeRange.All,
     int MatchedLineCount = 0,
     bool IsDisplayTruncated = false,
-    IReadOnlyList<string>? ActiveTagFilters = null)
+    IReadOnlyList<string>? ActiveTagFilters = null,
+    bool HasOlderHistory = false,
+    bool LoadFailed = false,
+    string? LoadFailureMessage = null)
 {
     public bool HasSearchKeyword => !string.IsNullOrWhiteSpace(SearchKeyword);
 

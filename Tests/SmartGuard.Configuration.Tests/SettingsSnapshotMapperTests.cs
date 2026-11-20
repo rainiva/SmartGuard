@@ -106,4 +106,83 @@ public class SettingsSnapshotMapperTests
     updated.NotifyOnPlanChange.Should().BeTrue();
     updated.NotifyOnExternalChange.Should().BeFalse();
   }
+
+  [Fact]
+  public void ApplyTraySettings_preserves_log_minimum_level()
+  {
+    var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+    current.LogMinimumLevel = "Debug";
+
+    var updated = SettingsSnapshotMapper.ApplyTraySettings(
+      current,
+      balancedThresholdMin: 5,
+      powerSaverThresholdMin: 15,
+      lowBatteryPercent: 30,
+      checkIntervalSec: 15,
+      brightnessRestoreMs: 300,
+      heartbeatIntervalMin: current.HeartbeatIntervalMin,
+      activePlanGuid: current.ActivePlanGuid,
+      balancedPlanGuid: current.BalancedPlanGuid,
+      powerSaverPlanGuid: current.PowerSaverPlanGuid,
+      paused: false,
+      notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
+      autoStartEnabled: true);
+
+    updated.LogMinimumLevel.Should().Be("Debug");
+  }
+
+  [Fact]
+  public void ApplyTraySettings_preserves_log_heart_min_interval()
+  {
+    var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+    current.LogHeartMinIntervalSec = 120;
+
+    var updated = SettingsSnapshotMapper.ApplyTraySettings(
+      current,
+      balancedThresholdMin: 5,
+      powerSaverThresholdMin: 15,
+      lowBatteryPercent: 30,
+      checkIntervalSec: 15,
+      brightnessRestoreMs: 300,
+      heartbeatIntervalMin: current.HeartbeatIntervalMin,
+      activePlanGuid: current.ActivePlanGuid,
+      balancedPlanGuid: current.BalancedPlanGuid,
+      powerSaverPlanGuid: current.PowerSaverPlanGuid,
+      paused: false,
+      notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
+      autoStartEnabled: true);
+
+    updated.LogHeartMinIntervalSec.Should().Be(120);
+  }
+
+  [Fact]
+  public void ApplyTraySettings_preserves_archive_retention_limits()
+  {
+    var current = GuardConfig.CreateDefault(@"D:\Project\SmartGuard");
+    current.LogRetentionDays = 30;
+    current.LogMaxArchiveFiles = 10;
+    current.LogDirectoryMaxBytes = 52_428_800;
+
+    var updated = SettingsSnapshotMapper.ApplyTraySettings(
+      current,
+      balancedThresholdMin: 5,
+      powerSaverThresholdMin: 15,
+      lowBatteryPercent: 30,
+      checkIntervalSec: 15,
+      brightnessRestoreMs: 300,
+      heartbeatIntervalMin: current.HeartbeatIntervalMin,
+      activePlanGuid: current.ActivePlanGuid,
+      balancedPlanGuid: current.BalancedPlanGuid,
+      powerSaverPlanGuid: current.PowerSaverPlanGuid,
+      paused: false,
+      notifyOnPlanChange: true,
+      notifyOnExternalChange: true,
+      autoStartEnabled: true);
+
+    updated.LogRetentionDays.Should().Be(30);
+    updated.LogMaxArchiveFiles.Should().Be(10);
+    updated.LogDirectoryMaxBytes.Should().Be(52_428_800);
+  }
 }

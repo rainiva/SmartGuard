@@ -7,7 +7,7 @@ internal sealed class SettingsUpdateCheckCoordinator
   private DateTime _lastUpdateCheckTime = DateTime.MinValue;
   private bool _lastUpdateCheckNoUpdate;
 
-  internal async Task CheckForUpdateAsync(Window owner, Func<string?> getGitHubToken)
+  internal async Task CheckForUpdateAsync(Window owner)
   {
     if (SettingsUiTestMode.IsEnabled)
       return;
@@ -36,13 +36,6 @@ internal sealed class SettingsUpdateCheckCoordinator
       client.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateChecker");
       client.Timeout = TimeSpan.FromSeconds(30);
 
-      var token = getGitHubToken();
-      if (!string.IsNullOrWhiteSpace(token))
-      {
-        client.DefaultRequestHeaders.Authorization =
-          new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Trim());
-      }
-
       var url = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
 
       const int maxAttempts = 3;
@@ -57,7 +50,12 @@ internal sealed class SettingsUpdateCheckCoordinator
           lastException = null;
           break;
         }
-        catch (Exception ex) when (attempt < maxAttempts)
+        catch (System.Net.Http.HttpRequestException ex) when (attempt < maxAttempts && ShouldRetry(ex.StatusCode))
+        {
+          lastException = ex;
+          await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt));
+        }
+        catch (TaskCanceledException ex) when (attempt < maxAttempts)
         {
           lastException = ex;
           await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt));
@@ -90,7 +88,7 @@ internal sealed class SettingsUpdateCheckCoordinator
               $"发现新版本：{latestVersion}\n当前版本：{currentVersion}\n\n是否下载并安装更新？",
               AppDialogSeverity.Information))
         {
-          await DownloadAndInstallUpdateAsync(owner, doc.RootElement, latestVersion, repoOwner, repoName, getGitHubToken);
+          await DownloadAndInstallUpdateAsync(owner, doc.RootElement, latestVersion, repoOwner, repoName);
         }
       }
       else
@@ -104,14 +102,13 @@ internal sealed class SettingsUpdateCheckCoordinator
     {
       var statusCode = ex.StatusCode;
       var detail = ex.InnerException?.Message ?? ex.Message;
-      var tokenConfigured = !string.IsNullOrWhiteSpace(getGitHubToken()) ? "已配置" : "未配置";
       string message;
       if (statusCode == System.Net.HttpStatusCode.NotFound)
-        message = $"未找到发布版本，请确认仓库地址正确。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
+        message = $"未找到发布版本，请确认仓库地址正确。\n\n详情：{detail}";
       else if (statusCode == System.Net.HttpStatusCode.Forbidden)
-        message = $"请求过于频繁，请稍后再试。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
+        message = $"请求过于频繁，请稍后再试。\n\n详情：{detail}";
       else
-        message = $"网络连接失败，请检查网络后重试。\n\nToken 状态：{tokenConfigured}\n详情：{detail}";
+        message = $"网络连接失败，请检查网络后重试。\n\n详情：{detail}";
       ShowUpdateAlert(owner, message, AppDialogSeverity.Warning);
     }
     catch (TaskCanceledException)
@@ -129,8 +126,7 @@ internal sealed class SettingsUpdateCheckCoordinator
     System.Text.Json.JsonElement releaseRoot,
     Version latestVersion,
     string repoOwner,
-    string repoName,
-    Func<string?> getGitHubToken)
+    string repoName)
   {
     var asset = UpdateInstallerLauncher.ResolveAsset(releaseRoot, latestVersion);
     if (string.IsNullOrEmpty(asset.AssetName) || string.IsNullOrEmpty(asset.DownloadUrl))
@@ -167,12 +163,6 @@ internal sealed class SettingsUpdateCheckCoordinator
       httpClient.DefaultRequestHeaders.Add("User-Agent", "SmartGuard-UpdateDownloader");
       httpClient.Timeout = TimeSpan.FromMinutes(10);
 
-      var downloadToken = getGitHubToken();
-      if (!string.IsNullOrWhiteSpace(downloadToken))
-      {
-        httpClient.DefaultRequestHeaders.Authorization =
-          new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", downloadToken.Trim());
-      }
       using var downloader = new HttpUpdateAssetDownloader(httpClient);
 
       var downloadProgress = new Progress<double>(value =>
@@ -200,6 +190,12 @@ internal sealed class SettingsUpdateCheckCoordinator
       ShowUpdateAlert(owner, $"下载更新失败：{ex.Message}", AppDialogSeverity.Error);
     }
   }
+
+  private static bool ShouldRetry(System.Net.HttpStatusCode? statusCode)
+    => statusCode is null
+      || statusCode == System.Net.HttpStatusCode.RequestTimeout
+      || (int)statusCode == 429
+      || (int)statusCode >= 500;
 
   private static void ShowUpdateAlert(Window owner, string message, AppDialogSeverity severity)
   {

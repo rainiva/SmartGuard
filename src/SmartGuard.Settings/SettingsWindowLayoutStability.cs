@@ -29,8 +29,9 @@ public static class SettingsWindowLayoutStability
 
     public static void StabilizeContentLayout(Window window)
     {
-        if (window.FindName("pageLogs") is not FrameworkElement pageLogs ||
-            pageLogs.Visibility != Visibility.Visible)
+        var pageLogsVisible = window.FindName("pageLogs") is FrameworkElement pageLogs &&
+            pageLogs.Visibility == Visibility.Visible;
+        if (!pageLogsVisible)
             return;
 
         if (window.Content is not FrameworkElement root)
@@ -39,6 +40,14 @@ public static class SettingsWindowLayoutStability
         root.InvalidateMeasure();
         root.InvalidateArrange();
         root.UpdateLayout();
+
+        if (window.FindName("logTable") is DataGrid logTable)
+        {
+            logTable.InvalidateMeasure();
+            logTable.InvalidateArrange();
+            logTable.UpdateLayout();
+            return;
+        }
 
         if (window.FindName("lstLogView") is not ListBox listBox)
             return;

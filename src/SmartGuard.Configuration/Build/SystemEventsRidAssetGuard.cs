@@ -20,7 +20,9 @@ public static class SystemEventsRidAssetGuard
 
     if (!ridExists)
     {
-      errors.Add($"{WinRidRelativePath} missing while {FileName} is present at bin root");
+      // Publish may flatten the win RID asset straight to the bin root
+      // without a runtimes\ tree; the stub hazard only exists when the
+      // runtimes\ copy is present alongside a stub at the root.
       return errors;
     }
 

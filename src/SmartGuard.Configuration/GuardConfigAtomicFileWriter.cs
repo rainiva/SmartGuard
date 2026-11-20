@@ -9,8 +9,11 @@ internal static class GuardConfigAtomicFileWriter
     var temp = path + ".tmp";
     File.WriteAllText(temp, content);
     BeforeMoveForTests?.Invoke(temp, path);
+    // Keep the last published policy in place until the OS commits its replacement.
+    // Delete-then-Move loses it if publication fails or the process is interrupted.
     if (File.Exists(path))
-      File.Delete(path);
-    File.Move(temp, path);
+      File.Replace(temp, path, destinationBackupFileName: null);
+    else
+      File.Move(temp, path);
   }
 }

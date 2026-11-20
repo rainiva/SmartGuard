@@ -1,9 +1,41 @@
+using System.IO;
 using System.Windows;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
 internal static class SettingsLogExportActions
 {
+  internal static void CopyCurrentPage(IReadOnlyList<LogTableRow> rows, ToastNotificationService toast)
+  {
+    try
+    {
+      Clipboard.SetText(LogViewToolbarActions.BuildCurrentPageText(rows));
+      toast.Show("当前页已复制到剪贴板", isError: false);
+    }
+    catch (Exception ex)
+    {
+      toast.Show($"复制失败：{ex.Message}", isError: true);
+    }
+  }
+
+  internal static void ExportCurrentPage(
+    IReadOnlyList<LogTableRow> rows,
+    Window window,
+    ToastNotificationService toast,
+    Action<string> exportToPath)
+  {
+    var dialog = new Microsoft.Win32.SaveFileDialog
+    {
+      Filter = "文本文件 (*.txt)|*.txt",
+      FileName = "SmartGuard.log.page.txt",
+      DefaultExt = ".txt",
+    };
+
+    if (dialog.ShowDialog(window) == true)
+      exportToPath(dialog.FileName);
+  }
+
   internal static void CopyVisible(LogViewSnapshot snapshot, ToastNotificationService toast)
   {
     try

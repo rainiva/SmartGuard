@@ -20,6 +20,12 @@
     <ProjectReference Include="..\SmartGuard.Contracts\SmartGuard.Contracts.csproj" />
   </ItemGroup>
 
+  <!-- Share the exact Win32 implementation, not an Engine executable dependency or a copied reader. -->
+  <ItemGroup>
+    <Compile Include="..\SmartGuard.Engine\Infrastructure\ForegroundProgramReader.cs" Link="Shared\ForegroundProgramReader.cs" />
+    <Compile Include="..\SmartGuard.Engine\Domain\ForegroundObservation.cs" Link="Shared\ForegroundObservation.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Page Include="SmartGuard.Settings.xaml" />
     <Page Include="Themes\Light.xaml" />

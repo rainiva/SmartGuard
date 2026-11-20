@@ -1,59 +1,59 @@
-using System.Management;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace SmartGuard.Engine.Infrastructure;
 
 public sealed class BrightnessService
 {
-  public int GetBrightness()
-  {
-    try
-    {
-      using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
-      foreach (var obj in searcher.Get().Cast<ManagementObject>())
-      {
-        return Convert.ToInt32(obj["CurrentBrightness"]);
-      }
-    }
-    catch
-    {
-      // WMI not available
-    }
-    return -1;
-  }
-
-  public void SetBrightness(int level)
-  {
-    if (level < 0 || level > 100) return;
-    try
-    {
-      using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-      var method = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
-      method?.InvokeMethod("WmiSetBrightness", new object[] { (byte)1, (byte)level });
-    }
-    catch
-    {
-      // ignore
-    }
-  }
+  private readonly WmiProbeProcess _probe;
+  public BrightnessService() : this(WmiProbeProcess.Shared) { }
+  internal BrightnessService(WmiProbeProcess probe) => _probe = probe;
+  public int GetBrightness() => GetBrightness(CancellationToken.None);
+  public int GetBrightness(CancellationToken cancellationToken) => _probe.ReadBrightness(cancellationToken);
+  public void SetBrightness(int level) => SetBrightness(level, CancellationToken.None);
+  public void SetBrightness(int level, CancellationToken cancellationToken) => _probe.SetBrightness(level, cancellationToken);
 
   public int RestoreWithRetry(int targetLevel, int maxAttempts, int delayMs)
   {
     return RestoreWithRetryAsync(targetLevel, maxAttempts, delayMs).GetAwaiter().GetResult();
   }
 
-  public async Task<int> RestoreWithRetryAsync(int targetLevel, int maxAttempts, int delayMs, CancellationToken cancellationToken = default)
+  public async Task<int> RestoreWithRetryAsync(int targetLevel, int maxAttempts, int delayMs,
+    CancellationToken cancellationToken = default, Func<bool>? canMutate = null)
   {
-    if (targetLevel < 0) return targetLevel;
-    var after = targetLevel;
-    for (var i = 0; i < maxAttempts; i++)
+    cancellationToken.ThrowIfCancellationRequested();
+    const int budgetMs = 3000;
+    if (targetLevel is < 0 or > 100 || maxAttempts is < 1 or > 5 || delayMs is < 0 or > 1000)
     {
-      SetBrightness(targetLevel);
-      await Task.Delay(delayMs, cancellationToken);
-      after = GetBrightness();
-      if (after == targetLevel) break;
+      _probe.ReportRestoreDegraded("invalid-parameter", 0, budgetMs);
+      return -1;
     }
-    return after;
+    var started = System.Diagnostics.Stopwatch.GetTimestamp();
+    using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    budget.CancelAfter(budgetMs);
+    var after = -1;
+    try
+    {
+      for (var i = 0; i < maxAttempts; i++)
+      {
+        budget.Token.ThrowIfCancellationRequested();
+        // Qualification and the total deadline are rechecked before each physical
+        // operation; an unverified write never counts as successful restoration.
+        if (canMutate?.Invoke() == false) return -1;
+        SetBrightness(targetLevel, budget.Token);
+        await Task.Delay(delayMs, budget.Token).ConfigureAwait(false);
+        budget.Token.ThrowIfCancellationRequested();
+        if (canMutate?.Invoke() == false) return -1;
+        after = GetBrightness(budget.Token);
+        budget.Token.ThrowIfCancellationRequested();
+        if (after == targetLevel) return after;
+      }
+      _probe.ReportRestoreDegraded("restore-not-converged",
+        (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, budgetMs);
+      return after;
+    }
+    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+      _probe.ReportRestoreDegraded("budget-exhausted",
+        (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, budgetMs);
+      return -1;
+    }
   }
 }

@@ -20,12 +20,14 @@ public class SingleInstanceActivationTests
     using var cts = new CancellationTokenSource();
     var signaled = new ManualResetEventSlim(false);
 
-    var serverTask = Task.Run(() =>
-      SingleInstanceActivation.RunActivationServer(component, () => signaled.Set(), cts.Token));
+    // A dedicated thread, as the server blocks for its whole life; on a loaded runner a thread-pool
+    // task may not create the pipe in time. The connect timeout is the readiness wait, so no fixed sleep.
+    var serverTask = Task.Factory.StartNew(
+      () => SingleInstanceActivation.RunActivationServer(component, () => signaled.Set(), cts.Token),
+      CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-    Thread.Sleep(100);
-    SingleInstanceActivation.TryNotifyExisting(component, timeoutMs: 1000).Should().BeTrue();
-    signaled.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue();
+    SingleInstanceActivation.TryNotifyExisting(component, timeoutMs: 10000).Should().BeTrue();
+    signaled.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
 
     cts.Cancel();
     serverTask.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue();

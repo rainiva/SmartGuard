@@ -6,7 +6,6 @@ public static class GuardConfigResetService
   {
     var reset = GuardConfig.CreateDefault(root);
     reset.LogFile = current.LogFile;
-    reset.GitHubToken = current.GitHubToken;
     reset.ManualHighPerformanceUntil = null;
     return reset;
   }

@@ -110,6 +110,7 @@ internal sealed class SettingsNavigationShell
         "logs" or "日志" => 3,
         "display" or "显示" => 4,
         "about" or "关于" => 5,
+        "diagnostic" or "diagnostics" or "诊断" or "诊断详情" => 5,
         _ => 0,
       };
 
@@ -117,16 +118,22 @@ internal sealed class SettingsNavigationShell
     });
   }
 
-  internal void WireWindowState(ListBox navList, Action<bool, LogPageActivationReason> setLogPageActive)
+  internal void WireWindowState(
+    ListBox navList,
+    Action<bool, LogPageActivationReason> setLogPageActive)
   {
     _window.StateChanged += (_, _) =>
     {
       if (_window.WindowState == WindowState.Minimized)
+      {
         setLogPageActive(false, LogPageActivationReason.Navigation);
+      }
       else
+      {
         setLogPageActive(
           navList.SelectedIndex == 3,
           LogPageActivationReason.WindowRestored);
+      }
     };
   }
 

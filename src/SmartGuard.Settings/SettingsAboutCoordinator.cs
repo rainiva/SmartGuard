@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using SmartGuard.Configuration;
 
 namespace SmartGuard.Settings;
 
@@ -15,7 +16,7 @@ internal sealed class SettingsAboutCoordinator
     return $"{version.Major}.{version.Minor}.{version.Build}";
   }
 
-  internal void WireAboutPage(Window window, TextBlock txtVersion, Func<string?> getGitHubToken)
+  internal void WireAboutPage(Window window, TextBlock txtVersion)
   {
     txtVersion.Text = GetDisplayVersion();
 
@@ -42,7 +43,7 @@ internal sealed class SettingsAboutCoordinator
       btnCheckUpdate.IsEnabled = false;
       try
       {
-        await _updateCheck.CheckForUpdateAsync(window, getGitHubToken).ConfigureAwait(true);
+        await _updateCheck.CheckForUpdateAsync(window).ConfigureAwait(true);
       }
       catch (Exception ex)
       {
@@ -57,6 +58,27 @@ internal sealed class SettingsAboutCoordinator
           btnCheckUpdate.IsEnabled = true;
         });
       }
+    };
+  }
+
+  internal void WireLogRetention(Window window, GuardConfig config, Action<GuardConfig> saveConfig)
+  {
+    if (window.FindName("cmbLogRetentionDays") is not ComboBox retentionDays)
+      return;
+
+    retentionDays.SelectedValue = Math.Clamp(config.LogRetentionDays, 1, 365).ToString(
+      System.Globalization.CultureInfo.InvariantCulture);
+    retentionDays.SelectionChanged += (_, _) =>
+    {
+      if (!int.TryParse(
+            retentionDays.SelectedValue?.ToString(),
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var days))
+        return;
+
+      config.LogRetentionDays = days;
+      saveConfig(config);
     };
   }
 }

@@ -1,8 +1,9 @@
-﻿using SmartGuard.Configuration;
+using SmartGuard.Configuration;
 using SmartGuard.Configuration.Cli;
 using SmartGuard.Contracts;
 using SmartGuard.Engine.Cli;
 using SmartGuard.Engine.Worker;
+using SmartGuard.Engine.Infrastructure;
 
 namespace SmartGuard.Engine;
 
@@ -10,8 +11,11 @@ public static class Program
 {
   public static int Main(string[] args)
   {
+    // Children bypass configuration, logs and the guardian single-instance lock.
+    if (WmiProbeCommand.TryRun(args, out var probeExitCode)) return probeExitCode;
     var parsed = CommandLineParser.Parse(args);
     var root = InstallRootResolver.Resolve(parsed.Root, args);
+    GlobalExceptionHandlers.Register("Engine", root);
     var configPath = SmartGuardPaths.ConfigFile(root);
     var statusPath = SmartGuardPaths.StatusFile(root);
     var initMarker = SmartGuardPaths.InitMarkerFile(root);
@@ -37,11 +41,7 @@ public static class Program
     if (!guard.IsOwner)
     {
       Console.WriteLine("SmartGuard 核心服务已在后台运行。");
-      try
-      {
-        File.AppendAllText(fallbackLog, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 核心服务已在运行{Environment.NewLine}");
-      }
-      catch { /* ignore */ }
+      SmartGuardLogWriter.TryAppendSupplementalLines(fallbackLog, [$"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 核心服务已在运行"]);
       return 0;
     }
 

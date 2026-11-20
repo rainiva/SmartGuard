@@ -12,6 +12,8 @@ internal sealed class SettingsPolicyCoordinator
   private readonly ToastNotificationService _toastService;
   private readonly SettingsPlanCatalogCoordinator _planCatalog;
   private readonly SettingsPauseHandler _pauseHandler;
+  private readonly SettingsForegroundCoordinator _foreground;
+  private readonly SettingsProgramSearchCoordinator _programSearch;
   private readonly SettingsDebouncedSaver _debouncedSaver;
   private readonly NumberBox _sldBalanced;
   private readonly NumberBox _sldSaver;
@@ -76,6 +78,27 @@ internal sealed class SettingsPolicyCoordinator
       lblPlanMappingStatus,
       () => _originalConfig,
       ReadConfigFromUi);
+    _foreground = new SettingsForegroundCoordinator(
+      root,
+      Require<CheckBox>(window, "tglForegroundRestriction"),
+      Require<ListBox>(window, "lstForegroundPrograms"),
+      Require<Button>(window, "btnAddForegroundProgram"),
+      Require<Button>(window, "btnRemoveForegroundProgram"),
+      Require<TextBlock>(window, "txtForegroundGuardStatus"),
+      Require<TextBlock>(window, "lblForegroundListHint"),
+      (message, isError) => toastService.Show(message, isError),
+      () => _debouncedSaver.QueueSave(),
+      observationDuration: Require<NumberBox>(window, "numForegroundObservation"),
+      identifyProgram: Require<Button>(window, "btnIdentifyForegroundProgram"),
+      verifyProgram: Require<Button>(window, "btnVerifyForegroundProgram"),
+      verificationHint: Require<TextBlock>(window, "txtForegroundVerificationHint"),
+      window: window);
+    _programSearch = new SettingsProgramSearchCoordinator(
+      Require<TextBox>(window, "txtForegroundProgramSearch"),
+      Require<ListBox>(window, "lstForegroundSearchResults"),
+      Require<TextBlock>(window, "txtForegroundSearchHint"),
+      candidate => _foreground.AddProgramPath(candidate.ExecutablePath, candidate.Name, candidate.Icon, candidate.Source),
+      refresh: Require<Button>(window, "btnRefreshForegroundPrograms"), onRefresh: _foreground.RequestPathCheck);
     _pauseHandler = new SettingsPauseHandler(
       root,
       repository,
@@ -107,6 +130,8 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    _foreground.ApplyConfigToUi(config);
+    _foreground.RefreshGuardStatus();
   }
 
   internal void WireInstantApply()
@@ -149,6 +174,7 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotifyExternal.Unchecked += (_, _) => QueueSave();
     _tglAutoStart.Checked += (_, _) => QueueSave();
     _tglAutoStart.Unchecked += (_, _) => QueueSave();
+    _foreground.WireInstantApply();
 
     var btnResetDefaults = _window.FindName("btnResetDefaults") as Button;
     if (btnResetDefaults is not null)
@@ -173,7 +199,10 @@ internal sealed class SettingsPolicyCoordinator
       paused: _originalConfig.Paused,
       notifyOnPlanChange: _tglNotify.IsChecked == true,
       notifyOnExternalChange: _tglNotifyExternal.IsChecked == true,
-      autoStartEnabled: _tglAutoStart.IsChecked == true);
+      autoStartEnabled: _tglAutoStart.IsChecked == true,
+      foregroundRestrictionEnabled: _foreground.RestrictionEnabled,
+      foregroundProgramPaths: _foreground.ProgramPaths,
+      foregroundObservationSec: _foreground.ObservationSeconds);
   }
 
   internal void CommitSavedConfig(GuardConfig config) => _originalConfig = config;
@@ -188,9 +217,15 @@ internal sealed class SettingsPolicyCoordinator
 
   internal void Dispose()
   {
+    _programSearch.Dispose();
+    _foreground.Dispose();
     _debouncedSaver.Dispose();
     _planCatalog.Dispose();
   }
+
+  private static T Require<T>(Window window, string name) where T : class
+    => window.FindName(name) as T
+      ?? throw new InvalidOperationException($"Missing control: {name}");
 
   private void ApplyConfigToUi(GuardConfig config)
   {
@@ -204,6 +239,8 @@ internal sealed class SettingsPolicyCoordinator
     _tglNotify.IsChecked = config.NotifyOnPlanChange;
     _tglNotifyExternal.IsChecked = config.NotifyOnExternalChange;
     _tglAutoStart.IsChecked = config.AutoStartEnabled;
+    _foreground.ApplyConfigToUi(config);
+    _foreground.RefreshGuardStatus();
     _planCatalog.ApplyPlanCombosToUi(config);
   }
 
@@ -212,7 +249,7 @@ internal sealed class SettingsPolicyCoordinator
     if (!AppDialog.ShowConfirm(
           _window,
           "恢复默认策略？",
-          "将把守护策略恢复为默认值。\n\n日志文件路径与 GitHub Token 会保留，手动高性能接管会被清除。",
+          "将把守护策略恢复为默认值。\n\n日志文件路径会保留，手动高性能接管会被清除。",
           AppDialogSeverity.Warning))
       return;
 

@@ -33,7 +33,8 @@ public class TrayDisplaySettingsCacheTests
     public void Repository_backed_cache_reloads_within_ttl_after_external_config_rewrite()
     {
         TrayDisplaySettingsCache.ResetForTests();
-        TrayDisplaySettingsCache.CacheDuration = TimeSpan.FromSeconds(5);
+        // A TTL far longer than the wait below: only the file watcher can make the change visible in time.
+        TrayDisplaySettingsCache.CacheDuration = TimeSpan.FromMinutes(1);
 
         var dir = Path.Combine(Path.GetTempPath(), "SmartGuardTrayCache_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -52,12 +53,14 @@ public class TrayDisplaySettingsCacheTests
             config = repository.LoadOrDefault(dir);
             config.NotifyOnPlanChange = false;
             repository.Save(config);
-            Thread.Sleep(200);
 
-            cache.NotifyOnPlanChange.Should().BeFalse();
+            // Watcher delivery latency varies (CI runners exceeded a fixed 200 ms); poll within a bound.
+            SpinWait.SpinUntil(() => !cache.NotifyOnPlanChange, TimeSpan.FromSeconds(5))
+                .Should().BeTrue("the external rewrite must invalidate the cache well within its TTL");
         }
         finally
         {
+            TrayDisplaySettingsCache.ResetForTests();
             try { Directory.Delete(dir, true); } catch { }
         }
     }

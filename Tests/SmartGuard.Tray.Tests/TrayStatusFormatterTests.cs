@@ -5,6 +5,15 @@ namespace SmartGuard.Tray.Tests;
 public class TrayStatusFormatterTests
 {
   [Fact]
+  public void Unknown_brightness_is_not_presented_as_a_negative_percentage()
+  {
+    TrayStatusFormatter.FormatTooltip(new StatusPayload { brightness = -1 })
+      .Should().Contain("亮度未知").And.NotContain("-1%");
+    TrayNotificationHelper.FormatPlanChangeBalloon("平衡", -1)
+      .Should().Contain("亮度尚未确认").And.NotContain("-1%");
+  }
+
+  [Fact]
   public void FormatTooltip_includes_plan_battery_and_brightness()
   {
     var status = new StatusPayload
@@ -17,7 +26,7 @@ public class TrayStatusFormatterTests
     };
 
     TrayStatusFormatter.FormatTooltip(status)
-      .Should().Be("计划: 高性能 | 90% 插电 | 亮度56%");
+      .Should().Be("计划: 高性能 | 90% 插电 | 亮度56% | 日志状态未知");
   }
 
   [Fact]
@@ -39,6 +48,6 @@ public class TrayStatusFormatterTests
     };
 
     TrayStatusFormatter.FormatStatusLine(status)
-      .Should().Be("计划：平衡 | 50% 电池 | 已暂停");
+      .Should().Be("计划：平衡 | 50% 电池 | 已暂停 | 日志状态未知");
   }
 }

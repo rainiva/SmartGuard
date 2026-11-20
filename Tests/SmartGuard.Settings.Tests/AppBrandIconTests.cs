@@ -77,12 +77,11 @@ public class AppBrandIconTests
             var window = new Window
             {
                 ShowInTaskbar = true,
-                ShowActivated = false,
-                Opacity = 0,
-                WindowState = WindowState.Normal,
-                Left = 0,
-                Top = 0,
             };
+            WpfStaTestHost.PrepareHeadlessWindow(window);
+            // This test verifies the real taskbar icon shape, so keep the
+            // taskbar entry while the window itself stays off-screen.
+            window.ShowInTaskbar = true;
 
             AppBrandIcon.ApplyTo(window);
             window.Show();

@@ -169,4 +169,80 @@ public class GuardConfigRepositoryTests
       Directory.Delete(dir, recursive: true);
     }
   }
+
+  [Fact]
+  public void Save_round_trips_log_minimum_level()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.LogMinimumLevel = "Debug";
+      repo.Save(config);
+
+      var loaded = new GuardConfigRepository(path).TryLoad();
+      loaded.Should().NotBeNull();
+      loaded!.LogMinimumLevel.Should().Be("Debug");
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
+
+  [Fact]
+  public void Save_round_trips_log_heart_min_interval()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.LogHeartMinIntervalSec = 120;
+      repo.Save(config);
+
+      var loaded = new GuardConfigRepository(path).TryLoad();
+      loaded.Should().NotBeNull();
+      loaded!.LogHeartMinIntervalSec.Should().Be(120);
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
+
+  [Fact]
+  public void Save_round_trips_archive_retention_limits()
+  {
+    var dir = Path.Combine(Path.GetTempPath(), "SmartGuard.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, "SmartGuard.config.json");
+
+    try
+    {
+      var repo = new GuardConfigRepository(path);
+      var config = GuardConfig.CreateDefault(dir);
+      config.LogRetentionDays = 30;
+      config.LogMaxArchiveFiles = 10;
+      config.LogDirectoryMaxBytes = 52_428_800;
+      repo.Save(config);
+
+      var loaded = new GuardConfigRepository(path).TryLoad();
+      loaded.Should().NotBeNull();
+      loaded!.LogRetentionDays.Should().Be(30);
+      loaded.LogMaxArchiveFiles.Should().Be(10);
+      loaded.LogDirectoryMaxBytes.Should().Be(52_428_800);
+    }
+    finally
+    {
+      Directory.Delete(dir, recursive: true);
+    }
+  }
 }

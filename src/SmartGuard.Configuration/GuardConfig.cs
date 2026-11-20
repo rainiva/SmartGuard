@@ -22,6 +22,11 @@ public sealed class GuardConfig
   public string LogFile { get; set; } = string.Empty;
   public bool Paused { get; set; }
   public long LogMaxBytes { get; set; } = 1_048_576;
+  public string LogMinimumLevel { get; set; } = "Info";
+  public int LogHeartMinIntervalSec { get; set; } = 60;
+  public int LogRetentionDays { get; set; } = LogArchivePlanner.DefaultRetainDays;
+  public int LogMaxArchiveFiles { get; set; } = 30;
+  public long LogDirectoryMaxBytes { get; set; } = 104_857_600;
   public int BrightnessRetryCount { get; set; } = 3;
   public int BrightnessRetryDelayMs { get; set; } = 100;
   public bool NotifyOnPlanChange { get; set; } = true;
@@ -30,10 +35,13 @@ public sealed class GuardConfig
   public bool AutoStartEnabled { get; set; } = true;
   public bool ThemeFollowSystem { get; set; } = true;
   public bool ThemeIsDark { get; set; }
-  public string GitHubToken { get; set; } = string.Empty;
-
   [JsonPropertyName("ManualHighPerformanceUntil")]
   public DateTime? ManualHighPerformanceUntil { get; set; }
+
+  public LogViewPreferences LogViewPreferences { get; set; } = new();
+  public bool ForegroundRestrictionEnabled { get; set; }
+  public int ForegroundObservationSec { get; set; } = 180;
+  public List<string> ForegroundProgramPaths { get; set; } = new();
 
   public bool IsManualHighPerformanceActive(DateTime now)
     => ManualHighPerformanceUntil is { } until && until > now;
@@ -63,12 +71,19 @@ public sealed class GuardConfig
       LogFile = SmartGuardPaths.DefaultLogFile(root),
       Paused = false,
       LogMaxBytes = 1_048_576,
+      LogMinimumLevel = "Info",
+      LogHeartMinIntervalSec = 60,
+      LogRetentionDays = LogArchivePlanner.DefaultRetainDays,
+      LogMaxArchiveFiles = 30,
+      LogDirectoryMaxBytes = 104_857_600,
       BrightnessRetryCount = 3,
       BrightnessRetryDelayMs = 100,
       NotifyOnPlanChange = true,
       NotifyOnExternalChange = true,
       HeartbeatIntervalMin = 10,
       AutoStartEnabled = true,
+      ForegroundRestrictionEnabled = false,
+      ForegroundProgramPaths = new List<string>(),
     };
   }
 

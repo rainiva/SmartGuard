@@ -9,6 +9,9 @@ public class LogLineFormatterTests
   [InlineData(LogLevel.Warn, "[WARN]")]
   [InlineData(LogLevel.Error, "[ERROR]")]
   [InlineData(LogLevel.Heart, "[HEART]")]
+  [InlineData(LogLevel.Trace, "[TRACE]")]
+  [InlineData(LogLevel.Debug, "[DEBUG]")]
+  [InlineData(LogLevel.Critical, "[CRITICAL]")]
   public void Format_includes_level_tag(LogLevel level, string tag)
   {
     var line = LogLineFormatter.Format(new DateTime(2026, 6, 16, 16, 0, 13), level, "test message");
@@ -32,5 +35,12 @@ public class LogLineFormatterTests
       "亮度写回未完全匹配，已重试 3 次");
     line.Should().Be("[WARN] 2026-06-16 16:00:13 亮度写回未完全匹配，已重试 3 次");
     line.Should().NotContain("WARN:");
+  }
+
+  [Fact]
+  public void BuildContextSuffix_returns_empty_string_when_all_context_null()
+  {
+    var suffix = LogLineFormatter.BuildContextSuffix(null, null, null, null);
+    suffix.Should().BeEmpty();
   }
 }
