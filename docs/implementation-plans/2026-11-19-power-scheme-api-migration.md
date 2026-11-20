@@ -243,4 +243,55 @@ Task 4 与 Task 6 的 RED 前后，机器状态快照一致：当前方案为高
 
 ## 第二阶段实施与验证记录
 
-（Task 7 填写。）
+计划：[2026-11-19-power-scheme-api-phase2-plan.md](2026-11-19-power-scheme-api-phase2-plan.md) 第 3 版。证据目录 `.work/power-scheme-api-phase2/`（不提交）。
+
+**基线（Task 0，HEAD `aea65cd0`）：** Configuration 495 通过、1 跳过；Engine 430；Settings 632；Tray 88；Architecture 348；均 0 失败。
+
+**各任务 RED / GREEN：**
+
+| Task | 提交 | RED | GREEN |
+|------|------|-----|-------|
+| 0.5 列举截断 | `59007c4d` | 1 例失败：达到上限仍返回 0 | Configuration 498/1 跳过、Engine 430、Architecture 348；只读 Live 5 通过 |
+| 1 共享加载核心与快照 | `fa9deda9` | 7 例按行为失败（快照恒为 Loading、替身未被调用），旧用例 16 例通过 | Configuration 503/1、Engine 430、Settings 632；删除 2 个经 powercfg 覆盖钩子的旧用例，保留缓存复用用例 |
+| 2 Settings 只读快照 | `b3fa1d81` | 6 例失败：UI 线程调用加载器 4 次、3 个文案、协调器失败状态超时、读名失败文案；架构 1 例 | Configuration 503/1、Settings 639、Architecture 348 |
+| 3 删除同步与 powercfg 目录路径 | `c0760492` | 门禁 1 例失败 | Configuration 500/1（解析器 3 例随之删除）、Engine 430、Settings 639、Architecture 349 |
+| 4 Tray 一键高性能 | `605c478d` | 3 例按原缺陷失败：替身未被调用；切换已开始后 4 秒未返回；失败未写日志。RED 前后本机方案均为“平衡”，无残留子进程 | Configuration 503/1、Tray 88、Architecture 349；删除测试边界后保持全绿 |
+| 5 删除 powercfg 包装、门禁扩展到全部 src | `f3f196a7` | 门禁 1 例失败 | 五个项目全绿 |
+| 6 契约 | `2bc920f1` | 1 例失败 | Architecture 349 |
+
+**全量测试：** `Run-Tests.ps1` 退出码 0，summary `run-tests-20261120T010434342Z-686b07e104ce48a3b5849455965497b2.summary.json`。
+
+| 层 | 通过 | 失败 | 跳过 |
+|----|------|------|------|
+| Pester | 157 | 0 | 0 |
+| .NET | 2076 | 0 | 0 |
+| Tray Integration | 2 | 0 | 0 |
+| Installer Integration | 9 | 0 | 0 |
+
+全量运行不含 `Category=Live`，因此 Configuration 为 498。
+
+**安装：**
+- 安装包 `dist\SmartGuard-Setup-1.6.5-x64.exe`，SHA256 `2F4FDBDB22A4E3963945CACDF805B50F0D2CC707C51EB7D24EF20B5B07B42F33`。
+- 用户确认 UAC 安装后核对：Engine、Configuration、Settings、Tray 四个 DLL 与候选一致；版本 `1.6.5+2bc920f1`；配置哈希未变；Engine、Tray 在交互会话运行，启动日志无告警。
+
+**powercfg 启动监视（`Win32_ProcessStartTrace`）：** **PASS**。
+- 有 `watch-started`（10:10:06）。
+- 首尾两次阳性对照（10:10:36、10:13:11）各记录一行，父进程为用户终端。
+- 停止行 `failure=[]`。
+- 除两次对照外没有任何 powercfg 启动。
+
+**真实路径验收：**
+- **托盘一键高性能：PASS。** 在“平衡”下点击，主日志 10:12:38 记录“托盘手动切换高性能（保持至 11:12）”，没有“立即切换未完成”。Engine 10:12:51 报告“正在使用手动选择的高性能计划，无需切换”，没有报告外部变更。
+- **设置窗口：部分观察。** 用户打开查看时名称已加载完成。“正在加载”到映射结果的过程，以及从打开到名称出现的耗时，没有观察到。下拉框是否卡顿也没有单独确认。
+- **NOT RUN（由自动化用例覆盖，真机不可控）：** 目录“无法读取列表”与“名称读取失败”；方案超过 256 个时列举被截断；托盘切换超时与错误码。
+
+**实施偏离：**
+- **计划背景发现 #2 不准确。** 打开窗口时不调用 `ApplyPlanCombosToUi`。UI 线程上的同步 `TryLoad()` 发生在后台加载完成后的重新填充（`ApplyPlanCatalog → RepopulatePlanCombos` 与 `UpdatePlanMappingStatus`）中，而且只在目录不完整、不能缓存时才调用加载器。窗口用例最初用完整目录，在旧代码上通过了；改用缺少节能方案的目录后，RED 正确失败。
+- **两次删除没有用精确补丁。** Task 1 删除旧用例、Task 3 删除旧成员时，用了一小段 Python 按行号删除。事后核对：两份差异都只有删除行（78 行、187 行），无 BOM，换行未变。
+- **托盘“调用仍在进行”文案。** 沿用 Engine 的文案，但去掉“本轮未发起”，因为托盘没有轮次。代码注释已写明，不说成“文案相同”。
+- **机器状态快照。** Task 4 第一次记录在 Git Bash 中进行，`/getactivescheme` 被 MSYS 改写成路径，记录无效；改在 PowerShell 中重做。
+
+**范围外发现（只记录，待用户决定）：** 托盘集成测试会停掉已安装的守护程序，再在临时根目录用默认配置启动真实 Engine。
+- **切换计划（原有问题）：** 默认配置不限制前台程序，用户活跃且接通电源时，这个 Engine 会把本机切到高性能。本次全量运行使本机从“平衡”变为“高性能”。第一阶段全量运行前本机已是高性能，所以没能发现。
+- **写入亮度设置项（本分支引入）：** 临时根目录没有完成标记，`8311b1e5` 恢复首次初始化调用后，这个 Engine 会对三档默认计划真实写入 `ADAPTBRIGHT=0` 和 `VIDEONORMALLEVEL=当前亮度`。本机写入值与原值相同（30、0），前后对比看不出变化，但写入确实发生。
+- 两点合起来，每次提权运行 `Run-Tests.ps1` 都会修改本机电源设置，违反“测试只读真实电源设置”。
