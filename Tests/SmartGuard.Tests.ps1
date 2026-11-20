@@ -515,6 +515,10 @@ print(json.dumps(result))" $icon $officialDir
                     $selectionPath,
                     @('SmartGuard.Settings.Tests.WpfStaTestHostTests.self_test'),
                     [System.Text.UTF8Encoding]::new($false))
+                # The probe is not a test project, so nothing else restores it (a clean CI checkout has no
+                # assets file); restore it here before the --no-restore runs below.
+                & dotnet restore $projectPath | Out-Null
+                $LASTEXITCODE | Should -Be 0
                 & dotnet run --project $projectPath --no-restore -- `
                     --mode test-contamination `
                     --run-directory $failedDirectory `
