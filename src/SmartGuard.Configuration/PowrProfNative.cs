@@ -18,6 +18,7 @@ internal sealed class PowrProfNative : IPowrProfNative
 {
   internal static readonly PowrProfNative Instance = new();
   private const uint ErrorNoMoreItems = 259;
+  private const uint ErrorMoreData = 234;
   private const uint AccessScheme = 16;
   private const uint MaxSchemes = 256;
 
@@ -52,21 +53,35 @@ internal sealed class PowrProfNative : IPowrProfNative
     return 0;
   }
 
-  public uint EnumerateSchemes(out Guid[] schemes)
+  public uint EnumerateSchemes(out Guid[] schemes) => EnumerateBounded(EnumerateAt, MaxSchemes, out schemes);
+
+  private static (uint Rc, Guid Scheme) EnumerateAt(uint index)
+  {
+    var buffer = new byte[16];
+    var size = (uint)buffer.Length;
+    var rc = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, AccessScheme, index, buffer, ref size);
+    return (rc, rc == 0 ? new Guid(buffer) : Guid.Empty);
+  }
+
+  // Reads at most `max` schemes. A list is complete only when the API reports ERROR_NO_MORE_ITEMS; an item
+  // past the cap means the list was cut, reported as ERROR_MORE_DATA so callers treat the list as unknown
+  // instead of concluding that unlisted schemes are absent. At most max + 1 native calls.
+  internal static uint EnumerateBounded(Func<uint, (uint Rc, Guid Scheme)> enumerateAt, uint max, out Guid[] schemes)
   {
     var found = new List<Guid>();
     schemes = [];
-    for (uint index = 0; index < MaxSchemes; index++)
+    for (uint index = 0; ; index++)
     {
-      var buffer = new byte[16];
-      var size = (uint)buffer.Length;
-      var rc = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, AccessScheme, index, buffer, ref size);
-      if (rc == ErrorNoMoreItems) break;
+      var (rc, scheme) = enumerateAt(index);
+      if (rc == ErrorNoMoreItems)
+      {
+        schemes = found.ToArray();
+        return 0;
+      }
       if (rc != 0) return rc;
-      found.Add(new Guid(buffer));
+      if (index == max) return ErrorMoreData;
+      found.Add(scheme);
     }
-    schemes = found.ToArray();
-    return 0;
   }
 
   public uint ReadValueIndex(Guid scheme, Guid subgroup, Guid setting, PowerSource source, out uint value)
