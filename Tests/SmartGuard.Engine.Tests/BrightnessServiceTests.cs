@@ -112,4 +112,33 @@ public class BrightnessServiceTests
     Assert.Equal(-1, await service.RestoreWithRetryAsync(50, 3, 0, canMutate: () => permitted));
     Assert.Equal(1, calls);
   }
+
+  [Fact]
+  public void Brightness_reads_return_after_the_unproven_child_is_proven()
+  {
+    var clock = new FakeClock();
+    var released = false;
+    var calls = 0;
+    var probe = new WmiProbeProcess((_, _, _, _) => Task.FromResult(++calls == 1
+      ? new PowerCfgCommandResult(true, true, null, "", "") { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false,
+          PendingCleanup = UnconfirmedChild.ForTests(() => (released, released ? "confirmed" : "pipes-open"), "pipes-open") }
+      : new PowerCfgCommandResult(true, false, 0, "SGWMI1|brightness|63", "")), clock);
+    var brightness = new BrightnessService(probe);
+
+    Assert.Equal(-1, brightness.GetBrightness());
+    clock.Advance(TimeSpan.FromSeconds(31));
+    Assert.Equal(-1, brightness.GetBrightness());             // still unproven: no new child
+    Assert.Equal(1, calls);
+    released = true;
+    Assert.Equal(63, brightness.GetBrightness());             // proven: a new child reads the real level
+    Assert.Equal(2, calls);
+  }
+
+  private sealed class FakeClock : TimeProvider
+  {
+    private long _ticks;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => _ticks;
+    internal void Advance(TimeSpan elapsed) => _ticks += elapsed.Ticks;
+  }
 }
