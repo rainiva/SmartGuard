@@ -65,8 +65,8 @@
 | `SyncPlanBrightnessAsync`（切换前写目标方案） | `WriteValueIndex` AC、DC 各一次；文档规定对活动方案的修改需 `SetActive` 生效，切换紧随其后，语义一致 | 一 |
 | `GuardianFirstRunInitializer` | 能力探测改为 `ReadValueIndex(Balanced, VideoNormalLevel, AC)`（只读）：成功为支持，Win32 码 2 为不支持，其他失败为探测失败（保持模式、不写完成标记、下次启动重试）；关闭自适应亮度与亮度对齐用 `WriteValueIndex`，任一写入失败不写标记、不报“已对齐”。生产启动入口自 `7be38e78` 起缺失，第一阶段不恢复 | 一 |
 | Guardian 计划名称（`LoadPlanCatalogAsync`） | 启动时经 `PowerPlanCatalogProvider.TryLoadOnceAsync` 列举一次全部方案并读名称（保留自定义计划名称显示），补读隐藏的内置方案；列举与读名共享 5 秒总预算（取代旧的 2 秒目录预算），耗尽时返回部分目录并报告 `timed-out`；隐藏方案只忽略 Win32 2；结果缓存于 Guardian 状态 | 一 |
-| `PowerPlanCatalogProvider`（Settings 目录） | `EnumerateSchemes` + `ReadName`，再补隐藏的内置方案名称；对外签名与重试语义不变 | 二 |
-| Tray `PowerPlanActivator` | `SetActive`（带截止，修复当前无超时 `WaitForExit`） | 二 |
+| `PowerPlanCatalogProvider`（Settings 目录） | `EnumerateSchemes` + `ReadName`，再补隐藏的内置方案名称；对外签名与重试语义不变 | 二（已完成） |
+| Tray `PowerPlanActivator` | `SetActive`（带截止，修复当前无超时 `WaitForExit`） | 二（已完成） |
 
 `PowerCfgProcessRunner` 第二阶段后仅剩 `RunProcessAsync` 供 WMI 探测使用；powercfg 包装与文本解析器（`ParseActiveSchemeGuid`、`ParsePowerSchemeList`、`PowerPlanCatalogParser` 的 powercfg 部分）删除。
 
@@ -240,3 +240,7 @@ Task 4 与 Task 6 的 RED 前后，机器状态快照一致：当前方案为高
 
 - 计划中 `cond ? (5, …) : (0, …)` 形式的元组三元表达式无法隐式转换为 `(uint, …)`（CS0266），实施时改为 `5u`/`0u`。由逐任务编译门禁发现。
 - Task 7 替换 5 个测试文件中的旧枚举名时使用了 `sed -i`，不符合“精确补丁”规则。事后核对字节、编码与换行均未变化，每个文件仅改 1 行。
+
+## 第二阶段实施与验证记录
+
+（Task 7 填写。）

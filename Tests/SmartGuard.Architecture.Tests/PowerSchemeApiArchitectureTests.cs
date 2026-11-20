@@ -41,6 +41,8 @@ public class PowerSchemeApiArchitectureTests
     var contract = SourceScanHelper.ReadSource("docs/ARCHITECTURE-CONTRACT.md");
     contract.Should().Contain("PWR-INV-SCHEME-API").And.Contain("`PowerSchemeService`");
     contract.Should().NotContain("`powercfg /setactive`", "lifecycle gating now names the API call");
+    contract.Should().NotContain("第二阶段前的登记例外", "phase two removed the Settings/Tray exceptions");
+    contract.Should().Contain("PowerPlanCatalogSnapshot");
   }
 
   [Fact]

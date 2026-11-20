@@ -66,7 +66,7 @@
 | 暂停状态展示 | `status.json` `paused`（Tray 菜单与 Settings `tglPaused` 初始展示读源） | Tray、Settings | `ConfigMutationService.SetPaused` | Tray/Settings 读 `config.Paused` 决定展示或切换 |
 | 前台限制规则配置 | `config.ForegroundRestrictionEnabled`（默认 `false`）+ `config.ForegroundProgramPaths`（默认空名单）；旧配置缺字段兼容为关闭+空名单；路径规则与规范化单源 = `GuardConfigValidator`（Win32 绝对 `.exe` 路径、`Path.GetFullPath` 规范化、`OrdinalIgnoreCase` 去重、≤128 项、单条 ≤32767 字符） | Engine 决策、Settings/Tray 展示 | `GuardConfigRepository.Save`、`ConfigMutationService` | 第二套路径规则/规范化算法；通配符、相对路径、设备路径条目；非法名单静默降级为无限制或静默丢弃条目 |
 | 自动守护决策 | `PolicyEngine.Evaluate`（Domain 唯一自动决策入口：输入空闲/电源/前台事实 `ForegroundObservation`/配置/显式本地当前时间，输出 `GuardDecision`，空目标 = 不干预；决策原因稳定代码 `GuardDecisionReason`）；前台准入子规则唯一产出 = `PolicyEngine.EvaluateAdmission`（`Evaluate` 内部复用，轻路径与完整轮次共用同一名单规则，不复制逻辑；空/非法名单跳过进程查询）；`GuardianIterationRunner` 只消费该决策，守护动作资格 = `GuardConfigRepository.TryLoad` 有效性（`LoadOrDefault` 不得授权动作）；候选切换先完成慢亮度及强制供电探测，再采空闲、有效配置、当前前台及本地时间，经 Evaluate 决定切前同步、切换和纠偏通知；不承诺原子切换 | `GuardianIterationRunner`；`GuardianCycleCoordinator`（轻路径准入比较）；状态发布经 `GuardDecisionCodes` 映射为登记代码写入 status.json（配置不可用=config-unavailable、探测失败=probe-failed、生命周期阻止=blocked-by-lifecycle） | `PolicyEngine.Evaluate` | 第二套预期计划推导（`GetExpectedPlanGuid` 已退役）；Runner 内联阈值/人工期限推导；第二套名单匹配/准入算法；配置不可用时用默认配置猜测授权；使用复核前旧事实授权切前副作用；限制族不干预期间发“将纠偏”通知或不吸收基线 |
-| 电源方案操作 | `PowerSchemeService`（Configuration：读/切换当前方案、方案名称、方案列表、`VIDEONORMALLEVEL`/`ADAPTBRIGHT` 读写；真实原生层每进程一个单飞执行器 `PowerSchemeExecutor`，截止 2 秒、列举 5 秒，在途返回前拒绝新调用为 `call-pending`，未进入原生层的工作项在调用方放弃或写准入撤销时跳过；健康事实 `IsCallInFlight`/`InFlightSince`/`LastSucceededAt`） | Engine 守护轮次、首次初始化、Guardian 计划名称；Settings 计划目录与 Tray 一键高性能为第二阶段前的登记例外 | `PowerSchemeService` | Engine 启动 `powercfg.exe`；在 `PowrProfNative` 之外导入电源方案函数；API 失败回退外部进程 |
+| 电源方案操作 | `PowerSchemeService`（Configuration：读/切换当前方案、方案名称、方案列表、`VIDEONORMALLEVEL`/`ADAPTBRIGHT` 读写；真实原生层每进程一个单飞执行器 `PowerSchemeExecutor`，截止 2 秒、列举 5 秒，在途返回前拒绝新调用为 `call-pending`，未进入原生层的工作项在调用方放弃或写准入撤销时跳过；健康事实 `IsCallInFlight`/`InFlightSince`/`LastSucceededAt`） | Engine 守护轮次、首次初始化、Guardian 计划名称、Settings 计划目录、Tray 一键高性能 | `PowerSchemeService` | 任何进程启动 `powercfg.exe`；在 `PowrProfNative` 之外导入电源方案函数；API 失败回退外部进程 |
 | 守护状态稳定代码 | `GuardStatusCodes`（`SmartGuard.Contracts` 登记表：sources `manual`/`automatic`/`none` + reasons 全量 kebab-case 代码，含 `config-unavailable`/`blocked-by-lifecycle`/`probe-failed`）；枚举映射唯一入口 = `GuardDecisionCodes`（Engine.Domain） | Engine 发布、Tray/Settings 展示 | Engine（经登记映射） | 第二套代码表或枚举直写字符串；展示文案出现在 Engine；UI 信任未登记代码 |
 | 前台事实采集 | `ForegroundProgramReader`（Engine物理源码，Settings链接编译同一实现）：单次 Win32 查询（`GetForegroundWindow` → `GetWindowThreadProcessId` → `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` → `QueryFullProcessImageNameW`）后复核前台 HWND/PID 仍一致；空 HWND、进程退出、查询失败或查询期间前台变化一律收敛为识别失败，不旁路回退 | `GuardianCycleCoordinator`（事件轻路径）、`GuardianIterationRunner`（周期完整轮次，经注入 `readForeground`）；Settings单次识别仅用于用户确认名单，不提供Engine事实 | — | 第二套采集实现；reader拥有hook、监听线程、Timer、事件队列或进程身份缓存；读取窗口标题；查询后不释放进程句柄；按事件携带的旧窗口直接执行动作 |
 | 前台变化事件 | `ForegroundEventListener`（唯一前台事件监听 Owner：一个 `EVENT_SYSTEM_FOREGROUND` hook + 一个阻塞消息循环线程，注册与卸载都在监听线程；Stop 后回调不再做任何工作）；合并待处理标记由 `GuardianCycleCoordinator` 唯一持有（0→1 转换唤醒 Engine） | `GuardianLoop`（启动/停止/等待退出、降级一次性日志、限制开关同步） | `GuardianLoop.SyncForegroundSubscription`（仅此入口启停监听） | 每事件 Task 或历史事件队列；回调内查询进程/读配置/写日志/触发电源动作；高频路径自动重启监听（重建仅允许限制关闭→开启转换）；hook 未在注册线程卸载 |
@@ -122,7 +122,7 @@
 | `GuardianCycleCoordinator` | `SmartGuard.Engine.Worker` | 周期唤醒分类与节流唯一 Owner：完整周期截止 = 最近完整轮次 + 配置间隔，前台事件不得推迟截止时间（持续事件不饿死周期轮次）；原始时间戳按 TimestampFrequency 换算，持续时间经同一 TimeProvider.GetElapsedTime 计算，不与 TimeSpan.Ticks 混算；首次未执行用可空时间戳表达；唯一待处理前台标记（级别触发，最后信号不丢失）；轻路径准入复核 ≤1 次/秒；前台命中转变触发的完整评估 ≥5 秒且节流结束后必补跑；暂停/人工/限制关/名单空/名单非法/配置不可用时不做业务查询，状态变化按原周期重新检查 |
 | `StatusJsonReader` | `SmartGuard.Configuration` | 读取并反序列化 status.json |
 | `BatteryInfoProvider` | `SmartGuard.Engine.Infrastructure` | 以 `GetSystemPowerStatus` 为电量/供电状态主来源；WMI 失败不得丢弃原生结果 |
-| `PowerPlanCatalogProvider` | `SmartGuard.Configuration` | 三档 Windows 电源计划目录唯一真源；Settings 只经可取消的 `LoadWithRetryAsync`，有效目录缓存并限制并发；Engine 经 `TryLoadOnceAsync` 走 `PowerSchemeService`；Settings 与同步 `TryLoad` 在第二阶段前仍经 powercfg |
+| `PowerPlanCatalogProvider` | `SmartGuard.Configuration` | 三档 Windows 电源计划目录唯一真源；Settings 只经可取消的 `LoadWithRetryAsync`，有效目录缓存并限制并发；Engine 经 `TryLoadOnceAsync`、Settings 经 `LoadWithRetryAsync`，均走 `PowerSchemeService`；每次加载发布不可变的 `PowerPlanCatalogSnapshot`（Loading/Failed/Loaded 与单方案存在性），UI 只读快照 |
 | `PowerSchemeService` | `SmartGuard.Configuration` | 电源方案操作唯一入口（PWR-INV-SCHEME-API）；`PowrProfNative` 为电源方案函数唯一导入处（睡眠/唤醒通知注册不在此列） |
 | `ScheduledTaskRegistrar` | `SmartGuard.Configuration` | 任务名与 XML 唯一源 |
 | `ScheduledTaskInstallGate` | `SmartGuard.Configuration` | 安装时跳过计划任务/shell 注册（CLI `--skip-scheduled-tasks` 或 env `SMARTGUARD_SKIP_SCHEDULED_TASKS`） |
@@ -199,7 +199,7 @@
 | PWR-LIFE-SUSPEND | 阻断 | Suspend 期间禁止计划仲裁、`PowerSetActiveScheme` 和外部计划变更判定。Runner 慢探测后与副作用前重新读取生命周期准入（唯一 Owner 的 O(1) 内存状态）；轮首许可不能授权暂停后的新动作。亮度同步后、setactive 前以及恢复亮度前重验；状态拒绝原因为 blocked-by-lifecycle。Owner 锁不跨 WMI、进程等待或 await；已经启动的系统动作只能完成观测，不能回溯撤销，完成事件不等同命令启动时间。 |
 | PWR-LIFE-RESUME | 阻断 | Resume 建立新的 awake-idle epoch；先吸收 OS 当前计划并完成恢复稳定期，再允许普通策略仲裁。 |
 | PWR-LIFE-TIME | 阻断 | awake 持续时间和心跳间隔只使用注入的 `TimeProvider` 单调时间；持久化时间为 UTC offset。 |
-| PWR-INV-SCHEME-API | 阻断 | 电源方案操作经 `PowerSchemeService`，真实原生层每进程一个单飞执行器。门属于工作项：原生函数返回后、结果对调用方可见前释放，调用方从不释放。超过截止或被取消的调用若已进入原生层，在原生函数返回前持有门，期间新调用为 `call-pending` 且不触达原生层；若尚未进入原生层，工作项跳过原生调用。写操作在进入原生层前复核生命周期准入，撤销时为 `not-admitted`，不算失败也不算恢复。恢复以在途调用返回为准，不以时间推断；不回退外部进程。Guardian 目录加载（列举与读名）共享 5 秒总预算。失败分类 `ApiFailed`（含 Win32 码）/`CallPending`/`TimedOut`/`VerificationMismatch`/`NotAdmitted`，告警使用中文标签。测试进程默认禁止真实写入。门禁：`PowerSchemeApiArchitectureTests`。 |
+| PWR-INV-SCHEME-API | 阻断 | 电源方案操作经 `PowerSchemeService`，真实原生层每进程一个单飞执行器。门属于工作项：原生函数返回后、结果对调用方可见前释放，调用方从不释放。超过截止或被取消的调用若已进入原生层，在原生函数返回前持有门，期间新调用为 `call-pending` 且不触达原生层；若尚未进入原生层，工作项跳过原生调用。写操作在进入原生层前复核生命周期准入，撤销时为 `not-admitted`，不算失败也不算恢复。恢复以在途调用返回为准，不以时间推断；不回退外部进程。Guardian 目录加载（列举与读名）共享 5 秒总预算。失败分类 `ApiFailed`（含 Win32 码）/`CallPending`/`TimedOut`/`VerificationMismatch`/`NotAdmitted`，告警使用中文标签。测试进程默认禁止真实写入。门禁覆盖全部 src。门禁：`PowerSchemeApiArchitectureTests`。 |
 | PWR-LIFE-VERIFY | 阻断 | 单元/组合测试通过不等于真实待机验收；Lid/Mouse/AC/DC 未执行时标记 `NOT RUN` 或 `BLOCKED`。 |
 | STATUS-FRESH | 阻断 | `StatusPublisher` 对有意义变化立即写；无变化按单调时钟最多 60 秒刷新一次，且不以 delete+move 暴露缺失窗口。 |
 | STATUS-SNAPSHOT | 阻断（候选待完整验收） | `StatusPublisher` 首次创建用 Move，已有文件用 Replace，保留 `SmartGuardPaths.StatusBackupForFile` 提供的单份 `.bak` 旧版本；替换失败保留旧正式状态，正式文件缺失时从备份恢复，恢复失败保留备份并报告双重错误，发布前恢复中断遗留备份；成功缓存/时间只在写入成功后推进。`StatusJsonReader` 在短期 `FileShare.ReadWrite \| FileShare.Delete` 句柄内读取完整快照，允许发布端替换；旧句柄保持旧快照，新读取看到新状态。沙箱内 1175 失败证据保留，沙箱外无 reader burst 1000 次通过；尚未实际注入 Win32 1176/1177，不得宣称全部底层故障已逐项验证。证据见 `.work/guard-rules/resume-auto-report.md`。门禁：`GuardStatusCodesArchitectureTests`、`StatusPublisherTests`。 |
@@ -245,7 +245,7 @@
 
 | ID | 状态 | 真源 |
 |----|------|------|
-| M-04 | **已关闭** | `PowerPlanCatalogProvider.TryLoad()`（Engine/Settings 单源） |
+| M-04 | **已关闭** | `PowerPlanCatalogProvider`（Engine/Settings 单源；Engine 经 `TryLoadOnceAsync`、Settings 经 `LoadWithRetryAsync`，同步 `TryLoad()` 已在第二阶段删除） |
 | M-06 | **已关闭** | `TrayApplicationContext` → `TrayDisplaySettingsCache(_configRepository, _root)` + `ConfigFileWatcher` |
 | M-07 | **已关闭** | `SettingsThemeCoordinator.SaveThemePreferences` → `SettingsPolicyCoordinator.SaveThemePreferences` → `SettingsSaveCoordinator.Save` |
 | M-08 | **已关闭** | `LogViewIdleReader`（Contract §1 登记） |
@@ -270,7 +270,7 @@
 | S-01 | **已关闭** | Tray 暂停菜单/切换读 `status.paused`（`TrayPauseState`） |
 | S-02 | **已关闭** | `GuardianRecovery` 消费 `enginePid` 跳过多余 `schtasks` |
 | S-03/S-04 | **已关闭** | `CreateDefault` → `PowerPlanCatalogProvider` + `SmartGuardPaths.DefaultLogFile` |
-| S-05 | **已关闭** | Settings 计划目录由 `SettingsPlanCatalogCoordinator` 以可取消的 `PowerPlanCatalogProvider.LoadWithRetryAsync` 加载；`PowerPlanCatalogProvider` 负责有效缓存与单槽并发，`TryLoad()` 仅保留同步 Engine/兼容路径 |
+| S-05 | **已关闭** | Settings 计划目录由 `SettingsPlanCatalogCoordinator` 以可取消的 `LoadWithRetryAsync` 在后台加载，UI 线程只读 `PowerPlanCatalogSnapshot`，并区分正在加载、无法读取列表、名称读取失败与未在本机找到；不再有同步 `TryLoad` |
 | S-06 | **已关闭** | AutoStart UI 读 `config.AutoStartEnabled`；写经 `SettingsSaveCoordinator` + `AutoStartService.SetEnabled` |
 | S-07 | **已关闭** | 长生命周期 `TrayDisplaySettingsCache` 使用共享 `ConfigFileWatcher`；短生命周期 `GuardConfigRepository` 使用时间戳检测，避免监听器泄漏 |
 | S-08 | **已关闭** | `Status.cmd` 与 `ScheduledTaskRegistrar` 任务名一致 |
