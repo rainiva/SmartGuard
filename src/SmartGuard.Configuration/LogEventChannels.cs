@@ -24,6 +24,8 @@ public static class LogEventChannels
       EventNameRegistry.IterationError
         or EventNameRegistry.NativeProbeFailed
         or EventNameRegistry.NativeProbeRecovered
+        or EventNameRegistry.GuardStalled
+        or EventNameRegistry.GuardStallRecovered
         or EventNameRegistry.RecoveryDegraded
         or EventNameRegistry.RecoveryRestored
         or EventNameRegistry.PowerLifecycleRecoveryForced

@@ -81,6 +81,10 @@ internal sealed partial class GuardianIterationRunner(
     var planProbe = await ReadCurrentPlanAsync(cancellationToken);
     var activePlanInfo = planProbe.Plan;
     var current = activePlanInfo?.Guid;
+    // GUARD-INV-LIVENESS: one observation per full round, before any branch publishes.
+    ObserveLiveness(configOpt, state,
+      applicable: configAvailable && !configOpt!.Paused && PolicyMutationAllowed(),
+      planProbe, resumed: context.ResetIdleEpoch);
 
     if (!configAvailable)
     {
@@ -345,6 +349,7 @@ internal sealed partial class GuardianIterationRunner(
       guardSource = guardSource,
       guardReason = guardReason,
       foregroundEventsAvailable = ResolveForegroundEventsAvailability(config),
+      guardHealth = _liveness.Current,
     });
   }
 
@@ -419,6 +424,7 @@ internal sealed partial class GuardianIterationRunner(
       guardSource = GuardStatusCodes.Sources.None,
       guardReason = GuardStatusCodes.Reasons.ConfigUnavailable,
       foregroundEventsAvailable = null,
+      guardHealth = _liveness.Current,
     };
 
   /// <summary>
@@ -453,6 +459,7 @@ internal sealed partial class GuardianIterationRunner(
       guardSource = GuardStatusCodes.Sources.None,
       guardReason = GuardStatusCodes.Reasons.ProbeFailed,
       foregroundEventsAvailable = ResolveForegroundEventsAvailability(config),
+      guardHealth = _liveness.Current,
     };
 
   private static string DescribePlanWithoutConfig(Guid? planGuid, IReadOnlyDictionary<Guid, string>? planCatalog)

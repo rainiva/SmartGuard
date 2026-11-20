@@ -42,6 +42,8 @@ public static class EventNameRegistry
   public const string GuardStateChanged = nameof(GuardStateChanged);
   public const string NativeProbeFailed = nameof(NativeProbeFailed);
   public const string NativeProbeRecovered = nameof(NativeProbeRecovered);
+  public const string GuardStalled = nameof(GuardStalled);
+  public const string GuardStallRecovered = nameof(GuardStallRecovered);
 
   static EventNameRegistry()
   {
@@ -75,6 +77,8 @@ public static class EventNameRegistry
     Register(GuardStateChanged);
     Register(NativeProbeFailed);
     Register(NativeProbeRecovered);
+    Register(GuardStalled);
+    Register(GuardStallRecovered);
   }
 
   public static void Register(string name)
