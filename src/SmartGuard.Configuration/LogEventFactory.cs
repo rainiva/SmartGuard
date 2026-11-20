@@ -66,7 +66,7 @@ public static class LogEventId
     var lineHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(lineText))).ToLowerInvariant();
     var payload = string.Create(
       CultureInfo.InvariantCulture,
-      $"{source.CreatedAtUtc:O}|{source.ContentHashHex}|{byteOffset}|{lineHash}|{ordinal}");
+      $"{source.CreatedAtUtc:O}|{source.ContentHashHex}|{source.FileId}|{byteOffset}|{lineHash}|{ordinal}");
     var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
     return "l:" + hash;
   }
