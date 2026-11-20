@@ -74,6 +74,67 @@
    - 第 2 版第 10 节第 5 项只测已退出父进程。新计划分别测量“已退出、仅检查读取状态”与“未退出、执行一次 `Process.Kill()`”两条路径，各连续 200 次，记录 P50/P95/最大值。
    - 两条路径单次最大值都须低于 50ms，否则不得声称确认路径为常数低成本。
 
+### 3v.8 实施与验证记录
+
+实施计划：[2026-11-20-process-cleanup-reopen-phase3-plan.md](2026-11-20-process-cleanup-reopen-phase3-plan.md)（第 5 版）。分支 `feat/phase3-process-cleanup`，证据目录 `.work/process-cleanup-phase3/`。
+
+**基线（Task 0）：** Configuration 505 通过、1 未执行（`PowerSchemeServiceLiveTests` 真实写入用例，受写入保护跳过）；Engine 430；Architecture 352。
+
+| Task | 提交 | RED | GREEN |
+|------|------|-----|-------|
+| 1 脚手架 | `9dde6042` | 不适用（不改变行为） | 三个项目计数与基线相同 |
+| 2 以 EOF 判定清理 | `b2fea020` | 27 例中 1 例失败：`Pipes_closing_inside_the_settle_wait…` 得到 `cleanup-unconfirmed`（旧代码在终止请求前快照孤儿管道）；迟到读取用例在脚手架上通过，记为保护性 | Configuration 522/1 未执行、Engine 430、Architecture 352 |
+| 3 保留移交与证明 | `8189ba64` | 7 例中 5 例按行为缺口失败（脚手架证明恒为 false、证据不变、未移交）；2 例为保护性用例与成本门 | Configuration 529/1、Engine 430、Architecture 352 |
+| 4 观测字段与文案 | `90b2f16a` | 3 个新用例失败（缺属性与范围）；电源 API 两个回归门通过 | Engine 433、Architecture 352 |
+| 5 持有并重开 | `30c53c4b` | 52 例中 7 例失败，与计划所列一致；`Unprovable_cleanup…`、`A_request_arriving_during…` 为保护性用例 | Configuration 529/1、Engine 452、Architecture 352；WMI 与收尾用例重复 3 轮均 41/41 |
+| 6 契约与门禁 | `5d6fdbbb` | 门禁 3 例中契约 1 例失败 | Architecture 355 |
+
+提交号为变基到合并 PR #6 后的 main（`ab1139f2`）之后的值。变基前后每个提交的代码树逐一比对相同，因此下文安装版本号中的变基前提交 `378a8399` 与 `5d6fdbbb` 内容一致。
+
+**补充核验：**
+- **句柄变异检查：** 删除读取器的 `using` 后，`Late_scheduled_readers…` 连续 5 次失败（句柄差 0）。还原后，文件 SHA256 与变异前一致。
+- **确认成本**（各 200 次串行采样，门槛 < 50ms）：
+  - 已退出路径：P50 0.000ms，P95 0.000ms，最大 0.009ms。
+  - 终止路径：P50 0.102ms，P95 0.183ms，最大 0.228ms。
+- **测试收尾：**
+  - `TestTaskSettle` 的 11 项隔离验证已移植为 xUnit 用例，Configuration 与 Engine 各一份。改动 stderr 与全局异常事件的用例放在禁止并行的集合 `TestHostGlobalState`。
+  - 延迟释放失败的 stderr 在真实 VSTest/xUnit 宿主中可见：一个未提交的临时用例的输出同时出现在控制台日志与 TRX 中。
+- **负载下的稳定性：** 安装验收后，整个 Configuration 测试项目连续运行 10 次（真实进程竞态用例与其他测试类并行），10 次均为 529 通过、1 未执行、0 失败。
+- **夹具偏离计划：** `DescendantFixture` 要等两个 PID 文件都能解析为数字才算就绪，不只看文件是否存在，以免读到写了一半的文件。
+
+**全量测试：** `Run-Tests.ps1` 退出码 0，summary `run-tests-20261120T083317390Z-078f7011a8514dce8ee17a132b6d82fb.summary.json`。
+
+| 层 | 通过 | 失败 | 跳过 |
+|----|------|------|------|
+| Pester | 158 | 0 | 0 |
+| .NET | 2136 | 0 | 0 |
+| Tray Integration | 2 | 0 | 0 |
+| Installer Integration | 9 | 0 | 0 |
+
+**安装：**
+- 安装包 `dist\SmartGuard-Setup-1.6.6-x64.exe`，SHA256 `66ED40C386D5A49FC7ECA22861CA0FD32525F9C6FB108946702C56C351EE76DF`。版本提升单独提交为 `806c3252`。
+- 安装前已备份程序目录与配置。
+- 用户确认 UAC 后核对：
+  - Engine、Configuration、Settings、Tray 四个 DLL 与候选一致，版本 `1.6.6+378a8399`。
+  - 配置哈希 `0426BAA1…B32A` 未变。
+  - Engine、Tray 在交互会话运行（16:47:58 启动）。
+
+**真实路径验收：**
+- **正常运行 11 分钟（16:47:58–16:59:32）：PASS。**
+  - 共 22 条事件，没有 Warn 或以上级别。
+  - 没有 `NativeProbeFailed`/`NativeProbeRecovered`，没有清理未确认或 `cleanup-pending`。
+  - 6 次运行情况记录的亮度均为 30%，WMI 亮度读取正常。
+- **WPS 前台：部分执行。**
+  - 16:55:33 识别为“正在使用WPS 文字，已匹配第2条程序规则”。之后的前后台切换与 180 秒观察窗口记录正常。
+  - 当时本机已是高性能，“当前计划符合设置，无需切换”，没有发生计划切换。
+  - “切换后的亮度恢复”路径因此未被触发。
+- **WPS 前台补测（用户先手动切到“平衡”）：PASS。**
+  - 17:09:20 `PowerPlanSwitched`：“电源计划已切换为‘高性能’，并已确认生效。屏幕亮度：30% → 30%。”`actionResult=verified`，目标与实际 GUID 相同。
+  - 切换后经 WMI 读回亮度正常，没有亮度恢复降级。
+  - 17:00–17:10 没有 Warn 及以上事件，也没有 `NativeProbe*`。
+  - 切换前后亮度相同，不需要纠正写入，所以亮度写入重试路径本次没有被执行。
+- **NOT RUN（真机不可控）：** 真实触发清理未确认需要故意持有管道的后代进程，只在 Task 2、3 的真实进程夹具中复现；重开与 `cleanup-pending` 由 Task 5 用例覆盖。
+
 ---
 
 ## 第 2 版设计（历史）

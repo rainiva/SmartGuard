@@ -69,4 +69,35 @@ public class NativeProbeLoggingTests
     record.Properties!["win32Error"].GetInt32().Should().Be(5);
     record.Message.Should().Contain("电源服务返回错误码 5").And.NotContain("子进程");
   }
+
+  [Fact]
+  public void Unconfirmed_cleanup_names_the_evidence_of_this_execution()
+  {
+    var record = GuardianLoop.CreateNativeProbeEvent(new("brightness-read", "cleanup-unconfirmed", 2250, 2000, false, null, 0, false,
+      CleanupEvidence: "pipes-open"));
+    record.Properties!["cleanupEvidence"].GetString().Should().Be("pipes-open");
+    record.Properties.Should().NotContainKey("pendingCleanupEvidence");
+    record.Message.Should().Contain("清理未确认（pipes-open）").And.Contain("确认其退出后自动恢复");
+  }
+
+  [Fact]
+  public void Rejection_reports_not_started_and_the_held_child_separately()
+  {
+    var record = GuardianLoop.CreateNativeProbeEvent(new("battery-read", "cleanup-pending", 0, 2000, true, null, 0, false,
+      CleanupEvidence: "not-started", PendingCleanupEvidence: "not-exited"));
+    record.Properties!["cleanupEvidence"].GetString().Should().Be("not-started");
+    record.Properties["pendingCleanupEvidence"].GetString().Should().Be("not-exited");
+    record.Message.Should().Contain("上次 WMI 子进程清理尚未确认（not-exited），本次未启动");
+  }
+
+  [Fact]
+  public void Reopen_is_a_process_cleanup_recovery_with_the_closed_duration()
+  {
+    var record = GuardianLoop.CreateNativeProbeEvent(new("process-cleanup", "none", 4200, 2000, true, null, 0, true,
+      CleanupEvidence: "confirmed"));
+    record.EventName.Should().Be(EventNameRegistry.NativeProbeRecovered);
+    record.Properties!["recoveryScope"].GetString().Should().Be("process-cleanup");
+    record.Properties["elapsedMs"].GetInt64().Should().Be(4200);
+    record.Message.Should().Contain("子进程清理确认").And.Contain("恢复启动新的探测子进程");
+  }
 }

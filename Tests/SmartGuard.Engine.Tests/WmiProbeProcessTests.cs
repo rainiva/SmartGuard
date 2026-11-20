@@ -125,19 +125,25 @@ public class WmiProbeProcessTests
   [Fact]
   public void Sustained_failure_reports_bounded_summary_and_retains_skipped_count()
   {
+    // While an unproven child is held, rejections are their own cleanup-pending fact: the first one is
+    // reported at once, later ones merge for 60 seconds, and none of them counts toward the failure summary.
     var clock = new Clock();
     var events = new List<WmiProbeObservation>();
     var probe = new WmiProbeProcess((_, _, _, _) => Task.FromResult(
       new PowerCfgCommandResult(true, true, null, "", "")
       { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false }), clock, events.Add);
     probe.ReadBrightness();
+    Assert.Equal("cleanup-unconfirmed", Assert.Single(events).FailureKind);
     for (var i = 0; i < 100; i++) probe.ReadBrightness();
-    Assert.Single(events);
+    Assert.Equal(2, events.Count);
+    Assert.Equal("cleanup-pending", events[1].FailureKind);
+    Assert.Equal(0, events[1].SuppressedCount);
     clock.Advance(TimeSpan.FromSeconds(60));
     probe.ReadBrightness();
-    Assert.Equal(2, events.Count);
-    Assert.Equal(101, events[1].SuppressedCount);
-    Assert.Equal("cleanup-unconfirmed", events[1].FailureKind);
+    Assert.Equal(3, events.Count);
+    Assert.Equal("cleanup-pending", events[2].FailureKind);
+    Assert.Equal(99, events[2].SuppressedCount);
+    Assert.Equal("unprovable", events[2].PendingCleanupEvidence);
   }
 
   [Fact]
@@ -164,17 +170,39 @@ public class WmiProbeProcessTests
     Assert.Equal(1, events[1].SuppressedCount);
   }
 
+  private static PowerCfgCommandResult Unconfirmed(UnconfirmedChild? child) =>
+    new(true, true, null, "", "") { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false,
+      CleanupEvidence = "pipes-open", PendingCleanup = child };
+
   [Fact]
-  public void Unconfirmed_cleanup_permanently_closes_spawning()
+  public void Proven_cleanup_reopens_spawning_and_is_recorded_once()
+  {
+    var clock = new Clock();
+    var events = new List<WmiProbeObservation>();
+    var released = false;
+    var calls = 0;
+    var probe = new WmiProbeProcess((_, args, _, _) => Task.FromResult(++calls == 1
+      ? Unconfirmed(UnconfirmedChild.ForTests(() => (released, released ? "confirmed" : "pipes-open"), "pipes-open"))
+      : Reply("SGWMI1|battery|80|ac")), clock, events.Add);
+
+    Assert.Equal(-1, probe.ReadBrightness());
+    Assert.Null(probe.ReadBattery());
+    Assert.Equal(1, calls);
+    clock.Advance(TimeSpan.FromSeconds(5));
+    released = true;
+    Assert.NotNull(probe.ReadBattery());
+    Assert.Equal(2, calls);
+    var reopen = Assert.Single(events, e => e.Operation == "process-cleanup");
+    Assert.True(reopen.Recovered);
+    Assert.Equal(5000, reopen.ElapsedMilliseconds);
+  }
+
+  [Fact]
+  public void Unprovable_cleanup_keeps_spawning_closed()
   {
     var clock = new Clock();
     var calls = 0;
-    var probe = new WmiProbeProcess((_, _, _, _) =>
-    {
-      calls++;
-      return Task.FromResult(new PowerCfgCommandResult(true, true, null, "", "")
-        { FailureKind = "cleanup-unconfirmed", TerminationConfirmed = false });
-    }, clock);
+    var probe = new WmiProbeProcess((_, _, _, _) => { calls++; return Task.FromResult(Unconfirmed(null)); }, clock);
     Assert.Equal(-1, probe.ReadBrightness());
     clock.Advance(TimeSpan.FromDays(1));
     Assert.Null(probe.ReadBattery());
@@ -183,18 +211,168 @@ public class WmiProbeProcessTests
   }
 
   [Fact]
-  public async Task Nonreturning_executor_is_bounded_and_late_result_cannot_reopen_boundary()
+  public void Rejection_is_its_own_observation_and_never_extends_the_failure_cooldown()
+  {
+    var clock = new Clock();
+    var events = new List<WmiProbeObservation>();
+    var released = false;
+    var calls = 0;
+    var probe = new WmiProbeProcess((_, args, _, _) => Task.FromResult(++calls == 1
+      ? Unconfirmed(UnconfirmedChild.ForTests(() => (released, released ? "confirmed" : "not-exited"), "pipes-open"))
+      : args.Contains("battery-read") ? Reply("SGWMI1|battery|80|ac") : Reply("SGWMI1|brightness|50")), clock, events.Add);
+
+    Assert.Equal(-1, probe.ReadBrightness());                 // closes spawning
+    Assert.Null(probe.ReadBattery());                         // first rejection: reported at once
+    var first = Assert.Single(events, e => e.FailureKind == "cleanup-pending");
+    Assert.Equal("battery-read", first.Operation);
+    Assert.Equal("not-started", first.CleanupEvidence);
+    Assert.Equal("not-exited", first.PendingCleanupEvidence);
+    Assert.True(first.TerminationConfirmed, "this call started nothing");
+    for (var i = 0; i < 5; i++) Assert.Null(probe.ReadBattery());
+    Assert.Single(events, e => e.FailureKind == "cleanup-pending");   // coalesced inside 60 s
+    clock.Advance(TimeSpan.FromSeconds(60));
+    Assert.Null(probe.ReadBattery());
+    Assert.Equal(5, events.Last(e => e.FailureKind == "cleanup-pending").SuppressedCount);
+
+    released = true;
+    Assert.NotNull(probe.ReadBattery());                      // battery has no failure of its own
+    Assert.Equal(80, probe.ReadBattery()!.Value.Percent);
+    Assert.Equal(50, probe.ReadBrightness());                 // its 30 s cooldown from the original failure has passed
+  }
+
+  [Fact]
+  public async Task Confirmation_in_progress_rejects_concurrent_requests_without_a_second_proof()
+  {
+    // No `using`: TestTaskSettle owns the events and releases them only after every task has ended.
+    var entered = new ManualResetEventSlim();
+    var release = new ManualResetEventSlim();
+    var proofs = 0;
+    var calls = 0;
+    var probe = new WmiProbeProcess((_, _, _, _) => Task.FromResult(Interlocked.Increment(ref calls) == 1
+      ? Unconfirmed(UnconfirmedChild.ForTests(() =>
+        {
+          Interlocked.Increment(ref proofs);
+          entered.Set();
+          release.Wait(TimeSpan.FromSeconds(10));
+          return (true, "confirmed");
+        }, "pipes-open"))
+      : Reply("SGWMI1|battery|80|ac")));
+    Task<(int, bool?)?>? confirming = null;
+    Task<(int, bool?)?>? concurrent = null;
+    try
+    {
+      Assert.Equal(-1, probe.ReadBrightness());
+      confirming = Task.Run(() => probe.ReadBattery());
+      Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+      concurrent = Task.Run(() => probe.ReadBattery());
+      Assert.Null(await concurrent.WaitAsync(TimeSpan.FromSeconds(1)));
+      Assert.Equal(1, Volatile.Read(ref proofs));
+      release.Set();
+      Assert.NotNull(await confirming.WaitAsync(TimeSpan.FromSeconds(5)));
+      Assert.Equal(1, proofs);
+      Assert.Equal(2, calls);   // the confirming request itself ran right after the proof
+    }
+    finally
+    {
+      release.Set();
+      await TestTaskSettle.SettleAsync([confirming, concurrent], entered, release);
+    }
+  }
+
+  [Fact]
+  public async Task A_request_arriving_during_a_failing_execution_never_starts_a_second_child()
+  {
+    // The interleaving from the review: B is executing and will leave an unproven child; A arrives
+    // meanwhile. Admission is one decision under one lock, so A is rejected while B holds the slot, and
+    // after B no request starts a child while B's child is held.
+    var entered = new ManualResetEventSlim();
+    var release = new ManualResetEventSlim();
+    var calls = 0;
+    var probe = new WmiProbeProcess((_, _, _, _) =>
+    {
+      Interlocked.Increment(ref calls);
+      entered.Set();
+      release.Wait(TimeSpan.FromSeconds(10));
+      return Task.FromResult(Unconfirmed(UnconfirmedChild.ForTests(() => (false, "not-exited"), "not-exited")));
+    });
+    Task<int>? b = null;
+    Task<(int, bool?)?>? a = null;
+    try
+    {
+      b = Task.Run(() => probe.ReadBrightness());
+      Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+      a = Task.Run(() => probe.ReadBattery());
+      Assert.Null(await a.WaitAsync(TimeSpan.FromSeconds(5)));
+      release.Set();
+      Assert.Equal(-1, await b.WaitAsync(TimeSpan.FromSeconds(5)));
+      Assert.Null(probe.ReadBattery());
+      Assert.Equal(1, Volatile.Read(ref calls));
+    }
+    finally
+    {
+      release.Set();
+      await TestTaskSettle.SettleAsync([b, a], entered, release);
+    }
+  }
+
+  [Fact]
+  public async Task No_execution_ever_starts_while_a_child_is_held()
+  {
+    // Invariant guard under contention: every execution leaves a provable child, so each round is
+    // failure -> proof -> re-execution. The executor records a violation whenever it is entered while a
+    // child is held. The production 30 s cooldown stays in force: the proof advances a controllable clock
+    // past it, so the guard really reaches the re-execution instead of stopping at the cooldown.
+    var clock = new ConcurrentClock();
+    WmiProbeProcess? probe = null;
+    var violations = 0;
+    var executions = 0;
+    var proofs = 0;
+    probe = new WmiProbeProcess((_, _, _, _) =>
+    {
+      if (probe!.HasPendingCleanupForTests) Interlocked.Increment(ref violations);
+      Interlocked.Increment(ref executions);
+      return Task.FromResult(Unconfirmed(UnconfirmedChild.ForTests(() =>
+      {
+        Interlocked.Increment(ref proofs);
+        clock.Advance(TimeSpan.FromSeconds(31));
+        return (true, "confirmed");
+      }, "pipes-open")));
+    }, clock);
+    var workers = Enumerable.Range(0, 4).Select(worker => Task.Run(() =>
+    {
+      for (var i = 0; i < 500; i++) probe.ReadBattery();
+    })).ToArray();
+    try { await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(30)); }
+    finally { await TestTaskSettle.SettleAsync(workers); }
+    Assert.Equal(0, violations);
+    Assert.True(executions > 10, $"failure -> proof -> re-execution must repeat (executions={executions})");
+    Assert.True(proofs >= executions - 1, $"every re-execution follows a proof (proofs={proofs}, executions={executions})");
+  }
+
+  // Thread-safe controllable clock for the contention guard.
+  private sealed class ConcurrentClock : TimeProvider
+  {
+    private long _ticks;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+    internal void Advance(TimeSpan elapsed) => Interlocked.Add(ref _ticks, elapsed.Ticks);
+  }
+
+  [Fact]
+  public async Task Nonreturning_executor_is_held_and_its_late_proof_reopens_spawning()
   {
     var late = new TaskCompletionSource<PowerCfgCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-    var events = new List<WmiProbeObservation>();
     var calls = 0;
-    var probe = new WmiProbeProcess((_, _, _, _) => { calls++; return late.Task; }, observe: events.Add);
-    var result = await Task.Run(() => probe.ReadBrightness()).WaitAsync(TimeSpan.FromSeconds(5));
-    Assert.Equal(-1, result);
-    Assert.Equal("cleanup-unconfirmed", Assert.Single(events).FailureKind);
-    late.SetResult(Reply("SGWMI1|brightness|44"));
-    Assert.Equal(-1, probe.ReadBrightness());
-    Assert.Equal(1, calls);
+    var probe = new WmiProbeProcess((_, _, _, _) => Interlocked.Increment(ref calls) == 1 ? late.Task : Task.FromResult(Reply("SGWMI1|battery|80|ac")));
+    try
+    {
+      Assert.Equal(-1, await Task.Run(() => probe.ReadBrightness()).WaitAsync(TimeSpan.FromSeconds(5)));
+      Assert.Null(probe.ReadBattery());
+      late.SetResult(Reply("SGWMI1|brightness|44"));            // the late result certifies its own cleanup
+      Assert.NotNull(probe.ReadBattery());
+      Assert.Equal(2, calls);
+    }
+    finally { late.TrySetResult(Reply("SGWMI1|brightness|44")); }
   }
 
   [Fact]

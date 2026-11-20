@@ -24,6 +24,7 @@ public sealed partial class GuardianLoop
       "battery-read" => "电池补充探测", "plan-catalog" => "电源计划名称加载",
       "plan-read" => "当前电源计划读取", "plan-apply" => "电源计划切换命令执行",
       "plan-brightness-ac" => "插电亮度同步", "plan-brightness-dc" => "电池亮度同步",
+      "process-cleanup" => "子进程清理确认",
       _ => "系统探测",
     };
     var degradation = observation.Operation switch
@@ -34,6 +35,7 @@ public sealed partial class GuardianLoop
       "battery-read" => "保留原生供电状态，不依赖失败的WMI补充",
       "plan-catalog" => "使用已有计划标识和默认名称，继续守护",
       "plan-brightness-ac" or "plan-brightness-dc" => "停止本次可选亮度同步",
+      "process-cleanup" => "恢复启动新的探测子进程",
       _ => "本次计划操作未确认，等待下一轮重新探测",
     };
     var schemeApi = observation.Operation is "plan-read" or "plan-apply" or "plan-brightness-ac" or "plan-brightness-dc" or "plan-catalog";
@@ -41,8 +43,14 @@ public sealed partial class GuardianLoop
       ? observation.FailureKind is "timed-out" or "call-pending"
         ? "电源服务调用仍在进行，期间不发起新调用，返回后自动恢复"
         : observation.Win32Error is int code ? $"电源服务返回错误码 {code}" : "电源服务调用失败"
-      : observation.TerminationConfirmed ? "子进程已退出或未启动" : "清理未确认，探测启动资格已关闭";
-    var message = observation.Recovered ? $"系统探测已恢复：{label}。此前合并省略 {observation.SuppressedCount} 次同类异常。"
+      : observation.FailureKind == "cleanup-pending"
+        ? $"上次 WMI 子进程清理尚未确认（{observation.PendingCleanupEvidence ?? "unknown"}），本次未启动"
+        : observation.TerminationConfirmed ? "子进程已退出或未启动"
+        : $"清理未确认（{observation.CleanupEvidence ?? "unknown"}），暂停启动新的探测子进程，确认其退出后自动恢复";
+    var message = observation.Recovered
+      ? observation.Operation == "process-cleanup"
+        ? $"系统探测已恢复：子进程清理确认，上次未证实的 WMI 子进程已退出，恢复启动新的探测子进程（关闭 {observation.ElapsedMilliseconds}ms）。"
+        : $"系统探测已恢复：{label}。此前合并省略 {observation.SuppressedCount} 次同类异常。"
       : $"系统探测{(observation.FailureKind == "cancelled" ? "已取消" : "异常")}：{label}；{observation.FailureKind}；耗时 {observation.ElapsedMilliseconds}ms，预算 {observation.BudgetMilliseconds}ms；{degradation}；{cleanup}。合并省略 {observation.SuppressedCount} 次同类请求。";
     var properties = new Dictionary<string, JsonElement>
     {
@@ -54,12 +62,21 @@ public sealed partial class GuardianLoop
       ["exitCode"] = JsonSerializer.SerializeToElement(observation.ExitCode),
       ["suppressedCount"] = JsonSerializer.SerializeToElement(observation.SuppressedCount),
       ["recovered"] = JsonSerializer.SerializeToElement(observation.Recovered),
-      ["recoveryScope"] = JsonSerializer.SerializeToElement(observation.Operation == "plan-apply" ? "command-execution" : "probe"),
+      ["recoveryScope"] = JsonSerializer.SerializeToElement(observation.Operation switch
+      {
+        "plan-apply" => "command-execution",
+        "process-cleanup" => "process-cleanup",
+        _ => "probe",
+      }),
       ["actionResult"] = JsonSerializer.SerializeToElement(observation.Recovered ? "probe-recovered" : "unconfirmed"),
       ["degradation"] = JsonSerializer.SerializeToElement(degradation),
     };
     if (observation.Win32Error is int win32Error)
       properties["win32Error"] = JsonSerializer.SerializeToElement(win32Error);
+    if (observation.CleanupEvidence is { } cleanupEvidence)
+      properties["cleanupEvidence"] = JsonSerializer.SerializeToElement(cleanupEvidence);
+    if (observation.PendingCleanupEvidence is { } pendingEvidence)
+      properties["pendingCleanupEvidence"] = JsonSerializer.SerializeToElement(pendingEvidence);
     return EngineLogEvents.Create(observation.Recovered ? LogLevel.Info : LogLevel.Warn,
       observation.Recovered ? EventNameRegistry.NativeProbeRecovered : EventNameRegistry.NativeProbeFailed,
       message, OperationIdContext.Current, TraceIdContext.Current, properties: properties);

@@ -4,7 +4,8 @@ namespace SmartGuard.Engine.Infrastructure;
 
 internal sealed record WmiProbeObservation(string Operation, string FailureKind,
   long ElapsedMilliseconds, long BudgetMilliseconds, bool TerminationConfirmed,
-  int? ExitCode, long SuppressedCount, bool Recovered, int? Win32Error = null);
+  int? ExitCode, long SuppressedCount, bool Recovered, int? Win32Error = null,
+  string? CleanupEvidence = null, string? PendingCleanupEvidence = null);
 
 internal sealed class WmiProbeProcess
 {
@@ -15,7 +16,13 @@ internal sealed class WmiProbeProcess
   private readonly TimeProvider _time;
   private readonly Action<WmiProbeObservation>? _observe;
   private readonly object _sync = new();
-  private bool _busy, _closed;
+  private bool _busy;
+  // At most one child whose cleanup is unproven; while held, no new child starts (PWR-INV-CLEANUP-REOPEN).
+  private UnconfirmedChild? _pending;
+  private long _pendingSince;
+  // Rejections while a child is held are their own fact and never touch the failure cooldown in _failures.
+  private readonly Dictionary<string, RejectionState> _rejections = new(3);
+  private sealed record RejectionState(long ReportedAt, long Suppressed);
   // The command vocabulary is fixed at three operations, so health state cannot
   // grow with input. Success only recovers that same operation's failure.
   private readonly Dictionary<string, FailureState> _failures = new(3);
@@ -26,10 +33,13 @@ internal sealed class WmiProbeProcess
     Func<string, string, TimeSpan, CancellationToken, Task<PowerCfgCommandResult>>? execute = null,
     TimeProvider? timeProvider = null, Action<WmiProbeObservation>? observe = null)
   {
-    _execute = execute ?? PowerCfgProcessRunner.RunProcessAsync;
+    _execute = execute ?? ((file, args, budget, token) =>
+      PowerCfgProcessRunner.RunProcessAsync(file, args, budget, token, retainUnconfirmed: true));
     _time = timeProvider ?? TimeProvider.System;
     _observe = observe;
   }
+
+  internal bool HasPendingCleanupForTests { get { lock (_sync) return _pending is not null; } }
 
   internal int ReadBrightness(CancellationToken cancellationToken = default)
     => Run("brightness-read", null, cancellationToken) is { } reply ? int.Parse(reply[2], System.Globalization.CultureInfo.InvariantCulture) : -1;
@@ -49,30 +59,7 @@ internal sealed class WmiProbeProcess
   private string[]? Run(string operation, int? level, CancellationToken token)
   {
     if (token.IsCancellationRequested) return null;
-    WmiProbeObservation? summary = null;
-    var rejected = false;
-    lock (_sync)
-    {
-      _failures.TryGetValue(operation, out var failed);
-      if (_busy || _closed || (failed is not null && _time.GetElapsedTime(failed.FailedAt) < TimeSpan.FromSeconds(30)))
-      {
-        // A rejected battery request cannot inflate a brightness fault summary.
-        if (failed is not null)
-        {
-          failed = failed with { Suppressed = failed.Suppressed + 1 };
-          if (_time.GetElapsedTime(failed.ReportedAt) >= TimeSpan.FromSeconds(60))
-          {
-            summary = Observation(operation, failed.Kind, failed.Elapsed, failed.Terminated, failed.ExitCode, false, failed.Suppressed);
-            failed = failed with { ReportedAt = _time.GetTimestamp(), Suppressed = 0 };
-          }
-          _failures[operation] = failed;
-        }
-        rejected = true;
-      }
-      else _busy = true;
-    }
-    Publish(summary);
-    if (rejected) return null;
+    if (!TryAcquire(operation)) return null;
     var started = System.Diagnostics.Stopwatch.GetTimestamp();
     try
     {
@@ -90,7 +77,7 @@ internal sealed class WmiProbeProcess
       catch (TimeoutException)
       {
         _ = pending.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
-        Fail(operation, "cleanup-unconfirmed", 2500, false, null);
+        Fail(operation, "cleanup-unconfirmed", 2500, false, null, "executor-pending", UnconfirmedChild.FromExecution(pending));
         return null;
       }
       catch (OperationCanceledException)
@@ -110,19 +97,25 @@ internal sealed class WmiProbeProcess
           // later fault without reopening spawning over an uncertain child.
           _ = pending.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
         }
-        Fail(operation, "cancelled", (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds,
-          cleanup?.TerminationConfirmed == true, cleanup?.ExitCode);
+        var elapsed = (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (cleanup is not null)
+          Fail(operation, "cancelled", elapsed, cleanup.TerminationConfirmed, cleanup.ExitCode,
+            cleanup.CleanupEvidence, cleanup.PendingCleanup);
+        else
+          Fail(operation, "cancelled", elapsed, false, null, "executor-pending", UnconfirmedChild.FromExecution(pending));
         return null;
       }
       if (token.IsCancellationRequested)
       {
-        Fail(operation, "cancelled", result.ElapsedMilliseconds, result.TerminationConfirmed, result.ExitCode);
+        Fail(operation, "cancelled", result.ElapsedMilliseconds, result.TerminationConfirmed, result.ExitCode,
+          result.CleanupEvidence, result.PendingCleanup);
         return null;
       }
       if (!result.Succeeded || !result.TerminationConfirmed || result.FailureKind != "none")
       {
         Fail(operation, result.FailureKind == "none" ? SafeChildError(result) : result.FailureKind,
-          result.ElapsedMilliseconds, result.TerminationConfirmed, result.ExitCode);
+          result.ElapsedMilliseconds, result.TerminationConfirmed, result.ExitCode,
+          result.CleanupEvidence, result.PendingCleanup);
         return null;
       }
       var fields = result.StandardOutput.Length <= 128
@@ -143,9 +136,96 @@ internal sealed class WmiProbeProcess
     }
     // An unexpected thrown executor result has no cleanup certificate. Closing
     // spawning is safer than assuming cancellation killed a potentially live child.
-    catch (OperationCanceledException) { Fail(operation, "cancelled", 0, false, null); return null; }
-    catch { Fail(operation, "io-failed", 0, false, null); return null; }
+    catch (OperationCanceledException) { Fail(operation, "cancelled", 0, false, null, "unprovable"); return null; }
+    catch { Fail(operation, "io-failed", 0, false, null, "unprovable"); return null; }
     finally { lock (_sync) _busy = false; }
+  }
+
+  // Admission is one ownership decision (PWR-INV-CLEANUP-REOPEN). Under one lock: a busy slot rejects;
+  // otherwise this request takes the slot. If a child is held, the slot is kept while the constant-cost
+  // proof runs outside the lock, and a proven reopen hands the same slot straight to this request's
+  // execution. The slot is never released between the held-child check and the start of a new child, so
+  // no other request can leave a child in between.
+  private bool TryAcquire(string operation)
+  {
+    UnconfirmedChild? pending;
+    WmiProbeObservation? first = null, second = null;
+    lock (_sync)
+    {
+      if (_busy || (_pending is null && InCooldown(operation)))
+      {
+        first = CountRejectedFailure(operation);
+        pending = null;
+      }
+      else
+      {
+        _busy = true;
+        pending = _pending;
+        if (pending is null) return true;
+      }
+    }
+    if (pending is null)
+    {
+      Publish(first);
+      return false;
+    }
+
+    bool confirmed;
+    try { confirmed = pending.TryConfirm(); }
+    catch { confirmed = false; }
+    var acquired = false;
+    lock (_sync)
+    {
+      if (confirmed)
+      {
+        _pending = null;
+        _rejections.Clear();
+        first = new("process-cleanup", "none", (long)_time.GetElapsedTime(_pendingSince).TotalMilliseconds,
+          (long)Budget.TotalMilliseconds, true, null, 0, true, CleanupEvidence: "confirmed");
+        // Reopening does not lift this operation's own failure cooldown.
+        if (InCooldown(operation)) second = CountRejectedFailure(operation);
+        else acquired = true;   // keep the slot for this request's execution
+      }
+      else first = RecordRejection(operation, pending.Evidence);
+      if (!acquired) _busy = false;
+    }
+    Publish(first);
+    Publish(second);
+    return acquired;
+  }
+
+  private bool InCooldown(string operation)
+    => _failures.TryGetValue(operation, out var failed) && _time.GetElapsedTime(failed.FailedAt) < TimeSpan.FromSeconds(30);
+
+  // Unchanged behaviour of the old admission block: a rejected request only counts toward this
+  // operation's own failure summary (never another operation's), reported at most every 60 seconds.
+  private WmiProbeObservation? CountRejectedFailure(string operation)
+  {
+    if (!_failures.TryGetValue(operation, out var failed)) return null;
+    WmiProbeObservation? summary = null;
+    failed = failed with { Suppressed = failed.Suppressed + 1 };
+    if (_time.GetElapsedTime(failed.ReportedAt) >= TimeSpan.FromSeconds(60))
+    {
+      summary = Observation(operation, failed.Kind, failed.Elapsed, failed.Terminated, failed.ExitCode, false, failed.Suppressed);
+      failed = failed with { ReportedAt = _time.GetTimestamp(), Suppressed = 0 };
+    }
+    _failures[operation] = failed;
+    return summary;
+  }
+
+  // First rejection of each operation is reported at once, then at most every 60 seconds with the count
+  // merged since the last record. This call started nothing, so it reports a confirmed termination.
+  private WmiProbeObservation? RecordRejection(string operation, string pendingEvidence)
+  {
+    if (_rejections.TryGetValue(operation, out var previous) &&
+        _time.GetElapsedTime(previous.ReportedAt) < TimeSpan.FromSeconds(60))
+    {
+      _rejections[operation] = previous with { Suppressed = previous.Suppressed + 1 };
+      return null;
+    }
+    _rejections[operation] = new(_time.GetTimestamp(), 0);
+    return new(operation, "cleanup-pending", 0, (long)Budget.TotalMilliseconds, true, null, previous?.Suppressed ?? 0, false,
+      CleanupEvidence: "not-started", PendingCleanupEvidence: pendingEvidence);
   }
 
   private static bool ValidReply(string operation, string[] fields)
@@ -170,29 +250,36 @@ internal sealed class WmiProbeProcess
   internal void ReportRestoreDegraded(string failureKind, long elapsedMilliseconds, long budgetMilliseconds)
   {
     bool terminated;
-    lock (_sync) terminated = !_closed && !_busy;
+    lock (_sync) terminated = _pending is null && !_busy;
     Publish(new("brightness-restore", failureKind, elapsedMilliseconds, budgetMilliseconds, terminated, null, 0, false));
   }
 
-  private void Fail(string operation, string kind, long elapsed, bool terminated, int? exitCode)
+  private void Fail(string operation, string kind, long elapsed, bool terminated, int? exitCode,
+    string? cleanupEvidence = null, UnconfirmedChild? pendingCleanup = null)
   {
     WmiProbeObservation? failure = null;
     lock (_sync)
     {
-      _closed |= !terminated;
+      if (!terminated && _pending is null)
+      {
+        _pending = pendingCleanup ?? UnconfirmedChild.Unprovable();
+        _pendingSince = _time.GetTimestamp();
+      }
       var report = !_failures.TryGetValue(operation, out var previous) || previous.Kind != kind ||
         _time.GetElapsedTime(previous.ReportedAt) >= TimeSpan.FromSeconds(60);
       var suppressed = previous?.Suppressed ?? 0;
       if (!report) suppressed++; // Repeated actual failures are also coalesced observations.
       _failures[operation] = new(kind, report ? _time.GetTimestamp() : previous!.ReportedAt,
         _time.GetTimestamp(), elapsed, terminated, exitCode, report ? 0 : suppressed);
-      if (report) failure = Observation(operation, kind, elapsed, terminated, exitCode, false, suppressed);
+      if (report) failure = Observation(operation, kind, elapsed, terminated, exitCode, false, suppressed, cleanupEvidence);
     }
     Publish(failure);
   }
 
-  private WmiProbeObservation Observation(string operation, string kind, long elapsed, bool terminated, int? exitCode, bool recovered, long suppressed)
-    => new(operation, kind, elapsed, (long)Budget.TotalMilliseconds, terminated, exitCode, suppressed, recovered);
+  private WmiProbeObservation Observation(string operation, string kind, long elapsed, bool terminated, int? exitCode, bool recovered,
+    long suppressed, string? cleanupEvidence = null)
+    => new(operation, kind, elapsed, (long)Budget.TotalMilliseconds, terminated, exitCode, suppressed, recovered,
+      CleanupEvidence: cleanupEvidence);
 
   private void Publish(WmiProbeObservation? observation)
   {
