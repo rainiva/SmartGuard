@@ -130,6 +130,13 @@ internal static class PowerCfgProcessRunner
       Release(proc, readerCts);
       return Result(true, failure) with { CleanupEvidence = evidence };
     }
+    if (retainUnconfirmed)
+      // The caller owns the child: the process stays undisposed and the readers keep running to EOF.
+      return Result(true, "cleanup-unconfirmed", confirmed: false) with
+      {
+        CleanupEvidence = evidence,
+        PendingCleanup = UnconfirmedChild.FromProcess(proc, readOutTask, readErrTask, readerCts, evidence),
+      };
     readerCts.Cancel();
     Release(proc, readerCts);
     return Result(true, "cleanup-unconfirmed", confirmed: false) with { CleanupEvidence = evidence };

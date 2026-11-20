@@ -193,4 +193,32 @@ public class PowerCfgProcessRunnerTests
         result.CleanupEvidence.Should().Be("pipes-open");
         result.PendingCleanup.Should().BeNull("a caller that does not retain gets nothing to own");
     }
+
+    [Fact]
+    public async Task Retained_child_is_handed_over_and_proven_only_after_the_descendant_exits()
+    {
+        using var fixture = new DescendantFixture();
+        UnconfirmedChild? pending = null;
+        try
+        {
+            var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments,
+                TimeSpan.FromSeconds(2), retainUnconfirmed: true);
+            result.FailureKind.Should().Be("cleanup-unconfirmed");
+            pending = result.PendingCleanup;
+            pending.Should().NotBeNull("the retaining caller owns the unproven child");
+            pending!.TryConfirm().Should().BeFalse();
+            pending.Evidence.Should().Be("pipes-open");
+
+            fixture.KillAndWait();
+            SpinWait.SpinUntil(() => pending.TryConfirm(), TimeSpan.FromSeconds(5)).Should().BeTrue();
+            pending.Evidence.Should().Be("confirmed");
+        }
+        finally
+        {
+            // Even after a failed assertion: end the descendant so the held readers reach EOF, then let
+            // the proof release the process handle and the reader token source.
+            fixture.KillAndWait();
+            if (pending is not null) SpinWait.SpinUntil(() => pending.TryConfirm(), TimeSpan.FromSeconds(5));
+        }
+    }
 }
