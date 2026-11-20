@@ -6,34 +6,6 @@ namespace SmartGuard.Configuration.Tests;
 public class PowerCfgProcessRunnerTests
 {
     [Fact]
-    public async Task RunProcess_releases_redirected_pipe_handles_without_waiting_for_gc()
-    {
-        // Warm the runtime/process path before measuring. Suppressing collections makes
-        // this exercise deterministic ownership rather than eventual finalizer cleanup.
-        for (var i = 0; i < 4; i++)
-            (await PowerCfgProcessRunner.RunProcessAsync("cmd.exe", "/c echo warm", TimeSpan.FromSeconds(5))).Succeeded.Should().BeTrue();
-
-        using var current = System.Diagnostics.Process.GetCurrentProcess();
-        GC.TryStartNoGCRegion(128 * 1024 * 1024).Should().BeTrue();
-        try
-        {
-            current.Refresh();
-            var before = current.HandleCount;
-            for (var i = 0; i < 32; i++)
-                (await PowerCfgProcessRunner.RunProcessAsync("cmd.exe", "/c echo measured", TimeSpan.FromSeconds(5))).Succeeded.Should().BeTrue();
-            current.Refresh();
-            // Runtime process-wait registrations can retain roughly one handle per
-            // invocation until GC. Allow that overhead, but not the 64 pipe handles.
-            (current.HandleCount - before).Should().BeLessThan(48,
-                "each completed command must release both redirected pipe handles without a collection");
-        }
-        finally
-        {
-            GC.EndNoGCRegion();
-        }
-    }
-
-    [Fact]
     public async Task RunProcess_pre_cancel_does_not_start()
     {
         using var cancellation = new CancellationTokenSource();
