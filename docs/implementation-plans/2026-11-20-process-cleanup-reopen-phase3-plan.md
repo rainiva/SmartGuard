@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**状态：** 第 1 版草案，待外部审查与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
+**状态：** 第 2 版草案，已按 2026-11-20 外部审查修订（见文末“外部审查修订记录”），待复审与用户批准后实施。设计见 [2026-11-19-process-cleanup-reopen.md](2026-11-19-process-cleanup-reopen.md) 第 3 版（3v.1–3v.7），第 2 版正文中被第 3 版保留的小节一并适用。旧计划 [2026-11-19-process-cleanup-reopen-plan.md](2026-11-19-process-cleanup-reopen-plan.md) 已作废，本计划不复用其内容。
 
 **基线：** 第二阶段完成后的 `fix/logging-observability`（`f410f960` 及之后）。已核实：
 - `PowerCfgProcessRunner` 只剩 `RunProcess`/`RunProcessAsync`，生产调用方只有 `WmiProbeProcess`（全仓 grep）。设计 3.6 表因此只剩 `WmiProbeProcess` 一行。
@@ -10,6 +10,8 @@
 - `GuardianLoop.CreateNativeProbeEvent` 含电源 API 分支（`schemeApi`）与 `win32Error` 属性。
 
 **Goal:** WMI 子进程清理未确认后，`WmiProbeProcess` 不再永久停止探测：持有该子进程，在它被证实已退出且两路管道读到 EOF 时自动重开，并把“本次未启动”与“上次未证实”分别记录。
+
+**证明边界：** “已证实”指被持有的子进程本身已退出，且两路重定向管道的所有写端都已关闭（读到 EOF）。它**不**证明曾继承过这两路管道的后代都已退出：后代可以先关闭继承的句柄再继续运行。本计划保证的是父端（`WmiProbeProcess`）至多持有一个未证实对象，且持有期间不启动新子进程；不保证系统中至多存活一个相关进程。未继承管道的后代不在可证明范围内（设计 3.1）。
 
 **Architecture:**
 - **运行器（`PowerCfgProcessRunner`）：** 以 EOF 为清理证据，在 250ms 收尾等待之后判定。读取任务使用独立令牌，收尾期间不取消读取。删除预先快照的 `orphanedPipes`。调用方可以选择保留未证实的子进程。
@@ -76,7 +78,7 @@ Expected: 全部通过，记录各项目计数。
 
 ### Task 1: 脚手架（不改变行为）
 
-**Files:** `PowerCfgCommandResult.cs`、`PowerCfgProcessRunner.cs`、新建 `UnconfirmedChild.cs`
+**Files:** `PowerCfgCommandResult.cs`、`PowerCfgProcessRunner.cs`、`WmiProbeProcess.cs`（只改默认执行器）、新建 `UnconfirmedChild.cs`
 
 - [ ] **Step 1: 结果类型**
 
@@ -133,6 +135,29 @@ internal sealed class UnconfirmedChild
 ```
 
 - `RunProcessAsync` 增加参数 `bool retainUnconfirmed = false`，并传给 `RunProcessCoreAsync`。骨架阶段忽略它。
+- **同一步**修改 `WmiProbeProcess` 构造函数中的默认执行器，否则无法编译（方法组转换不能省略可选参数，`RunProcessAsync` 不再能直接转换为四参数委托）：
+
+```csharp
+    _execute = execute ?? ((file, args, budget, token) =>
+      PowerCfgProcessRunner.RunProcessAsync(file, args, budget, token, retainUnconfirmed: false));
+```
+
+  Task 5 才把它改为 `retainUnconfirmed: true`。
+- 读取任务的调度加入测试用调度器入口（`AsyncLocal`，默认 `TaskScheduler.Default`，行为不变），并在调度**之前**取得读取令牌：
+
+```csharp
+  private static readonly AsyncLocal<TaskScheduler?> ReaderScheduler = new();
+
+  // Test-only: lets a test run the reader tasks late, after the runner has returned.
+  internal static void UseReaderSchedulerForTests(TaskScheduler? scheduler) => ReaderScheduler.Value = scheduler;
+
+  private static Task<PipeReadOutcome> StartReader(StreamReader reader, TaskCompletionSource<string> failure, CancellationToken token)
+    => Task.Factory.StartNew(() => ReadBoundedAsync(reader, failure, token), CancellationToken.None,
+      TaskCreationOptions.DenyChildAttach, ReaderScheduler.Value ?? TaskScheduler.Default).Unwrap();
+```
+
+  两处 `Task.Run(() => ReadBoundedAsync(...))` 改为 `StartReader(...)`；骨架阶段仍传 `linkedCts.Token`（先取到局部变量再传入）。
+- Files 增加 `src/SmartGuard.Engine/Infrastructure/WmiProbeProcess.cs`。
 - `ReadBoundedAsync` 返回 `Task<PipeReadOutcome>`：`count == 0` 时返回 `new(output.ToString(), true)`，超限时返回 `new(output.ToString(), false)`。成功路径取 `.Text`。
 - `var killSucceeded = TryKill(proc);` 之后加入 `AfterTerminationRequest.Value?.Invoke();`。
 - 两处 `Result(...)` 返回补上 `CleanupEvidence`：成功为 `"confirmed"`；失败路径按现有判定，`confirmed` 为 true 时 `"confirmed"`，否则 `"pipes-open"`。现有判定（含 `orphanedPipes` 快照与 `linkedCts.Cancel()`）不变。
@@ -155,68 +180,158 @@ Expected: 计数与 Task 0 相同，全部通过。
 
 - [ ] **Step 1: 写失败测试**
 
-在 `PowerCfgProcessRunnerTests` 中加入夹具与两例。夹具父进程派生一个继承管道的后代后正常退出；后代先写就绪文件，再等待释放文件（至多 20 秒）：
+在 `PowerCfgProcessRunnerTests` 中加入夹具、收尾辅助方法与三例。
+
+- **场景：** 夹具父进程派生一个继承管道的后代，写下两个 PID 后正常退出，后代继续持有管道。用例在取消之前先证明“父进程已退出、后代仍存活”，这正是旧代码 `orphanedPipes` 预先快照会误判的状态。
+- **钩子只发信号：** `SignalDescendantExit` 只调用一次 `Process.Kill()`（`TerminateProcess`，立即返回），不等待退出。后代的句柄由内核在终止后关闭，EOF 是否落在 250ms 收尾窗口内，由运行器自己的等待决定。
+- **清理移到收尾：** 等待后代退出、观察运行任务都在 `finally` 中完成。
 
 ```csharp
     private sealed class DescendantFixture : IDisposable
     {
         private readonly string _dir = Path.Combine(Path.GetTempPath(), $"sg-descendant-{Guid.NewGuid():N}");
         internal DescendantFixture() => Directory.CreateDirectory(_dir);
-        internal string PidPath => Path.Combine(_dir, "pid");
-        internal string ReadyPath => Path.Combine(_dir, "ready");
-        internal string ReleasePath => Path.Combine(_dir, "release");
+        private string ParentPidPath => Path.Combine(_dir, "parent.pid");
+        private string ChildPidPath => Path.Combine(_dir, "child.pid");
 
-        // The descendant inherits the redirected pipes (-NoNewWindow) and outlives its parent.
+        // The descendant inherits the redirected pipes (-NoNewWindow); the parent records both PIDs and exits.
         internal string ParentArguments =>
-            "-NoProfile -Command \"$p = Start-Process powershell.exe -NoNewWindow -PassThru -ArgumentList " +
-            $"'-NoProfile -Command [IO.File]::WriteAllText(''{ReadyPath}'',''1''); $d=(Get-Date).AddSeconds(20); while(-not (Test-Path ''{ReleasePath}'') -and (Get-Date) -lt $d){{Start-Sleep -Milliseconds 20}}'; " +
-            $"[IO.File]::WriteAllText('{PidPath}', [string]$p.Id)\"";
+            "-NoProfile -Command \"$p = Start-Process powershell.exe -NoNewWindow -PassThru -ArgumentList '-NoProfile -Command Start-Sleep -Seconds 20'; " +
+            $"[IO.File]::WriteAllText('{ChildPidPath}', [string]$p.Id); [IO.File]::WriteAllText('{ParentPidPath}', [string]$PID)\"";
 
-        internal bool WaitReady(TimeSpan timeout) => SpinWait.SpinUntil(() => File.Exists(ReadyPath) && File.Exists(PidPath), timeout);
-
-        // Releases the descendant and waits until it has exited.
-        internal void ReleaseAndWait()
+        // The scenario under test: the parent has exited while its descendant still holds the pipes.
+        internal bool WaitParentExitedWithDescendantAlive(TimeSpan timeout)
         {
-            File.WriteAllText(ReleasePath, "1");
-            if (TryGetDescendant() is { } child) using (child) child.WaitForExit(5000);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            if (!SpinWait.SpinUntil(() => File.Exists(ParentPidPath) && File.Exists(ChildPidPath), timeout)) return false;
+            using (var parent = TryGet(ParentPidPath))
+                if (parent is not null && !parent.WaitForExit((int)Math.Max(0, (timeout - watch.Elapsed).TotalMilliseconds))) return false;
+            using var child = TryGet(ChildPidPath);
+            return child is not null && !child.HasExited;
         }
 
-        internal void Kill()
+        // Signal only: TerminateProcess returns at once and the kernel then closes the child's handles.
+        internal void SignalDescendantExit()
         {
-            if (TryGetDescendant() is not { } child) return;
-            using (child) { try { child.Kill(entireProcessTree: true); child.WaitForExit(5000); } catch (InvalidOperationException) { } }
+            using var child = TryGet(ChildPidPath);
+            try { child?.Kill(); } catch (InvalidOperationException) { }
         }
 
-        private System.Diagnostics.Process? TryGetDescendant()
+        internal void KillAndWait()
         {
-            try { return File.Exists(PidPath) ? System.Diagnostics.Process.GetProcessById(int.Parse(File.ReadAllText(PidPath))) : null; }
+            using var child = TryGet(ChildPidPath);
+            if (child is null) return;
+            try { child.Kill(entireProcessTree: true); child.WaitForExit(5000); } catch (InvalidOperationException) { }
+        }
+
+        private static System.Diagnostics.Process? TryGet(string pidPath)
+        {
+            try { return File.Exists(pidPath) ? System.Diagnostics.Process.GetProcessById(int.Parse(File.ReadAllText(pidPath))) : null; }
             catch (ArgumentException) { return null; }
+            catch (IOException) { return null; }
         }
 
         public void Dispose()
         {
-            Kill();
+            KillAndWait();
             try { Directory.Delete(_dir, true); } catch (IOException) { }
         }
     }
 
+    // Test cleanup: never leave a started run unobserved, even when an assertion failed first.
+    private static async Task SettleAsync(Task? task)
+    {
+        if (task is null) return;
+        try { await task.WaitAsync(TimeSpan.FromSeconds(10)); } catch { /* observed */ }
+    }
+
     [Fact]
-    public async Task Cleanup_is_judged_after_the_settle_wait_by_eof_not_by_an_early_snapshot()
+    public async Task Pipes_closing_inside_the_settle_wait_prove_cleanup_despite_the_parent_exiting_first()
     {
         using var fixture = new DescendantFixture();
         using var stop = new CancellationTokenSource();
-        PowerCfgProcessRunner.UseAfterTerminationRequestForTests(fixture.ReleaseAndWait);
+        Task<PowerCfgCommandResult>? run = null;
+        PowerCfgProcessRunner.UseAfterTerminationRequestForTests(fixture.SignalDescendantExit);
         try
         {
-            var run = PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(15), stop.Token);
-            fixture.WaitReady(TimeSpan.FromSeconds(10)).Should().BeTrue("the descendant holds the pipes before the cancel");
+            run = PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(15), stop.Token);
+            fixture.WaitParentExitedWithDescendantAlive(TimeSpan.FromSeconds(10))
+                .Should().BeTrue("the scenario needs an exited parent whose descendant still holds the pipes");
             stop.Cancel();
-            var result = await run;
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(10));
             result.FailureKind.Should().Be("cancelled");
-            result.TerminationConfirmed.Should().BeTrue("the pipes reached EOF inside the settle wait");
+            result.TerminationConfirmed.Should().BeTrue("both pipes reached EOF inside the 250ms settle wait");
             result.CleanupEvidence.Should().Be("confirmed");
         }
-        finally { PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null); }
+        finally
+        {
+            PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null);
+            stop.Cancel();
+            await SettleAsync(run);
+            fixture.KillAndWait();
+        }
+    }
+
+    [Fact]
+    public async Task Pipes_closing_after_the_settle_wait_leave_cleanup_unconfirmed()
+    {
+        using var fixture = new DescendantFixture();
+        using var stop = new CancellationTokenSource();
+        Task<PowerCfgCommandResult>? run = null;
+        Task? lateSignal = null;
+        // The descendant dies one second after the termination request, well outside the 250ms budget.
+        PowerCfgProcessRunner.UseAfterTerminationRequestForTests(() =>
+            lateSignal = Task.Delay(1000).ContinueWith(_ => fixture.SignalDescendantExit(), TaskScheduler.Default));
+        try
+        {
+            run = PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(15), stop.Token);
+            fixture.WaitParentExitedWithDescendantAlive(TimeSpan.FromSeconds(10)).Should().BeTrue();
+            stop.Cancel();
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(10));
+            result.FailureKind.Should().Be("cleanup-unconfirmed");
+            result.CleanupEvidence.Should().Be("pipes-open");
+            result.PendingCleanup.Should().BeNull("a caller that does not retain gets nothing to own");
+        }
+        finally
+        {
+            PowerCfgProcessRunner.UseAfterTerminationRequestForTests(null);
+            stop.Cancel();
+            await SettleAsync(run);
+            await SettleAsync(lateSignal);
+            fixture.KillAndWait();
+        }
+    }
+
+    [Fact]
+    public async Task Late_scheduled_readers_still_release_their_pipes_on_the_unconfirmed_path()
+    {
+        // Readers that only start after the runner has returned must still dispose their pipe handles:
+        // the token is captured before scheduling, so a disposed token source cannot skip the reader's own disposal.
+        using var fixture = new DescendantFixture();
+        var scheduler = new ManualTaskScheduler();
+        PowerCfgProcessRunner.UseReaderSchedulerForTests(scheduler);
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        try
+        {
+            var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments, TimeSpan.FromSeconds(2));
+            result.FailureKind.Should().Be("cleanup-unconfirmed", "the readers never ran, so EOF was never observed");
+            fixture.KillAndWait();
+            current.Refresh();
+            var before = current.HandleCount;
+            GC.TryStartNoGCRegion(16 * 1024 * 1024).Should().BeTrue();
+            try
+            {
+                scheduler.RunPending().Should().Be(2);
+                SpinWait.SpinUntil(() => { current.Refresh(); return before - current.HandleCount >= 2; }, TimeSpan.FromSeconds(5))
+                    .Should().BeTrue("both late readers disposed their pipe handles without a collection");
+            }
+            finally { GC.EndNoGCRegion(); }
+        }
+        finally
+        {
+            PowerCfgProcessRunner.UseReaderSchedulerForTests(null);
+            scheduler.RunPending();
+        }
     }
 
     [Fact]
@@ -231,6 +346,8 @@ Expected: 计数与 Task 0 相同，全部通过。
     }
 ```
 
+（`ManualTaskScheduler` 为第一阶段已有的 Configuration 测试替身，`RunPending()` 返回执行的任务数。）
+
 - [ ] **Step 2: RED**
 
 ```powershell
@@ -238,7 +355,11 @@ dotnet build Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests
 dotnet test Tests/SmartGuard.Configuration.Tests/SmartGuard.Configuration.Tests.csproj --no-build --filter "FullyQualifiedName~PowerCfgProcessRunnerTests" --logger "trx;LogFileName=task2-red.trx" --results-directory .work/process-cleanup-phase3
 ```
 
-Expected: `Cleanup_is_judged_after…` 失败，`TerminationConfirmed` 为 false。原因是旧判定在终止请求与收尾等待之前就快照了 `orphanedPipes`（父进程已退出、读取未结束），而且在收尾等待前已取消读取。`Held_pipes…` 通过，是保护性用例。其余旧用例通过。
+Expected:
+- `Pipes_closing_inside_the_settle_wait…` 失败，`TerminationConfirmed` 为 false。原因是旧判定在终止请求之前就快照了 `orphanedPipes`：父进程已退出、读取未结束即判为孤儿；而且在收尾等待前已取消读取，EOF 无从观测。
+- `Late_scheduled_readers…` 失败：骨架中读取令牌已在调度前取得，但旧路径取消并释放的是 `linkedCts`，迟到的读取以已取消的令牌进入读取方法并释放读取器，此例可能在骨架上通过。若通过，记为保护性用例，并在 Task 2 实现后重跑确认仍通过（读取器改用独立的 `readerCts` 后，释放顺序是本例真正保护的对象）。
+- `Pipes_closing_after_the_settle_wait…`、`Held_pipes…` 通过，是保护性用例：预算外才关闭的管道仍判为未确认。
+- 其余旧用例通过。
 
 - [ ] **Step 3: 实现**
 
@@ -284,7 +405,16 @@ Expected: `Cleanup_is_judged_after…` 失败，`TerminationConfirmed` 为 false
 
 `RunProcessCoreAsync` 中：
 - 删除 `using var process = proc;`。
-- 读取任务改用独立令牌：在 `failureSignal` 之前加入 `var readerCts = new CancellationTokenSource();`，两处 `ReadBoundedAsync(..., linkedCts.Token)` 改为 `readerCts.Token`。
+- 读取任务改用独立令牌，并在调度**之前**取得令牌：在 `failureSignal` 之前加入
+
+```csharp
+    var readerCts = new CancellationTokenSource();
+    // Taken before scheduling: a reader that starts after the source was disposed must still enter
+    // ReadBoundedAsync, which owns the reader's disposal.
+    var readerToken = readerCts.Token;
+```
+
+  两处 `StartReader(..., linkedToken)` 改为 `StartReader(..., readerToken)`。
 - 成功分支改为：
 
 ```csharp
@@ -361,17 +491,28 @@ Expected: 全部通过。`RunProcess_limits_each_output_stream` 继续为 `outpu
     public async Task Retained_child_is_handed_over_and_proven_only_after_the_descendant_exits()
     {
         using var fixture = new DescendantFixture();
-        var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments,
-            TimeSpan.FromSeconds(2), retainUnconfirmed: true);
-        result.FailureKind.Should().Be("cleanup-unconfirmed");
-        var pending = result.PendingCleanup;
-        pending.Should().NotBeNull("the retaining caller owns the unproven child");
-        pending!.TryConfirm().Should().BeFalse();
-        pending.Evidence.Should().Be("pipes-open");
+        UnconfirmedChild? pending = null;
+        try
+        {
+            var result = await PowerCfgProcessRunner.RunProcessAsync("powershell.exe", fixture.ParentArguments,
+                TimeSpan.FromSeconds(2), retainUnconfirmed: true);
+            result.FailureKind.Should().Be("cleanup-unconfirmed");
+            pending = result.PendingCleanup;
+            pending.Should().NotBeNull("the retaining caller owns the unproven child");
+            pending!.TryConfirm().Should().BeFalse();
+            pending.Evidence.Should().Be("pipes-open");
 
-        fixture.Kill();
-        SpinWait.SpinUntil(() => pending.TryConfirm(), TimeSpan.FromSeconds(5)).Should().BeTrue();
-        pending.Evidence.Should().Be("confirmed");
+            fixture.KillAndWait();
+            SpinWait.SpinUntil(() => pending.TryConfirm(), TimeSpan.FromSeconds(5)).Should().BeTrue();
+            pending.Evidence.Should().Be("confirmed");
+        }
+        finally
+        {
+            // Even after a failed assertion: end the descendant so the held readers reach EOF, then let
+            // the proof release the process handle and the reader token source.
+            fixture.KillAndWait();
+            if (pending is not null) SpinWait.SpinUntil(() => pending.TryConfirm(), TimeSpan.FromSeconds(5));
+        }
     }
 ```
 
@@ -453,43 +594,59 @@ public class UnconfirmedChildTests(ITestOutputHelper output)
   [Fact]
   public void Confirmation_cost_is_constant_on_the_exited_and_the_kill_paths()
   {
-    // Exited path: the child exited but a reader never finished, so every call checks state only.
+    const int samples = 200;
     var open = new TaskCompletionSource<PipeReadOutcome>();
-    var exited = UnconfirmedChild.FromProcess(ExitedChild(), open.Task, Eof(), new CancellationTokenSource(), "pipes-open");
-    var exitedCosts = Measure(200, _ => exited.TryConfirm().Should().BeFalse());
 
-    // Kill path: each sample owns a fresh live child, so its first call performs one Process.Kill().
-    var live = Enumerable.Range(0, 200).Select(_ => Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 30 127.0.0.1 >nul")
-      { UseShellExecute = false, CreateNoWindow = true })!).ToArray();
-    try
+    // Exited path: the child exited but a reader never finished, so every call checks state only.
+    var exitedCosts = new double[samples];
+    var exitedResults = new bool[samples];
+    using (var exitedProcess = ExitedChild())
+    using (var exitedCts = new CancellationTokenSource())
     {
-      var children = live.Select(p => UnconfirmedChild.FromProcess(p, open.Task, open.Task, new CancellationTokenSource(), "not-exited")).ToArray();
-      var killCosts = Measure(200, i =>
+      var exited = UnconfirmedChild.FromProcess(exitedProcess, open.Task, Eof(), exitedCts, "pipes-open");
+      for (var i = 0; i < samples; i++)
       {
-        children[i].TryConfirm().Should().BeFalse();
-        children[i].Evidence.Should().Be("not-exited");
-      });
-      Report("exited", exitedCosts);
-      Report("kill", killCosts);
-      exitedCosts.Max().Should().BeLessThan(50);
-      killCosts.Max().Should().BeLessThan(50);
+        var started = Stopwatch.GetTimestamp();
+        exitedResults[i] = exited.TryConfirm();
+        exitedCosts[i] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+      }
     }
-    finally
-    {
-      foreach (var p in live) { try { p.Kill(entireProcessTree: true); p.WaitForExit(5000); } catch (InvalidOperationException) { } p.Dispose(); }
-    }
-  }
+    exitedResults.Should().AllBeEquivalentTo(false);
 
-  private static double[] Measure(int count, Action<int> call)
-  {
-    var costs = new double[count];
-    for (var i = 0; i < count; i++)
+    // Kill path: one sample at a time, each with a fresh live child that has no descendants
+    // ("cmd /c pause" blocks on its redirected stdin). Only TryConfirm is inside the timed region.
+    var killCosts = new double[samples];
+    for (var i = 0; i < samples; i++)
     {
-      var started = Stopwatch.GetTimestamp();
-      call(i);
-      costs[i] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+      Process? child = null;
+      try
+      {
+        child = Process.Start(new ProcessStartInfo("cmd.exe", "/c pause")
+          { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true })
+          ?? throw new InvalidOperationException("fixture child did not start");
+        using var cts = new CancellationTokenSource();
+        var held = UnconfirmedChild.FromProcess(child, open.Task, open.Task, cts, "not-exited");
+        var started = Stopwatch.GetTimestamp();
+        var confirmed = held.TryConfirm();
+        killCosts[i] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        confirmed.Should().BeFalse();
+        held.Evidence.Should().Be("not-exited");
+      }
+      finally
+      {
+        if (child is not null)
+        {
+          try { if (!child.HasExited) child.Kill(); } catch (InvalidOperationException) { }
+          child.WaitForExit(5000).Should().BeTrue("each sample ends its own child before the next starts");
+          child.Dispose();
+        }
+      }
     }
-    return costs;
+
+    Report("exited", exitedCosts);
+    Report("kill", killCosts);
+    exitedCosts.Max().Should().BeLessThan(50);
+    killCosts.Max().Should().BeLessThan(50);
   }
 
   private void Report(string path, double[] costs)
@@ -500,7 +657,7 @@ public class UnconfirmedChildTests(ITestOutputHelper output)
 }
 ```
 
-`kill` 路径中，`ping` 子进程的 `cmd.exe` 父进程被 `Kill()`（非进程树）结束；`ping` 本身在 `finally` 中用进程树终止清理。被测的是 `TryConfirm` 单次调用耗时。
+`kill` 路径串行采样：每个样本只有一个没有后代的子进程（`cmd /c pause` 阻塞在重定向的标准输入上），取得后立即进入 `try/finally`，样本结束前确认它已退出并释放，启动失败也不会遗留进程。计时区只包含 `TryConfirm` 一次调用，断言在计时之后。
 
 - [ ] **Step 2: RED**
 
@@ -831,14 +988,21 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
     Assert.Equal(50, probe.ReadBrightness());                 // its 30 s cooldown from the original failure has passed
   }
 
+  // Test cleanup: never leave a started request unobserved, even when an assertion failed first.
+  private static async Task SettleAsync(Task? task)
+  {
+    if (task is null) return;
+    try { await task.WaitAsync(TimeSpan.FromSeconds(10)); } catch { /* observed */ }
+  }
+
   [Fact]
   public async Task Confirmation_in_progress_rejects_concurrent_requests_without_a_second_proof()
   {
-    using var entered = new ManualResetEventSlim();
-    using var release = new ManualResetEventSlim();
+    var entered = new ManualResetEventSlim();
+    var release = new ManualResetEventSlim();
     var proofs = 0;
     var calls = 0;
-    var probe = new WmiProbeProcess((_, _, _, _) => Task.FromResult(++calls == 1
+    var probe = new WmiProbeProcess((_, _, _, _) => Task.FromResult(Interlocked.Increment(ref calls) == 1
       ? Unconfirmed(UnconfirmedChild.ForTests(() =>
         {
           Interlocked.Increment(ref proofs);
@@ -847,17 +1011,93 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
           return (true, "confirmed");
         }, "pipes-open"))
       : Reply("SGWMI1|battery|80|ac")));
-    Assert.Equal(-1, probe.ReadBrightness());
-    var confirming = Task.Run(() => probe.ReadBattery());
+    Task<(int, bool?)?>? confirming = null;
+    Task<(int, bool?)?>? concurrent = null;
     try
     {
+      Assert.Equal(-1, probe.ReadBrightness());
+      confirming = Task.Run(() => probe.ReadBattery());
       Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-      Assert.Null(await Task.Run(() => probe.ReadBattery()).WaitAsync(TimeSpan.FromSeconds(1)));
+      concurrent = Task.Run(() => probe.ReadBattery());
+      Assert.Null(await concurrent.WaitAsync(TimeSpan.FromSeconds(1)));
       Assert.Equal(1, Volatile.Read(ref proofs));
+      release.Set();
+      Assert.NotNull(await confirming.WaitAsync(TimeSpan.FromSeconds(5)));
+      Assert.Equal(1, proofs);
+      Assert.Equal(2, calls);   // the confirming request itself ran right after the proof
     }
-    finally { release.Set(); }
-    Assert.NotNull(await confirming);
-    Assert.Equal(1, proofs);
+    finally
+    {
+      release.Set();
+      await SettleAsync(confirming);
+      await SettleAsync(concurrent);
+      entered.Dispose();
+      release.Dispose();
+    }
+  }
+
+  [Fact]
+  public async Task A_request_arriving_during_a_failing_execution_never_starts_a_second_child()
+  {
+    // The interleaving from the review: B is executing and will leave an unproven child; A arrives
+    // meanwhile. Admission is one decision under one lock, so A is rejected while B holds the slot, and
+    // after B no request starts a child while B's child is held.
+    var entered = new ManualResetEventSlim();
+    var release = new ManualResetEventSlim();
+    var calls = 0;
+    var probe = new WmiProbeProcess((_, _, _, _) =>
+    {
+      Interlocked.Increment(ref calls);
+      entered.Set();
+      release.Wait(TimeSpan.FromSeconds(10));
+      return Task.FromResult(Unconfirmed(UnconfirmedChild.ForTests(() => (false, "not-exited"), "not-exited")));
+    });
+    Task<int>? b = null;
+    Task<(int, bool?)?>? a = null;
+    try
+    {
+      b = Task.Run(() => probe.ReadBrightness());
+      Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+      a = Task.Run(() => probe.ReadBattery());
+      Assert.Null(await a.WaitAsync(TimeSpan.FromSeconds(5)));
+      release.Set();
+      Assert.Equal(-1, await b.WaitAsync(TimeSpan.FromSeconds(5)));
+      Assert.Null(probe.ReadBattery());
+      Assert.Equal(1, Volatile.Read(ref calls));
+    }
+    finally
+    {
+      release.Set();
+      await SettleAsync(b);
+      await SettleAsync(a);
+      entered.Dispose();
+      release.Dispose();
+    }
+  }
+
+  [Fact]
+  public async Task No_execution_ever_starts_while_a_child_is_held()
+  {
+    // Invariant guard under contention: executions alternate between leaving a provable child and
+    // succeeding; the executor records a violation whenever it is entered while a child is held.
+    WmiProbeProcess? probe = null;
+    var violations = 0;
+    var calls = 0;
+    probe = new WmiProbeProcess((_, args, _, _) =>
+    {
+      if (probe!.HasPendingCleanupForTests) Interlocked.Increment(ref violations);
+      return Task.FromResult(Interlocked.Increment(ref calls) % 2 == 1
+        ? Unconfirmed(UnconfirmedChild.ForTests(() => (true, "confirmed"), "pipes-open"))
+        : Reply(args.Contains("battery-read") ? "SGWMI1|battery|80|ac" : "SGWMI1|brightness|50"));
+    });
+    var workers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+    {
+      for (var i = 0; i < 500; i++) _ = probe.ReadBattery();
+    })).ToArray();
+    try { await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(30)); }
+    finally { foreach (var worker in workers) await SettleAsync(worker); }
+    Assert.Equal(0, violations);
+    Assert.True(calls > 1, "the guard must have exercised both outcomes");
   }
 
   [Fact]
@@ -865,14 +1105,20 @@ Expected: 三个新用例失败（缺少属性与文案）；原有 7 例通过�
   {
     var late = new TaskCompletionSource<PowerCfgCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
     var calls = 0;
-    var probe = new WmiProbeProcess((_, _, _, _) => ++calls == 1 ? late.Task : Task.FromResult(Reply("SGWMI1|battery|80|ac")));
-    Assert.Equal(-1, await Task.Run(() => probe.ReadBrightness()).WaitAsync(TimeSpan.FromSeconds(5)));
-    Assert.Null(probe.ReadBattery());
-    late.SetResult(Reply("SGWMI1|brightness|44"));            // the late result certifies its own cleanup
-    Assert.NotNull(probe.ReadBattery());
-    Assert.Equal(2, calls);
+    var probe = new WmiProbeProcess((_, _, _, _) => Interlocked.Increment(ref calls) == 1 ? late.Task : Task.FromResult(Reply("SGWMI1|battery|80|ac")));
+    try
+    {
+      Assert.Equal(-1, await Task.Run(() => probe.ReadBrightness()).WaitAsync(TimeSpan.FromSeconds(5)));
+      Assert.Null(probe.ReadBattery());
+      late.SetResult(Reply("SGWMI1|brightness|44"));            // the late result certifies its own cleanup
+      Assert.NotNull(probe.ReadBattery());
+      Assert.Equal(2, calls);
+    }
+    finally { late.TrySetResult(Reply("SGWMI1|brightness|44")); }
   }
 ```
+
+本步同时给 `WmiProbeProcess` 加入只读测试入口，使 RED 可编译：骨架为 `internal bool HasPendingCleanupForTests { get { lock (_sync) return _closed; } }`，Step 3 改为 `_pending is not null`。
 
 同时调整两个旧用例的预期（它们锁定的是旧的永久闩锁）：
 - `Unconfirmed_cleanup_permanently_closes_spawning` **删除**，由 `Unprovable_cleanup_keeps_spawning_closed` 取代（同一断言，执行器结果无可证明对象）。
@@ -911,7 +1157,7 @@ dotnet build Tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj --no-r
 dotnet test Tests/SmartGuard.Engine.Tests/SmartGuard.Engine.Tests.csproj --no-build --filter "FullyQualifiedName~WmiProbeProcessTests|FullyQualifiedName~BrightnessServiceTests" --logger "trx;LogFileName=task5-red.trx" --results-directory .work/process-cleanup-phase3
 ```
 
-Expected：`Proven_cleanup…`、`Rejection_is_its_own…`、`Confirmation_in_progress…`、`Nonreturning_executor_is_held…`、`Brightness_reads_return…` 与改写后的 `Sustained_failure…` 失败，原因都是 `_closed` 永久关闭（不重开、拒绝不单独记录）。`Unprovable_cleanup…` 通过（保护性）。
+Expected：`Proven_cleanup…`、`Rejection_is_its_own…`、`Confirmation_in_progress…`、`Nonreturning_executor_is_held…`、`No_execution_ever_starts…`（`calls > 1` 不成立）、`Brightness_reads_return…` 与改写后的 `Sustained_failure…` 失败，原因都是 `_closed` 永久关闭（不重开、拒绝不单独记录）。`Unprovable_cleanup…` 与 `A_request_arriving_during…` 通过（保护性：旧闩锁同样不放行；它们在新实现上锁定“持有期间不启动新子进程”）。
 
 - [ ] **Step 3: 实现**
 
@@ -929,40 +1175,80 @@ Expected：`Proven_cleanup…`、`Rejection_is_its_own…`、`Confirmation_in_pr
 ```
 
 - 默认执行器：`_execute = execute ?? ((file, args, budget, token) => PowerCfgProcessRunner.RunProcessAsync(file, args, budget, token, retainUnconfirmed: true));`
-- `Run` 开头 `if (token.IsCancellationRequested) return null;` 之后加入 `if (!TryReopen(operation)) return null;`，并从锁内条件删除 `|| _closed`。
+- `Run` 中从 `WmiProbeObservation? summary = null;` 到 `if (rejected) return null;` 的准入块（含 `|| _closed`）整体替换为一行 `if (!TryAcquire(operation)) return null;`。`TryAcquire` 返回 true 时本请求已持有 `_busy`，后续执行与 `finally { lock (_sync) _busy = false; }` 不变。
 - 加入：
 
 ```csharp
-  // While a child is held, each request first tries the constant-cost proof outside the ownership lock.
-  // _busy makes it single-flight: concurrent requests are rejected at once, never queued or re-proven.
-  private bool TryReopen(string operation)
+  // Admission is one ownership decision (PWR-INV-CLEANUP-REOPEN). Under one lock: a busy slot rejects;
+  // otherwise this request takes the slot. If a child is held, the slot is kept while the constant-cost
+  // proof runs outside the lock, and a proven reopen hands the same slot straight to this request's
+  // execution. The slot is never released between the held-child check and the start of a new child, so
+  // no other request can leave a child in between.
+  private bool TryAcquire(string operation)
   {
-    UnconfirmedChild pending;
+    UnconfirmedChild? pending;
+    WmiProbeObservation? first = null, second = null;
     lock (_sync)
     {
-      if (_pending is null) return true;
-      if (_busy) return false;
-      _busy = true;
-      pending = _pending;
+      if (_busy || (_pending is null && InCooldown(operation)))
+      {
+        first = CountRejectedFailure(operation);
+        pending = null;
+      }
+      else
+      {
+        _busy = true;
+        pending = _pending;
+        if (pending is null) return true;
+      }
     }
+    if (pending is null)
+    {
+      Publish(first);
+      return false;
+    }
+
     bool confirmed;
     try { confirmed = pending.TryConfirm(); }
     catch { confirmed = false; }
-    WmiProbeObservation? observation;
+    var acquired = false;
     lock (_sync)
     {
-      _busy = false;
       if (confirmed)
       {
         _pending = null;
         _rejections.Clear();
-        observation = new("process-cleanup", "none", (long)_time.GetElapsedTime(_pendingSince).TotalMilliseconds,
+        first = new("process-cleanup", "none", (long)_time.GetElapsedTime(_pendingSince).TotalMilliseconds,
           (long)Budget.TotalMilliseconds, true, null, 0, true, CleanupEvidence: "confirmed");
+        // Reopening does not lift this operation's own failure cooldown.
+        if (InCooldown(operation)) second = CountRejectedFailure(operation);
+        else acquired = true;   // keep the slot for this request's execution
       }
-      else observation = RecordRejection(operation, pending.Evidence);
+      else first = RecordRejection(operation, pending.Evidence);
+      if (!acquired) _busy = false;
     }
-    Publish(observation);
-    return confirmed;
+    Publish(first);
+    Publish(second);
+    return acquired;
+  }
+
+  private bool InCooldown(string operation)
+    => _failures.TryGetValue(operation, out var failed) && _time.GetElapsedTime(failed.FailedAt) < TimeSpan.FromSeconds(30);
+
+  // Unchanged behaviour of the old admission block: a rejected request only counts toward this
+  // operation's own failure summary (never another operation's), reported at most every 60 seconds.
+  private WmiProbeObservation? CountRejectedFailure(string operation)
+  {
+    if (!_failures.TryGetValue(operation, out var failed)) return null;
+    WmiProbeObservation? summary = null;
+    failed = failed with { Suppressed = failed.Suppressed + 1 };
+    if (_time.GetElapsedTime(failed.ReportedAt) >= TimeSpan.FromSeconds(60))
+    {
+      summary = Observation(operation, failed.Kind, failed.Elapsed, failed.Terminated, failed.ExitCode, false, failed.Suppressed);
+      failed = failed with { ReportedAt = _time.GetTimestamp(), Suppressed = 0 };
+    }
+    _failures[operation] = failed;
+    return summary;
   }
 
   // First rejection of each operation is reported at once, then at most every 60 seconds with the count
@@ -1059,7 +1345,7 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 
 - [ ] **Step 2: 契约**
   - `PWR-NATIVE-PROBE-ISOLATION` 中“清理未确认后关闭后续启动”改为“清理未确认时持有该子进程（`UnconfirmedChild`），证实其退出且两路管道读到 EOF 后自动重开（PWR-INV-CLEANUP-REOPEN）”。
-  - 不变量表加入 `PWR-INV-CLEANUP-REOPEN`（阻断）：重开只依据同一子进程“已退出且两路管道读到 EOF”的证据，不以时间、读取取消或其他操作成功推断；只有 `WmiProbeProcess` 可以保留未证实子进程，至多一个；拒绝记为 `cleanup-pending`，不影响操作冷却；日志属性 `cleanupEvidence`/`pendingCleanupEvidence`。门禁：`ProcessCleanupReopenArchitectureTests`。
+  - 不变量表加入 `PWR-INV-CLEANUP-REOPEN`（阻断）：重开只依据同一子进程“已退出且两路管道读到 EOF”的证据，不以时间、读取取消或其他操作成功推断。该证据只证明子进程本身已退出、管道写端都已关闭，不证明曾继承管道的后代都已退出。只有 `WmiProbeProcess` 可以保留未证实子进程，至多一个；准入（检查持有对象与占用执行槽）是同一次决定，持有期间不启动新子进程；拒绝记为 `cleanup-pending`，不影响操作冷却；日志属性 `cleanupEvidence`/`pendingCleanupEvidence`。门禁：`ProcessCleanupReopenArchitectureTests`。
   - 设计文档第 3 版末尾追加“实施与验证记录”标题（内容在 Task 7 填写）。
 
 - [ ] **Step 3: GREEN 与文档校验**（Architecture 全部通过；UTF-8 无 BOM；`git diff --check -- docs`）
@@ -1097,6 +1383,22 @@ Expected: 第 1、2 例在 Task 5 后通过（保护性）；第 3 例失败。
 - **相对设计的取舍：**
   - 设计 3.4 的证据取值未列 `unprovable`；本计划为“无证明材料”（执行器抛出、执行故障、结果无可证明对象）增加该取值，日志可区分“暂未证实”与“永远无法证实”。
   - `io-failed`（读取异常）此后一律判为 `reader-failed` 而不可证实，这是设计 3.1 的直接结果；旧行为在父进程退出且收尾完成时会判为已确认。
+- **测试资源：** 每个自建任务、子进程与同步对象都在 `finally` 中先解除阻塞、取消，再有界等待并观察异常，最后释放（`SettleAsync`）。断言失败不会遗弃后台任务或进程。
 - **已知风险：**
-  - 真实进程夹具依赖 PowerShell 启动速度；就绪握手、释放握手与 20 秒自退出保证不会悬挂，测试自己清理后代。
-  - 成本用例启动 200 个短命 `cmd.exe`，耗时约数秒；只在 Configuration 测试中运行。
+  - 真实进程夹具依赖 PowerShell 启动速度。父进程退出与后代存活都有显式前置判定，后代 20 秒自退出，测试在 `finally` 中结束后代。
+  - 成本用例串行启动 200 个无后代的 `cmd.exe`，耗时约数秒；只在 Configuration 测试中运行。
+  - `No_execution_ever_starts_while_a_child_is_held` 是并发下的不变量守卫，不是确定性复现；确定性的交错由 `A_request_arriving_during…` 覆盖。新设计的准入只有一次加锁决定，不存在可插入的中间点，因此无法也无需为旧缺口构造确定性 RED。
+
+---
+
+## 外部审查修订记录（2026-11-20，审查对象为第 1 版 `794e460b`）
+
+| # | 审查发现 | 核实结果 | 修订 |
+|---|----------|----------|------|
+| 1（P1） | 并发请求可能绕过清理闩锁：`TryReopen` 与占用 `_busy` 分开，执行准入又删除了关闭状态检查；B 在两者之间留下 `_pending` 后，A 仍会启动新子进程 | 成立：第 1 版 `TryReopen` 在 `_pending` 为空时释放锁返回，主锁只查 `_busy` 与冷却 | 准入改为 `TryAcquire` 一次决定：同一把锁内判断 `_busy`、`_pending` 并占用执行槽；证明期间保持占用，证明通过后把同一执行槽直接交给本请求执行，冷却检查也在持有执行槽时进行。补确定性交错用例与并发不变量守卫 |
+| 2（P1） | 成本测试有进程泄漏风险：200 个进程在 `try` 外批量创建，`ping` 后代，批量启动污染计时 | 成立 | 串行采样，每样本一个无后代的 `cmd /c pause`，取得后立即纳入 `try/finally` 并确认退出；计时区只含 `TryConfirm` |
+| 3（P1） | Task 1 无法编译：`RunProcessAsync` 加可选参数后不能再作为四参数委托的方法组 | 成立 | Task 1 同步把默认执行器改为四参数 lambda（`retainUnconfirmed: false`），Task 5 再改为 `true` |
+| 4（P2） | 竞态测试不能证明目标场景与 250ms 预算：未确认父进程已退出；钩子在收尾前最多等 5 秒 | 成立 | 先显式判定“父已退出、后代仍存活”；钩子只发终止信号不等待；分别测试预算内到达 EOF（确认）与预算外才关闭（未确认）；等待后代退出移到 `finally` |
+| 5（P2） | 迟到读取任务可能跳过释放：读取令牌在任务执行时才取得 | 成立 | 令牌在调度前取得；读取调度改走可替换调度器入口，新增“读取任务在运行器返回后才执行仍释放管道句柄”的确定性用例 |
+| 6（P2） | 测试失败路径遗弃后台任务 | 成立 | 所有自建任务在 `finally` 中解除阻塞、取消、有界等待并观察，最后释放同步对象 |
+| 表述 | 双 EOF 只证明管道写端关闭，不证明继承管道的后代已退出 | 成立 | 文首增加“证明边界”；契约条文同步收窄为“父端至多持有一个对象、持有期间不启动新子进程” |
