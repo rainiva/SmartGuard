@@ -836,9 +836,14 @@ internal static class PowerSchemeTestScope
                     () => active.Items.Cast<PowerPlanComboItem>().Any(item => item.DisplayName == "平衡（测试）"),
                     TimeSpan.FromSeconds(10), "the plan names to arrive through the background load");
                 loaderThreads.Should().NotBeEmpty("the catalog was actually loaded");
+                // Opening the window is where the old code loaded synchronously; assert before any interaction.
+                loaderThreads.Should().NotContain(uiThread, "opening the window must not load on the UI thread");
 
-                // Interact: the dropdown really opens on the shown window and realizes its items; picking a
-                // plan must not trigger a load on the UI thread.
+                // Interact: the plan combos live on the advanced page (pageAdvanced), collapsed at start.
+                // Navigate there as the user does, then the dropdown really opens and realizes its items;
+                // picking a plan must not trigger a load on the UI thread.
+                controller!.NavigateTo("advanced");
+                WpfStaTestHost.WaitUntil(() => active.IsVisible, TimeSpan.FromSeconds(10), "the advanced page to show the plan combo");
                 active.Focus();
                 active.IsDropDownOpen = true;
                 WpfStaTestHost.WaitUntil(
@@ -853,7 +858,7 @@ internal static class PowerSchemeTestScope
                 window.Close();
                 window = null;
 
-                loaderThreads.Should().NotContain(uiThread, "catalog loads run on background tasks only");
+                loaderThreads.Should().NotContain(uiThread, "interacting and closing must not load on the UI thread either");
             }
             finally
             {
@@ -871,7 +876,7 @@ internal static class PowerSchemeTestScope
     }
 ```
 
-（`GetWindowField` 是本测试文件已有的辅助方法，其他用例也用它取窗口并以 `ShowAndWait` 显示。展开下拉框的方式与 `LogWorkbenchCommandsTests` 中已通过的用例相同：先 `Focus()` 再设 `IsDropDownOpen`。`using System.Windows;`、`using System.Windows.Controls;` 以文件现有 using 为准。）
+（`GetWindowField` 是本测试文件已有的辅助方法，其他用例也用它取窗口并以 `ShowAndWait` 显示。`cmbActivePlan` 位于 XAML 的 `pageAdvanced`（初始折叠），`NavigateTo("advanced")` 对应导航第 1 项。展开下拉框的方式与 `LogWorkbenchCommandsTests` 中已通过的用例相同：先 `Focus()` 再设 `IsDropDownOpen`。`using System.Windows;`、`using System.Windows.Controls;` 以文件现有 using 为准。）
 
 (b) `PowerPlanComboItemsBuilderTests` 中加入：
 
@@ -1003,7 +1008,7 @@ dotnet test Tests/SmartGuard.Architecture.Tests/SmartGuard.Architecture.Tests.cs
 
 Expected: 编译退出码均为 0。失败用例：
 
-- UI 线程用例：`PopulatePlanCombo` 经同步 `TryLoad()` 在 STA 线程调用加载器，`NotContain(uiThread)` 失败。前面的 `NotBeEmpty` 与名称等待保证测试确实走到了加载路径，不会因加载器未被调用而假绿。旧实现的后台异步加载同样经过加载门，收尾的收敛等待照常完成，RED 只由线程断言产生。
+- UI 线程用例：`PopulatePlanCombo` 经同步 `TryLoad()` 在 STA 线程调用加载器，`NotContain(uiThread)` 失败。前面的 `NotBeEmpty` 与名称等待保证测试确实走到了加载路径，不会因加载器未被调用而假绿。线程断言紧跟名称等待、位于任何交互之前，所以 RED 由“打开窗口即在 UI 线程加载”产生，不会被后续下拉框操作的超时掩盖。旧实现的后台异步加载同样经过加载门，收尾的收敛等待照常完成。
 - 文案 Theory：`Loading`、`Failed`、`Listed` 三例失败（仍为“未在本机找到”），`Absent` 通过，属保护性用例。
 - 协调器失败用例：状态栏不会出现“无法读取…”（旧路径不产生 `Failed`），等待超时失败。
 - 名称读取失败用例：下拉框为“（未在本机找到）”，失败。
@@ -1626,7 +1631,27 @@ Expected: 1 failed（`PowerCfgProcessRunner.cs` 含 `"powercfg.exe"` 与 `RunPow
 
 - [ ] **Step 2: 删除**
 
-从 `PowerCfgProcessRunner` 删除 `DefaultTimeout`、`RunOverrideForTests`、`RunAsyncOverrideForTests`、`RunPowerCfg`、`RunPowerCfgAsync`，保留 `RunProcess`、`RunProcessAsync`、`RunProcessCoreAsync` 及其私有辅助（以编译为准）。三个 `PowerSchemeTestScope` 删除 `Blocked` 字段及封锁、复位语句。
+从 `PowerCfgProcessRunner` 删除 `DefaultTimeout`、`RunOverrideForTests`、`RunAsyncOverrideForTests`、`RunPowerCfg`、`RunPowerCfgAsync`，保留 `RunProcess`、`RunProcessAsync`、`RunProcessCoreAsync` 及其私有辅助（以编译为准）。
+
+三个 `PowerSchemeTestScope` 删除 `Blocked` 字段及封锁、复位语句，删除后的形式：
+- **Engine：** 回到第一阶段的形式。
+- **Configuration：** `finally` 不再需要 `idle` 变量（否则只剩空的 `if (idle) { }`），恢复为第一阶段的形式，超时仍由 `WaitUntilIdleAsync` 抛出：
+
+```csharp
+    finally
+    {
+      // A blocked fake must return before the scope ends: the gate belongs to the in-flight call.
+      try { await WaitUntilIdleAsync(); }
+      finally
+      {
+        // Reset in this frame (not in a nested async method) so the change applies to this flow.
+        PowerSchemeService.UseExecutorForTests(null);
+        PowerPlanCatalogProvider.ClearSessionCacheForTests();
+      }
+    }
+```
+
+- **Settings：** 只删 `Blocked` 字段与两处 `PowerCfgProcessRunner` 赋值；`if (converged)` 中保留 `ClearSessionCacheForTests()`，收敛等待与超时失败不变。
 
 ```powershell
 Get-ChildItem src,Tests -Recurse -Include *.cs | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } | Select-String -Pattern 'RunPowerCfg|RunOverrideForTests|RunAsyncOverrideForTests'
