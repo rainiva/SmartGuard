@@ -1,6 +1,6 @@
 # 守护长时间停工告警 — 设计
 
-日期：2026-11-19　状态：**设计草案**，含待用户决定项（第 6 节）；决定后经外部审查再出实施计划。前置：电源方案 API 第一阶段（已暴露 `PowerSchemeService.IsCallInFlight`/`InFlightSince`/`LastSucceededAt`）。
+日期：2026-11-19　状态：**设计草案**，第 6 节决定项已由用户决定（2026-11-20，全部按建议）；经外部审查后再出实施计划。前置：电源方案 API 第一阶段（已暴露 `PowerSchemeService.IsCallInFlight`/`InFlightSince`/`LastSucceededAt`）。
 
 ## 1. 背景
 
@@ -86,7 +86,11 @@
 - 新增不变量 `GUARD-INV-LIVENESS`：Engine 存活且可守护时，计划读取连续 T 分钟清醒时间未成功，必须以 `guardHealth=stalled` 发布并记录一次 `GuardStalled`；恢复以计划读取成功为准。
 - 真源表：“守护健康码 → `GuardianIterationRunner` 计算、`StatusPublisher` 发布、Tray/Settings 经共享 reader 读取”。
 
-## 6. 待用户决定
+## 6. 用户决定（2026-11-20 已决定：全部按建议）
+
+- **D1：** 阈值 T = 10 分钟。
+- **D2：** 进入停工时托盘弹一次系统通知，同一次停工只弹一次。
+- **D3：** 不自动重启。
 
 | # | 问题 | 选项 | 建议 |
 |---|------|------|------|
