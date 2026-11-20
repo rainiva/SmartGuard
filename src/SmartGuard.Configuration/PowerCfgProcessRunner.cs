@@ -7,6 +7,14 @@ namespace SmartGuard.Configuration;
 internal static class PowerCfgProcessRunner
 {
   private static readonly Encoding ConsoleEncoding = CreateConsoleEncoding();
+  private static readonly AsyncLocal<Action?> AfterTerminationRequest = new();
+  private static readonly AsyncLocal<TaskScheduler?> ReaderScheduler = new();
+
+  // Test-only: runs after the termination request and before the 250ms settle wait, to fix race timing.
+  internal static void UseAfterTerminationRequestForTests(Action? hook) => AfterTerminationRequest.Value = hook;
+
+  // Test-only: lets a test run the reader tasks late, after the runner has returned.
+  internal static void UseReaderSchedulerForTests(TaskScheduler? scheduler) => ReaderScheduler.Value = scheduler;
 
   internal static PowerCfgCommandResult RunProcess(string fileName, string arguments, TimeSpan timeout)
   {
@@ -19,14 +27,16 @@ internal static class PowerCfgProcessRunner
     string fileName,
     string arguments,
     TimeSpan timeout,
-    CancellationToken cancellationToken = default)
-    => RunProcessCoreAsync(fileName, arguments, timeout, cancellationToken);
+    CancellationToken cancellationToken = default,
+    bool retainUnconfirmed = false)
+    => RunProcessCoreAsync(fileName, arguments, timeout, cancellationToken, retainUnconfirmed);
 
   private static async Task<PowerCfgCommandResult> RunProcessCoreAsync(
     string fileName,
     string arguments,
     TimeSpan timeout,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken,
+    bool retainUnconfirmed)
   {
     var elapsed = Stopwatch.StartNew();
     PowerCfgCommandResult Result(bool started, string failure, bool confirmed = true, int? exitCode = null,
@@ -69,8 +79,9 @@ internal static class PowerCfgProcessRunner
     // Reading the properties transfers stream ownership away from Process.Dispose.
     var standardOutput = proc.StandardOutput;
     var standardError = proc.StandardError;
-    var readOutTask = Task.Run(() => ReadBoundedAsync(standardOutput, failureSignal, linkedCts.Token));
-    var readErrTask = Task.Run(() => ReadBoundedAsync(standardError, failureSignal, linkedCts.Token));
+    var linkedToken = linkedCts.Token;
+    var readOutTask = StartReader(standardOutput, failureSignal, linkedToken);
+    var readErrTask = StartReader(standardError, failureSignal, linkedToken);
     var exitTask = proc.WaitForExitAsync();
     var completion = Task.WhenAll(exitTask, readOutTask, readErrTask);
     string failure;
@@ -85,9 +96,9 @@ internal static class PowerCfgProcessRunner
       {
         await completion.ConfigureAwait(false);
         linkedCts.Token.ThrowIfCancellationRequested();
-        var output = await readOutTask.ConfigureAwait(false);
-        var error = await readErrTask.ConfigureAwait(false);
-        return Result(true, "none", exitCode: proc.ExitCode, output: output, error: error);
+        var output = (await readOutTask.ConfigureAwait(false)).Text;
+        var error = (await readErrTask.ConfigureAwait(false)).Text;
+        return Result(true, "none", exitCode: proc.ExitCode, output: output, error: error) with { CleanupEvidence = "confirmed" };
       }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -107,13 +118,18 @@ internal static class PowerCfgProcessRunner
     // safely identify its surviving descendants; the caller must disable further probes.
     var orphanedPipes = proc.HasExited && (!readOutTask.IsCompleted || !readErrTask.IsCompleted);
     var killSucceeded = TryKill(proc);
+    AfterTerminationRequest.Value?.Invoke();
     linkedCts.Cancel();
     var settled = await Task.WhenAny(completion, Task.Delay(250)).ConfigureAwait(false) == completion;
     // Observe every reader/exit failure even if an OS pipe cannot settle inside the cleanup budget.
     _ = completion.ContinueWith(t => { _ = t.Exception; }, CancellationToken.None,
       TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     var confirmed = killSucceeded && proc.HasExited && settled && !orphanedPipes;
-    return Result(true, failure, confirmed) with { FailureKind = confirmed ? failure : "cleanup-unconfirmed" };
+    return Result(true, failure, confirmed) with
+    {
+      FailureKind = confirmed ? failure : "cleanup-unconfirmed",
+      CleanupEvidence = confirmed ? "confirmed" : "pipes-open",
+    };
   }
 
   private static bool TryKill(Process proc)
@@ -126,7 +142,11 @@ internal static class PowerCfgProcessRunner
     catch { return false; }
   }
 
-  private static async Task<string> ReadBoundedAsync(StreamReader reader,
+  private static Task<PipeReadOutcome> StartReader(StreamReader reader, TaskCompletionSource<string> failure, CancellationToken token)
+    => Task.Factory.StartNew(() => ReadBoundedAsync(reader, failure, token), CancellationToken.None,
+      TaskCreationOptions.DenyChildAttach, ReaderScheduler.Value ?? TaskScheduler.Default).Unwrap();
+
+  private static async Task<PipeReadOutcome> ReadBoundedAsync(StreamReader reader,
     TaskCompletionSource<string> failure, CancellationToken cancellationToken)
   {
     // The reader task exclusively owns disposal, including after the caller's cleanup
@@ -141,11 +161,11 @@ internal static class PowerCfgProcessRunner
       while (true)
       {
         var count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
-        if (count == 0) return output.ToString();
+        if (count == 0) return new(output.ToString(), true);
         if (count > limit - output.Length)
         {
           failure.TrySetResult("output-limit");
-          return output.ToString();
+          return new(output.ToString(), false);
         }
         output.Append(buffer, 0, count);
       }
@@ -174,3 +194,5 @@ internal static class PowerCfgProcessRunner
     return Encoding.UTF8;
   }
 }
+
+internal sealed record PipeReadOutcome(string Text, bool ReachedEof);

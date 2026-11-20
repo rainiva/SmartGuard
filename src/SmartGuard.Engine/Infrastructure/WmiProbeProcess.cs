@@ -26,7 +26,8 @@ internal sealed class WmiProbeProcess
     Func<string, string, TimeSpan, CancellationToken, Task<PowerCfgCommandResult>>? execute = null,
     TimeProvider? timeProvider = null, Action<WmiProbeObservation>? observe = null)
   {
-    _execute = execute ?? PowerCfgProcessRunner.RunProcessAsync;
+    _execute = execute ?? ((file, args, budget, token) =>
+      PowerCfgProcessRunner.RunProcessAsync(file, args, budget, token, retainUnconfirmed: false));
     _time = timeProvider ?? TimeProvider.System;
     _observe = observe;
   }
